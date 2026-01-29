@@ -1,0 +1,11 @@
+{
+  "name": "noteplan-daily-organizer",
+  "description": "Move content from daily files to relevant notes with folder and emoji awareness",
+  "version": "1.0.0",
+  "author": {
+    "name": "Omar Eid",
+    "email": "omar.eid@servicenow.com"
+  },
+  "homepage": "https://github.com/oeid/claude-plugins",
+  "license": "MIT"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "claude-permission-config-manager",
+  "description": "Manage Claude Code permissions, MCP servers, and development environment configuration",
+  "version": "1.0.0",
+  "author": {
+    "name": "Omar Eid",
+    "email": "omar.eid@servicenow.com"
+  },
+  "homepage": "https://github.com/oeid/claude-plugins",
+  "license": "MIT"
+}

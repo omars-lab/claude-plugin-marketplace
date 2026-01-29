@@ -1,0 +1,62 @@
+{
+  "name": "oeid-claude-plugins",
+  "owner": {
+    "name": "Omar Eid",
+    "email": "omar.eid@servicenow.com"
+  },
+  "metadata": {
+    "description": "Personal plugin marketplace for NotePlan management and productivity tools",
+    "version": "1.0.0",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "discover-oeid-plugins",
+      "source": "./plugins/discover-oeid-plugins",
+      "description": "Discover available personal plugins and see what's installed",
+      "version": "1.0.0",
+      "category": "getting-started",
+      "keywords": ["discover", "explore", "plugins", "marketplace", "status"]
+    },
+    {
+      "name": "claude-permission-config-manager",
+      "source": "./plugins/claude-permission-config-manager",
+      "description": "Manage bash permissions and working directories to eliminate permission prompts",
+      "version": "1.0.0",
+      "category": "utilities",
+      "keywords": ["permissions", "config", "working-directories", "development", "setup", "bash"]
+    },
+    {
+      "name": "noteplan-templates",
+      "source": "./plugins/noteplan-templates",
+      "description": "Maintain and manage NotePlan templates in @Templates directory",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["noteplan", "templates", "management", "productivity"]
+    },
+    {
+      "name": "noteplan-daily-organizer",
+      "source": "./plugins/noteplan-daily-organizer",
+      "description": "Move content from daily files to relevant notes with folder and emoji awareness",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["noteplan", "daily", "organize", "move", "automation"]
+    },
+    {
+      "name": "noteplan-structure-analyzer",
+      "source": "./plugins/noteplan-structure-analyzer",
+      "description": "Analyze NotePlan folder structure, emoji usage, and suggest enhancements",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["noteplan", "analysis", "structure", "emoji", "suggestions"]
+    },
+    {
+      "name": "noteplan-note-creator",
+      "source": "./plugins/noteplan-note-creator",
+      "description": "Create new NotePlan notes following existing conventions and patterns",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["noteplan", "create", "notes", "conventions", "automation"]
+    }
+  ]
+}
