@@ -1,6 +1,6 @@
 {
-  "name": "noteplan-templates",
-  "description": "Maintain and manage NotePlan templates in @Templates directory",
+  "name": "config-manager",
+  "description": "Comprehensive development configuration - Claude permissions, Makefiles, CLAUDE.md, documentation, and environment setup",
   "version": "1.0.0",
   "author": {
     "name": "Omar Eid",
