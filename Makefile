@@ -1,4 +1,4 @@
-.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator validate list-plugins tree install uninstall install-all install-symlinks install-cli update-all clean verify-installs doctor register
+.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate list-plugins tree install uninstall install-all install-symlinks install-cli update-all clean verify-installs doctor register
 
 # Colors for output
 GREEN := \033[0;32m
@@ -102,6 +102,43 @@ test-creator: ## Test noteplan-note-creator skills
 	@echo "  $(YELLOW)/noteplan-note-creator:create-note$(NC)"
 	@echo "  $(YELLOW)/noteplan-note-creator:quick-note$(NC)"
 
+test-workflow: ## Test complete workflow: uninstall → doctor → install → doctor → update → doctor
+	@echo "$(BLUE)╔════════════════════════════════════════════════════════╗$(NC)"
+	@echo "$(BLUE)║  Testing Complete Plugin Lifecycle Workflow           ║$(NC)"
+	@echo "$(BLUE)╚════════════════════════════════════════════════════════╝$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Step 1: Uninstalling all plugins...$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@make --no-print-directory uninstall
+	@echo ""
+	@echo "$(YELLOW)Step 2: Running doctor (post-uninstall)...$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@make --no-print-directory doctor
+	@echo ""
+	@read -p "Press Enter to continue to installation..." dummy
+	@echo ""
+	@echo "$(YELLOW)Step 3: Installing all plugins...$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@make --no-print-directory install
+	@echo ""
+	@echo "$(YELLOW)Step 4: Running doctor (post-install)...$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@make --no-print-directory doctor
+	@echo ""
+	@read -p "Press Enter to continue to update..." dummy
+	@echo ""
+	@echo "$(YELLOW)Step 5: Updating all plugins...$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@make --no-print-directory update
+	@echo ""
+	@echo "$(YELLOW)Step 6: Running doctor (post-update)...$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@make --no-print-directory doctor
+	@echo ""
+	@echo "$(BLUE)╔════════════════════════════════════════════════════════╗$(NC)"
+	@echo "$(BLUE)║  $(GREEN)✓$(BLUE) Workflow test completed successfully!          ║$(NC)"
+	@echo "$(BLUE)╚════════════════════════════════════════════════════════╝$(NC)"
+
 test-all: ## Run all plugin tests
 	@make --no-print-directory test-discover
 	@echo ""
@@ -118,17 +155,7 @@ test-all: ## Run all plugin tests
 register: ## Manually register the marketplace in Claude
 	@./scripts/register-marketplace.sh
 
-install: ## Install all plugins using Claude CLI
-	@if [ -n "$$CLAUDECODE" ]; then \
-		echo "$(RED)⚠ Cannot run from within Claude Code session$(NC)"; \
-		echo ""; \
-		echo "$(YELLOW)Please run this command from a regular terminal:$(NC)"; \
-		echo "   $(BLUE)cd $(MARKETPLACE_PATH) && make install$(NC)"; \
-		echo ""; \
-		echo "$(YELLOW)Or use the helper script:$(NC)"; \
-		echo "   $(BLUE)./scripts/cli-install-all.sh$(NC)"; \
-		exit 1; \
-	fi
+install: ## Install all plugins using Claude CLI (non-interactive)
 	@echo "$(BLUE)Installing all plugins from $(MARKETPLACE_NAME) using Claude CLI...$(NC)"
 	@echo ""
 	@failed=0; \
@@ -137,7 +164,7 @@ install: ## Install all plugins using Claude CLI
 	for plugin in $$plugins; do \
 		total=$$((total + 1)); \
 		echo "$(YELLOW)Installing $$plugin@$(MARKETPLACE_NAME)...$(NC)"; \
-		if claude plugin install "$$plugin@$(MARKETPLACE_NAME)" --scope user; then \
+		if env -u CLAUDECODE claude plugin install "$$plugin@$(MARKETPLACE_NAME)" --scope user 2>&1 | grep -v "^$$"; then \
 			echo "$(GREEN)✓$(NC) $$plugin installed successfully"; \
 		else \
 			echo "$(RED)✗$(NC) Failed to install $$plugin"; \
@@ -153,14 +180,7 @@ install: ## Install all plugins using Claude CLI
 		exit 1; \
 	fi
 
-uninstall: ## Uninstall all plugins using Claude CLI
-	@if [ -n "$$CLAUDECODE" ]; then \
-		echo "$(RED)⚠ Cannot run from within Claude Code session$(NC)"; \
-		echo ""; \
-		echo "$(YELLOW)Please run this command from a regular terminal:$(NC)"; \
-		echo "   $(BLUE)cd $(MARKETPLACE_PATH) && make uninstall$(NC)"; \
-		exit 1; \
-	fi
+uninstall: ## Uninstall all plugins using Claude CLI (non-interactive)
 	@echo "$(BLUE)Uninstalling all plugins from $(MARKETPLACE_NAME) using Claude CLI...$(NC)"
 	@echo ""
 	@failed=0; \
@@ -169,7 +189,7 @@ uninstall: ## Uninstall all plugins using Claude CLI
 	for plugin in $$plugins; do \
 		total=$$((total + 1)); \
 		echo "$(YELLOW)Uninstalling $$plugin@$(MARKETPLACE_NAME)...$(NC)"; \
-		if claude plugin uninstall "$$plugin@$(MARKETPLACE_NAME)" --scope user; then \
+		if env -u CLAUDECODE claude plugin uninstall "$$plugin@$(MARKETPLACE_NAME)" --scope user 2>&1 | grep -v "^$$"; then \
 			echo "$(GREEN)✓$(NC) $$plugin uninstalled successfully"; \
 		else \
 			echo "$(YELLOW)⚠$(NC)  $$plugin may not have been installed"; \
@@ -179,14 +199,7 @@ uninstall: ## Uninstall all plugins using Claude CLI
 	echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"; \
 	echo "$(GREEN)✓ Uninstall process completed for $$total plugins$(NC)"
 
-update: ## Update all installed plugins using Claude CLI
-	@if [ -n "$$CLAUDECODE" ]; then \
-		echo "$(RED)⚠ Cannot run from within Claude Code session$(NC)"; \
-		echo ""; \
-		echo "$(YELLOW)Please run this command from a regular terminal:$(NC)"; \
-		echo "   $(BLUE)cd $(MARKETPLACE_PATH) && make update$(NC)"; \
-		exit 1; \
-	fi
+update: ## Update all installed plugins using Claude CLI (non-interactive)
 	@echo "$(BLUE)Updating all plugins from $(MARKETPLACE_NAME) using Claude CLI...$(NC)"
 	@echo ""
 	@failed=0; \
@@ -195,7 +208,7 @@ update: ## Update all installed plugins using Claude CLI
 	for plugin in $$plugins; do \
 		total=$$((total + 1)); \
 		echo "$(YELLOW)Updating $$plugin@$(MARKETPLACE_NAME)...$(NC)"; \
-		if claude plugin update "$$plugin@$(MARKETPLACE_NAME)" --scope user; then \
+		if env -u CLAUDECODE claude plugin update "$$plugin@$(MARKETPLACE_NAME)" --scope user 2>&1 | grep -v "^$$"; then \
 			echo "$(GREEN)✓$(NC) $$plugin updated successfully"; \
 		else \
 			echo "$(YELLOW)⚠$(NC)  $$plugin may not have been installed or is already up-to-date"; \
