@@ -41,6 +41,14 @@
       "version": "1.0.0",
       "category": "development",
       "keywords": ["tampermonkey", "userscripts", "browser-automation", "javascript", "publishing", "gist"]
+    },
+    {
+      "name": "claude-manager",
+      "source": "./plugins/claude-manager",
+      "description": "Manage Claude skills and CLAUDE.md files - create, update, and organize skills across plugins",
+      "version": "1.0.0",
+      "category": "development",
+      "keywords": ["meta", "skills", "plugin-development", "claude", "automation", "CLAUDE.md"]
     }
   ]
 }
