@@ -33,6 +33,14 @@
       "version": "1.0.0",
       "category": "productivity",
       "keywords": ["noteplan", "templates", "organize", "analyze", "create", "productivity", "automation"]
+    },
+    {
+      "name": "script-manager",
+      "source": "./plugins/script-manager",
+      "description": "Create and manage Tampermonkey userscripts with best practices",
+      "version": "1.0.0",
+      "category": "development",
+      "keywords": ["tampermonkey", "userscripts", "browser-automation", "javascript", "publishing", "gist"]
     }
   ]
 }

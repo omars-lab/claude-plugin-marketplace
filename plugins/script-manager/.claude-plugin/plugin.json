@@ -1,0 +1,11 @@
+{
+  "name": "script-manager",
+  "version": "1.0.0",
+  "description": "Create and manage Tampermonkey userscripts with best practices",
+  "author": "Omar Eid",
+  "skills": [
+    "tampermonkey-create"
+  ],
+  "tags": ["tampermonkey", "userscripts", "browser-automation", "javascript"],
+  "category": "development"
+}
