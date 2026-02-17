@@ -49,6 +49,23 @@ plugins/{plugin-name}/
 }
 ```
 
+### Version Tracking (REQUIRED)
+
+The `ceg` CLI uses `version-tracking.json` to detect changes for automated version bumping. Without it, `make update` and `make version-check` will fail silently for the plugin.
+
+**Create `.claude-plugin/version-tracking.json`:**
+```json
+{
+  "versionCommit": "<current-git-HEAD-hash>"
+}
+```
+
+Get the commit hash with: `git rev-parse HEAD`
+
+**Or run `make version-init`** after the initial commit to auto-create this file for all plugins missing it.
+
+**Important:** The `versionCommit` value must be a real commit hash, not an empty string. An empty string passes the "key exists" check but breaks `git diff` operations.
+
 ### README.md Format (Minimal)
 
 ```markdown
@@ -223,6 +240,21 @@ mkdir -p "$PLUGIN_DIR/skills/{first-skill-name}"
 # Write plugin.json with collected metadata
 ```
 
+**Create version-tracking.json:**
+```bash
+# Get current HEAD commit hash
+COMMIT=$(git -C "$MARKETPLACE" rev-parse HEAD)
+
+# Create version tracking file
+cat > "$PLUGIN_DIR/.claude-plugin/version-tracking.json" <<EOF
+{
+  "versionCommit": "$COMMIT"
+}
+EOF
+```
+
+**Why this matters:** Without `version-tracking.json`, `make update` and `make version-check` will fail with "Failed to detect changes" for this plugin. The `ceg` CLI's `version-detect-changes.sh` reads this file to determine what commit to diff against.
+
 **Create minimal README.md** following the template above.
 
 **Create introduce skill** that:
@@ -272,6 +304,7 @@ Run health checks against the new plugin:
 Validating {plugin-name}...
 
 ✅ plugin.json exists and is valid
+✅ version-tracking.json exists with valid commit hash
 ✅ introduce skill exists
 ✅ First skill ({skill-name}) has TaskCreate/TaskUpdate
 ✅ First skill ({skill-name}) has AskUserQuestion

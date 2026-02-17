@@ -1057,6 +1057,99 @@ def check_naming_consistency():
 
 ---
 
+## Version Tracking Health Checks
+
+Before running version/update commands, verify that the version tracking infrastructure is healthy. Without this, `make update` and `make version-check` fail silently with "Failed to detect changes".
+
+### 1. Missing version-tracking.json
+
+The `ceg` CLI uses `.claude-plugin/version-tracking.json` (not `versionCommit` in `plugin.json`) for change detection. Every plugin must have this file.
+
+**Detection:**
+```bash
+# Check each plugin for version-tracking.json
+for plugin_dir in plugins/*/; do
+    plugin_name=$(basename "$plugin_dir")
+    tracking="$plugin_dir/.claude-plugin/version-tracking.json"
+    if [ ! -f "$tracking" ]; then
+        echo "MISSING: $plugin_name has no version-tracking.json"
+    fi
+done
+```
+
+**Auto-fix:** Run `make version-init` or `ceg marketplace version-init <marketplace-name>` to create tracking files for all plugins.
+
+### 2. Empty or Invalid versionCommit
+
+A `version-tracking.json` with an empty `versionCommit` (`""`) passes the "key exists" check in `version-init` (so it gets skipped) but breaks `git diff` in `version-detect-changes.sh`.
+
+**Detection:**
+```bash
+for plugin_dir in plugins/*/; do
+    tracking="$plugin_dir/.claude-plugin/version-tracking.json"
+    if [ -f "$tracking" ]; then
+        commit=$(python3 -c "import json; print(json.load(open('$tracking')).get('versionCommit', ''))")
+        if [ -z "$commit" ]; then
+            echo "EMPTY_COMMIT: $(basename $plugin_dir) has empty versionCommit"
+        elif ! git cat-file -e "$commit" 2>/dev/null; then
+            echo "INVALID_COMMIT: $(basename $plugin_dir) versionCommit $commit does not exist in git history"
+        fi
+    fi
+done
+```
+
+**Auto-fix:** Set `versionCommit` to current HEAD: `git rev-parse HEAD`
+
+### 3. Plugin Not Registered in marketplace.json
+
+Plugins that exist in `plugins/` but are not listed in `.claude-plugin/marketplace.json` will be invisible to `make install`, `make update`, and `make doctor`.
+
+**Detection:**
+```bash
+# Get registered plugin names
+registered=$(python3 -c "import json; data=json.load(open('.claude-plugin/marketplace.json')); print('\n'.join([p['name'] for p in data['plugins']]))")
+
+# Check each plugin directory
+for plugin_dir in plugins/*/; do
+    plugin_name=$(basename "$plugin_dir")
+    if ! echo "$registered" | grep -q "^${plugin_name}$"; then
+        echo "NOT_REGISTERED: $plugin_name exists but not in marketplace.json"
+    fi
+done
+```
+
+**Auto-fix:** Add the missing entry to marketplace.json with name, source, description, version, category, and keywords.
+
+### 4. Shell Script pipefail + grep Pattern
+
+Scripts using `set -euo pipefail` will crash if `grep` returns no matches in a pipeline. This affects `version-detect-changes.sh` and any custom scripts.
+
+**The bug pattern:**
+```bash
+# BROKEN: grep returns exit 1 when no matches, pipefail propagates it
+RESULT=$(some_command | grep "pattern" | wc -l)
+
+# FIXED: wrap grep in { ... || true; } to handle zero matches
+RESULT=$(some_command | { grep "pattern" || true; } | wc -l)
+```
+
+**Detection:** When `make update` or `make version-check` reports "Failed to detect changes" for all plugins, this is likely the cause.
+
+**Auto-fix:** In `version-detect-changes.sh`, ensure all `grep` invocations in pipelines use the `{ grep ... || true; }` pattern.
+
+### 5. version-tracking.json Showing as False Positive Change
+
+If `version-tracking.json` was just created and committed, it shows up in `git diff` as a change, causing `version-detect-changes.sh` to report `NEEDS_UPDATE` even when nothing meaningful changed.
+
+**Detection:** When `make version-check` reports changes but the only changed file is `version-tracking.json` itself.
+
+**Fix:** The `version-detect-changes.sh` script should filter out `version-tracking.json` from the changed files list before checking emptiness:
+```bash
+CHANGED_FILES=$(git diff --name-only "$SINCE" HEAD -- "$PLUGIN_DIR" | { grep -v "version-tracking.json$" || true; })
+```
+
+---
+
 ## Plugin Health Audit
 
 Beyond version and naming checks, this skill audits plugins for compliance with the framework's mandatory patterns.
@@ -1231,11 +1324,14 @@ discover-oeid-plugins (1 skill):
 
 documentation-manager (1 skill):
   ❌ Missing introduce skill
-  ⚠️  Not registered in marketplace.json
+  ❌ Not registered in marketplace.json
+  ❌ Missing version-tracking.json
 
 ═══════════════════════════════════════════════════════════════════════════════
 
 Summary:
+  Version tracking missing: 2/8 plugins
+  Plugins not in marketplace.json: 1/8
   Plugins missing introduce skill: 7/8
   Skills missing task management: 8/33 (5 are errors, 3 are warnings)
   Skills missing AskUserQuestion: 6/33 (4 are errors, 2 are OK)
@@ -1243,6 +1339,7 @@ Summary:
   READMEs needing slimming: 4/8
 
 Priority fixes:
+  0. Fix version tracking (missing version-tracking.json, marketplace.json registration)
   1. Create introduce skills for all plugins (7 plugins)
   2. Add task management to 5 skills with 3+ phases
   3. Add AskUserQuestion to 4 file-modifying skills
@@ -1273,13 +1370,14 @@ For each fix category, use `claude-manager:skill-create` patterns to generate th
 The health audit runs as an additional step in the fix-plugins workflow:
 
 ```
-Step 1: Version/update detection (existing)
-Step 2: Skill naming consistency (existing)
-Step 3: Plugin health audit - mandatory checks (NEW)
-Step 4: Plugin maturity suggestions - optional enhancements (NEW)
-Step 5: Present all findings
-Step 6: Apply approved fixes
-Step 7: Run make update if versions changed
+Step 1: Version tracking infrastructure (version-tracking.json, marketplace.json)
+Step 2: Version/update detection (compare source vs installed)
+Step 3: Skill naming consistency
+Step 4: Plugin health audit - mandatory checks
+Step 5: Plugin maturity suggestions - optional enhancements
+Step 6: Present all findings
+Step 7: Apply approved fixes
+Step 8: Run make update if versions changed
 ```
 
 ---
