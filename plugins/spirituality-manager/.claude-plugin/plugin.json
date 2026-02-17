@@ -1,0 +1,12 @@
+{
+  "name": "spirituality-manager",
+  "description": "Plan and track spiritual practices - Ramadan schedules, Quran memorization (hifz), and dua routines",
+  "version": "1.1.0",
+  "author": {
+    "name": "Omar Eid",
+    "email": "omar.eid@servicenow.com"
+  },
+  "homepage": "https://github.com/oeid/claude-plugins",
+  "license": "MIT",
+  "versionCommit": "bfe52c2449f0687977960d304af9c39ffd7c6f94"
+}
