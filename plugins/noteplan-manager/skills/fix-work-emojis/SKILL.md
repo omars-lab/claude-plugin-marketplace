@@ -355,10 +355,34 @@ Ready to begin!
 
 ### **Step 1 (Task #1): Git Safety Check**
 
-Mark task as in_progress, then:
-   - All work plans (default)
-   - Specific workstream directory
-   - Specific file
+Mark task as in_progress, then check for pending changes:
+
+```bash
+cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes"
+git status --short
+```
+
+**If pending changes found: AUTO-COMMIT them (do NOT ask user)**
+
+```bash
+# Stage all changes
+git add -A
+
+# Create descriptive commit based on what changed
+git commit -m "chore(noteplan): Auto-commit pending changes before emoji fixes
+
+[Describe what changes were pending]
+
+Auto-committed by fix-work-emojis skill to keep commits separated.
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+```
+
+**Rationale for auto-commit:**
+- Keeps emoji fixes isolated in their own commit
+- User already made changes intentionally, just commit them
+- No need to interrupt workflow with questions
+- Makes git history cleaner and more traceable
 
 **Complete Task #1 and mark as completed**, then start Task #2.
 
