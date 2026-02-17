@@ -95,11 +95,23 @@ When invoked, follow this sequence:
    11. **{Action 11}**: {Description}
    12. **{Action 12}**: {Description}
 
+   ## Task Management (MANDATORY)
+
+   Create all tasks upfront with dependencies before starting work:
+
+   ```javascript
+   TaskCreate({ subject: "Phase 1 task", description: "...", activeForm: "Running phase 1" })
+   TaskCreate({ subject: "Phase 2 task", description: "...", activeForm: "Running phase 2" })
+   TaskUpdate({ taskId: "2", addBlockedBy: ["1"] })
+   ```
+
    ## User Interaction
 
-   1. **Ask questions**: {What to ask and when}
-   2. **Show progress**: {How to communicate status}
-   3. **Request confirmation**: {When to pause for user approval}
+   Use AskUserQuestion for all decisions:
+
+   1. **Ask questions**: {What to ask and when - use AskUserQuestion}
+   2. **Show progress**: {Update tasks with TaskUpdate}
+   3. **Request confirmation**: {AskUserQuestion before destructive operations}
    4. **Handle errors**: {How to gracefully handle failures}
 
    ## Examples
@@ -266,6 +278,153 @@ When creating skills that use Claude tools, document them clearly:
 - Include descriptions for each option
 ```
 
+## Mandatory Skill Patterns
+
+Every skill MUST follow these patterns. They are not optional.
+
+### 1. Task Management (MANDATORY)
+
+All non-trivial skills must use `TaskCreate` and `TaskUpdate` to track progress:
+
+```javascript
+// Create all tasks upfront with dependencies BEFORE starting work
+TaskCreate({
+  subject: "Step description in imperative form",
+  description: "Detailed description of what this step does and acceptance criteria",
+  activeForm: "Present continuous form for spinner display"
+})
+
+// Set dependencies between tasks
+TaskUpdate({ taskId: "2", addBlockedBy: ["1"] })
+
+// Update status as you progress
+TaskUpdate({ taskId: "1", status: "in_progress" })
+TaskUpdate({ taskId: "1", status: "completed" })
+```
+
+**Why:** Task management gives users visibility into progress, creates natural checkpoints, and prevents skills from running unchecked through multi-step workflows.
+
+### 2. User Interaction via AskUserQuestion (MANDATORY)
+
+Skills must use `AskUserQuestion` for decisions, not assume intent:
+
+```javascript
+AskUserQuestion({
+  questions: [{
+    question: "Which approach should we use?",
+    header: "Approach",
+    options: [
+      { label: "Option A (Recommended)", description: "Why this is preferred" },
+      { label: "Option B", description: "When this makes sense" },
+      { label: "Skip", description: "Don't do this step" }
+    ],
+    multiSelect: false
+  }]
+})
+```
+
+**Why:** Skills operate on user data. Users must approve changes before execution, choose between valid approaches, and have the ability to skip steps.
+
+### 3. Git Safety (MANDATORY for file-modifying skills)
+
+Any skill that modifies files in a git repo must:
+1. Check `git status` before starting
+2. Auto-commit or offer to commit pending changes (creates a baseline)
+3. Record a `CHECKPOINT_COMMIT` hash
+4. Validate changes via `git diff CHECKPOINT_COMMIT` before final commit
+5. Stop and report if unexpected changes are detected
+
+### 4. Introduce Skill (MANDATORY per plugin)
+
+Every plugin MUST have an `introduce` skill that:
+- Explains what the plugin does
+- Lists all skills with one-line descriptions
+- Groups skills by category
+- Shows common workflows and which skills to use when
+- Uses `AskUserQuestion` to tailor the introduction to user interest
+
+The `introduce` skill replaces verbose READMEs. READMEs should be minimal (name, install command, skill table) since Claude doesn't read READMEs - it loads skills.
+
+## Optional Maturity Patterns
+
+These are not required but make skills significantly more effective over time. When creating a new skill, ask the user if they want to include any of these. Use `AskUserQuestion` with a multiSelect option.
+
+### 1. Key Learnings Section (Usage Tracking)
+
+Add a section where the skill records real execution data after each run:
+
+```markdown
+## Key Learnings & Execution History
+
+### Execution: YYYY-MM-DD
+**Scope:** N files processed
+**Results:** X fixed, Y skipped, Z conflicts
+**Edge cases:**
+- Description of unexpected situations encountered
+**Recurring pattern:** Description of issues that keep appearing
+```
+
+**Why:** Over time this becomes the skill's institutional memory. Edge cases get documented where they matter most - right in the skill that handles them.
+
+**Best fit for:** Skills that run repeatedly on similar data (fix-*, organize-*, sync-*).
+
+### 2. Knowledge Artifact Growth
+
+Skills can maintain shared reference artifacts that grow as byproducts of their work:
+
+```markdown
+## Knowledge Artifacts
+
+### Shared Conventions Reference
+**Updated by:** This skill (when new patterns discovered)
+**Read by:** [list sibling skills that benefit]
+
+After each execution, if a new pattern or edge case is found that
+isn't documented, offer to append it to the shared reference.
+```
+
+**Why:** Prevents convention drift between skills. One skill discovers a pattern, all related skills benefit.
+
+**Best fit for:** Skills that define conventions other skills consume. Examples:
+- `fix-filenames` defines naming conventions → `create-note` reads them
+- `fix-work-emojis` defines emoji mappings → `sync-header-emojis` reads them
+
+### 3. Feedback Loops (Self-Healing)
+
+Skills that fix recurring problems should detect recurrence and suggest root-cause fixes:
+
+```markdown
+## Recurrence Detection
+
+After execution, check if the same issues appeared as in previous runs:
+- If issue recurs 3+ times → flag as RECURRING and suggest root cause fix
+- If a new issue type appears → flag as NEW for tracking
+
+## Root Cause Suggestions
+
+When patterns recur, suggest fixes beyond this skill's scope:
+- "Same duplicates keep appearing → check NotePlan sync settings"
+- "Wrong emojis keep being created → template may be out of date"
+- "Same file keeps being misplaced → create-note may need validation"
+```
+
+**Why:** Moves from reactive fixing to proactive prevention. The skill tells you what's causing the problem, not just how to fix the symptom.
+
+**Best fit for:** Skills that fix issues that could be prevented upstream.
+
+### Maturity Levels
+
+When creating a skill, the maturity options are:
+
+| Level | Description | What to add |
+|---|---|---|
+| 0 | Works correctly | Mandatory patterns only |
+| 1 | Tracks what it does | Add Key Learnings section |
+| 2 | Grows knowledge | Add shared artifact maintenance |
+| 3 | Self-improves | Add recurrence detection and root cause suggestions |
+
+**Default:** Level 0 (mandatory patterns). Suggest Level 1 for all fix/sync skills. Offer Level 2-3 for skills the user expects to run frequently.
+
 ## Quality Checklist
 
 Before completing, verify:
@@ -273,13 +432,16 @@ Before completing, verify:
 - [ ] SKILL.md is comprehensive (>100 lines for complex skills)
 - [ ] Workflow has clear phases (minimum 3, typically 4)
 - [ ] Each step is numbered and explained
-- [ ] User interaction guidelines included
+- [ ] Uses `TaskCreate`/`TaskUpdate` for progress tracking (MANDATORY)
+- [ ] Uses `AskUserQuestion` for user decisions (MANDATORY)
+- [ ] Git safety pattern included (if skill modifies files)
 - [ ] Examples provided (at least 2)
 - [ ] Success criteria defined
 - [ ] Best practices documented
 - [ ] Skill name follows conventions
 - [ ] Directory structure correct
 - [ ] Markdown formatting valid
+- [ ] Plugin has an `introduce` skill (create one if missing)
 
 ## Error Handling
 
