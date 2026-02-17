@@ -1,4 +1,4 @@
-.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate list-plugins tree install uninstall install-all install-symlinks install-cli update-all clean verify-installs doctor register
+.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate list-plugins tree install uninstall install-all install-symlinks install-cli update update-all update-force version-check version-bump version-init clean verify-installs doctor register
 
 # Colors for output
 GREEN := \033[0;32m
@@ -199,24 +199,9 @@ uninstall: ## Uninstall all plugins using Claude CLI (non-interactive)
 	echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"; \
 	echo "$(GREEN)✓ Uninstall process completed for $$total plugins$(NC)"
 
-update: ## Update all installed plugins using Claude CLI (non-interactive)
-	@echo "$(BLUE)Updating all plugins from $(MARKETPLACE_NAME) using Claude CLI...$(NC)"
-	@echo ""
-	@failed=0; \
-	total=0; \
-	plugins=$$(python3 -c "import json; data=json.load(open('.claude-plugin/marketplace.json')); print(' '.join([p['name'] for p in data['plugins']]))"); \
-	for plugin in $$plugins; do \
-		total=$$((total + 1)); \
-		echo "$(YELLOW)Updating $$plugin@$(MARKETPLACE_NAME)...$(NC)"; \
-		if env -u CLAUDECODE claude plugin update "$$plugin@$(MARKETPLACE_NAME)" --scope user 2>&1 | grep -v "^$$"; then \
-			echo "$(GREEN)✓$(NC) $$plugin updated successfully"; \
-		else \
-			echo "$(YELLOW)⚠$(NC)  $$plugin may not have been installed or is already up-to-date"; \
-		fi; \
-		echo ""; \
-	done; \
-	echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"; \
-	echo "$(GREEN)✓ Update process completed for $$total plugins$(NC)"
+update: ## Check for changes, bump versions, then update plugins
+	@./scripts/version-check-all.sh
+	@./scripts/plugin-update-all.sh
 
 install-all: ## Auto-install all plugins to ~/.claude (recommended)
 	@./scripts/auto-install-all.sh
@@ -259,8 +244,25 @@ install-symlinks: ## Create symlinks only (legacy method)
 		exit 1; \
 	fi
 
+update-force: ## Force update all plugins without version check
+	@./scripts/plugin-update-all.sh
+
 update-all: ## Update marketplace and all installed plugins (alias for 'update')
 	@make --no-print-directory update
+
+version-check: ## Check which plugins need version bumps (dry run)
+	@./scripts/version-check-all.sh --dry-run
+
+version-bump: ## Manually bump a plugin version (PLUGIN=name TYPE=major|minor|patch)
+	@if [ -z "$(PLUGIN)" ] || [ -z "$(TYPE)" ]; then \
+		echo "$(RED)Usage: make version-bump PLUGIN=<name> TYPE=<major|minor|patch>$(NC)"; \
+		echo "$(YELLOW)Example: make version-bump PLUGIN=claude-manager TYPE=minor$(NC)"; \
+		exit 1; \
+	fi
+	@./scripts/version-bump.sh $(PLUGIN) $(TYPE) --commit
+
+version-init: ## Initialize version tracking for all plugins (one-time setup)
+	@./scripts/init-version-tracking.sh
 
 verify-installs: ## Verify all plugins are correctly installed
 	@./scripts/verify-installs.sh
