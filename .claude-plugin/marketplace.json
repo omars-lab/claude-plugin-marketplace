@@ -49,6 +49,14 @@
       "version": "1.0.0",
       "category": "development",
       "keywords": ["meta", "skills", "plugin-development", "claude", "automation", "CLAUDE.md"]
+    },
+    {
+      "name": "spirituality-manager",
+      "source": "./plugins/spirituality-manager",
+      "description": "Plan and track spiritual practices - Ramadan schedules, Quran memorization (hifz), and dua routines",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["spirituality", "ramadan", "quran", "hifz", "dua", "planning", "ibadah"]
     }
   ]
 }
