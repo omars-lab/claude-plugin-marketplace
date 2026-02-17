@@ -57,6 +57,14 @@
       "version": "1.0.0",
       "category": "productivity",
       "keywords": ["spirituality", "ramadan", "quran", "hifz", "dua", "planning", "ibadah"]
+    },
+    {
+      "name": "knowledge-manager",
+      "source": "./plugins/knowledge-manager",
+      "description": "Extract, map, and query knowledge from notes - transform unstructured content into structured knowledge bases with Zettelkasten-style atomic notes",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["knowledge", "zettelkasten", "extraction", "mapping", "query", "atomic-notes", "knowledge-base"]
     }
   ]
 }
