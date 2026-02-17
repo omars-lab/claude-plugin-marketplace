@@ -221,11 +221,11 @@ TaskCreate({
   activeForm: "Running comprehensive maintenance"
 })
 
-// Task #8: Final commit
+// Task #8: Validate changes and create final commit
 TaskCreate({
-  subject: "Create git commit with all emoji fixes",
-  description: "Create descriptive git commit for all emoji-related changes made during this workflow.\n\nCommit should include:\n- All modified work plan files\n- Template changes (if sync-plan-templates ran)\n- Any header changes (if sync-header-emojis ran)\n\nCommit message format:\n```\nfix(noteplan): Fix work plan emoji encoding and consistency\n\n- Fixed emoji encoding in X work plan files\n- Updated Y filename patterns\n- Synchronized Z frontmatter workstream fields\n- [if applicable] Updated template with current workstreams\n- [if applicable] Synced headers to match folder emojis\n\nAffected workstreams: [list]\n\nSkill: fix-work-emojis\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\n```\n\nShow commit hash and summary when complete.",
-  activeForm: "Creating git commit"
+  subject: "Validate changes and create git commit",
+  description: "MANDATORY VALIDATION: Review all changes before committing.\n\nStep 1: Get starting checkpoint\n- The auto-commit from Task #1 is our baseline\n- All changes after that commit are from this skill\n\nStep 2: Review git diff\n```bash\n# Show all changes since the auto-commit\ngit diff HEAD~1\n\n# Or if multiple commits were made, show all unstaged + staged changes\ngit diff [checkpoint-commit]\n```\n\nStep 3: Validate changes\nReview diff and verify:\n✅ Only work plan files modified (expected)\n✅ Emoji changes are correct (filename, frontmatter, headers)\n✅ No unexpected file modifications\n✅ Template updates look correct (if ran)\n✅ No content accidentally modified\n\n⚠️ If unexpected changes found:\n- Investigate what caused them\n- Fix issues before committing\n- Re-validate\n\nStep 4: Create commit only if validation passes\n\nCommit message format:\n```\nfix(noteplan): Fix work plan emoji encoding and consistency\n\n- Fixed emoji encoding in X work plan files\n- Updated Y filename patterns\n- Synchronized Z frontmatter workstream fields\n- [if applicable] Renamed N files to match headers\n- [if applicable] Updated template with current workstreams\n- [if applicable] Synced headers to match folder emojis\n\nAffected workstreams: [list]\n\nValidated changes via git diff before committing.\nSkill: fix-work-emojis\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\n```\n\nShow commit hash and validation summary when complete.",
+  activeForm: "Validating and committing changes"
 })
 ```
 
@@ -629,20 +629,48 @@ TaskUpdate({ taskId: "7", status: "completed" })
 TaskUpdate({ taskId: "8", status: "in_progress" })
 ```
 
-### **Step 10 (Task #8): Create Git Commit**
+### **Step 10 (Task #8): Validate Changes and Commit**
 
+**MANDATORY: Validate before committing**
+
+```bash
+# Get the checkpoint commit (from Task #1 auto-commit)
+git log --oneline -5
+
+# Review all changes made by this skill
+git diff [checkpoint-commit-hash]
 ```
-Creating git commit with emoji fixes...
 
-Files modified: 5
+**Analyze the diff:**
+```
+Validating changes...
+
+✅ Files modified: 9 work plan files
+✅ Filename changes: 3 files renamed
+✅ Frontmatter updates: 5 files (workstream field corrected)
+✅ Emoji normalization: All look correct
+✅ Template updates: @Templates/🏢📆 Work Plan.md (if ran)
+✅ No unexpected modifications detected
+
+Changes validated successfully! ✅
+```
+
+**If validation passes, create commit:**
+```
+Creating git commit with validated emoji fixes...
+
+Files modified: 9
 Changes:
-- Fixed 3 encoding issues
-- Normalized 8 emojis
+- Fixed 3 filename patterns
+- Normalized 5 frontmatter workstream fields
 - Updated 2 workstream emojis
+- [if applicable] Updated template with 5 current workstreams
 
 Committing to git...
 ✅ Commit created: a1b2c3d
    "fix(noteplan): Fix work plan emoji encoding"
+
+Validation: All changes reviewed and confirmed correct via git diff
 ```
 
 **Complete Task #8 and show final summary:**
