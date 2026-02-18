@@ -12,7 +12,7 @@ Comprehensive NotePlan management - organize, create, analyze, and manage notes,
 /noteplan-manager:introduce
 ```
 
-## Skills (16)
+## Skills (18)
 
 | Category | Skill | What it does |
 |---|---|---|
@@ -24,12 +24,14 @@ Comprehensive NotePlan management - organize, create, analyze, and manage notes,
 | | `create-template` | Create new templates from patterns |
 | | `list-templates` | Browse available templates |
 | | `manage-templates` | Edit, organize, and validate templates |
-| **Fix** | `fix-filenames` | Fix filenames to match `# Title` headings |
+| **Fix** | `fix-plans` | Standardize plan file structure, frontmatter, and headers |
+| | `fix-filenames` | Fix filenames to match `# Title` headings |
 | | `fix-work-emojis` | Fix emoji encoding in work plans |
 | | `fix-personal-emojis` | Fix emoji encoding in personal plans |
 | | `sync-header-emojis` | Sync headers with folder emojis |
 | | `sync-plan-templates` | Sync templates with current categories |
 | **Reference** | `fix-reference` | Organize links with citations and metadata |
+| | `sort-iphone-links` | Triage iPhone links to categorized reference files |
 | **Analyze** | `analyze-structure` | Map structure, detect patterns |
 | | `suggest-improvements` | Actionable organization recommendations |
 

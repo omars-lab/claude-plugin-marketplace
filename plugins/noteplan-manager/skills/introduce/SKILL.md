@@ -18,7 +18,7 @@ When invoked, present the plugin's capabilities organized by what the user might
 ### Step 1: Welcome and Context
 
 ```
-NotePlan Manager - 16 skills for managing your entire NotePlan workflow.
+NotePlan Manager - 18 skills for managing your entire NotePlan workflow.
 
 I can help with:
 - Organizing daily notes and moving content between notes
@@ -86,6 +86,7 @@ Based on their selection, explain the relevant skills in detail with usage examp
 
 | Skill | Usage | Purpose |
 |---|---|---|
+| `fix-plans` | `/noteplan-manager:fix-plans` | Standardize plan file structure, frontmatter, headers, and self-referencing todos |
 | `fix-filenames` | `/noteplan-manager:fix-filenames` | Fix filenames to match `# Title` headings, detect naming issues, resolve conflicts |
 | `fix-work-emojis` | `/noteplan-manager:fix-work-emojis` | Fix emoji encoding in work plan files |
 | `fix-personal-emojis` | `/noteplan-manager:fix-personal-emojis` | Fix emoji encoding in personal plan files (complex sequences, skin tones) |
@@ -99,10 +100,11 @@ Based on their selection, explain the relevant skills in detail with usage examp
 **Recommended maintenance workflow:**
 ```
 1. /noteplan-manager:fix-filenames         -- Fix filenames first (broadest impact)
-2. /noteplan-manager:fix-work-emojis       -- Fix work plan emoji encoding
-3. /noteplan-manager:fix-personal-emojis   -- Fix personal plan emoji encoding
-4. /noteplan-manager:sync-header-emojis    -- Sync headers with folder emojis
-5. /noteplan-manager:sync-plan-templates   -- Update templates with current categories
+2. /noteplan-manager:fix-plans             -- Standardize plan structure and frontmatter
+3. /noteplan-manager:fix-work-emojis       -- Fix work plan emoji encoding
+4. /noteplan-manager:fix-personal-emojis   -- Fix personal plan emoji encoding
+5. /noteplan-manager:sync-header-emojis    -- Sync headers with folder emojis
+6. /noteplan-manager:sync-plan-templates   -- Update templates with current categories
 ```
 
 ### Reference Management
@@ -110,6 +112,7 @@ Based on their selection, explain the relevant skills in detail with usage examp
 | Skill | Usage | Purpose |
 |---|---|---|
 | `fix-reference` | `/noteplan-manager:fix-reference` | Organize reference links with MLA-style citations, metadata extraction, smart grouping |
+| `sort-iphone-links` | `/noteplan-manager:sort-iphone-links` | Triage iPhone links to categorized reference files with metadata enrichment |
 
 **When to use:** After saving a batch of links, when reference files are messy, to enrich links with metadata.
 
@@ -119,6 +122,7 @@ Based on their selection, explain the relevant skills in detail with usage examp
 - Smart grouping by topic
 - Duplicate detection and removal
 - Checkbox format for tracking (`- [ ] type [**Title**](URL)`)
+- Bulk triage from iPhone.md to 15+ categorized reference files (`sort-iphone-links`)
 
 ### Structure Analysis
 
@@ -192,8 +196,12 @@ Key directories:
 **"My filenames are messy / NotePlan created duplicates"**
 → `/noteplan-manager:fix-filenames`
 
+**"My plan files have missing/old frontmatter or broken headers"**
+→ `/noteplan-manager:fix-plans`
+
 **"I saved a bunch of links and need to organize them"**
-→ `/noteplan-manager:fix-reference`
+→ `/noteplan-manager:fix-reference` (within a single reference file)
+→ `/noteplan-manager:sort-iphone-links` (triage iPhone.md links to multiple reference files)
 
 **"Emojis are displaying wrong in my plans"**
 → `/noteplan-manager:fix-work-emojis` or `/noteplan-manager:fix-personal-emojis`
