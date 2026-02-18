@@ -1,7 +1,7 @@
 {
   "name": "knowledge-manager",
   "description": "Extract, map, and query knowledge from notes - transform unstructured content into structured knowledge bases with Zettelkasten-style atomic notes",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "Omar Eid",
     "email": "omar.eid@servicenow.com"

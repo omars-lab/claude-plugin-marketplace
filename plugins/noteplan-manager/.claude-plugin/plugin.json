@@ -1,12 +1,11 @@
 {
   "name": "noteplan-manager",
   "description": "Comprehensive NotePlan management - organize, create, analyze, and manage notes, templates, and references",
-  "version": "1.1.0",
+  "version": "1.4.0",
   "author": {
     "name": "Omar Eid",
     "email": "omar.eid@servicenow.com"
   },
   "homepage": "https://github.com/oeid/claude-plugins",
-  "license": "MIT",
-  "versionCommit": "16e0a03cf3949e4cc06dc4e0942b2096009862b7"
+  "license": "MIT"
 }
