@@ -15,25 +15,22 @@ The version management system:
 
 ### Version Tracking
 
-Each plugin's `plugin.json` includes a `versionCommit` field that tracks the Git commit SHA when the version was last set:
+Each plugin has a `.claude-plugin/version-tracking.json` file that tracks the Git commit SHA when the version was last set. This is kept separate from `plugin.json` to avoid conflicts with Claude's plugin schema validator.
 
-```json
-{
-  "name": "claude-manager",
-  "version": "1.1.0",
-  "versionCommit": "16e0a03cf3949e4cc06dc4e0942b2096009862b7",
-  ...
-}
+```
+plugins/my-plugin/.claude-plugin/
+  plugin.json              # Version number + plugin metadata (schema-validated)
+  version-tracking.json    # {"versionCommit": "abc123..."} (internal tracking)
 ```
 
 ### Change Detection
 
-The system recursively checks all files in a plugin directory for changes since the `versionCommit`:
+The system checks all files in a plugin directory for changes since the tracked commit:
 
-- **New skills** → `MINOR` bump (1.0.0 → 1.1.0)
-- **Modified skills** → `PATCH` bump (1.0.0 → 1.0.1)
-- **Removed skills** → `MAJOR` bump (1.0.0 → 2.0.0) ⚠️ Breaking change
-- **Metadata only** (README, plugin.json) → `PATCH` bump
+- **New skills** -> `MINOR` bump (1.0.0 -> 1.1.0)
+- **Modified skills** -> `PATCH` bump (1.0.0 -> 1.0.1)
+- **Removed skills** -> `MAJOR` bump (1.0.0 -> 2.0.0) -- Breaking change
+- **Metadata only** (README, plugin.json) -> `PATCH` bump
 
 ### Smart Version Bumping
 
@@ -45,365 +42,114 @@ The system follows semantic versioning:
 
 ## Usage
 
-### Quick Start: Update Everything
+All commands work via the shared `ceg` CLI, with `make` targets as convenient wrappers.
 
-The simplest workflow:
+### Quick Start: Update Everything
 
 ```bash
 make update
+# or directly:
+ceg marketplace version-check <marketplace-name>
+ceg marketplace update <marketplace-name>
 ```
 
-This command:
+This:
 1. Checks all plugins for changes since last version
 2. Auto-bumps versions as needed
 3. Updates all installed plugins via Claude CLI
 
 ### Check What Would Change (Dry Run)
 
-See what version bumps would happen without making changes:
-
 ```bash
 make version-check
-```
-
-Example output:
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Version Check & Bump
-  Mode: DRY RUN (no changes will be made)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Checking: noteplan-manager
-  ⚠ Changes detected:
-    • 4 new skill(s)
-  Current version: 1.0.0
-  Suggested bump:  minor
-  Would update to: 1.1.0
-
-Checking: claude-manager
-  ✓ Up to date (no changes since last version)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Summary
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  1 plugin(s) would be updated
-  5 plugin(s) unchanged
-
-💡 Run without --dry-run to apply version bumps
+# or:
+ceg marketplace version-check <marketplace-name> --dry-run
 ```
 
 ### Manually Bump a Specific Plugin
 
-Override the automatic detection and manually bump a plugin:
-
 ```bash
-# Minor bump (add features)
-make version-bump PLUGIN=claude-manager TYPE=minor
-
-# Patch bump (fixes)
-make version-bump PLUGIN=claude-manager TYPE=patch
-
-# Major bump (breaking changes)
-make version-bump PLUGIN=claude-manager TYPE=major
+make version-bump PLUGIN=my-plugin TYPE=minor
+# or:
+ceg marketplace version-bump <marketplace-name> my-plugin minor --commit
 ```
 
 This will:
 - Update the version in plugin.json
-- Set versionCommit to current Git SHA
+- Write the current Git SHA to version-tracking.json
 - Auto-commit the change
 
 ### Force Update Without Version Check
 
-If you just want to update installed plugins without checking versions:
-
 ```bash
 make update-force
+# or:
+ceg marketplace update <marketplace-name>
 ```
 
 ### One-Time Setup: Initialize Version Tracking
 
-If you're setting up the system for the first time:
-
 ```bash
 make version-init
+# or:
+ceg marketplace version-init <marketplace-name>
 ```
 
-This adds `versionCommit` fields to all plugin.json files using the current Git commit.
+This creates `version-tracking.json` files for all plugins using the current Git commit. If any plugins have a legacy `versionCommit` field in `plugin.json`, it will be migrated to the tracking file automatically.
 
-## The Scripts
+## Shared Scripts
 
-The Makefile is a lite wrapper around helper scripts in `scripts/`:
+All version management logic lives in shared scripts at `ceg-auto-impl-cli/scripts/marketplace/`:
 
-### `scripts/detect-plugin-changes.sh`
-
-Detects changes in a plugin since last version bump.
-
-```bash
-./scripts/detect-plugin-changes.sh <plugin-name> [since-commit]
-```
-
-Returns JSON with:
-- Change summary (new/modified/removed skills)
-- Suggested version bump type
-- List of changed files
-
-### `scripts/version-bump.sh`
-
-Bumps a plugin version and updates versionCommit.
-
-```bash
-./scripts/version-bump.sh <plugin-name> <major|minor|patch> [--commit]
-```
-
-Updates plugin.json with:
-- New semantic version
-- Current Git commit SHA in versionCommit
-- Optional auto-commit
-
-### `scripts/version-check-all.sh`
-
-Checks all plugins for changes and bumps versions as needed.
-
-```bash
-./scripts/version-check-all.sh [--dry-run] [--auto-commit]
-```
-
-Options:
-- `--dry-run` - Show what would change without making changes
-- `--auto-commit` - Auto-commit each version bump
-
-### `scripts/plugin-update-all.sh`
-
-Updates all installed plugins via Claude CLI.
-
-```bash
-./scripts/plugin-update-all.sh
-```
-
-Runs `claude plugin update` for each plugin in the marketplace.
-
-### `scripts/init-version-tracking.sh`
-
-One-time setup to add versionCommit fields to all plugins.
-
-```bash
-./scripts/init-version-tracking.sh
-```
+| Script | Purpose |
+|---|---|
+| `version-detect-changes.sh` | Detect changes in a plugin since last version bump |
+| `version-bump.sh` | Bump a plugin version and update tracking |
+| `version-check.sh` | Check all plugins for changes, auto-bump |
+| `version-init.sh` | Initialize or migrate version tracking |
 
 ## Workflow Examples
 
 ### Adding a New Skill to a Plugin
 
-1. **Add the skill:**
-   ```bash
-   mkdir -p plugins/claude-manager/skills/new-skill
-   # Create SKILL.md...
-   ```
-
-2. **Check what version bump is needed:**
-   ```bash
-   make version-check
-   # Output: "noteplan-manager: 1 new skill → minor bump to 1.2.0"
-   ```
-
-3. **Commit the new skill:**
-   ```bash
-   git add plugins/claude-manager/skills/new-skill
-   git commit -m "Add new-skill to claude-manager"
-   ```
-
-4. **Update (auto-bumps version):**
-   ```bash
-   make update
-   # Bumps version to 1.2.0 and updates installed plugin
-   ```
+1. Add the skill files
+2. Commit: `git add . && git commit -m "Add new skill"`
+3. Check: `make version-check` (shows minor bump)
+4. Apply: `make update` (bumps version, updates installed plugin)
 
 ### Fixing a Bug in an Existing Skill
 
-1. **Fix the bug** in the SKILL.md file
-
-2. **Commit the fix:**
-   ```bash
-   git add plugins/*/skills/*/SKILL.md
-   git commit -m "Fix bug in skill"
-   ```
-
-3. **Update:**
-   ```bash
-   make update
-   # Detects modified skill → patch bump (1.2.0 → 1.2.1)
-   ```
+1. Fix the SKILL.md file
+2. Commit the fix
+3. Run `make update` (detects modified skill -> patch bump)
 
 ### Removing a Skill (Breaking Change)
 
-1. **Remove the skill:**
-   ```bash
-   git rm -r plugins/claude-manager/skills/old-skill
-   git commit -m "Remove old-skill (breaking change)"
-   ```
-
-2. **Update:**
-   ```bash
-   make update
-   # Detects removed skill → major bump (1.2.1 → 2.0.0) ⚠️
-   ```
-
-## Version History Mapping
-
-The system maintains a mapping between versions and Git commits:
-
-```
-Version History for claude-manager:
-  1.0.0 @ c6553a0  (Initial version)
-  1.1.0 @ 16e0a03  (Added fix-plugins skill)
-  1.2.0 @ ab12cd3  (Added new-skill)
-  1.2.1 @ cd34ef5  (Fixed bug in new-skill)
-```
-
-This is tracked in plugin.json's `versionCommit` field. You can see the full history:
-
-```bash
-git log --oneline --all -- plugins/claude-manager/.claude-plugin/plugin.json
-```
+1. Remove: `git rm -r plugins/my-plugin/skills/old-skill`
+2. Commit
+3. Run `make update` (detects removed skill -> major bump)
 
 ## Best Practices
 
-### 1. Commit Before Updating
-
-Always commit your changes before running `make update`:
-
-```bash
-git add .
-git commit -m "Add new skills"
-make update
-```
-
-This ensures the version bump is based on committed changes.
-
-### 2. Use Dry Run First
-
-Check what will change before actually updating:
-
-```bash
-make version-check  # See what would happen
-make update         # Apply the changes
-```
-
-### 3. Let the System Handle Versions
-
-Don't manually edit version numbers in plugin.json. Use:
-
-```bash
-make version-bump PLUGIN=name TYPE=minor
-```
-
-This ensures the versionCommit is properly updated.
-
-### 4. Commit Version Bumps Separately
-
-The system updates plugin.json files. Commit these separately:
-
-```bash
-git add plugins/*/.claude-plugin/plugin.json
-git commit -m "Bump plugin versions"
-```
-
-### 5. Update Regularly
-
-Run `make update` regularly to keep plugins in sync:
-
-```bash
-# After making changes
-git commit -m "Your changes"
-make update
-```
+1. **Commit before updating** -- The system only detects committed changes
+2. **Use dry run first** -- `make version-check` before `make update`
+3. **Let the system handle versions** -- Use `make version-bump` instead of editing plugin.json
+4. **Update regularly** -- Run `make update` after making changes
 
 ## Troubleshooting
 
 ### Plugin shows as "up to date" but has uncommitted changes
 
-The system only detects **committed** changes. Commit your work first:
+Commit your work first. The system only detects committed changes.
 
-```bash
-git add .
-git commit -m "Your changes"
-make version-check  # Now it will detect the changes
-```
+### "No version tracking found" warning
 
-### "No versionCommit found" warning
-
-Your plugin needs initialization:
-
-```bash
-make version-init
-```
-
-Or manually add to plugin.json:
-```json
-{
-  "version": "1.0.0",
-  "versionCommit": "current-git-sha"
-}
-```
+Run `make version-init` to initialize tracking for all plugins.
 
 ### Version bump suggestions seem wrong
 
-You can override with a manual bump:
-
-```bash
-make version-bump PLUGIN=name TYPE=major
-```
+Override with a manual bump: `make version-bump PLUGIN=name TYPE=major`
 
 ### Plugin update fails
 
-Check if the plugin is installed:
-
-```bash
-make doctor  # Diagnose installation issues
-```
-
-## Integration with CI/CD
-
-You can integrate version management into your CI/CD pipeline:
-
-```yaml
-# .github/workflows/publish.yml
-name: Publish Plugins
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  publish:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Check for version updates
-        run: make version-check
-
-      - name: Bump versions if needed
-        run: ./scripts/version-check-all.sh --auto-commit
-
-      - name: Push version bumps
-        run: git push origin main
-
-      - name: Update plugins
-        run: make update-force
-```
-
-## Summary
-
-The version management system provides:
-
-- ✅ **Automatic version bumping** based on detected changes
-- ✅ **Semantic versioning** following best practices
-- ✅ **Git-based tracking** of version history
-- ✅ **Smart change detection** (new/modified/removed skills)
-- ✅ **Dry-run capability** to preview changes
-- ✅ **Manual override** when needed
-- ✅ **Makefile wrapper** for simple commands
-
-Just use `make update` and let the system handle the rest! 🚀
+Run `make doctor` to diagnose installation issues.
