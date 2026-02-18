@@ -18,7 +18,7 @@ When invoked, present the plugin's capabilities organized by what the user might
 ### Step 1: Welcome and Context
 
 ```
-NotePlan Manager - 18 skills for managing your entire NotePlan workflow.
+NotePlan Manager - 16 skills for managing your entire NotePlan workflow.
 
 I can help with:
 - Organizing daily notes and moving content between notes
@@ -137,11 +137,9 @@ Based on their selection, explain the relevant skills in detail with usage examp
 
 | Skill | Usage | Purpose |
 |---|---|---|
-| `create-template` | `/noteplan-manager:create-template` | Create new templates based on patterns or custom specs |
-| `list-templates` | `/noteplan-manager:list-templates` | Browse available templates |
-| `manage-templates` | `/noteplan-manager:manage-templates` | Edit, organize, validate, and delete templates |
+| `manage-templates` | `/noteplan-manager:manage-templates` | Create, browse, edit, organize, and validate templates |
 
-**When to use:** Setting up new note types, maintaining template consistency, discovering available templates.
+**When to use:** Setting up new note types, maintaining template consistency, discovering available templates, creating new templates from patterns.
 
 ## How Skills Work Together
 
@@ -156,9 +154,9 @@ Skills in this plugin are interrelated - they share conventions, reference each 
           |               |               |
     create-note     organize-daily    fix-filenames
           |               |               |
-    create-template  move-content    fix-*-emojis
-          |               |               |
-    manage-templates  quick-note    sync-header-emojis
+    manage-templates  move-content    fix-*-emojis
+                          |               |
+                      quick-note    sync-header-emojis
                                           |
                                    sync-plan-templates
                                           |
@@ -188,26 +186,26 @@ Key directories:
 ## Common Scenarios
 
 **"I just want to get started with my day"**
-→ `/noteplan-manager:organize-daily`
+-> `/noteplan-manager:organize-daily`
 
 **"I need to create a new project note"**
-→ `/noteplan-manager:create-note`
+-> `/noteplan-manager:create-note`
 
 **"My filenames are messy / NotePlan created duplicates"**
-→ `/noteplan-manager:fix-filenames`
+-> `/noteplan-manager:fix-filenames`
 
 **"My plan files have missing/old frontmatter or broken headers"**
-→ `/noteplan-manager:fix-plans`
+-> `/noteplan-manager:fix-plans`
 
 **"I saved a bunch of links and need to organize them"**
-→ `/noteplan-manager:fix-reference` (within a single reference file)
-→ `/noteplan-manager:sort-iphone-links` (triage iPhone.md links to multiple reference files)
+-> `/noteplan-manager:fix-reference` (within a single reference file)
+-> `/noteplan-manager:sort-iphone-links` (triage iPhone.md links to multiple reference files)
 
 **"Emojis are displaying wrong in my plans"**
-→ `/noteplan-manager:fix-work-emojis` or `/noteplan-manager:fix-personal-emojis`
+-> `/noteplan-manager:fix-work-emojis` or `/noteplan-manager:fix-personal-emojis`
 
 **"I want to understand how my notes are organized"**
-→ `/noteplan-manager:analyze-structure`
+-> `/noteplan-manager:analyze-structure`
 
-**"What templates do I have?"**
-→ `/noteplan-manager:list-templates`
+**"What templates do I have?" / "I need a new template"**
+-> `/noteplan-manager:manage-templates`
