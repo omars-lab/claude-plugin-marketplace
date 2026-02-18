@@ -19,20 +19,13 @@ A good CLAUDE.md contains ONLY what an agent cannot figure out on its own by rea
 
 ## Task Management (MANDATORY)
 
-Create all tasks upfront with dependencies before starting work:
+Create all 5 tasks upfront with sequential dependencies (each blocked by the previous) before starting work:
 
-```javascript
-TaskCreate({ subject: "Commit pending changes", description: "Check git status, commit any pending changes to create a clean baseline for diff validation", activeForm: "Committing pending changes" })
-TaskCreate({ subject: "Read and inventory CLAUDE.md", description: "Read CLAUDE.md and supporting files, classify each section", activeForm: "Reading and classifying sections" })
-TaskCreate({ subject: "Present findings and gather user decisions", description: "Show audit table, use AskUserQuestion for user approval on each verdict", activeForm: "Presenting audit findings" })
-TaskCreate({ subject: "Apply approved changes", description: "Edit CLAUDE.md based on user-approved verdicts", activeForm: "Applying changes" })
-TaskCreate({ subject: "Validate via git diff", description: "Run git diff against baseline commit to verify only approved changes were made", activeForm: "Validating changes via diff" })
-
-TaskUpdate({ taskId: "2", addBlockedBy: ["1"] })
-TaskUpdate({ taskId: "3", addBlockedBy: ["2"] })
-TaskUpdate({ taskId: "4", addBlockedBy: ["3"] })
-TaskUpdate({ taskId: "5", addBlockedBy: ["4"] })
-```
+1. Commit pending changes — clean baseline for diff validation
+2. Read and inventory CLAUDE.md — classify each section
+3. Present findings and gather user decisions — AskUserQuestion for approval
+4. Apply approved changes — edit CLAUDE.md
+5. Validate via git diff — verify only approved changes were made
 
 ## Workflow
 
@@ -43,8 +36,9 @@ Before touching any files:
 1. Run `git status` to check for pending changes
 2. If there are uncommitted changes, **commit them first** to create a clean baseline:
    ```bash
-   git add -A && git commit -m "chore: checkpoint before CLAUDE.md audit"
+   git add -u && git commit -m "chore: checkpoint before CLAUDE.md audit"
    ```
+   Use `git add -u` (tracked files only) to avoid staging secrets or untracked artifacts.
 3. Record the checkpoint commit hash: `CHECKPOINT=$(git rev-parse HEAD)`
 4. This baseline enables diff validation in Phase 4 — without it, you cannot verify your changes are correct
 
@@ -123,7 +117,7 @@ After editing, validate the changes against the baseline:
 3. **Check no section duplicates** information available in README or code
 4. **Check no section describes** standard language/framework behavior
 5. **Verify every remaining section** answers: "what would go wrong if an agent didn't know this?"
-6. **Check file length** — under 200 lines for small projects, under 400 for large ones
+6. **Check file length** — under 200 lines for small projects (<20 source files), under 400 for large ones (20+)
 
 **Use AskUserQuestion** to present the diff summary and ask for final approval:
 ```javascript
@@ -143,76 +137,14 @@ AskUserQuestion({
 
 ## Mandatory CLAUDE.md Patterns
 
-When auditing, check that the CLAUDE.md instructs agents to follow these patterns. If missing, flag them as **MISSING** and offer to add them.
+When auditing, flag as **MISSING** if the CLAUDE.md lacks project-specific guidance on:
 
-### 1. User Input via AskUserQuestion
+- **When to use AskUserQuestion** vs. proceeding autonomously (what's destructive, what has multiple valid approaches)
+- **How to validate work** (which commands to run, what a correct diff looks like, edge cases to spot-check)
+- **Git baseline before modifying files** (checkpoint commit + diff verification)
+- **Task tracking for multi-step work** (TaskCreate with dependencies upfront)
 
-The CLAUDE.md should make it clear when agents need user input and HOW to gather it:
-
-```markdown
-## When to Ask the User
-
-Use AskUserQuestion (not assumptions) for:
-- Choosing between multiple valid approaches
-- Confirming destructive operations (delete, overwrite, force-push)
-- Selecting scope (which files, which plugins, how deep)
-- Any decision where the wrong choice wastes significant work
-
-Do NOT ask for things you can determine from code, config, or context.
-```
-
-**Why this matters:** Without this guidance, agents either ask too many questions (slow) or too few (dangerous). The CLAUDE.md should set the boundary for this specific project.
-
-### 2. Validation Strategy
-
-The CLAUDE.md should instruct agents to propose how their work will be validated BEFORE starting:
-
-```markdown
-## Validation Approach
-
-Before starting non-trivial work, propose validation methods:
-- What command(s) can verify the change works? (tests, linter, build)
-- What does the git diff look like if this was done correctly?
-- What would a broken result look like?
-- Are there edge cases to spot-check?
-
-Present the validation plan to the user via AskUserQuestion before proceeding.
-```
-
-**Why this matters:** Agents that validate as they go catch mistakes early. Agents that only validate at the end waste effort on wrong approaches. The CLAUDE.md should establish which validation tools exist for this project.
-
-### 3. Git Baseline Before Work
-
-The CLAUDE.md should instruct agents to commit pending changes before starting work:
-
-```markdown
-## Git Safety
-
-Before modifying files:
-1. Run `git status` — if there are pending changes, commit them first
-2. Record the baseline commit: `CHECKPOINT=$(git rev-parse HEAD)`
-3. After completing work, run `git diff $CHECKPOINT` to verify changes
-4. Only commit when the diff matches what was intended
-```
-
-**Why this matters:** Without a clean baseline, agents cannot use `git diff` to verify their work. Mixed diffs (agent changes + pre-existing changes) make it impossible to tell if the right thing was done.
-
-### 4. Task Tracking for Multi-Step Work
-
-The CLAUDE.md should instruct agents to use TaskCreate/TaskUpdate for non-trivial work:
-
-```markdown
-## Task Management
-
-For work with 3+ steps:
-1. Create all tasks upfront with `TaskCreate`
-2. Set dependencies with `TaskUpdate({ addBlockedBy: [...] })`
-3. Mark `in_progress` when starting each task
-4. Mark `completed` only when fully done (not partially)
-5. If blocked, create a new task describing the blocker
-```
-
-**Why this matters:** Without task tracking, multi-step work runs unchecked. The user has no visibility into progress, and the agent has no structure to catch when it skips steps.
+Generate project-appropriate versions of these sections from context — don't use generic templates.
 
 ## Anti-Patterns to Remove
 
@@ -251,8 +183,4 @@ These are the things agents genuinely struggle to discover:
 ## User Interaction
 
 - **Always** use `AskUserQuestion` — never assume the user's preference
-- Present the audit table before making changes
-- Use AskUserQuestion with options: "Apply all", "Review one by one", "Just show me the result"
 - If the user disagrees with a DELETE verdict, keep the section but offer to TRIM it
-- After applying changes, show a before/after line count and offer to show the diff
-- Before committing, present the diff summary and ask for confirmation
