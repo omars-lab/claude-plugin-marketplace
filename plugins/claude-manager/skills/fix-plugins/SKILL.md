@@ -1322,10 +1322,8 @@ discover-oeid-plugins (1 skill):
   ❌ Missing introduce skill
   ✅ Single-skill plugin, explore-plugins serves as introduction
 
-documentation-manager (1 skill):
+note-manager (5 skills):
   ❌ Missing introduce skill
-  ❌ Not registered in marketplace.json
-  ❌ Missing version-tracking.json
 
 ═══════════════════════════════════════════════════════════════════════════════
 

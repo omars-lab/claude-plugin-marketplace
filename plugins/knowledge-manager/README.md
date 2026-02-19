@@ -176,7 +176,7 @@ cp -r knowledge-manager ~/.claude/plugins/
 
 ## Related Plugins
 
-- **documentation-manager** - For structuring general documentation
+- **note-manager** - For structuring notes, analyzing training materials, and cleaning ebook exports
 - **noteplan-manager** - For managing NotePlan notes directly
 
 ## License
