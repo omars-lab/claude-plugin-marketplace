@@ -65,6 +65,30 @@
       "version": "1.0.0",
       "category": "productivity",
       "keywords": ["knowledge", "zettelkasten", "extraction", "mapping", "query", "atomic-notes", "knowledge-base"]
+    },
+    {
+      "name": "note-manager",
+      "source": "./plugins/note-manager",
+      "description": "Manage and analyze notes, training materials, and documentation - structure notes, analyze transcripts, clean ebook exports, and generate reference guides",
+      "version": "2.0.0",
+      "category": "productivity",
+      "keywords": ["notes", "training", "analysis", "documentation", "transcripts", "ebooks", "structure"]
+    },
+    {
+      "name": "plan-manager",
+      "source": "./plugins/plan-manager",
+      "description": "Manage Claude Code plans \u2014 inspect quality, move to projects, and produce changelogs",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["plans", "inspect", "critique", "changelog", "quality", "claude-code", "implementation"]
+    },
+    {
+      "name": "experiment-manager",
+      "source": "./plugins/experiment-manager",
+      "description": "Structured what-if analysis for validating changes, brainstorming experiments, and designing measurements",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["experiments", "what-if", "brainstorm", "validation", "measurement", "risk", "analysis"]
     }
   ]
 }

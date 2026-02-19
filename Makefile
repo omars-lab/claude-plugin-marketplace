@@ -1,4 +1,4 @@
-.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate list-plugins tree install uninstall install-symlinks update update-all update-force version-check version-bump version-init clean verify-installs doctor register
+.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins list-plugins tree install uninstall install-symlinks update update-all update-force version-check version-bump version-init clean verify-installs doctor register
 
 # Colors for output
 GREEN := \033[0;32m
@@ -16,8 +16,18 @@ help: ## Show this help message
 	@echo "$(YELLOW)Available targets:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
 
-validate: ## Validate marketplace.json structure
+validate: ## Validate marketplace.json structure (via ceg)
 	@ceg marketplace validate $(MARKETPLACE_NAME)
+
+validate-plugins: ## Validate all plugins against framework standards (local checks)
+	@./scripts/validate-plugins.sh
+
+validate-plugin: ## Validate a single plugin (PLUGIN=name)
+	@if [ -z "$(PLUGIN)" ]; then \
+		echo "$(RED)Usage: make validate-plugin PLUGIN=<name>$(NC)"; \
+		exit 1; \
+	fi
+	@./scripts/validate-plugins.sh $(PLUGIN)
 
 list-plugins: ## List all plugins with status
 	@ceg marketplace plugins $(MARKETPLACE_NAME)

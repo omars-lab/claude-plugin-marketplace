@@ -1,0 +1,10 @@
+{
+  "name": "experiment-manager",
+  "description": "Structured what-if analysis for validating changes, brainstorming experiments, and designing measurements",
+  "version": "1.0.0",
+  "author": {
+    "name": "Omar Eid",
+    "email": "omar.eid@servicenow.com"
+  },
+  "license": "MIT"
+}
