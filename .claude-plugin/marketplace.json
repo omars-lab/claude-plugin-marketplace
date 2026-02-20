@@ -89,6 +89,14 @@
       "version": "1.0.0",
       "category": "productivity",
       "keywords": ["experiments", "what-if", "brainstorm", "validation", "measurement", "risk", "analysis"]
+    },
+    {
+      "name": "code-quality-manager",
+      "source": "./plugins/code-quality-manager",
+      "description": "Improve developer experience through documentation quality, Makefiles, and repo standards",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["documentation", "organization", "standards", "best-practices", "developer-experience", "diagrams", "runbooks"]
     }
   ]
 }
