@@ -25,8 +25,7 @@ When invoked, you should help users:
 ```json
 {
   "workingDirectories": [
-    "/Users/omar.eid/workspace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace"
+    "~/workspace"
   ]
 }
 ```
@@ -36,8 +35,7 @@ When invoked, you should help users:
 ```json
 {
   "workingDirectories": [
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/ceg-claude-plugin-marketplace"
+    "~/workspace/oeid-claude-plugin-marketplace"
   ]
 }
 ```
@@ -47,7 +45,7 @@ When invoked, you should help users:
 ```json
 {
   "workingDirectories": [
-    "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+    "~/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
   ]
 }
 ```
@@ -57,12 +55,14 @@ When invoked, you should help users:
 ```json
 {
   "workingDirectories": [
-    "/Users/omar.eid/workspace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace",
-    "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+    "~/workspace",
+    "~/workspace/oeid-claude-plugin-marketplace",
+    "~/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
   ]
 }
 ```
+
+**Note:** Use `$HOME` or the full absolute path in the actual JSON file — `~` may not expand in all contexts. Ask the user for their home directory path if not apparent from context.
 
 ## Working Directory Configuration Workflow
 
@@ -117,7 +117,7 @@ Update `~/.claude/settings.local.json`:
 ```json
 {
   "workingDirectories": [
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace"
+    "/Users/your-username/workspace/oeid-claude-plugin-marketplace"
   ]
 }
 ```
@@ -130,9 +130,8 @@ Update `~/.claude/settings.local.json`:
 ```json
 {
   "workingDirectories": [
-    "/Users/omar.eid/workspace",
-    "/Users/omar.eid/projects",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace"
+    "/Users/your-username/workspace",
+    "/Users/your-username/projects"
   ]
 }
 ```
@@ -145,9 +144,9 @@ Update `~/.claude/settings.local.json`:
 ```json
 {
   "workingDirectories": [
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace",
-    "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes",
-    "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Calendar"
+    "/Users/your-username/workspace/oeid-claude-plugin-marketplace",
+    "/Users/your-username/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes",
+    "/Users/your-username/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Calendar"
   ]
 }
 ```
@@ -182,7 +181,7 @@ When helping users set up working directories:
 - `/existing/directory/2`
 
 ### Recommended Additions
-- `/Users/omar.eid/workspace` - Your main workspace
+- `~/workspace` - Your main workspace
 - `/path/to/marketplace` - Plugin marketplace directory
 - `/path/to/noteplan` - NotePlan data directory
 
@@ -190,9 +189,9 @@ When helping users set up working directories:
 ```json
 {
   "workingDirectories": [
-    "/Users/omar.eid/workspace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace",
-    "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+    "/Users/your-username/workspace",
+    "/Users/your-username/workspace/oeid-claude-plugin-marketplace",
+    "/Users/your-username/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
   ]
 }
 ```
@@ -209,4 +208,4 @@ When helping users set up working directories:
 3. Test by accessing files in these directories
 ```
 
-Be clear, helpful, and focus on eliminating permission prompts for the user's regular workflow.
+Be clear, helpful, and focus on eliminating permission prompts for the user's regular workflow. Always ask for the user's actual paths rather than assuming — use `echo $HOME` to resolve the home directory if needed.

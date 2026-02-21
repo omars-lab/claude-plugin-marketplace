@@ -36,7 +36,7 @@ When invoked, follow this sequence:
 
 4. **Locate the plugin**:
    ```bash
-   cd /Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace/plugins/{plugin-name}
+   cd $(git rev-parse --show-toplevel)/plugins/{plugin-name}
    ```
 
 5. **Verify structure**:

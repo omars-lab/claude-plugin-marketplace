@@ -17,6 +17,19 @@ This skill:
 5. **Preserves existing content** after the emoji
 6. **Reports changes** made to files
 
+## Note Map Integration
+
+Before running, check for `🗺️ Note Map.md` to get structure context:
+
+```bash
+NOTE_MAP="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🗺️ Note Map.md"
+```
+
+- **If the map exists**: read the "Key Structural Facts" section to get paths, folder names, and workstream/reference-file lists. Use those discovered values instead of the hardcoded defaults below.
+- **If the map is missing**: proceed with the defaults below, then warn:
+  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:discover-structure` to generate it and make this skill structure-aware.
+- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:discover-structure`.
+
 ## Problem This Solves
 
 **Current state:** Files in `🧑🏻‍💻 Development` folder have headers like:
@@ -35,7 +48,7 @@ This creates visual consistency and makes it clear which category/folder the not
 
 **Base path:**
 ```
-/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/
+$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/
 ```
 
 **Example directories:**
@@ -50,10 +63,10 @@ This creates visual consistency and makes it clear which category/folder the not
 User provides directory to process:
 ```bash
 # Specific directory
-/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/🔬 Research/🧑🏻‍💻 Development
+$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/🔬 Research/🧑🏻‍💻 Development
 
 # Or process recursively from a parent
-/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/🔬 Research
+$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/🔬 Research
 ```
 
 ### Step 2: Extract Parent Folder Emoji
@@ -146,7 +159,7 @@ Before making any changes, check for pending modifications:
 
 ```bash
 # Check if NotePlan directory is in a git repo
-cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes"
+cd "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes"
 
 # Check git status
 git status --short
@@ -258,7 +271,7 @@ Choose strategy (1-3): [default: 1]
 ### 3. Scan and Analyze
 
 ```bash
-Scanning: /Users/omar.eid/.../🧑🏻‍💻 Development
+Scanning: $HOME/.../🧑🏻‍💻 Development
 
 Parent folder emoji: 🧑🏻‍💻
 Found 8 markdown files
@@ -387,7 +400,7 @@ Preserve the entire emoji sequence as a unit.
 When processing recursively:
 
 ```bash
-/noteplan-manager:sync-header-emojis --recursive "/Users/omar.eid/.../🏢 ServiceNow/🔬 Research"
+/noteplan-manager:sync-header-emojis --recursive "$HOME/.../🏢 ServiceNow/🔬 Research"
 ```
 
 **Process:**
@@ -463,7 +476,7 @@ Total: 11 files updated across 3 folders
 /noteplan-manager:sync-header-emojis
 
 # User provides directory
-Directory: /Users/omar.eid/.../🧑🏻‍💻 Development
+Directory: $HOME/.../🧑🏻‍💻 Development
 
 # Analysis
 Parent folder: 🧑🏻‍💻 Development
@@ -491,7 +504,7 @@ Apply changes? yes
 /noteplan-manager:sync-header-emojis --recursive
 
 # User provides parent directory
-Parent directory: /Users/omar.eid/.../🔬 Research
+Parent directory: $HOME/.../🔬 Research
 
 # Recursive scan
 Found 4 subdirectories:
@@ -515,7 +528,7 @@ Apply all changes? yes
 ### Example 3: Plan Files
 
 ```bash
-/noteplan-manager:sync-header-emojis "/Users/omar.eid/.../🧑🏻‍💻 Development"
+/noteplan-manager:sync-header-emojis "$HOME/.../🧑🏻‍💻 Development"
 
 # Detects this is a plan subdirectory
 This is a work plan subdirectory (🧑🏻‍💻 Development)

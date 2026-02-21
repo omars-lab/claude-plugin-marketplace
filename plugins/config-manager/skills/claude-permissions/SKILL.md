@@ -224,8 +224,7 @@ You can also help configure working directories:
 ```json
 {
   "workingDirectories": [
-    "/Users/omar.eid/workspace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace"
+    "~/workspace"
   ]
 }
 ```

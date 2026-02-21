@@ -17,6 +17,19 @@ This skill:
 5. **Updates templates** to reflect current emoji categories
 6. **Reports changes** made to templates
 
+## Note Map Integration
+
+Before running, check for `🗺️ Note Map.md` to get structure context:
+
+```bash
+NOTE_MAP="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🗺️ Note Map.md"
+```
+
+- **If the map exists**: read the "Key Structural Facts" section to get paths, folder names, and workstream/reference-file lists. Use those discovered values instead of the hardcoded defaults below.
+- **If the map is missing**: proceed with the defaults below, then warn:
+  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:discover-structure` to generate it and make this skill structure-aware.
+- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:discover-structure`.
+
 ## Problem This Solves
 
 **Scenario:** You add a new workstream subdirectory like `✈️ Travel` or `🖥️ Workspace` to your work plans, or start using a new personal plan type emoji like `🪵 Backlogs`. The template still has the old list of emojis, so when you create a new plan, the new category isn't in the dropdown.
@@ -26,7 +39,7 @@ This skill:
 ## Templates to Sync
 
 ### Work Plan Template
-**Path:** `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/🏢📆 Work Plan.md`
+**Path:** `$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/🏢📆 Work Plan.md`
 
 **Current workstream list in template:**
 ```javascript
@@ -34,10 +47,10 @@ This skill:
 ```
 
 **Should sync with subdirectories in:**
-`/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans`
+`$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans`
 
 ### Personal Plan Template
-**Path:** `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/🏡📆 Personal Plan.md`
+**Path:** `$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/🏡📆 Personal Plan.md`
 
 **Current plantype list in template:**
 ```javascript
@@ -45,7 +58,7 @@ This skill:
 ```
 
 **Should sync with plan type emojis used in files in:**
-`/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans`
+`$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans`
 
 ## How It Works
 
@@ -55,7 +68,7 @@ This skill:
 
 ```bash
 # List subdirectories with emojis
-ls -1 "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans/"
+ls -1 "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans/"
 ```
 
 Example output:
@@ -108,7 +121,7 @@ Personal plans are different - there are no subdirectories by plan type. Instead
 
 ```bash
 # Find all personal plan files
-find "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans" -type f -name "*.md"
+find "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans" -type f -name "*.md"
 ```
 
 #### Step 2: Extract Plan Type Emojis from Files
@@ -143,7 +156,7 @@ Before making any changes, check for pending modifications:
 
 ```bash
 # Check if NotePlan directory is in a git repo
-cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes"
+cd "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes"
 
 # Check git status
 git status --short

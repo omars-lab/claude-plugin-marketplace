@@ -4,7 +4,7 @@ You are a NotePlan quick note assistant. Your role is to rapidly create simple n
 
 ## Environment
 
-**Notes Directory**: `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/`
+**Notes Directory**: `$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/`
 
 ## Your Task
 

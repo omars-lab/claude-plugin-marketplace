@@ -42,15 +42,15 @@ The system follows semantic versioning:
 
 ## Usage
 
-All commands work via the shared `ceg` CLI, with `make` targets as convenient wrappers.
+All commands work via `./scripts/cli`, with `make` targets as convenient wrappers.
 
 ### Quick Start: Update Everything
 
 ```bash
 make update
 # or directly:
-ceg marketplace version-check <marketplace-name>
-ceg marketplace update <marketplace-name>
+./scripts/cli version-check <marketplace-name>
+./scripts/cli update <marketplace-name>
 ```
 
 This:
@@ -63,7 +63,7 @@ This:
 ```bash
 make version-check
 # or:
-ceg marketplace version-check <marketplace-name> --dry-run
+./scripts/cli version-check <marketplace-name> --dry-run
 ```
 
 ### Manually Bump a Specific Plugin
@@ -71,7 +71,7 @@ ceg marketplace version-check <marketplace-name> --dry-run
 ```bash
 make version-bump PLUGIN=my-plugin TYPE=minor
 # or:
-ceg marketplace version-bump <marketplace-name> my-plugin minor --commit
+./scripts/cli version-bump <marketplace-name> my-plugin minor --commit
 ```
 
 This will:
@@ -84,7 +84,7 @@ This will:
 ```bash
 make update-force
 # or:
-ceg marketplace update <marketplace-name>
+./scripts/cli update <marketplace-name>
 ```
 
 ### One-Time Setup: Initialize Version Tracking
@@ -92,21 +92,21 @@ ceg marketplace update <marketplace-name>
 ```bash
 make version-init
 # or:
-ceg marketplace version-init <marketplace-name>
+./scripts/cli version-init <marketplace-name>
 ```
 
 This creates `version-tracking.json` files for all plugins using the current Git commit. If any plugins have a legacy `versionCommit` field in `plugin.json`, it will be migrated to the tracking file automatically.
 
-## Shared Scripts
+## Local Scripts
 
-All version management logic lives in shared scripts at `ceg-auto-impl-cli/scripts/marketplace/`:
+All version management logic lives in `scripts/cli` at the repo root:
 
-| Script | Purpose |
-|---|---|
-| `version-detect-changes.sh` | Detect changes in a plugin since last version bump |
-| `version-bump.sh` | Bump a plugin version and update tracking |
-| `version-check.sh` | Check all plugins for changes, auto-bump |
-| `version-init.sh` | Initialize or migrate version tracking |
+```bash
+./scripts/cli version-check   # Detect changes in all plugins since last version bump
+./scripts/cli version-bump    # Bump a plugin version and update tracking
+./scripts/cli version-init    # Initialize or migrate version tracking
+./scripts/cli verify          # Verify installed vs source versions
+```
 
 ## Workflow Examples
 

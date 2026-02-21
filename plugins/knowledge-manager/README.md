@@ -185,7 +185,7 @@ MIT License - see [LICENSE](../../LICENSE) for details
 
 ## Author
 
-Omar Eid (omar.eid@servicenow.com)
+Omar Eid (github.com/omareid)
 
 ---
 

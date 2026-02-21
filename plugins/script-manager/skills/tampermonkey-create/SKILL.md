@@ -644,8 +644,8 @@ The script is complete when:
 
 ## Real-World Reference
 
-See working examples:
-- `servicenow-transcript-extractor.user.js` (v2.1.2)
-- `servicenow-lab-downloader.user.js` (v1.0.17)
+See your existing userscripts for reference patterns. Check your local scripts directory
+or provide a path when asked.
 
-Both in: `/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/ceg-auto-impl-tamper-monkey-scripts/`
+For ServiceNow-specific examples and patterns, see:
+`/servicenow-manager:tampermonkey-servicenow`

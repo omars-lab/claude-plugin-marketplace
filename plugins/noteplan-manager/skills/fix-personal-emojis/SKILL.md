@@ -16,9 +16,22 @@ This skill:
 4. **Normalizes emoji usage** across plan files
 5. **Reports changes** made to files
 
+## Note Map Integration
+
+Before running, check for `🗺️ Note Map.md` to get structure context:
+
+```bash
+NOTE_MAP="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🗺️ Note Map.md"
+```
+
+- **If the map exists**: read the "Key Structural Facts" section to get paths, folder names, and workstream/reference-file lists. Use those discovered values instead of the hardcoded defaults below.
+- **If the map is missing**: proceed with the defaults below, then warn:
+  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:discover-structure` to generate it and make this skill structure-aware.
+- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:discover-structure`.
+
 ## Personal Plans Structure
 
-**Directory:** `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans`
+**Directory:** `$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans`
 
 **Subdirectories (time-based organization):**
 - Future - Plans not yet started
@@ -75,13 +88,27 @@ Example: `🏡260115⚙️ Automating Home Tasks.md`
 - `❎` - Canceled
 - `✅` - Done
 
+## Script: normalize-emojis.py
+
+A standalone script is bundled at `plugins/noteplan-manager/scripts/normalize-emojis.py`.
+
+```bash
+# Normalize a single file in-place
+python3 plugins/noteplan-manager/scripts/normalize-emojis.py "path/to/file.md"
+
+# Dry run — show what would change
+python3 plugins/noteplan-manager/scripts/normalize-emojis.py "path/to/file.md" --dry-run --verbose
+```
+
+Use this for batch normalization. The personal emoji fixer deals with complex sequences (skin tones, ZWJ) — NFC normalization handles the encoding layer.
+
 ## How to Fix Emojis
 
 ### Step 1: Scan for Issues
 
 ```bash
 # List all personal plan files across all time-based directories
-find "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans" -type f -name "*.md"
+find "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans" -type f -name "*.md"
 ```
 
 ### Step 2: Detect Encoding Issues
@@ -160,7 +187,7 @@ Before making any changes, check for pending modifications:
 
 ```bash
 # Check if NotePlan directory is in a git repo
-cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes"
+cd "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes"
 
 # Check git status
 git status --short
@@ -243,7 +270,7 @@ When invoked:
 2. **Scan files:**
    ```bash
    # Scan all personal plans
-   find "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans" -name "*.md" -type f
+   find "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans" -name "*.md" -type f
    ```
 
 3. **Analyze each file:**
@@ -544,13 +571,13 @@ Before running this skill, you can manually check:
 
 ```bash
 # Check for emoji encoding issues (especially complex ones)
-find "/Users/omar.eid/.../🏡📆 Plans" -name "*.md" -exec grep -l "�" {} \;
+find "$HOME/.../🏡📆 Plans" -name "*.md" -exec grep -l "�" {} \;
 
 # Check for plan types in use
-find "/Users/omar.eid/.../🏡📆 Plans" -name "*.md" -exec head -1 {} \; | grep -o "🏡[0-9]*." | sort -u
+find "$HOME/.../🏡📆 Plans" -name "*.md" -exec head -1 {} \; | grep -o "🏡[0-9]*." | sort -u
 
 # Check template plan types
-cat "/Users/omar.eid/.../🏡📆 Personal Plan.md" | grep "planType"
+cat "$HOME/.../🏡📆 Personal Plan.md" | grep "planType"
 ```
 
 ### Automated Maintenance Suggestion

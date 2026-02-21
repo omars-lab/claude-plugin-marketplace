@@ -7,7 +7,7 @@ Get started with the OEID Claude Plugin Marketplace in minutes.
 ### Step 1: Add the Marketplace
 
 ```bash
-/plugin marketplace add /Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace
+/plugin marketplace add ~/workspace/oeid-claude-plugin-marketplace
 ```
 
 ### Step 2: Install Discovery Plugin
@@ -45,8 +45,8 @@ This will show you all available plugins with their installation status.
 ### Option 2: Install All at Once
 
 ```bash
-cd /Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace
-make install-all
+cd ~/workspace/oeid-claude-plugin-marketplace
+make install
 ```
 
 ### Verify Installation
@@ -124,7 +124,7 @@ Create a new note that follows your conventions.
 /plugin marketplace list
 
 # If not listed, add it again
-/plugin marketplace add /Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace
+/plugin marketplace add ~/workspace/oeid-claude-plugin-marketplace
 ```
 
 ### Plugin Not Working

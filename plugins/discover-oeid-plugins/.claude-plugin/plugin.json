@@ -1,10 +1,9 @@
 {
   "name": "discover-oeid-plugins",
   "description": "Discover available personal plugins and see what's installed with interactive guidance",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": {
-    "name": "Omar Eid",
-    "email": "omar.eid@servicenow.com"
+    "name": "Omar Eid"
   },
   "homepage": "https://github.com/oeid/claude-plugins",
   "license": "MIT"

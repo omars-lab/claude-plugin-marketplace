@@ -16,9 +16,22 @@ This skill:
 4. **Normalizes emoji usage** across plan files
 5. **Reports changes** made to files
 
+## Note Map Integration
+
+Before running, check for `🗺️ Note Map.md` to get structure context:
+
+```bash
+NOTE_MAP="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🗺️ Note Map.md"
+```
+
+- **If the map exists**: read the "Key Structural Facts" section to get paths, folder names, and workstream/reference-file lists. Use those discovered values instead of the hardcoded defaults below.
+- **If the map is missing**: proceed with the defaults below, then warn:
+  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:discover-structure` to generate it and make this skill structure-aware.
+- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:discover-structure`.
+
 ## Work Plans Structure
 
-**Directory:** `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans`
+**Directory:** `$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans`
 
 **Subdirectories (workstreams):**
 - 🧑🏻‍💻 Development
@@ -59,13 +72,30 @@ Example: `🏢260118🏁 ServiceNow Onboarding Emails.md`
 - `⏰` - Productivity
 - Any other emojis used in frontmatter or content
 
+## Script: normalize-emojis.py
+
+A standalone script is bundled at `plugins/noteplan-manager/scripts/normalize-emojis.py`.
+
+```bash
+# Normalize a single file in-place
+python3 plugins/noteplan-manager/scripts/normalize-emojis.py "path/to/file.md"
+
+# Dry run — show what would change
+python3 plugins/noteplan-manager/scripts/normalize-emojis.py "path/to/file.md" --dry-run --verbose
+
+# Normalize from stdin
+cat file.md | python3 plugins/noteplan-manager/scripts/normalize-emojis.py -
+```
+
+Use this when Claude needs to normalize a batch of files programmatically rather than processing them line-by-line.
+
 ## How to Fix Emojis
 
 ### Step 1: Scan for Issues
 
 ```bash
 # List all work plan files
-find "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans" -type f -name "*.md"
+find "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans" -type f -name "*.md"
 ```
 
 ### Step 2: Detect Encoding Issues
@@ -141,7 +171,7 @@ Before making any changes, check for pending modifications:
 
 ```bash
 # Check if NotePlan directory is in a git repo
-cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes"
+cd "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes"
 
 # Check git status
 git status --short
@@ -175,7 +205,7 @@ This skill **MUST** use task management to track progress. Tasks are not optiona
 // Task #1: Git safety check
 TaskCreate({
   subject: "Check git status and handle pending changes",
-  description: "Check for uncommitted changes in NotePlan repository. If found, offer to commit folder restructuring changes before making emoji fixes. This keeps commits separated and organized.\n\nActions:\n- Run git status in NotePlan Notes directory\n- Identify pending changes (modified, deleted, untracked files)\n- If changes exist, ask user whether to commit first\n- Create commit if approved\n\nLocation: /Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes",
+  description: "Check for uncommitted changes in NotePlan repository. If found, offer to commit folder restructuring changes before making emoji fixes. This keeps commits separated and organized.\n\nActions:\n- Run git status in NotePlan Notes directory\n- Identify pending changes (modified, deleted, untracked files)\n- If changes exist, ask user whether to commit first\n- Create commit if approved\n\nLocation: $HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes",
   activeForm: "Checking git status"
 })
 
@@ -358,7 +388,7 @@ Ready to begin!
 Mark task as in_progress, then check for pending changes:
 
 ```bash
-cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes"
+cd "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes"
 git status --short
 ```
 
@@ -395,7 +425,7 @@ TaskUpdate({ taskId: "2", status: "in_progress" })
 
 Scan all files:
 ```bash
-find "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans" -name "*.md" -type f
+find "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans" -name "*.md" -type f
 ```
 
 ### **Step 3 (Task #2): Analyze Each File**
@@ -513,13 +543,13 @@ These checks run in PARALLEL after fixes are complete:
    **MANDATORY STEP** - Always read and verify template consistency:
 
    1. Read the Work Plan template at:
-      `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/🏢📆 Work Plan.md`
+      `$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/🏢📆 Work Plan.md`
 
    2. Extract workstream list from template (look for the `prompt('workstream', ...)` line)
 
    3. Get current workstream subdirectories:
       ```bash
-      ls -1 "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans/"
+      ls -1 "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans/"
       ```
 
    4. Compare and report differences
@@ -811,14 +841,14 @@ Before running this skill, you can manually check:
 
 ```bash
 # Check for emoji encoding issues
-find "/Users/omar.eid/.../📆 Plans" -name "*.md" -exec file {} \; | grep -v UTF-8
+find "$HOME/.../📆 Plans" -name "*.md" -exec file {} \; | grep -v UTF-8
 
 # Check header consistency
 # (look for headers that don't match parent folder emoji)
 
 # Check template sync
-cat "/Users/omar.eid/.../🏢📆 Work Plan.md" | grep "workstream"
-ls -1 "/Users/omar.eid/.../📆 Plans/"
+cat "$HOME/.../🏢📆 Work Plan.md" | grep "workstream"
+ls -1 "$HOME/.../📆 Plans/"
 ```
 
 ### Automated Maintenance Suggestion

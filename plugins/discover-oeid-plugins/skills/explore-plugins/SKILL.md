@@ -31,14 +31,14 @@ The oeid-claude-plugins marketplace contains the following personal productivity
   - Description: Maintain and manage NotePlan templates in @Templates directory
   - Skills: `/noteplan-templates:manage-templates`, `/noteplan-templates:list-templates`, `/noteplan-templates:create-template`
   - Use case: When you need to create, edit, or organize NotePlan templates
-  - Templates location: `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/`
+  - Templates location: `~/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/`
 
 - **noteplan-daily-organizer**
   - Description: Move content from daily files to relevant notes with folder and emoji awareness
   - Skills: `/noteplan-daily-organizer:organize-daily`, `/noteplan-daily-organizer:move-content`
   - Use case: When you need to organize daily notes and move content to permanent notes
-  - Daily files location: `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Calendar/`
-  - Notes location: `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/`
+  - Daily files location: `~/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Calendar/`
+  - Notes location: `~/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/`
 
 - **noteplan-structure-analyzer**
   - Description: Analyze NotePlan folder structure, emoji usage, and suggest enhancements
@@ -61,7 +61,7 @@ The oeid-claude-plugins marketplace contains the following personal productivity
 3. **Provide exact installation commands** for any uninstalled plugins:
    ```bash
    # If marketplace not added:
-   /plugin marketplace add /Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace
+   /plugin marketplace add ~/workspace/oeid-claude-plugin-marketplace
 
    # To install a specific plugin:
    /plugin install <plugin-name>@oeid-claude-plugins

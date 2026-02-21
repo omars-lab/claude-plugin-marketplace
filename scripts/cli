@@ -1,0 +1,795 @@
+#!/usr/bin/env bash
+# scripts/cli - Marketplace management CLI (replaces `ceg marketplace`)
+#
+# Usage: ./scripts/cli <subcommand> [marketplace] [options]
+# If marketplace is omitted, reads from .claude-plugin/marketplace.json
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# ── JSON helper ────────────────────────────────────────────────────────────────
+parse_json() {
+  python3 -c "$1"
+}
+
+# ── Resolve marketplace root ───────────────────────────────────────────────────
+# Returns the absolute path to the marketplace directory.
+# If $1 is a name that matches the marketplace.json name, use REPO_ROOT.
+# If $1 is a path, use it directly.
+# If $1 is empty, use REPO_ROOT.
+resolve_marketplace() {
+  local arg="${1:-}"
+
+  if [[ -z "$arg" ]]; then
+    echo "$REPO_ROOT"
+    return
+  fi
+
+  # If it looks like an absolute or relative path
+  if [[ "$arg" == /* || "$arg" == ./* || "$arg" == ../* ]]; then
+    echo "$(cd "$arg" && pwd)"
+    return
+  fi
+
+  # Treat as a marketplace name — check if it matches the local marketplace
+  local mp_json="$REPO_ROOT/.claude-plugin/marketplace.json"
+  if [[ -f "$mp_json" ]]; then
+    local name
+    name=$(parse_json "import json,sys; d=json.load(open('$mp_json')); print(d.get('name',''))")
+    if [[ "$name" == "$arg" ]]; then
+      echo "$REPO_ROOT"
+      return
+    fi
+  fi
+
+  # Fallback: treat as a directory name relative to pwd
+  if [[ -d "$arg" ]]; then
+    echo "$(cd "$arg" && pwd)"
+    return
+  fi
+
+  echo "ERROR: Cannot resolve marketplace '$arg'" >&2
+  exit 1
+}
+
+# ── Get marketplace name from marketplace.json ─────────────────────────────────
+get_marketplace_name() {
+  local mp_root="$1"
+  local mp_json="$mp_root/.claude-plugin/marketplace.json"
+  if [[ ! -f "$mp_json" ]]; then
+    echo "ERROR: marketplace.json not found at $mp_json" >&2
+    exit 1
+  fi
+  parse_json "import json,sys; d=json.load(open('$mp_json')); print(d['name'])"
+}
+
+# ── Get plugin list from marketplace.json ─────────────────────────────────────
+get_plugins() {
+  local mp_root="$1"
+  local mp_json="$mp_root/.claude-plugin/marketplace.json"
+  parse_json "import json,sys; d=json.load(open('$mp_json')); print('\n'.join([p['name'] for p in d['plugins']]))"
+}
+
+# ── Subcommands ────────────────────────────────────────────────────────────────
+
+cmd_validate() {
+  local mp_root="$1"
+  local mp_json="$mp_root/.claude-plugin/marketplace.json"
+  echo "Validating $mp_json ..."
+  env -u CLAUDECODE claude plugin validate "$mp_root"
+  echo "✓ Validation passed"
+}
+
+cmd_plugins() {
+  local mp_root="$1"
+  local mp_name
+  mp_name=$(get_marketplace_name "$mp_root")
+  echo "Plugins in $mp_name:"
+  echo ""
+  # List via Claude CLI JSON output
+  local raw
+  raw=$(env -u CLAUDECODE claude plugin list --json 2>/dev/null || echo "[]")
+  parse_json "
+import json, sys
+data = json.loads('''$raw''') if '''$raw'''.strip() else []
+mp = '$mp_name'
+for p in data:
+    if p.get('marketplace') == mp:
+        print(f\"  {p.get('name','?'):<30} v{p.get('version','?'):<10} {p.get('category','')}\")
+"
+  # Also show source plugins from marketplace.json
+  echo ""
+  echo "Source plugins (marketplace.json):"
+  local mp_json="$mp_root/.claude-plugin/marketplace.json"
+  parse_json "
+import json
+d = json.load(open('$mp_json'))
+for p in d['plugins']:
+    print(f\"  {p.get('name','?'):<30} v{p.get('version','?'):<10} {p.get('category','')}\")
+"
+}
+
+cmd_install() {
+  local mp_root="$1"
+  local mp_name
+  mp_name=$(get_marketplace_name "$mp_root")
+  echo "Installing all plugins from $mp_name ..."
+  local failed=0
+  while IFS= read -r plugin; do
+    echo "  Installing $plugin@$mp_name ..."
+    if env -u CLAUDECODE claude plugin install "$plugin@$mp_name" --scope user; then
+      echo "  ✓ $plugin installed"
+    else
+      echo "  ✗ $plugin failed" >&2
+      failed=$((failed + 1))
+    fi
+  done < <(get_plugins "$mp_root")
+  if [[ $failed -eq 0 ]]; then
+    echo "✓ All plugins installed"
+  else
+    echo "✗ $failed plugin(s) failed" >&2
+    exit 1
+  fi
+}
+
+cmd_uninstall() {
+  local mp_root="$1"
+  local mp_name
+  mp_name=$(get_marketplace_name "$mp_root")
+  echo "Uninstalling all plugins from $mp_name ..."
+  while IFS= read -r plugin; do
+    echo "  Uninstalling $plugin@$mp_name ..."
+    env -u CLAUDECODE claude plugin uninstall "$plugin@$mp_name" --scope user || true
+    echo "  ✓ $plugin uninstalled"
+  done < <(get_plugins "$mp_root")
+  echo "✓ All plugins uninstalled"
+}
+
+cmd_update() {
+  local mp_root="$1"
+  local mp_name
+  mp_name=$(get_marketplace_name "$mp_root")
+  echo "Updating all plugins from $mp_name ..."
+  local failed=0
+  while IFS= read -r plugin; do
+    echo "  Updating $plugin@$mp_name ..."
+    if env -u CLAUDECODE claude plugin update "$plugin@$mp_name" --scope user; then
+      echo "  ✓ $plugin updated"
+    else
+      echo "  ✗ $plugin failed" >&2
+      failed=$((failed + 1))
+    fi
+  done < <(get_plugins "$mp_root")
+  if [[ $failed -eq 0 ]]; then
+    echo "✓ All plugins updated"
+  else
+    echo "✗ $failed plugin(s) failed" >&2
+    exit 1
+  fi
+}
+
+cmd_test_workflow() {
+  local mp_root="$1"
+  echo "=== Test Workflow: uninstall → install → update ==="
+  cmd_uninstall "$mp_root"
+  echo ""
+  cmd_install "$mp_root"
+  echo ""
+  cmd_update "$mp_root"
+  echo ""
+  echo "✓ Test workflow complete"
+}
+
+cmd_register() {
+  local mp_root="$1"
+  echo "Registering marketplace at $mp_root ..."
+  env -u CLAUDECODE claude plugin marketplace add "$mp_root"
+  echo "✓ Marketplace registered"
+}
+
+cmd_version_check() {
+  local mp_root="$1"
+  local dry_run="${2:-}"
+  local mp_name
+  mp_name=$(get_marketplace_name "$mp_root")
+
+  echo "Checking plugin versions in $mp_name ..."
+  echo ""
+
+  local needs_bump=0
+
+  while IFS= read -r plugin; do
+    local plugin_dir="$mp_root/plugins/$plugin"
+    local tracking_file="$plugin_dir/.claude-plugin/version-tracking.json"
+    local plugin_json="$plugin_dir/.claude-plugin/plugin.json"
+
+    if [[ ! -f "$plugin_json" ]]; then
+      echo "  ⚠  $plugin: plugin.json missing, skipping"
+      continue
+    fi
+
+    local current_version
+    current_version=$(parse_json "import json; print(json.load(open('$plugin_json'))['version'])")
+
+    if [[ ! -f "$tracking_file" ]]; then
+      echo "  ⚠  $plugin v$current_version: no version-tracking.json (run version-init)"
+      continue
+    fi
+
+    local version_commit
+    version_commit=$(parse_json "import json; print(json.load(open('$tracking_file')).get('versionCommit',''))")
+
+    if [[ -z "$version_commit" ]]; then
+      echo "  ⚠  $plugin v$current_version: empty versionCommit (run version-init)"
+      continue
+    fi
+
+    if ! git -C "$mp_root" cat-file -e "$version_commit" 2>/dev/null; then
+      echo "  ⚠  $plugin v$current_version: versionCommit $version_commit not in git history"
+      continue
+    fi
+
+    # Diff since last version commit, excluding version-tracking.json itself
+    local changed_files
+    changed_files=$(git -C "$mp_root" diff --name-only "$version_commit" HEAD -- "plugins/$plugin/" \
+      | { grep -v "version-tracking\.json$" || true; })
+
+    if [[ -z "$changed_files" ]]; then
+      echo "  ✓  $plugin v$current_version: up to date"
+      continue
+    fi
+
+    # Classify bump type
+    local bump_type="PATCH"
+    local new_skills="" removed_skills="" modified_skills=""
+
+    while IFS= read -r f; do
+      if echo "$f" | grep -q "^plugins/$plugin/skills/[^/]*/"; then
+        local skill_name
+        skill_name=$(echo "$f" | sed "s|plugins/$plugin/skills/||" | cut -d'/' -f1)
+        local status
+        status=$(git -C "$mp_root" diff --name-status "$version_commit" HEAD -- "$f" | { grep -v "^$" || true; } | cut -f1 | head -1)
+        case "${status:-M}" in
+          A) new_skills="$new_skills $skill_name" ; bump_type="MINOR" ;;
+          D) removed_skills="$removed_skills $skill_name" ; bump_type="MAJOR" ;;
+          *) modified_skills="$modified_skills $skill_name" ;;
+        esac
+      fi
+    done <<< "$changed_files"
+
+    # MAJOR trumps MINOR trumps PATCH
+    if [[ -n "$removed_skills" ]]; then
+      bump_type="MAJOR"
+    elif [[ -n "$new_skills" ]]; then
+      bump_type="MINOR"
+    fi
+
+    local suggestion
+    IFS='.' read -r maj min pat <<< "$current_version"
+    case "$bump_type" in
+      MAJOR) suggestion="$((maj+1)).0.0" ;;
+      MINOR) suggestion="$maj.$((min+1)).0" ;;
+      PATCH) suggestion="$maj.$min.$((pat+1))" ;;
+    esac
+
+    echo "  ⚠  $plugin v$current_version → $suggestion ($bump_type)"
+    if [[ -n "$new_skills" ]]; then echo "       new skills:$new_skills"; fi
+    if [[ -n "$removed_skills" ]]; then echo "       removed skills:$removed_skills"; fi
+    if [[ -n "$modified_skills" ]]; then echo "       modified skills:$modified_skills"; fi
+    needs_bump=$((needs_bump + 1))
+  done < <(get_plugins "$mp_root")
+
+  echo ""
+  if [[ $needs_bump -eq 0 ]]; then
+    echo "✓ All plugins are up to date"
+  else
+    echo "$needs_bump plugin(s) need version bumps"
+    if [[ "$dry_run" != "--dry-run" ]]; then
+      echo "Run: ./scripts/cli version-bump <marketplace> <plugin> <major|minor|patch>"
+    fi
+  fi
+}
+
+cmd_version_bump() {
+  local mp_root="$1"
+  local plugin="$2"
+  local bump_type="$3"  # major | minor | patch
+  local do_commit="${4:-}"
+
+  local plugin_dir="$mp_root/plugins/$plugin"
+  local plugin_json="$plugin_dir/.claude-plugin/plugin.json"
+  local tracking_file="$plugin_dir/.claude-plugin/version-tracking.json"
+
+  if [[ ! -f "$plugin_json" ]]; then
+    echo "ERROR: $plugin_json not found" >&2
+    exit 1
+  fi
+
+  local current_version
+  current_version=$(parse_json "import json; print(json.load(open('$plugin_json'))['version'])")
+  IFS='.' read -r maj min pat <<< "$current_version"
+
+  local new_version
+  case "$bump_type" in
+    major) new_version="$((maj+1)).0.0" ;;
+    minor) new_version="$maj.$((min+1)).0" ;;
+    patch) new_version="$maj.$min.$((pat+1))" ;;
+    *) echo "ERROR: bump type must be major|minor|patch, got: $bump_type" >&2; exit 1 ;;
+  esac
+
+  echo "Bumping $plugin: $current_version → $new_version ($bump_type)"
+
+  # Update plugin.json version
+  python3 -c "
+import json
+path = '$plugin_json'
+d = json.load(open(path))
+d['version'] = '$new_version'
+import sys
+json.dump(d, open(path, 'w'), indent=2)
+print()
+"
+
+  # Update version-tracking.json with current HEAD
+  local head_commit
+  head_commit=$(git -C "$mp_root" rev-parse HEAD)
+  python3 -c "
+import json
+path = '$tracking_file'
+json.dump({'versionCommit': '$head_commit'}, open(path, 'w'), indent=2)
+print()
+"
+
+  echo "✓ $plugin bumped to $new_version"
+  echo "  versionCommit → $head_commit"
+
+  if [[ "$do_commit" == "--commit" ]]; then
+    git -C "$mp_root" add "$plugin_json" "$tracking_file"
+    git -C "$mp_root" commit -m "chore: bump $plugin version $current_version → $new_version"
+    echo "✓ Committed version bump"
+  fi
+}
+
+cmd_version_bump_all() {
+  local mp_root="$1"
+  local do_commit="${2:-}"
+  local mp_name
+  mp_name=$(get_marketplace_name "$mp_root")
+
+  echo "Auto-bumping all changed plugins in $mp_name ..."
+  echo ""
+
+  local bumped=0
+  local skipped=0
+
+  while IFS= read -r plugin; do
+    local plugin_dir="$mp_root/plugins/$plugin"
+    local tracking_file="$plugin_dir/.claude-plugin/version-tracking.json"
+    local plugin_json="$plugin_dir/.claude-plugin/plugin.json"
+
+    if [[ ! -f "$plugin_json" ]] || [[ ! -f "$tracking_file" ]]; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    local current_version version_commit
+    current_version=$(parse_json "import json; print(json.load(open('$plugin_json'))['version'])")
+    version_commit=$(parse_json "import json; print(json.load(open('$tracking_file')).get('versionCommit',''))")
+
+    if [[ -z "$version_commit" ]]; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    local changed_files
+    changed_files=$(git -C "$mp_root" diff --name-only "$version_commit" HEAD -- "plugins/$plugin/" \
+      | { grep -v "version-tracking\.json$" || true; })
+
+    if [[ -z "$changed_files" ]]; then
+      echo "  ✓  $plugin v$current_version: up to date"
+      continue
+    fi
+
+    # Classify bump type
+    local bump_type="patch"
+    local new_skills="" removed_skills=""
+
+    while IFS= read -r f; do
+      if echo "$f" | grep -q "^plugins/$plugin/skills/[^/]*/"; then
+        local skill_name
+        skill_name=$(echo "$f" | sed "s|plugins/$plugin/skills/||" | cut -d'/' -f1)
+        local status
+        status=$(git -C "$mp_root" diff --name-status "$version_commit" HEAD -- "$f" | { grep -v "^$" || true; } | cut -f1 | head -1)
+        case "${status:-M}" in
+          A) new_skills="$new_skills $skill_name" ; bump_type="minor" ;;
+          D) removed_skills="$removed_skills $skill_name" ; bump_type="major" ;;
+        esac
+      fi
+    done <<< "$changed_files"
+
+    if [[ -n "$removed_skills" ]]; then bump_type="major"; fi
+    if [[ -n "$new_skills" && "$bump_type" != "major" ]]; then bump_type="minor"; fi
+
+    cmd_version_bump "$mp_root" "$plugin" "$bump_type" "$do_commit"
+    bumped=$((bumped + 1))
+  done < <(get_plugins "$mp_root")
+
+  echo ""
+  echo "$bumped plugin(s) bumped, $skipped skipped"
+}
+
+cmd_version_init() {
+  local mp_root="$1"
+  local head_commit
+  head_commit=$(git -C "$mp_root" rev-parse HEAD)
+
+  echo "Initializing version tracking for all plugins ..."
+  echo "  HEAD: $head_commit"
+  echo ""
+
+  while IFS= read -r plugin; do
+    local plugin_dir="$mp_root/plugins/$plugin"
+    local tracking_file="$plugin_dir/.claude-plugin/version-tracking.json"
+    local plugin_json="$plugin_dir/.claude-plugin/plugin.json"
+
+    # Migrate legacy versionCommit from plugin.json if present
+    if [[ -f "$plugin_json" ]]; then
+      local legacy_commit
+      legacy_commit=$(parse_json "import json; d=json.load(open('$plugin_json')); print(d.get('versionCommit',''))" 2>/dev/null || echo "")
+      if [[ -n "$legacy_commit" && "$legacy_commit" != "None" ]]; then
+        echo "  $plugin: migrating versionCommit from plugin.json"
+        python3 -c "
+import json
+path = '$plugin_json'
+d = json.load(open(path))
+d.pop('versionCommit', None)
+json.dump(d, open(path, 'w'), indent=2)
+print()
+"
+        if [[ ! -f "$tracking_file" ]]; then
+          python3 -c "import json; json.dump({'versionCommit': '$legacy_commit'}, open('$tracking_file', 'w'), indent=2); print()"
+          echo "  ✓ $plugin: created version-tracking.json (migrated)"
+          continue
+        fi
+      fi
+    fi
+
+    if [[ -f "$tracking_file" ]]; then
+      local existing_commit
+      existing_commit=$(parse_json "import json; print(json.load(open('$tracking_file')).get('versionCommit',''))")
+      if [[ -n "$existing_commit" && "$existing_commit" != "None" ]]; then
+        echo "  ✓ $plugin: already initialized ($existing_commit)"
+        continue
+      fi
+    fi
+
+    mkdir -p "$plugin_dir/.claude-plugin"
+    python3 -c "import json; json.dump({'versionCommit': '$head_commit'}, open('$tracking_file', 'w'), indent=2); print()"
+    echo "  ✓ $plugin: created version-tracking.json"
+  done < <(get_plugins "$mp_root")
+
+  echo ""
+  echo "✓ Version tracking initialized"
+}
+
+cmd_verify() {
+  local mp_root="$1"
+  local mp_name
+  mp_name=$(get_marketplace_name "$mp_root")
+
+  echo "Verifying installed plugins for $mp_name ..."
+  echo ""
+
+  local raw
+  raw=$(env -u CLAUDECODE claude plugin list --json 2>/dev/null || echo "[]")
+
+  local failed=0
+  while IFS= read -r plugin; do
+    local plugin_dir="$mp_root/plugins/$plugin"
+    local plugin_json="$plugin_dir/.claude-plugin/plugin.json"
+    local source_version="unknown"
+    if [[ -f "$plugin_json" ]]; then
+      source_version=$(parse_json "import json; print(json.load(open('$plugin_json'))['version'])")
+    fi
+
+    local installed_version
+    installed_version=$(parse_json "
+import json, sys
+data = json.loads('''$raw''') if '''$raw'''.strip() else []
+mp = '$mp_name'
+pname = '$plugin'
+match = [p for p in data if p.get('name') == pname and p.get('marketplace') == mp]
+print(match[0].get('version', 'NOT_INSTALLED') if match else 'NOT_INSTALLED')
+")
+
+    if [[ "$installed_version" == "NOT_INSTALLED" ]]; then
+      echo "  ✗ $plugin: not installed"
+      failed=$((failed + 1))
+    elif [[ "$installed_version" == "$source_version" ]]; then
+      echo "  ✓ $plugin v$source_version"
+    else
+      echo "  ⚠  $plugin: source=$source_version installed=$installed_version"
+      failed=$((failed + 1))
+    fi
+  done < <(get_plugins "$mp_root")
+
+  echo ""
+  if [[ $failed -eq 0 ]]; then
+    echo "✓ All plugins verified"
+  else
+    echo "✗ $failed plugin(s) have issues"
+    exit 1
+  fi
+}
+
+cmd_clean() {
+  local mp_root="$1"
+  echo "Cleaning build artifacts in $mp_root ..."
+  find "$mp_root" -name "*.pyc" -delete 2>/dev/null || true
+  find "$mp_root" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+  find "$mp_root" -name ".DS_Store" -delete 2>/dev/null || true
+  echo "✓ Clean complete"
+}
+
+cmd_quick_start() {
+  local mp_root="$1"
+  local mp_name
+  mp_name=$(get_marketplace_name "$mp_root")
+  cat <<EOF
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Quick Start: $mp_name
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Register this marketplace with Claude:
+   ./scripts/cli register
+
+2. Install all plugins:
+   ./scripts/cli install
+
+3. Verify installations:
+   ./scripts/cli verify
+
+4. Check for version updates:
+   ./scripts/cli version-check
+
+5. Update all plugins:
+   ./scripts/cli update
+
+Makefile shortcuts:
+   make install        Install all plugins
+   make update         Check versions + update
+   make verify-installs
+   make doctor
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EOF
+}
+
+cmd_doctor() {
+  local mp_root="$1"
+  local mp_name
+  mp_name=$(get_marketplace_name "$mp_root")
+
+  echo "Diagnosing $mp_name ..."
+  echo ""
+
+  # Check marketplace registration
+  echo "── Marketplace Registration ──"
+  local marketplaces
+  marketplaces=$(env -u CLAUDECODE claude plugin marketplace list 2>/dev/null || echo "")
+  if echo "$marketplaces" | grep -q "$mp_name"; then
+    echo "  ✓ $mp_name is registered"
+  else
+    echo "  ✗ $mp_name is NOT registered"
+    echo "    Fix: ./scripts/cli register $mp_name"
+  fi
+  echo ""
+
+  # Check installed plugins
+  echo "── Plugin Installations ──"
+  local raw
+  raw=$(env -u CLAUDECODE claude plugin list --json 2>/dev/null || echo "[]")
+
+  local missing=0
+  while IFS= read -r plugin; do
+    local installed
+    installed=$(parse_json "
+import json
+data = json.loads('''$raw''') if '''$raw'''.strip() else []
+match = [p for p in data if p.get('name') == '$plugin' and p.get('marketplace') == '$mp_name']
+print('yes' if match else 'no')
+")
+    if [[ "$installed" == "yes" ]]; then
+      echo "  ✓ $plugin"
+    else
+      echo "  ✗ $plugin: not installed"
+      missing=$((missing + 1))
+    fi
+  done < <(get_plugins "$mp_root")
+  echo ""
+
+  # Check version tracking
+  echo "── Version Tracking ──"
+  local tracking_issues=0
+  while IFS= read -r plugin; do
+    local tracking_file="$mp_root/plugins/$plugin/.claude-plugin/version-tracking.json"
+    if [[ ! -f "$tracking_file" ]]; then
+      echo "  ✗ $plugin: missing version-tracking.json"
+      tracking_issues=$((tracking_issues + 1))
+    else
+      local vc
+      vc=$(parse_json "import json; print(json.load(open('$tracking_file')).get('versionCommit',''))")
+      if [[ -z "$vc" ]]; then
+        echo "  ✗ $plugin: empty versionCommit"
+        tracking_issues=$((tracking_issues + 1))
+      elif ! git -C "$mp_root" cat-file -e "$vc" 2>/dev/null; then
+        echo "  ✗ $plugin: versionCommit $vc not in git history"
+        tracking_issues=$((tracking_issues + 1))
+      else
+        echo "  ✓ $plugin"
+      fi
+    fi
+  done < <(get_plugins "$mp_root")
+  echo ""
+
+  # Summary
+  local total_issues=$((missing + tracking_issues))
+  if [[ $total_issues -eq 0 ]]; then
+    echo "✓ All checks passed"
+  else
+    echo "✗ Found $total_issues issue(s)"
+    if [[ $missing -gt 0 ]]; then
+      echo "  Run: ./scripts/cli install $mp_name"
+    fi
+    if [[ $tracking_issues -gt 0 ]]; then
+      echo "  Run: ./scripts/cli version-init $mp_name"
+    fi
+    exit 1
+  fi
+}
+
+cmd_install_single() {
+  local mp_root="$1"
+  local plugin="$2"
+  local mp_name
+  mp_name=$(get_marketplace_name "$mp_root")
+  echo "Installing $plugin@$mp_name ..."
+  env -u CLAUDECODE claude plugin install "$plugin@$mp_name" --scope user
+  echo "✓ $plugin installed"
+}
+
+# ── Usage ──────────────────────────────────────────────────────────────────────
+usage() {
+  cat <<EOF
+Usage: ./scripts/cli <subcommand> [marketplace] [options]
+
+If [marketplace] is omitted, defaults to the local marketplace (reads name from
+.claude-plugin/marketplace.json in the repo root).
+
+Subcommands:
+  validate [marketplace]                Validate marketplace.json
+  plugins  [marketplace]                List all plugins
+  install  [marketplace]                Install all plugins
+  uninstall [marketplace]               Uninstall all plugins
+  update   [marketplace]                Update all plugins
+  test-workflow [marketplace]           Uninstall → install → update lifecycle
+  register [marketplace]                Register marketplace with Claude
+  version-check [marketplace] [--dry-run]  Detect changes needing version bumps
+  version-bump [marketplace] <plugin> <major|minor|patch> [--commit]
+                                        Bump a plugin version
+  version-bump-all [marketplace] [--commit]
+                                        Auto-bump all plugins that have changes
+  version-init [marketplace]            Initialize version-tracking.json files
+  verify   [marketplace]                Verify installed versions match source
+  clean    [marketplace]                Remove build artifacts
+  quick-start [marketplace]             Print quick-start guide
+  doctor   [marketplace]                Diagnose install issues
+  install-single [marketplace] <plugin> Install one plugin by name
+
+All Claude CLI calls use 'env -u CLAUDECODE' to avoid nested session errors.
+EOF
+}
+
+# ── Main dispatch ──────────────────────────────────────────────────────────────
+main() {
+  local subcommand="${1:-}"
+  if [[ -z "$subcommand" || "$subcommand" == "--help" || "$subcommand" == "-h" ]]; then
+    usage
+    exit 0
+  fi
+
+  shift  # consume subcommand
+
+  case "$subcommand" in
+    validate)
+      cmd_validate "$(resolve_marketplace "${1:-}")"
+      ;;
+    plugins)
+      cmd_plugins "$(resolve_marketplace "${1:-}")"
+      ;;
+    install)
+      cmd_install "$(resolve_marketplace "${1:-}")"
+      ;;
+    uninstall)
+      cmd_uninstall "$(resolve_marketplace "${1:-}")"
+      ;;
+    update)
+      cmd_update "$(resolve_marketplace "${1:-}")"
+      ;;
+    test-workflow)
+      cmd_test_workflow "$(resolve_marketplace "${1:-}")"
+      ;;
+    register)
+      cmd_register "$(resolve_marketplace "${1:-}")"
+      ;;
+    version-check)
+      local mp_arg="${1:-}"
+      local dry_run_arg=""
+      # Handle --dry-run as either second or third arg
+      if [[ "$mp_arg" == "--dry-run" ]]; then
+        mp_arg=""
+        dry_run_arg="--dry-run"
+      elif [[ "${2:-}" == "--dry-run" ]]; then
+        dry_run_arg="--dry-run"
+      fi
+      cmd_version_check "$(resolve_marketplace "$mp_arg")" "$dry_run_arg"
+      ;;
+    version-bump)
+      local mp_root
+      mp_root="$(resolve_marketplace "${1:-}")"
+      shift || true
+      local plugin="${1:-}"
+      local bump="${2:-}"
+      local commit_flag="${3:-}"
+      if [[ -z "$plugin" || -z "$bump" ]]; then
+        echo "Usage: ./scripts/cli version-bump [marketplace] <plugin> <major|minor|patch> [--commit]" >&2
+        exit 1
+      fi
+      cmd_version_bump "$mp_root" "$plugin" "$bump" "$commit_flag"
+      ;;
+    version-bump-all)
+      local mp_root
+      mp_root="$(resolve_marketplace "${1:-}")"
+      shift || true
+      local commit_flag="${1:-}"
+      cmd_version_bump_all "$mp_root" "$commit_flag"
+      ;;
+    version-init)
+      cmd_version_init "$(resolve_marketplace "${1:-}")"
+      ;;
+    verify)
+      cmd_verify "$(resolve_marketplace "${1:-}")"
+      ;;
+    clean)
+      cmd_clean "$(resolve_marketplace "${1:-}")"
+      ;;
+    quick-start)
+      cmd_quick_start "$(resolve_marketplace "${1:-}")"
+      ;;
+    doctor)
+      cmd_doctor "$(resolve_marketplace "${1:-}")"
+      ;;
+    install-single)
+      local mp_root
+      mp_root="$(resolve_marketplace "${1:-}")"
+      shift || true
+      local plugin="${1:-}"
+      if [[ -z "$plugin" ]]; then
+        echo "Usage: ./scripts/cli install-single [marketplace] <plugin>" >&2
+        exit 1
+      fi
+      cmd_install_single "$mp_root" "$plugin"
+      ;;
+    *)
+      echo "Unknown subcommand: $subcommand" >&2
+      echo ""
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

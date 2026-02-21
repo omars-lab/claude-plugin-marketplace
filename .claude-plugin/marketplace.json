@@ -1,8 +1,7 @@
 {
   "name": "oeid-claude-plugins",
   "owner": {
-    "name": "Omar Eid",
-    "email": "omar.eid@servicenow.com"
+    "name": "Omar Eid"
   },
   "metadata": {
     "description": "Personal plugin marketplace for NotePlan management and productivity tools",
@@ -97,6 +96,14 @@
       "version": "1.0.0",
       "category": "productivity",
       "keywords": ["documentation", "organization", "standards", "best-practices", "developer-experience", "diagrams", "runbooks"]
+    },
+    {
+      "name": "servicenow-manager",
+      "source": "./plugins/servicenow-manager",
+      "description": "ServiceNow-specific tooling: Tampermonkey userscripts for ServiceNow workflows",
+      "version": "1.0.0",
+      "category": "work",
+      "keywords": ["servicenow", "tampermonkey", "userscripts", "browser-automation", "work"]
     }
   ]
 }

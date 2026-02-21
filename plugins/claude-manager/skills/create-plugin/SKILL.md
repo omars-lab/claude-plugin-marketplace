@@ -42,8 +42,7 @@ plugins/{plugin-name}/
   "description": "{One-line description of plugin purpose}",
   "version": "1.0.0",
   "author": {
-    "name": "Omar Eid",
-    "email": "omar.eid@servicenow.com"
+    "name": "{Author Name}"
   },
   "license": "MIT"
 }
@@ -51,7 +50,7 @@ plugins/{plugin-name}/
 
 ### Version Tracking (REQUIRED)
 
-The `ceg` CLI uses `version-tracking.json` to detect changes for automated version bumping. Without it, `make update` and `make version-check` will fail silently for the plugin.
+The `./scripts/cli` uses `version-tracking.json` to detect changes for automated version bumping. Without it, `make update` and `make version-check` will fail silently for the plugin.
 
 **Create `.claude-plugin/version-tracking.json`:**
 ```json
@@ -207,23 +206,28 @@ Options:
 - Does it modify files? (determines git safety requirement)
 
 **Question 4: Target marketplace**
+
+Determine the default marketplace path dynamically:
+```bash
+# Resolve from git root of the current repo
+git rev-parse --show-toplevel
+```
+
 ```
 Which marketplace?
 
 Options:
-- oeid-claude-plugins (personal)
-- ceg-claude-plugins (work/team)
+- <git-root-path> (oeid-claude-plugins — default, this repo)
+- Another path (user provides)
 ```
 
 ### Step 2 (Task #2): Scaffold Plugin Structure
 
 **Determine the marketplace path:**
 ```bash
-# oeid marketplace
-MARKETPLACE="/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace"
-
-# ceg marketplace
-MARKETPLACE="/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/ceg-claude-plugin-marketplace"
+# Use the path confirmed in Step 1 Question 4
+# Default: resolve from git root
+MARKETPLACE="$(git rev-parse --show-toplevel)"
 ```
 
 **Create directory structure:**
@@ -253,7 +257,7 @@ cat > "$PLUGIN_DIR/.claude-plugin/version-tracking.json" <<EOF
 EOF
 ```
 
-**Why this matters:** Without `version-tracking.json`, `make update` and `make version-check` will fail with "Failed to detect changes" for this plugin. The `ceg` CLI's `version-detect-changes.sh` reads this file to determine what commit to diff against.
+**Why this matters:** Without `version-tracking.json`, `make update` and `make version-check` will fail with "Failed to detect changes" for this plugin. The `./scripts/cli version-check` reads this file to determine what commit to diff against.
 
 **Create minimal README.md** following the template above.
 

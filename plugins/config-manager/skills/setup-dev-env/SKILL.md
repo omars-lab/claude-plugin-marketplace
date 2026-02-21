@@ -56,13 +56,14 @@ When invoked, you should:
     }
   },
   "workingDirectories": [
-    "/Users/omar.eid/workspace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace",
-    "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+    "/Users/your-username/workspace",
+    "/Users/your-username/workspace/oeid-claude-plugin-marketplace",
+    "/Users/your-username/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
   ]
 }
 ```
+
+**Note:** Ask the user for their actual home directory path (`echo $HOME`) and marketplace location before writing the configuration.
 
 ## Setup Workflow
 
@@ -109,18 +110,20 @@ Add essential development commands:
 
 ### Phase 3: Working Directory Setup
 
-Configure accessible directories:
+Ask the user for their actual paths, then configure:
 
 ```json
 {
   "workingDirectories": [
-    "/Users/omar.eid/workspace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace",
-    "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+    "/Users/your-username/workspace",
+    "/Users/your-username/workspace/oeid-claude-plugin-marketplace",
+    "/Users/your-username/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
   ]
 }
 ```
+
+To get the user's home directory: `echo $HOME`
+To get the marketplace path: `git rev-parse --show-toplevel` (from within the repo)
 
 ### Phase 4: Validation
 
@@ -156,7 +159,7 @@ Configure accessible directories:
     }
   },
   "workingDirectories": [
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace"
+    "/Users/your-username/workspace/oeid-claude-plugin-marketplace"
   ]
 }
 ```
@@ -183,9 +186,8 @@ Configure accessible directories:
     }
   },
   "workingDirectories": [
-    "/Users/omar.eid/workspace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace"
+    "/Users/your-username/workspace",
+    "/Users/your-username/workspace/oeid-claude-plugin-marketplace"
   ]
 }
 ```
@@ -222,11 +224,9 @@ Includes all commands and all workspace directories:
     }
   },
   "workingDirectories": [
-    "/Users/omar.eid/workspace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace",
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/ceg-claude-plugin-marketplace",
-    "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+    "/Users/your-username/workspace",
+    "/Users/your-username/workspace/oeid-claude-plugin-marketplace",
+    "/Users/your-username/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
   ]
 }
 ```
@@ -257,8 +257,8 @@ Includes all commands and all workspace directories:
     }
   },
   "workingDirectories": [
-    "/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace",
-    "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+    "/Users/your-username/workspace/oeid-claude-plugin-marketplace",
+    "/Users/your-username/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
   ]
 }
 ```
@@ -268,7 +268,6 @@ Includes all commands and all workspace directories:
 **Needs:**
 - Full development permissions
 - Testing framework access
-- Multiple marketplace access
 
 **Setup:** Advanced Setup with added test commands
 
@@ -287,6 +286,7 @@ When setting up a development environment:
    - Highlight benefits of each option
 
 ### 3. **Gather Information**
+   - Ask for their home directory: `echo $HOME`
    - Confirm working directory paths
    - Identify which commands they use regularly
    - Check for any special requirements
@@ -314,7 +314,7 @@ When setting up a development environment:
 ## Output Format
 
 ```markdown
-## Development Environment Setup Complete! 🚀
+## Development Environment Setup Complete!
 
 ### Configuration Applied
 - ✅ Bash permissions for marketplace development
@@ -366,4 +366,4 @@ If commands aren't working:
 - Check that tools are installed (make, git, npm)
 ```
 
-Be comprehensive, clear, and help users get productive quickly with a properly configured development environment.
+Be comprehensive, clear, and help users get productive quickly with a properly configured development environment. Always ask for actual paths rather than assuming.

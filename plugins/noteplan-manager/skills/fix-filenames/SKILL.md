@@ -264,7 +264,7 @@ Ready to begin!
 Mark task as in_progress, then auto-commit all pending changes:
 
 ```bash
-cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+cd "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
 
 # Check current state
 git status --short
@@ -299,7 +299,7 @@ TaskUpdate({ taskId: "2", status: "in_progress" })
 Get fresh list of files with pending changes:
 
 ```bash
-cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+cd "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
 git status --short
 ```
 
@@ -524,7 +524,7 @@ TaskUpdate({ taskId: "6", status: "in_progress" })
 **CRITICAL: Validate ALL changes since pre-commit:**
 
 ```bash
-cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+cd "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
 
 # Show all changes since checkpoint
 git diff $CHECKPOINT_COMMIT --stat
@@ -567,7 +567,7 @@ TaskUpdate({ taskId: "7", status: "in_progress" })
 **Only proceed if Task #6 validation passed.**
 
 ```bash
-cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+cd "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
 
 # Stage all changes
 git add -A

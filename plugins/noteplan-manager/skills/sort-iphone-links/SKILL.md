@@ -17,6 +17,19 @@ This skill:
 5. **Cleans up junk** (about:blank, empty entries, duplicates) with user approval
 6. **Validates counts** via git diff to ensure no links are lost
 
+## Note Map Integration
+
+Before running, check for `🗺️ Note Map.md` to get structure context:
+
+```bash
+NOTE_MAP="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🗺️ Note Map.md"
+```
+
+- **If the map exists**: read the "Key Structural Facts" section to get paths, folder names, and workstream/reference-file lists. Use those discovered values instead of the hardcoded defaults below.
+- **If the map is missing**: proceed with the defaults below, then warn:
+  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:discover-structure` to generate it and make this skill structure-aware.
+- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:discover-structure`.
+
 ## Source and Target Files
 
 ### Source File
@@ -50,6 +63,26 @@ All in `$NOTEPLAN_ROOT/Notes/🏡 Personal/🏡📋 Lists/`:
 | `🏡📋 References.md` | General references, education, courses, tutorials |
 | `🏡📋 Shopping.md` | Products, e-commerce, Amazon, kitchen, coffee gear, home goods |
 | `🏡📋 Activities[Austin].md` | Austin restaurants, local events, parks, family activities |
+
+## Script: classify-urls.py
+
+A standalone classifier is bundled at `plugins/noteplan-manager/skills/sort-iphone-links/classify-urls.py`.
+
+```bash
+# Classify a single URL
+python3 classify-urls.py https://github.com/some/repo
+
+# Classify all URLs in a markdown file
+python3 classify-urls.py --file iPhone.md --format tsv
+
+# Pipe URLs from stdin
+echo "https://openai.com/blog/gpt4" | python3 classify-urls.py -
+
+# JSON output for programmatic use
+python3 classify-urls.py --file iPhone.md --format json
+```
+
+Use this for the initial categorization pass. Claude then reviews low-confidence results and handles YouTube (which requires title inspection to classify correctly).
 
 ## Environment Detection
 

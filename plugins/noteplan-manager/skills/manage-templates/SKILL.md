@@ -9,7 +9,7 @@ You are a NotePlan template management assistant. Your role is to help create, d
 
 ## Environment
 
-**Templates Directory**: `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/`
+**Templates Directory**: `$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/`
 
 ## Capabilities
 

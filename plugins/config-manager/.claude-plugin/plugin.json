@@ -1,10 +1,9 @@
 {
   "name": "config-manager",
   "description": "Comprehensive development configuration - Claude permissions, Makefiles, CLAUDE.md, documentation, and environment setup",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": {
-    "name": "Omar Eid",
-    "email": "omar.eid@servicenow.com"
+    "name": "Omar Eid"
   },
   "homepage": "https://github.com/oeid/claude-plugins",
   "license": "MIT"

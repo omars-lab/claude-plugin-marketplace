@@ -1,0 +1,346 @@
+---
+name: discover-structure
+description: Scan the NotePlan Notes directory and write a structured map to 🗺️ Note Map.md so other skills can understand folder organization without hardcoded assumptions
+---
+
+# Discover NotePlan Structure
+
+You are a NotePlan structure discovery assistant. When invoked, you scan the Notes directory, build a comprehensive map of the folder hierarchy and file patterns, then write it to `🗺️ Note Map.md`. Other skills read this file to understand structure instead of hardcoding it.
+
+## What This Skill Does
+
+1. **Detects the NotePlan root** dynamically from `$HOME`
+2. **Scans the Notes directory** — top-level folders, subfolder depth, file counts, naming patterns
+3. **Identifies structural patterns** — namespace emojis, folder types, file naming conventions
+4. **Writes `🗺️ Note Map.md`** — a structured reference file at the Notes root
+5. **Updates the map** if run again — detects additions, removals, or structural changes since last run
+
+## The Note Map File
+
+**Location:** `$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🗺️ Note Map.md`
+
+This file is the **single source of truth** for NotePlan structure. All skills that need to know about folder organization read from here rather than hardcoding paths or folder names.
+
+## Task Management
+
+```javascript
+TaskCreate({
+  subject: "Detect NotePlan root and verify access",
+  description: "Resolve NOTEPLAN_ROOT from $HOME, verify Notes dir exists, check for existing 🗺️ Note Map.md",
+  activeForm: "Detecting NotePlan root"
+})
+
+TaskCreate({
+  subject: "Scan Notes directory structure",
+  description: "Walk top-level folders, sample subdirectories (up to 3 levels), count files, extract naming patterns",
+  activeForm: "Scanning Notes directory"
+})
+
+TaskCreate({
+  subject: "Analyze structural patterns",
+  description: "Identify: namespace emojis (top-level folder prefix emojis), folder type emojis (Plans/Lists/Research etc), file naming conventions, special folders (@Templates, @Archive)",
+  activeForm: "Analyzing patterns"
+})
+
+TaskCreate({
+  subject: "Write 🗺️ Note Map.md",
+  description: "Write the complete structure map with all sections. If file exists, compare with current state and report diffs.",
+  activeForm: "Writing Note Map"
+})
+```
+
+## Step 0: AskUserQuestion
+
+Before scanning, ask:
+
+```
+What scope should I scan?
+
+Options:
+- Full scan (all folders, complete map — may take a moment for large vaults)
+- Top-level only (quick — just namespace folders and their immediate children)
+- Update existing map (rescan and report what changed since last run)
+```
+
+## Step 1: Detect and Verify
+
+```bash
+NOTEPLAN_ROOT="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+NOTES_DIR="$NOTEPLAN_ROOT/Notes"
+NOTE_MAP="$NOTES_DIR/🗺️ Note Map.md"
+
+# Verify Notes dir exists
+ls "$NOTES_DIR" | head -20
+```
+
+Check for existing Note Map:
+```bash
+if [ -f "$NOTE_MAP" ]; then
+  echo "Existing map found — will compare and update"
+  cat "$NOTE_MAP" | head -30
+fi
+```
+
+## Step 2: Scan Directory Structure
+
+Use `Glob` tool (not bash find) to enumerate the structure. Do NOT use bash `find` with emoji paths — it has encoding issues on macOS.
+
+### Top-level folders
+```
+Glob pattern: $NOTES_DIR/*/
+```
+
+For each top-level folder:
+- Extract the leading emoji (namespace emoji)
+- Note the folder name
+- Count immediate children (files + subfolders)
+
+### Subfolder sampling (full scan)
+For each top-level folder, scan one level deeper:
+```
+Glob pattern: $NOTES_DIR/<folder>/*/
+```
+
+### File naming patterns
+Sample 5-10 files per folder to extract naming conventions:
+- Leading emoji(s) in filename
+- Date format if present (YYMMDD, YYYY-MM-DD, etc.)
+- Suffix patterns
+
+### Special folders
+Always check for:
+- `@Templates/` — template files
+- `@Archive/` — archived notes
+- `@Trash/` — deleted notes (skip in map)
+
+## Step 3: Analyze Structural Patterns
+
+From the scan, extract and classify:
+
+### Namespace emojis
+Top-level folder emoji prefixes — these are the "workspaces":
+```
+Example findings:
+  🏢 → Work/professional namespace
+  🏡 → Personal namespace
+  🕌 → Spiritual/religious namespace
+  [any emoji] → user-defined namespace
+```
+
+### Folder type emojis
+Common subfolder types (appear across namespaces):
+```
+Example findings:
+  📆 → Plans/goals folders
+  📋 → Lists/reference folders
+  🔬 → Research folders
+  📓 → Notes/journal folders
+```
+
+### File naming conventions
+```
+Example:
+  🏢YYMMDD<workstream_emoji> Title.md  → dated work plans
+  🏡📆YYMMDD Title.md                  → dated personal plans
+  🏡📋 References[Topic].md            → categorized references
+  🏡📋 Lists/filename.md               → list files
+```
+
+### Workstreams (if Plans folders exist)
+Subdirectories inside a Plans folder represent workstreams. List them.
+
+## Step 4: Write 🗺️ Note Map.md
+
+Write the complete map using this template:
+
+```markdown
+# 🗺️ Note Map
+
+> Auto-generated by `/noteplan-manager:discover-structure`
+> Last updated: YYYY-MM-DD HH:MM
+> NotePlan root: ~/Library/Containers/co.noteplan.NotePlan3/...
+
+## NotePlan Root
+
+- **Notes:** `$NOTEPLAN_ROOT/Notes/`
+- **Calendar:** `$NOTEPLAN_ROOT/Calendar/`
+- **Templates:** `$NOTEPLAN_ROOT/Notes/@Templates/`
+
+---
+
+## Top-Level Structure
+
+| Namespace | Folder | Type | Files | Subfolders |
+|---|---|---|---|---|
+| 🏢 | 🏢 WorkspaceName | Work | 0 | 3 |
+| 🏡 | 🏡 PersonalName | Personal | 0 | 4 |
+| 🕌 | 🕌 SpiritualName | Spiritual | 12 | 0 |
+
+---
+
+## Namespace: 🏢 [WorkspaceName]
+
+**Path:** `Notes/🏢 WorkspaceName/`
+
+### Subfolders
+
+| Folder | Type emoji | Files | Description |
+|---|---|---|---|
+| 📆 Plans | 📆 | 42 | Work plan files organized by workstream |
+| 🔬 Research | 🔬 | 18 | Research and investigation notes |
+
+### Workstreams (inside 📆 Plans)
+
+| Workstream | Emoji | File count |
+|---|---|---|
+| Development | 🧑🏻‍💻 | 14 |
+| [others discovered] | [emoji] | N |
+
+### File Naming Convention
+
+```
+🏢YYMMDD<workstream_emoji> Title.md
+Example: 🏢260118🧑🏻‍💻 Some Work Task.md
+```
+
+---
+
+## Namespace: 🏡 [PersonalName]
+
+**Path:** `Notes/🏡 PersonalName/`
+
+### Subfolders
+
+| Folder | Type emoji | Files | Description |
+|---|---|---|---|
+| 📆 Plans | 📆 | 28 | Personal plans with Future/Present/Past/Paused structure |
+| 📋 Lists | 📋 | 22 | Reference lists and categorized collections |
+
+### Plan Organization (inside 📆 Plans)
+
+| Status folder | Description |
+|---|---|
+| Future | Plans not yet started |
+| Present | Currently active |
+| Past | Completed |
+| Paused | On hold |
+
+### List Files (inside 📋 Lists)
+
+| File | Purpose |
+|---|---|
+| iPhone.md | iOS shortcut link capture (do not rename) |
+| [others discovered] | [purpose inferred from name] |
+
+### File Naming Convention
+
+```
+🏡[type_emoji]YYMMDD Title.md
+Example: 🏡📆260101 Personal Goal.md
+```
+
+---
+
+## Templates
+
+**Path:** `Notes/@Templates/`
+
+| Template | Purpose |
+|---|---|
+| [discovered templates] | [inferred from name] |
+
+---
+
+## Key Structural Facts
+
+> Skills read this section to understand the vault without hardcoding.
+
+- **Namespace count:** N (🏢, 🏡, etc.)
+- **Work namespace path:** `Notes/🏢 [name]/`
+- **Personal namespace path:** `Notes/🏡 [name]/`
+- **Work plans path:** `Notes/🏢 [name]/📆 [plans-folder]/`
+- **Personal plans path:** `Notes/🏡 [name]/📆 [plans-folder]/`
+- **Personal lists path:** `Notes/🏡 [name]/📋 [lists-folder]/`
+- **Work workstreams:** [emoji] [name], [emoji] [name], ...
+- **Personal plan time folders:** Future, Present, Past, Paused (or: [discovered])
+- **iPhone link file:** `Notes/🏡 [name]/📋 [lists-folder]/iPhone.md`
+- **Work plan template:** `@Templates/[discovered template name]`
+- **Personal plan template:** `@Templates/[discovered template name]`
+```
+
+## Step 5: Diff Detection (Update Mode)
+
+If an existing Note Map is found, compare old vs new:
+
+```
+Structural changes detected since last map:
+
+New folders:
+  + 🏡 Personal/📋 Lists/🏡📋 References[NewTopic].md
+
+Removed folders:
+  - (none)
+
+Changed file counts:
+  📆 Plans/🧑🏻‍💻 Development: 14 → 17 files
+
+Folder renames detected:
+  - (none)
+
+Map is up to date ✓  (or) Map updated with N changes
+```
+
+Ask via `AskUserQuestion` whether to commit the updated map if it changed.
+
+## Safety
+
+- **Never delete or move notes** — this skill is read-only except for writing/updating the map file itself
+- **Git safety**: if `Notes/` is a git repo, run `git status` before and after writing the map
+- The map file itself (`🗺️ Note Map.md`) is a regular NotePlan note and will appear in the app
+
+## How Other Skills Use This File
+
+Skills that need structural context should:
+
+1. **Check if Note Map exists:**
+   ```bash
+   NOTE_MAP="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🗺️ Note Map.md"
+   ```
+
+2. **Read the "Key Structural Facts" section** to get paths without hardcoding
+
+3. **If Note Map is missing**, prompt:
+   ```
+   ⚠️  No 🗺️ Note Map.md found.
+   Run /noteplan-manager:discover-structure first to generate it,
+   or provide the paths manually.
+   ```
+
+4. **If structural discrepancy detected** (e.g. a workstream folder listed in the map no longer exists), report it and offer to update the map
+
+## Example: Reading the Map in a Skill
+
+```python
+# Pseudocode pattern for skills that need structure
+note_map_path = f"{noteplan_root}/Notes/🗺️ Note Map.md"
+
+if not exists(note_map_path):
+    warn("No Note Map found — run discover-structure first")
+    ask_user_to_confirm_paths_manually()
+else:
+    map_content = read(note_map_path)
+    work_plans_path = extract_fact(map_content, "Work plans path")
+    workstreams = extract_fact(map_content, "Work workstreams")
+    personal_lists_path = extract_fact(map_content, "Personal lists path")
+    # Proceed with discovered paths
+```
+
+## Related Skills
+
+- **analyze-structure** — Deep analysis of folder organization and emoji usage patterns
+- **fix-work-emojis** — Uses Note Map for work plans path and workstream list
+- **fix-personal-emojis** — Uses Note Map for personal plans path
+- **fix-plans** — Uses Note Map for both plans paths and workstream structure
+- **sort-iphone-links** — Uses Note Map for personal lists path and reference file list
+- **sync-plan-templates** — Uses Note Map for template names and plans paths
+- **sync-header-emojis** — Uses Note Map for folder hierarchy

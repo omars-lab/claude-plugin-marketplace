@@ -1,4 +1,4 @@
-.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins list-plugins tree install uninstall install-symlinks update update-all update-force version-check version-bump version-init clean verify-installs doctor register
+.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins list-plugins tree install uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register
 
 # Colors for output
 GREEN := \033[0;32m
@@ -16,8 +16,8 @@ help: ## Show this help message
 	@echo "$(YELLOW)Available targets:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
 
-validate: ## Validate marketplace.json structure (via ceg)
-	@ceg marketplace validate $(MARKETPLACE_NAME)
+validate: ## Validate marketplace.json structure
+	@./scripts/cli validate $(MARKETPLACE_NAME)
 
 validate-plugins: ## Validate all plugins against framework standards (local checks)
 	@./scripts/validate-plugins.sh
@@ -30,7 +30,7 @@ validate-plugin: ## Validate a single plugin (PLUGIN=name)
 	@./scripts/validate-plugins.sh $(PLUGIN)
 
 list-plugins: ## List all plugins with status
-	@ceg marketplace plugins $(MARKETPLACE_NAME)
+	@./scripts/cli plugins $(MARKETPLACE_NAME)
 
 tree: ## Display marketplace directory structure
 	@echo "$(BLUE)Directory Structure:$(NC)"
@@ -78,7 +78,7 @@ test-creator: ## Test noteplan-note-creator skills
 	@echo "  $(YELLOW)/noteplan-note-creator:quick-note$(NC)"
 
 test-workflow: ## Test complete plugin lifecycle (uninstall -> install -> update)
-	@ceg marketplace test-workflow $(MARKETPLACE_NAME)
+	@./scripts/cli test-workflow $(MARKETPLACE_NAME)
 
 test-all: ## Run all plugin tests
 	@make --no-print-directory test-discover
@@ -94,17 +94,17 @@ test-all: ## Run all plugin tests
 	@make --no-print-directory test-creator
 
 register: ## Register the marketplace in Claude
-	@ceg marketplace register $(MARKETPLACE_NAME)
+	@./scripts/cli register $(MARKETPLACE_NAME)
 
 install: ## Install all plugins using Claude CLI (non-interactive)
-	@ceg marketplace install $(MARKETPLACE_NAME)
+	@./scripts/cli install $(MARKETPLACE_NAME)
 
 uninstall: ## Uninstall all plugins using Claude CLI (non-interactive)
-	@ceg marketplace uninstall $(MARKETPLACE_NAME)
+	@./scripts/cli uninstall $(MARKETPLACE_NAME)
 
 update: ## Check for changes, bump versions, then update plugins
-	@ceg marketplace version-check $(MARKETPLACE_NAME)
-	@ceg marketplace update $(MARKETPLACE_NAME)
+	@./scripts/cli version-check $(MARKETPLACE_NAME)
+	@./scripts/cli update $(MARKETPLACE_NAME)
 
 install-symlinks: ## Create symlinks for all plugins (legacy method)
 	@echo "$(BLUE)Installing all plugins from $(MARKETPLACE_NAME)...$(NC)"
@@ -112,7 +112,7 @@ install-symlinks: ## Create symlinks for all plugins (legacy method)
 	for plugin in plugins/*/; do \
 		plugin_name=$$(basename $$plugin); \
 		echo "$(YELLOW)Installing $$plugin_name...$(NC)"; \
-		if ceg marketplace install-single $(MARKETPLACE_NAME) $$plugin_name; then \
+		if ./scripts/cli install-single $(MARKETPLACE_NAME) $$plugin_name; then \
 			echo ""; \
 		else \
 			failed=$$((failed + 1)); \
@@ -127,13 +127,13 @@ install-symlinks: ## Create symlinks for all plugins (legacy method)
 	fi
 
 update-force: ## Force update all plugins without version check
-	@ceg marketplace update $(MARKETPLACE_NAME)
+	@./scripts/cli update $(MARKETPLACE_NAME)
 
 update-all: ## Update marketplace and all installed plugins (alias for 'update')
 	@make --no-print-directory update
 
 version-check: ## Check which plugins need version bumps (dry run)
-	@ceg marketplace version-check $(MARKETPLACE_NAME) --dry-run
+	@./scripts/cli version-check $(MARKETPLACE_NAME) --dry-run
 
 version-bump: ## Manually bump a plugin version (PLUGIN=name TYPE=major|minor|patch)
 	@if [ -z "$(PLUGIN)" ] || [ -z "$(TYPE)" ]; then \
@@ -141,33 +141,36 @@ version-bump: ## Manually bump a plugin version (PLUGIN=name TYPE=major|minor|pa
 		echo "$(YELLOW)Example: make version-bump PLUGIN=claude-manager TYPE=minor$(NC)"; \
 		exit 1; \
 	fi
-	@ceg marketplace version-bump $(MARKETPLACE_NAME) $(PLUGIN) $(TYPE) --commit
+	@./scripts/cli version-bump $(MARKETPLACE_NAME) $(PLUGIN) $(TYPE) --commit
+
+version-bump-all: ## Auto-bump all plugins that have changes since last version commit
+	@./scripts/cli version-bump-all $(MARKETPLACE_NAME)
 
 version-init: ## Initialize version tracking for all plugins (one-time setup)
-	@ceg marketplace version-init $(MARKETPLACE_NAME)
+	@./scripts/cli version-init $(MARKETPLACE_NAME)
 
 verify-installs: ## Verify all plugins are correctly installed
-	@ceg marketplace verify $(MARKETPLACE_NAME)
+	@./scripts/cli verify $(MARKETPLACE_NAME)
 
 clean: ## Clean build artifacts and caches
-	@ceg marketplace clean $(MARKETPLACE_NAME)
+	@./scripts/cli clean $(MARKETPLACE_NAME)
 
 noteplan-info: ## Show NotePlan directory information
 	@echo "$(BLUE)NotePlan Directories:$(NC)"
 	@echo ""
 	@echo "$(YELLOW)Notes:$(NC)"
-	@echo "  /Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/"
+	@echo "  $(HOME)/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/"
 	@echo ""
 	@echo "$(YELLOW)Calendar (Daily Files):$(NC)"
-	@echo "  /Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Calendar/"
+	@echo "  $(HOME)/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Calendar/"
 	@echo ""
 	@echo "$(YELLOW)Templates:$(NC)"
-	@echo "  /Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/"
+	@echo "  $(HOME)/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/"
 
 quick-start: ## Quick start guide
-	@ceg marketplace quick-start $(MARKETPLACE_NAME)
+	@./scripts/cli quick-start $(MARKETPLACE_NAME)
 
 doctor: ## Diagnose marketplace and plugin installation issues
-	@ceg marketplace doctor $(MARKETPLACE_NAME)
+	@./scripts/cli doctor $(MARKETPLACE_NAME)
 
 .DEFAULT_GOAL := help

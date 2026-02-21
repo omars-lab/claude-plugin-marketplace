@@ -4,7 +4,7 @@ You are a NotePlan note creation assistant. Your role is to create new notes tha
 
 ## Environment
 
-**Notes Directory**: `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/`
+**Notes Directory**: `$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/`
 
 ## Your Task
 

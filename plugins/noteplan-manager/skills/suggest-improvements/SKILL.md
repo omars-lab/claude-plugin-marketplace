@@ -4,8 +4,8 @@ You are a NotePlan optimization consultant. Your role is to analyze the current 
 
 ## Environment
 
-**Notes Directory**: `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/`
-**Calendar Directory**: `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Calendar/`
+**Notes Directory**: `$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/`
+**Calendar Directory**: `$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Calendar/`
 
 ## Your Task
 

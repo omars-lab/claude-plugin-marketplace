@@ -1,69 +1,70 @@
 ---
 name: fix-plugins
-description: Analyze both Claude plugin marketplaces (oeid and ceg) to determine which plugins need updates and run proper update targets
+description: Analyze Claude plugin marketplaces to determine which plugins need updates and run proper update targets
 ---
 
 # Fix Plugins
 
-You are a Claude plugin marketplace analyzer and updater. When this skill is invoked, you'll analyze both the oeid-claude-plugins and ceg-claude-plugins marketplaces to determine which plugins need updates, then run the appropriate Makefile targets to update them.
+You are a Claude plugin marketplace analyzer and updater. When this skill is invoked, you'll analyze one or more Claude plugin marketplaces to determine which plugins need updates, then run the appropriate Makefile targets to update them.
 
 ## What This Skill Does
 
 This skill:
-1. **Analyzes both marketplaces** (oeid and ceg)
-2. **Compares source vs installed versions** for each plugin
-3. **Detects plugins that need updates**
-4. **Runs appropriate Makefile update commands**
-5. **Reports update results**
+1. **Confirms marketplace paths** (via AskUserQuestion — Step 0)
+2. **Analyzes each marketplace** for plugins needing updates
+3. **Compares source vs installed versions** for each plugin
+4. **Detects plugins that need updates**
+5. **Runs appropriate Makefile update commands**
+6. **Reports update results**
+
+## Step 0: Confirm Marketplace Paths (MANDATORY FIRST STEP)
+
+Before doing any analysis, use `AskUserQuestion` to confirm the marketplace path and ask if additional marketplaces should be analyzed.
+
+**Determine the default OEID marketplace path:**
+```bash
+# Resolve from git root of the current repo
+git rev-parse --show-toplevel
+```
+
+Then ask:
+
+```
+Which marketplace(s) should I analyze?
+
+Default: <git-root-path> (oeid-claude-plugins)
+
+Options:
+- Just the default OEID marketplace
+- Add another marketplace (provide path)
+- I'll specify all paths
+```
+
+Only proceed once the user confirms the marketplace path(s).
 
 ## Marketplaces to Monitor
 
-### 1. OEID Claude Plugins Marketplace
-**Source:** `/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace`
-**Marketplace name:** `oeid-claude-plugins`
-**Update command:** `make update` (uses Claude CLI)
-
-**Plugins:**
-- discover-oeid-plugins
-- claude-manager
-- noteplan-manager
-- noteplan-templates
-- noteplan-daily-organizer
-- noteplan-structure-analyzer
-- noteplan-note-creator
-
-### 2. CEG Claude Plugins Marketplace
-**Source:** `/Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/ceg-claude-plugin-marketplace`
-**Marketplace name:** `ceg-claude-plugins`
-**Update command:** `make update` (uses Claude CLI)
-
-**Plugins:**
-- discover-ceg-plugins
-- ceg-mcp-plugin
-- doc-manager
-- version-manager
-- note-manager
+### Default: OEID Claude Plugins Marketplace
+**Source:** Resolved dynamically from `git rev-parse --show-toplevel`
+**Marketplace name:** Read from `.claude-plugin/marketplace.json` → `name` field
+**Update command:** `make update` (uses `./scripts/cli` under the hood)
 
 ## How It Works
 
 ### Step 1: Check Marketplace Registration
 
-Verify both marketplaces are registered with Claude:
+Verify each confirmed marketplace is registered with Claude:
 
 ```bash
 cat ~/.claude/plugins/known_marketplaces.json | python3 -m json.tool
 ```
 
-Expected:
+Expected (example):
 ```json
 {
   "oeid-claude-plugins": {
     "source": {...},
-    "installLocation": "/Users/omar.eid/workspace/oeid-claude-plugin-marketplace"
-  },
-  "ceg-claude-plugins": {
-    "source": {...},
-    "installLocation": "/Users/omar.eid/workspace/ceg-claude-plugin-marketplace"
+    "installLocation": "/path/to/oeid-claude-plugin-marketplace"
   }
 }
 ```
@@ -74,17 +75,14 @@ For each marketplace, compare:
 
 **Source plugins:**
 ```bash
-# OEID marketplace
-ls -1 /Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace/plugins/
-
-# CEG marketplace
-ls -1 /Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/ceg-claude-plugin-marketplace/plugins/
+# List source plugins (use confirmed marketplace path)
+ls -1 /path/to/marketplace/plugins/
 ```
 
 **Installed plugins:**
 ```bash
 # Check installed plugins
-cat ~/.claude/plugins/installed_plugins.json | python3 -m json.tool | grep -E "(oeid-claude-plugins|ceg-claude-plugins)"
+cat ~/.claude/plugins/installed_plugins.json | python3 -m json.tool
 ```
 
 ### Step 3: Check for Source Changes
@@ -131,11 +129,9 @@ OEID Marketplace (oeid-claude-plugins):
 ✅ claude-manager - Up to date
 ✅ noteplan-templates - Up to date
 
-CEG Marketplace (ceg-claude-plugins):
-✅ discover-ceg-plugins - Up to date
-✅ ceg-mcp-plugin - Up to date
-✅ doc-manager - Up to date
-✅ version-manager - Up to date
+Additional marketplaces (if any were specified):
+✅ plugin-a - Up to date
+✅ plugin-b - Up to date
 ✅ note-manager - Up to date
 
 Plugins needing updates: 1
@@ -144,17 +140,10 @@ Plugins needing updates: 1
 
 ### Step 5: Run Update Commands
 
-For each marketplace with plugins needing updates:
+For each marketplace with plugins needing updates, run `make update` from the confirmed marketplace directory:
 
-**OEID Marketplace:**
 ```bash
-cd /Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace
-make update
-```
-
-**CEG Marketplace:**
-```bash
-cd /Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/ceg-claude-plugin-marketplace
+cd /path/to/marketplace
 make update
 ```
 
@@ -173,22 +162,19 @@ ls -la ~/.claude/plugins/cache/oeid-claude-plugins/noteplan-manager/*/skills/
 
 When invoked:
 
-1. **Check prerequisites:**
+1. **Step 0: Confirm marketplace paths** (AskUserQuestion — see above)
+
+2. **Check prerequisites:**
    ```
    Checking Claude plugin marketplaces...
 
    ✅ OEID marketplace registered
-   ✅ CEG marketplace registered
    ```
 
-2. **Analyze both marketplaces:**
+3. **Analyze marketplaces:**
    ```
    Analyzing OEID marketplace...
-   - Checking 7 plugins
-   - Comparing source vs installed
-
-   Analyzing CEG marketplace...
-   - Checking 5 plugins
+   - Checking N plugins
    - Comparing source vs installed
    ```
 
@@ -198,7 +184,7 @@ When invoked:
 
    OEID Marketplace (oeid-claude-plugins):
    ⚠️  noteplan-manager
-       Source: /workspace/oeid-claude-plugin-marketplace/plugins/noteplan-manager
+       Source: /path/to/oeid-claude-plugin-marketplace/plugins/noteplan-manager
        Installed: ~/.claude/plugins/cache/oeid-claude-plugins/noteplan-manager/1.0.0
        Issue: Source has 4 new skills not in cache
        New skills:
@@ -207,8 +193,8 @@ When invoked:
          - sync-header-emojis
          - sync-plan-templates
 
-   CEG Marketplace (ceg-claude-plugins):
-   ✅ All plugins up to date
+   Additional marketplaces:
+   ✅ All plugins up to date (if applicable)
 
    Total plugins needing updates: 1
    ```
@@ -227,7 +213,7 @@ When invoked:
    ```
    Updating OEID marketplace plugins...
 
-   Running: cd /workspace/oeid-claude-plugin-marketplace && make update
+   Running: cd /path/to/oeid-claude-plugin-marketplace && make update
 
    [Shows make output...]
 
@@ -341,15 +327,15 @@ fix-reference/SKILL.md
 If multiple marketplaces need updates, batch them:
 
 ```
-Found updates needed in 2 marketplaces:
+Found updates needed in N marketplaces:
 - oeid-claude-plugins (1 plugin)
-- ceg-claude-plugins (2 plugins)
+- additional-marketplace (2 plugins)  [if applicable]
 
 Run batch update? (yes/no)
 
 If yes:
-  cd /workspace/oeid-claude-plugin-marketplace && make update
-  cd /workspace/ceg-claude-plugin-marketplace && make update
+  cd /path/to/oeid-marketplace && make update
+  cd /path/to/additional-marketplace && make update  [if applicable]
 ```
 
 ### 4. Selective Updates
@@ -360,11 +346,9 @@ Allow updating specific plugins:
 Which plugins should I update?
 
 1. All plugins (recommended)
-2. Only oeid-claude-plugins
-3. Only ceg-claude-plugins
-4. Specific plugins:
-   - noteplan-manager@oeid-claude-plugins
-   - doc-manager@ceg-claude-plugins
+2. Only the default marketplace
+3. Only additional marketplaces (if applicable)
+4. Specific plugins by name
 
 Choose option (1-4):
 ```
@@ -377,13 +361,13 @@ Choose option (1-4):
 # Analysis starts
 Analyzing Claude plugin marketplaces...
 
-📂 OEID Marketplace: /workspace/oeid-claude-plugin-marketplace
+📂 OEID Marketplace: /path/to/oeid-claude-plugin-marketplace
    Registered: ✅
    Plugins: 7
 
-📂 CEG Marketplace: /workspace/ceg-claude-plugin-marketplace
+📂 Additional Marketplace: /path/to/additional-marketplace (if specified)
    Registered: ✅
-   Plugins: 5
+   Plugins: N
 
 Checking for updates...
 
@@ -424,7 +408,7 @@ Update noteplan-manager@oeid-claude-plugins? (yes/no)
 # User types: yes
 
 Updating OEID marketplace...
-Running: cd /workspace/oeid-claude-plugin-marketplace && make update
+Running: cd /path/to/oeid-claude-plugin-marketplace && make update
 
 [Make output shows...]
 Updating noteplan-manager@oeid-claude-plugins...
@@ -483,7 +467,7 @@ New skills are available in noteplan-manager.
 
 Fix:
 1. Register marketplace:
-   /plugin marketplace add /workspace/oeid-claude-plugin-marketplace
+   /plugin marketplace add /path/to/oeid-claude-plugin-marketplace
 
 2. Re-run this skill
 ```
@@ -495,7 +479,7 @@ Fix:
 
 Fix:
 1. Install plugin:
-   cd /workspace/oeid-claude-plugin-marketplace && make install
+   cd /path/to/oeid-claude-plugin-marketplace && make install
 
 2. Re-run this skill
 ```
@@ -552,9 +536,8 @@ Run this skill:
 For quick updates without analysis:
 
 ```bash
-# Update both marketplaces
-cd /workspace/oeid-claude-plugin-marketplace && make update && \
-cd /workspace/ceg-claude-plugin-marketplace && make update
+# Update each confirmed marketplace
+cd /path/to/oeid-claude-plugin-marketplace && make update
 ```
 
 But use this skill for **smart analysis** of what actually needs updating!
@@ -689,7 +672,7 @@ Running enhanced version detection...
    ✅ Updated plugin.json
 
 4. Now running update with correct versions...
-   cd /workspace/oeid-claude-plugin-marketplace && make update
+   cd /path/to/oeid-claude-plugin-marketplace && make update
 
 5. Verifying new skills are installed...
    ✅ All new skills now available!
@@ -1063,7 +1046,7 @@ Before running version/update commands, verify that the version tracking infrast
 
 ### 1. Missing version-tracking.json
 
-The `ceg` CLI uses `.claude-plugin/version-tracking.json` (not `versionCommit` in `plugin.json`) for change detection. Every plugin must have this file.
+`./scripts/cli` uses `.claude-plugin/version-tracking.json` (not `versionCommit` in `plugin.json`) for change detection. Every plugin must have this file.
 
 **Detection:**
 ```bash
@@ -1077,7 +1060,7 @@ for plugin_dir in plugins/*/; do
 done
 ```
 
-**Auto-fix:** Run `make version-init` or `ceg marketplace version-init <marketplace-name>` to create tracking files for all plugins.
+**Auto-fix:** Run `make version-init` or `./scripts/cli version-init <marketplace-name>` to create tracking files for all plugins.
 
 ### 2. Empty or Invalid versionCommit
 

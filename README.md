@@ -1,14 +1,29 @@
-# 🎯 OEID Claude Plugin Marketplace
+# OEID Claude Plugin Marketplace
 
 Personal plugin marketplace for NotePlan management and productivity tools.
 
+## Quick Start
+
+```bash
+git clone https://github.com/omareid/oeid-claude-plugin-marketplace ~/workspace/oeid-claude-plugin-marketplace
+cd ~/workspace/oeid-claude-plugin-marketplace
+make register   # Add marketplace to Claude
+make install    # Install all plugins
+```
+
+Then in Claude Code:
+```
+/discover-oeid-plugins:explore-plugins   # See what's installed
+/noteplan-manager:introduce              # Explore NotePlan skills
+```
+
 ## Overview
 
-This marketplace contains custom Claude Code plugins designed to enhance NotePlan productivity through intelligent automation, organization, and content management.
+This marketplace contains custom Claude Code plugins designed to enhance productivity through intelligent automation, organization, and content management.
 
 ## Available Plugins
 
-### 🚀 Getting Started
+### Getting Started
 
 #### discover-oeid-plugins
 Discover available personal plugins and see what's installed.
@@ -20,15 +35,15 @@ Discover available personal plugins and see what's installed.
 
 ---
 
-### ⚙️ Development Tools
+### Development Tools
 
-#### claude-permission-config-manager
+#### config-manager
 Manage Claude Code permissions and working directories for marketplace development.
 
 **Skills:**
-- `/claude-permission-config-manager:manage-permissions` - Manage bash command permissions
-- `/claude-permission-config-manager:setup-working-dirs` - Configure working directories
-- `/claude-permission-config-manager:setup-dev-env` - Complete dev environment setup
+- `/config-manager:manage-permissions` - Manage bash command permissions
+- `/config-manager:setup-working-dirs` - Configure working directories
+- `/config-manager:setup-dev-env` - Complete dev environment setup
 
 **Use Case:** Eliminating permission prompts for common bash commands and directories during marketplace development and NotePlan workflows.
 
@@ -37,56 +52,56 @@ Manage Claude Code permissions and working directories for marketplace developme
 
 ---
 
-### 📝 NotePlan Management Suite
+### NotePlan Management Suite
 
-#### noteplan-templates
-Maintain and manage NotePlan templates in the @Templates directory.
+#### noteplan-manager
+Complete NotePlan management: templates, organization, analysis, note creation.
 
-**Skills:**
-- `/noteplan-templates:manage-templates` - Edit and maintain templates
-- `/noteplan-templates:list-templates` - List all available templates
-- `/noteplan-templates:create-template` - Create new templates
+**Skills:** Run `/noteplan-manager:introduce` to see all skills.
 
-**Use Case:** Template creation, editing, and organization.
-
-**Templates Location:** `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/`
+**Use Case:** Everything NotePlan — templates, daily organization, structure analysis, note creation.
 
 ---
 
-#### noteplan-daily-organizer
-Move content from daily files to relevant notes with folder and emoji awareness.
+#### servicenow-manager
+ServiceNow-specific Tampermonkey userscripts and automation patterns.
 
-**Skills:**
-- `/noteplan-daily-organizer:organize-daily` - Organize daily notes intelligently
-- `/noteplan-daily-organizer:move-content` - Move specific content between notes
-
-**Use Case:** Daily note processing, content organization, and task migration.
-
-**Daily Files:** `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Calendar/`
-
-**Notes:** `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/`
+**Skills:** Run `/servicenow-manager:introduce` to see all skills.
 
 ---
 
-#### noteplan-structure-analyzer
-Analyze NotePlan folder structure, emoji usage, and suggest enhancements.
+#### script-manager
+Create and manage Tampermonkey userscripts with best practices.
 
-**Skills:**
-- `/noteplan-structure-analyzer:analyze-structure` - Comprehensive structure analysis
-- `/noteplan-structure-analyzer:suggest-improvements` - Actionable improvement recommendations
-
-**Use Case:** Understanding your NotePlan organization and optimizing structure.
+**Skills:** Run `/script-manager:introduce` to see all skills.
 
 ---
 
-#### noteplan-note-creator
-Create new NotePlan notes following existing conventions and patterns.
+#### claude-manager
+Manage Claude skills and CLAUDE.md files — create, update, and organize skills across plugins.
 
-**Skills:**
-- `/noteplan-note-creator:create-note` - Create structured notes with full context
-- `/noteplan-note-creator:quick-note` - Rapidly create simple notes
+**Skills:** Run `/claude-manager:introduce` to see all skills.
 
-**Use Case:** Creating new notes that seamlessly integrate with existing organization.
+---
+
+#### spirituality-manager
+Plan and track spiritual practices — Ramadan schedules, Quran memorization, and dua routines.
+
+**Skills:** Run `/spirituality-manager:introduce` to see all skills.
+
+---
+
+#### knowledge-manager
+Extract, map, and query knowledge from notes — Zettelkasten-style atomic notes.
+
+**Skills:** Run `/knowledge-manager:introduce` to see all skills.
+
+---
+
+#### documentation-manager
+Professional documentation management — structure notes, organize docs, ensure scannability.
+
+**Skills:** Run `/documentation-manager:introduce` to see all skills.
 
 ---
 
@@ -95,126 +110,59 @@ Create new NotePlan notes following existing conventions and patterns.
 ### Add the Marketplace
 
 ```bash
-/plugin marketplace add /Users/omar.eid/Library/CloudStorage/OneDrive-ServiceNow/workspace/oeid-claude-plugin-marketplace
+cd ~/workspace/oeid-claude-plugin-marketplace
+make register
+# or:
+./scripts/cli register
 ```
 
 ### Install Plugins
 
-#### Option 1: Individual Installation
-
 ```bash
-# Install discovery plugin (recommended first)
-/plugin install discover-oeid-plugins@oeid-claude-plugins
+# Install all plugins
+make install
 
-# Install development tools
-/plugin install claude-permission-config-manager@oeid-claude-plugins
-
-# Install NotePlan plugins
-/plugin install noteplan-templates@oeid-claude-plugins
-/plugin install noteplan-daily-organizer@oeid-claude-plugins
-/plugin install noteplan-structure-analyzer@oeid-claude-plugins
-/plugin install noteplan-note-creator@oeid-claude-plugins
+# Install a single plugin
+./scripts/cli install-single oeid-claude-plugins <plugin-name>
 ```
 
-#### Option 2: Install All at Once
+### Verify Installation
 
 ```bash
-cd /path/to/oeid-claude-plugin-marketplace
-make install-all
-```
-
-#### Verify Installation
-
-```bash
-# Verify all plugins installed correctly
 make verify-installs
-
-# List plugins with status
 make list-plugins
-```
-
-### List Available Plugins
-
-```bash
-/plugin list
-```
-
-Or use the discovery skill:
-```bash
-/discover-oeid-plugins:explore-plugins
 ```
 
 ### Update Plugins
 
 ```bash
-# Update marketplace
-/plugin marketplace update
-
-# Update specific plugin
-/plugin update <plugin-name>
+make update
 ```
 
-## Quick Start Guide
+## Make Commands
 
-1. **Add and install the discovery plugin** to explore available plugins
-2. **Install claude-permission-config-manager** and run `/claude-permission-config-manager:setup-dev-env` to configure your development environment
-3. **Install noteplan-structure-analyzer** to understand your current organization
-4. **Install noteplan-templates** to manage your templates
-5. **Install noteplan-daily-organizer** for daily note processing
-6. **Install noteplan-note-creator** for creating new notes
-
-## Common Workflows
-
-### Development Environment Setup
 ```bash
-# Complete dev environment setup (permissions + directories)
-/claude-permission-config-manager:setup-dev-env
+# Installation
+make install          # Install all plugins
+make verify-installs  # Verify installations succeeded
+make list-plugins     # List plugins with status
 
-# Add specific bash permissions
-/claude-permission-config-manager:manage-permissions
+# Testing
+make test-all         # Test all plugins
+make validate         # Validate marketplace structure
 
-# Configure working directories
-/claude-permission-config-manager:setup-working-dirs
+# Maintenance
+make update           # Check versions + update all plugins
+make version-check    # Dry run: show what would change
+make version-init     # Initialize version tracking (one-time)
+make clean            # Clean build artifacts
+make doctor           # Diagnose installation issues
+
+# Help
+make help             # Show all available commands
 ```
 
-### Daily Note Processing
-```bash
-# Organize today's daily note
-/noteplan-daily-organizer:organize-daily
-
-# Move specific content
-/noteplan-daily-organizer:move-content
-```
-
-### Template Management
-```bash
-# List all templates
-/noteplan-templates:list-templates
-
-# Create a new template
-/noteplan-templates:create-template
-
-# Edit templates
-/noteplan-templates:manage-templates
-```
-
-### Structure Analysis
-```bash
-# Analyze your NotePlan organization
-/noteplan-structure-analyzer:analyze-structure
-
-# Get improvement suggestions
-/noteplan-structure-analyzer:suggest-improvements
-```
-
-### Note Creation
-```bash
-# Create a structured note
-/noteplan-note-creator:create-note
-
-# Quick note capture
-/noteplan-note-creator:quick-note
-```
+For detailed documentation on version management, see [docs/VERSION-MANAGEMENT.md](docs/VERSION-MANAGEMENT.md).
 
 ## Plugin Development
 
@@ -227,56 +175,42 @@ oeid-claude-plugin-marketplace/
 ├── plugins/
 │   └── <plugin-name>/
 │       ├── .claude-plugin/
-│       │   └── plugin.json       # Plugin manifest
+│       │   ├── plugin.json       # Plugin manifest
+│       │   └── version-tracking.json
 │       ├── skills/
 │       │   └── <skill-name>/
 │       │       └── SKILL.md      # Skill definition
 │       └── README.md             # Plugin documentation
+├── scripts/
+│   └── cli                       # Marketplace management CLI
 ├── docs/                         # Documentation
 ├── Makefile                      # Build and test targets
 └── README.md                     # This file
 ```
 
-### Make Commands
+### Creating a New Plugin
 
 ```bash
-# Installation
-make install-all        # Install all plugins
-make verify-installs    # Verify installations succeeded
-make list-plugins       # List plugins with status
-
-# Testing
-make test-all          # Test all plugins
-make test-discover     # Test specific plugin
-make test-templates
-make test-organizer
-make test-analyzer
-make test-creator
-
-# Maintenance
-make validate          # Validate marketplace structure
-make update-all        # Update all installed plugins
-make clean            # Clean build artifacts
-
-# Help
-make help             # Show all available commands
+/claude-manager:create-plugin
 ```
-
-For detailed documentation on Makefile commands, scripts, and automation, see:
-- **[Makefile Guide](docs/guides/MAKEFILE_GUIDE.md)** - Comprehensive guide to using Make
-- **[Quick Start Guide](docs/getting-started/QUICK_START.md)** - Get started quickly
 
 ## NotePlan Paths Reference
 
-- **Notes**: `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/`
-- **Calendar/Daily**: `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Calendar/`
-- **Templates**: `/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/@Templates/`
+NotePlan data lives at:
+
+```
+~/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/
+  Notes/        # Notes
+  Calendar/     # Daily files
+  Notes/@Templates/  # Templates
+```
+
+Run `make noteplan-info` to print the full paths for your user.
 
 ## Support
 
-For issues or suggestions:
-- Open an issue in the repository
-- Contact: omar.eid@servicenow.com
+For issues or suggestions, open an issue in the repository:
+https://github.com/omareid/oeid-claude-plugin-marketplace/issues
 
 ## License
 
@@ -286,4 +220,3 @@ MIT License - See individual plugin licenses for details.
 
 **Version**: 1.0.0
 **Author**: Omar Eid
-**Last Updated**: 2026-01-29

@@ -18,7 +18,7 @@ When invoked, present the plugin's capabilities organized by what the user might
 ### Step 1: Welcome and Context
 
 ```
-NotePlan Manager - 16 skills for managing your entire NotePlan workflow.
+NotePlan Manager - 17 skills for managing your entire NotePlan workflow.
 
 I can help with:
 - Organizing daily notes and moving content between notes
@@ -128,10 +128,13 @@ Based on their selection, explain the relevant skills in detail with usage examp
 
 | Skill | Usage | Purpose |
 |---|---|---|
+| `discover-structure` | `/noteplan-manager:discover-structure` | Scan Notes directory and write `🗺️ Note Map.md` — the structural reference used by all maintenance skills |
 | `analyze-structure` | `/noteplan-manager:analyze-structure` | Map your NotePlan structure, detect patterns, identify conventions |
 | `suggest-improvements` | `/noteplan-manager:suggest-improvements` | Get actionable recommendations for organization and workflow |
 
-**When to use:** Understanding your current setup, finding inconsistencies, optimizing your system.
+**When to use:** First-time setup (`discover-structure`), understanding your current setup, finding inconsistencies, optimizing your system.
+
+**Note Map:** `discover-structure` writes `🗺️ Note Map.md` to your Notes root. Maintenance skills (`fix-work-emojis`, `fix-personal-emojis`, `fix-plans`, `sort-iphone-links`, `sync-plan-templates`, `sync-header-emojis`) read from this file to understand your folder structure without hardcoded assumptions. Run it once after setup, then re-run whenever you reorganize your vault.
 
 ### Template Management
 
@@ -146,6 +149,9 @@ Based on their selection, explain the relevant skills in detail with usage examp
 Skills in this plugin are interrelated - they share conventions, reference each other, and form natural workflows:
 
 ```
+              discover-structure  ←  run first, generates 🗺️ Note Map.md
+                     |
+                     ↓ (all maintenance skills read Note Map)
                     analyze-structure
                           |
                    suggest-improvements
@@ -161,12 +167,15 @@ Skills in this plugin are interrelated - they share conventions, reference each 
                                    sync-plan-templates
                                           |
                                     fix-reference
+                                          |
+                                  sort-iphone-links
 ```
 
 **Shared conventions:**
 - All maintenance skills use git safety (pre-commit, diff validation, checkpoint commits)
 - All skills use `TaskCreate`/`TaskUpdate` for progress tracking
 - All skills use `AskUserQuestion` for user decisions
+- `discover-structure` writes `🗺️ Note Map.md` — maintenance skills read it for folder paths and workstream lists
 - Naming conventions defined in `fix-filenames` are referenced by `create-note` and other creation skills
 - Emoji conventions from `fix-*-emojis` are shared with `sync-*` skills
 
@@ -203,6 +212,9 @@ Key directories:
 
 **"Emojis are displaying wrong in my plans"**
 -> `/noteplan-manager:fix-work-emojis` or `/noteplan-manager:fix-personal-emojis`
+
+**"I'm setting up on a new machine / first time using these skills"**
+-> `/noteplan-manager:discover-structure` (generates `🗺️ Note Map.md` so all other skills work without hardcoded assumptions)
 
 **"I want to understand how my notes are organized"**
 -> `/noteplan-manager:analyze-structure`

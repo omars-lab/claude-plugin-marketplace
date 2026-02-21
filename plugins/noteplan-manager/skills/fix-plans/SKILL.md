@@ -17,6 +17,19 @@ This skill:
 5. **Fixes structure** (frontmatter, headers, self-referencing todos, emoji consistency, bullet normalization)
 6. **Validates changes** via git diff to ensure no todo content was modified
 
+## Note Map Integration
+
+Before running, check for `🗺️ Note Map.md` to get structure context:
+
+```bash
+NOTE_MAP="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🗺️ Note Map.md"
+```
+
+- **If the map exists**: read the "Key Structural Facts" section to get paths, folder names, and workstream/reference-file lists. Use those discovered values instead of the hardcoded defaults below.
+- **If the map is missing**: proceed with the defaults below, then warn:
+  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:discover-structure` to generate it and make this skill structure-aware.
+- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:discover-structure`.
+
 ## Scope Selection
 
 When invoked, first ask the user which directories to process using `AskUserQuestion`:
@@ -396,12 +409,12 @@ Store the selected directories for subsequent tasks.
 
 **Work plans directory:**
 ```
-/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans
+$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans
 ```
 
 **Personal plans directory:**
 ```
-/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans
+$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans
 ```
 
 **Complete Task #1 and start Task #2.**
@@ -416,7 +429,7 @@ TaskUpdate({ taskId: "2", status: "in_progress" })
 Auto-commit all pending changes:
 
 ```bash
-cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+cd "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
 
 # Check current state
 git status --short
@@ -452,10 +465,10 @@ List all `.md` files in selected plan directories:
 
 ```bash
 # For work plans
-find "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans" -name "*.md" -type f
+find "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/📆 Plans" -name "*.md" -type f
 
 # For personal plans
-find "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans" -name "*.md" -type f
+find "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans" -name "*.md" -type f
 ```
 
 **For each file:**
@@ -707,7 +720,7 @@ TaskUpdate({ taskId: "9", status: "in_progress" })
 **CRITICAL: Validate ALL changes since pre-commit:**
 
 ```bash
-cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+cd "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
 
 # Show all changes since checkpoint
 git diff $CHECKPOINT_COMMIT --stat
@@ -762,7 +775,7 @@ TaskUpdate({ taskId: "10", status: "in_progress" })
 **Only proceed if Task #9 validation passed.**
 
 ```bash
-cd "/Users/omar.eid/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
+cd "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
 
 # Stage all changes
 git add -A
