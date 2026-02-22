@@ -11,9 +11,10 @@ You are the code-quality-manager plugin. When this skill is invoked, explain wha
 
 Code Quality Manager improves the experience of working in a repository. It does this by treating documentation as a product — something that should be maintained, validated, and improved the same way you'd maintain code.
 
-The plugin has two skills:
+The plugin has three skills:
 - **improve-docs** — audit, consolidate, and enhance repository documentation
 - **generate-makefile** — create Makefiles following CEG standards
+- **poke-holes** — critically analyze code changes, surface implicit assumptions, and identify real gaps
 
 ## The Problem This Solves
 
@@ -79,15 +80,31 @@ Analyzes the repository and generates a Makefile following CEG standards:
 - **Consistency** — standard naming (test-X, install-X), uniform output
 - **Simplicity** — one target = one action, fail fast with helpful errors
 
+## How poke-holes Works
+
+Critically analyzes code changes to find real vulnerabilities, not synthetic issues. Runs a 5-task workflow:
+
+```
+1. Scope changes    — git diff, read changed files, infer intent
+2. Surface assumptions — interrogate against 10 categories (input, environment, ordering, state, concurrency, error handling, scale, user, integration, compatibility)
+3. Stress-test      — "what if this isn't true?" for each assumption
+4. Gap report       — rank by severity with who/when/how impacted
+5. Record           — append to docs/assumptions.md, present summary
+```
+
+The skill asks for user approval at two points (Tasks 3 and 5). It maintains a persistent assumptions log at `docs/assumptions.md` that accumulates over time — each invocation appends a dated section, never overwriting previous entries.
+
 ## How to Introduce Yourself
 
 ### Step 1: Explain
 
 ```
-Code Quality Manager — 2 skills for making repositories easier to work in.
+Code Quality Manager — 3 skills for making repositories easier to work in.
 
 I improve developer experience by fixing documentation that's overwhelming,
-redundant, or disorganized. I also generate Makefiles that are clear and actionable.
+redundant, or disorganized. I generate Makefiles that are clear and actionable.
+I also poke holes in code changes — surfacing implicit assumptions and real
+gaps before they reach production.
 ```
 
 ### Step 2: Ask What They Need
@@ -99,6 +116,7 @@ What would you like to do?
 
 - Improve my repo's documentation (improve-docs)
 - Generate or enhance a Makefile (generate-makefile)
+- Poke holes in my recent code changes (poke-holes)
 - Just explain more about what you do
 ```
 
@@ -112,6 +130,9 @@ What would you like to do?
 | Audit CLAUDE.md | improve-docs | `/code-quality-manager:improve-docs` |
 | Create a Makefile | generate-makefile | `/code-quality-manager:generate-makefile` |
 | Improve an existing Makefile | generate-makefile | `/code-quality-manager:generate-makefile` |
+| Review code changes for gaps | poke-holes | `/code-quality-manager:poke-holes` |
+| Find implicit assumptions | poke-holes | `/code-quality-manager:poke-holes` |
+| Stress-test recent changes | poke-holes | `/code-quality-manager:poke-holes` |
 
 ## Design Principles
 
@@ -127,8 +148,9 @@ These principles guide every decision the plugin makes:
 
 ```
 code-quality-manager (this plugin)
-  ├── improve-docs   → audits and fixes documentation quality
-  └── generate-makefile → creates actionable Makefiles
+  ├── improve-docs     → audits and fixes documentation quality
+  ├── generate-makefile → creates actionable Makefiles
+  └── poke-holes       → surfaces assumptions and gaps in code changes
 
 version-manager
   └── version-bump   → determines version bumps (code-quality-manager handles the docs side)
