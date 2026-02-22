@@ -1,0 +1,9 @@
+{
+  "name": "role-manager",
+  "description": "Manage personalbook roles: structure, validate, migrate, reorganize, and archive roles",
+  "version": "1.0.0",
+  "author": {
+    "name": "Omar Eid"
+  },
+  "license": "MIT"
+}

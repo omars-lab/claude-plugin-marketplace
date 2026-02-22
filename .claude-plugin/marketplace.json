@@ -104,6 +104,14 @@
       "version": "1.0.0",
       "category": "work",
       "keywords": ["servicenow", "tampermonkey", "userscripts", "browser-automation", "work"]
+    },
+    {
+      "name": "role-manager",
+      "source": "./plugins/role-manager",
+      "description": "Manage personalbook roles: structure, validate, migrate, reorganize, and archive roles",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["roles", "personalbook", "structure", "migrate", "validate", "archive", "organize"]
     }
   ]
 }
