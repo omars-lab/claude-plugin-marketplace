@@ -67,6 +67,16 @@ temp/
 # Node modules (if any scripts use node)
 node_modules/
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.venv/
+venv/
+
 # Build outputs
 dist/
 build/

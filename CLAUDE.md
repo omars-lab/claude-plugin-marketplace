@@ -10,7 +10,7 @@
 
 Each plugin has an `introduce` skill that explains its capabilities:
 
-- `/noteplan-manager:introduce` — NotePlan management (16 skills)
+- `/noteplan-manager:introduce` — NotePlan management (20 skills)
 - `/experiment-manager:introduce` — What-if analysis and experiment ideation (2 skills)
 - `/discover-oeid-plugins:explore-plugins` — See all plugins and installation status
 
@@ -26,3 +26,15 @@ make validate-plugin PLUGIN=experiment-manager  # Validate one plugin
 ```
 
 This checks: plugin.json validity, version-tracking, introduce skill, YAML frontmatter, task management references, AskUserQuestion usage, README size, and marketplace.json registration.
+
+## NotePlan Frontmatter Convention
+
+**Real note files** (plans, meetings, ideas, thoughts, questions — everything outside `@Templates/`) use `---` (triple dash) — standard YAML.
+
+**Template files** (`@Templates/*.md`) have a two-section structure:
+1. **`---` outer block** — NotePlan template metadata (`title`, `type: empty-note`). This is standard YAML consumed by NotePlan itself.
+2. **`--` inner block** — The note frontmatter template containing EJS placeholders (`<%- field %>`). This uses `--` intentionally — it is EJS source that generates frontmatter in the created note, not YAML itself.
+
+When a template is used to create a note, the `--` EJS block is evaluated and the output becomes a `---` frontmatter block in the new note file.
+
+Skills working on **real notes** (`flatten-plans`, `update-plan-status`, `fix-frontmatter`) validate and use `---`. The `fix-frontmatter` skill skips template files' `--` inner blocks (EJS source, not YAML to fix).

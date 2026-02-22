@@ -18,7 +18,7 @@ When invoked, present the plugin's capabilities organized by what the user might
 ### Step 1: Welcome and Context
 
 ```
-NotePlan Manager - 17 skills for managing your entire NotePlan workflow.
+NotePlan Manager - 20 skills for managing your entire NotePlan workflow.
 
 I can help with:
 - Organizing daily notes and moving content between notes
@@ -86,6 +86,9 @@ Based on their selection, explain the relevant skills in detail with usage examp
 
 | Skill | Usage | Purpose |
 |---|---|---|
+| `flatten-plans` | `/noteplan-manager:flatten-plans` | One-time migration: remove Future/Present/Past/Paused folders, move plans into merged workstream folders, migrate status to frontmatter + H1 emoji |
+| `update-plan-status` | `/noteplan-manager:update-plan-status` | Change status of one or more plan files (frontmatter, H1 emoji, filename, self-ref todo, completed date) |
+| `fix-frontmatter` | `/noteplan-manager:fix-frontmatter` | Validate and fix frontmatter across all note types (plans, meetings, questions, ideas, thoughts) using Python tooling with parse → fix → re-validate roundtrip |
 | `fix-plans` | `/noteplan-manager:fix-plans` | Standardize plan file structure, frontmatter, headers, and self-referencing todos |
 | `fix-filenames` | `/noteplan-manager:fix-filenames` | Fix filenames to match `# Title` headings, detect naming issues, resolve conflicts |
 | `fix-work-emojis` | `/noteplan-manager:fix-work-emojis` | Fix emoji encoding in work plan files |
@@ -93,18 +96,23 @@ Based on their selection, explain the relevant skills in detail with usage examp
 | `sync-header-emojis` | `/noteplan-manager:sync-header-emojis` | Sync header titles with parent folder emojis |
 | `sync-plan-templates` | `/noteplan-manager:sync-plan-templates` | Keep plan templates in sync with current workstream/activity emojis |
 
-**When to use:** After NotePlan sync creates duplicates, when emojis display incorrectly, when filenames don't match headings, after reorganizing folders.
+**When to use:** After NotePlan sync creates duplicates, when emojis display incorrectly, when filenames don't match headings, after reorganizing folders, when changing a plan's status.
 
 **Key concept - The Golden Rule:** Filename (minus `.md`) must match the `# Title` heading (minus `# `). The `fix-filenames` skill enforces this.
 
+**One-time migration:** If your personal plans still use Future/Present/Past/Paused folder structure, run `flatten-plans` first to migrate to the flat workstream layout.
+
 **Recommended maintenance workflow:**
 ```
-1. /noteplan-manager:fix-filenames         -- Fix filenames first (broadest impact)
-2. /noteplan-manager:fix-plans             -- Standardize plan structure and frontmatter
-3. /noteplan-manager:fix-work-emojis       -- Fix work plan emoji encoding
-4. /noteplan-manager:fix-personal-emojis   -- Fix personal plan emoji encoding
-5. /noteplan-manager:sync-header-emojis    -- Sync headers with folder emojis
-6. /noteplan-manager:sync-plan-templates   -- Update templates with current categories
+1. /noteplan-manager:flatten-plans         -- (one-time) Migrate to flat structure
+2. /noteplan-manager:fix-filenames         -- Fix filenames first (broadest impact)
+3. /noteplan-manager:fix-frontmatter       -- Fix frontmatter across all note types
+4. /noteplan-manager:fix-plans             -- Standardize plan structure and frontmatter
+5. /noteplan-manager:update-plan-status    -- Change status of specific plans
+6. /noteplan-manager:fix-work-emojis       -- Fix work plan emoji encoding
+7. /noteplan-manager:fix-personal-emojis   -- Fix personal plan emoji encoding
+8. /noteplan-manager:sync-header-emojis    -- Sync headers with folder emojis
+9. /noteplan-manager:sync-plan-templates   -- Update templates with current categories
 ```
 
 ### Reference Management
@@ -166,6 +174,10 @@ Skills in this plugin are interrelated - they share conventions, reference each 
                                           |
                                    sync-plan-templates
                                           |
+                                    fix-plans ← flatten-plans (one-time)
+                                          |
+                                 update-plan-status
+                                          |
                                     fix-reference
                                           |
                                   sort-iphone-links
@@ -203,8 +215,17 @@ Key directories:
 **"My filenames are messy / NotePlan created duplicates"**
 -> `/noteplan-manager:fix-filenames`
 
+**"My notes have missing or broken frontmatter (any note type)"**
+-> `/noteplan-manager:fix-frontmatter`
+
 **"My plan files have missing/old frontmatter or broken headers"**
 -> `/noteplan-manager:fix-plans`
+
+**"I need to change a plan from Future to Started (or any status change)"**
+-> `/noteplan-manager:update-plan-status`
+
+**"My personal plans still use Future/Present/Past folder structure"**
+-> `/noteplan-manager:flatten-plans` (one-time migration to flat workstream layout)
 
 **"I saved a bunch of links and need to organize them"**
 -> `/noteplan-manager:fix-reference` (within a single reference file)

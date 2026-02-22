@@ -49,13 +49,13 @@ Which plan directories should I fix?
 From template `@Templates/🏢📆 Work Plan.md`:
 
 ```yaml
---
+---
 doctype: 📆
 status: <status-emoji>
 started: <YYYY-MM-DD>
 namespace: 🏢
 workstream: <workstream-emoji>
---
+---
 ```
 
 **Required fields:** `doctype`, `status`, `started`, `namespace`, `workstream`
@@ -65,13 +65,13 @@ workstream: <workstream-emoji>
 From template `@Templates/🏡📆 Personal Plan.md`:
 
 ```yaml
---
+---
 doctype: 📆
 status: <status-emoji>
 started: <YYMMDD>
 namespace: 🏡
 plantype: <plantype-emoji>
---
+---
 ```
 
 **Required fields:** `doctype`, `status`, `started`, `namespace`, `plantype`
@@ -149,7 +149,7 @@ Example: `🏡260115⚙️ Automating Home Setup.md`
 
 Every plan file should have:
 
-1. **Frontmatter block** with all required fields (using `--` delimiters, not `---`)
+1. **Frontmatter block** with all required fields (using `---` delimiters)
 2. **Title heading** as `# 🏢YYMMDD<emoji> Title` (only ONE `#` heading in the file)
 3. **Self-referencing todo** immediately after the title: `* [ ] Is [[<title>]] done? >YYYY-WN`
 4. **Sub-sections** using `##` (never `#` for sub-sections)
@@ -167,6 +167,7 @@ When scanning files, classify each issue:
 | `HEADER_HIERARCHY` | Sub-sections use `#` instead of `##` | `# Tasks` should be `## Tasks` |
 | `MISSING_SELF_REF` | No self-referencing todo after title | Missing `* [ ] Is [[title]] done?` line |
 | `EMOJI_MISMATCH` | Filename emoji doesn't match frontmatter/header | Filename has `🏁` but frontmatter says `workstream: 🎯` |
+| `STATUS_EMOJI_MISSING` | Personal plan H1 title is missing status emoji as 2nd emoji | `# 🏡260117👨🏻‍💻 Title` should be `# 🏡🟢260117👨🏻‍💻 Title` |
 | `MIXED_BULLETS` | File uses both `*` and `-` for bullets | Some lines `* item`, others `- item` |
 | `FILENAME_MISMATCH` | Filename doesn't match heading (defer to fix-filenames) | Report only, don't fix |
 | `OK` | File passes all structural checks | No action needed |
@@ -194,12 +195,9 @@ When frontmatter fields are missing, infer from context:
 - Example: parent folder `⚙️ Automating` -> `plantype: ⚙️`
 
 ### `status`
-- Infer from time-period subdirectory if present:
-  - `Present/` or current period -> `🟢`
-  - `Future/` -> `🔮`
-  - `Past/` or `Done/` -> `✅`
-  - `Paused/` -> `🟡`
-- If no time-period folder: default to `🟢` (Started)
+- Read from existing frontmatter `status:` field if present
+- If frontmatter `status:` is missing: check H1 title — if 2nd emoji is a status emoji (`🔮🚦🟢🟡🔴❎✅`), use that
+- If still missing: prompt user — do NOT infer from folder structure (personal plans are now flat; time-period folders no longer exist)
 
 ### `started`
 - Extract from filename date pattern `YYMMDD`
@@ -261,10 +259,10 @@ TaskCreate({
   activeForm: "Presenting findings"
 })
 
-// Task #6: Fix frontmatter
+// Task #6: Fix frontmatter (delegates to fix-frontmatter skill tooling)
 TaskCreate({
   subject: "Fix frontmatter (add/correct fields)",
-  description: "For each file with frontmatter issues (FRONTMATTER_MISSING, FRONTMATTER_OLD_STYLE, FRONTMATTER_INCOMPLETE):\n\n- MISSING: Add complete frontmatter block with inferred values using -- delimiters\n- OLD_STYLE: Replace old field names with canonical names, convert values\n- INCOMPLETE: Add missing fields with inferred values\n\nFrontmatter uses -- delimiters (not ---). Place before # Title heading.\n\nDo NOT modify any content below the frontmatter and heading.",
+  description: "Run fix_frontmatter.py from the fix-frontmatter skill on the plan files identified in Task #3.\n\nThe script handles parse → fix → re-validate roundtrip automatically.\n\nActions:\n- MISSING: infers and adds complete frontmatter block with --- delimiters\n- OLD_STYLE: replaces old field names with canonical names\n- INCOMPLETE: adds missing fields using inference rules\n\nSurface any `unfixable` fields to the user before proceeding to Task #7.\n\nCross-reference: Frontmatter fixes are powered by `fix-frontmatter` skill tooling.\n\nFrontmatter uses --- delimiters. Place before # Title heading.\n\nDo NOT modify any content below the frontmatter and heading.",
   activeForm: "Fixing frontmatter"
 })
 
@@ -417,6 +415,8 @@ $HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/
 $HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏡 Personal/🏡📆 Plans
 ```
 
+**Note:** After running `flatten-plans`, personal plans are organized in flat workstream folders directly under `🏡📆 Plans/` — there are no longer Future/, Present/, Past/, or Paused/ subfolders.
+
 **Complete Task #1 and start Task #2.**
 
 ### **Step 2 (Task #2): Pre-commit Pending Changes**
@@ -473,7 +473,7 @@ find "$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Su
 
 **For each file:**
 1. Read the file content
-2. Extract frontmatter (between `--` delimiters)
+2. Extract frontmatter (between `---` delimiters)
 3. Extract `# Title` heading
 4. Determine parent folder (workstream/plantype context)
 5. Record: `{filepath, filename, frontmatter, heading, parent_folder, folder_context}`
@@ -508,7 +508,7 @@ TaskUpdate({ taskId: "4", status: "in_progress" })
 For each scanned file, check:
 
 1. **Frontmatter presence and completeness**
-   - Is there a `--` delimited frontmatter block?
+   - Is there a `---` delimited frontmatter block?
    - Are all required fields present? (`doctype`, `status`, `started`, `namespace`, `workstream`/`plantype`)
    - Are there old-style fields? (`Project:`, `Created:`, etc.)
 
@@ -522,6 +522,7 @@ For each scanned file, check:
 4. **Emoji consistency**
    - Does filename emoji match frontmatter field?
    - Does filename emoji match heading emoji?
+   - For personal plans: does H1 title have a status emoji as the 2nd emoji (one of `🔮🚦🟢🟡🔴❎✅`)? Classify missing status emoji as `STATUS_EMOJI_MISSING` — report to user but defer fix to `update-plan-status` skill.
 
 5. **Bullet consistency**
    - Are bullets uniformly `*` or `-`?
@@ -627,43 +628,34 @@ TaskUpdate({ taskId: "7", status: "in_progress" })
 TaskUpdate({ taskId: "8", status: "in_progress" })
 ```
 
-#### Task #6: Fix Frontmatter
+#### Task #6: Fix Frontmatter (via fix-frontmatter skill tooling)
 
-For each file with frontmatter issues:
+Run `fix_frontmatter.py` from the `fix-frontmatter` skill on the plan files identified in Task #3. The script handles parse → fix → re-validate automatically.
 
-**FRONTMATTER_MISSING:** Add complete frontmatter block before `# Title`:
-```
---
-doctype: 📆
-status: 🟢
-started: 2026-01-18
-namespace: 🏢
-workstream: 🏁
---
-# 🏢260118🏁 Title
+```bash
+SCRIPTS_DIR="$HOME/.claude/plugins/noteplan-manager/skills/fix-frontmatter/scripts"
+
+# Fix all plan files in scope (example: both directories)
+python3 "$SCRIPTS_DIR/fix_frontmatter.py" "$WORK_PLANS" --recursive --format json
+python3 "$SCRIPTS_DIR/fix_frontmatter.py" "$PERSONAL_PLANS" --recursive --format json
 ```
 
-**FRONTMATTER_OLD_STYLE:** Replace old fields with canonical fields:
-```
-Before:
---
-Project: Onboarding
-Created: 2026-01-18
---
+The script handles:
+- **FRONTMATTER_MISSING**: Adds complete `---`-delimited frontmatter with inferred values
+- **FRONTMATTER_OLD_STYLE**: Replaces old field names with canonical names
+- **FRONTMATTER_INCOMPLETE**: Adds missing fields using inference rules
 
-After:
---
-doctype: 📆
-status: 🟢
-started: 2026-01-18
-namespace: 🏢
-workstream: 🏁
---
+**Surface any `unfixable` fields** from the JSON output to the user before proceeding to Task #7. These are fields that could not be inferred automatically and need manual input.
+
+Example output parsing:
+```json
+[{"file": "...", "changes": [...], "remaining_issues": [
+  {"type": "missing_field", "field": "status",
+   "reason": "cannot infer — no H1 emoji found"}
+]}]
 ```
 
-**FRONTMATTER_INCOMPLETE:** Add missing fields to existing block.
-
-Use the Edit tool for all modifications. Do NOT modify content below frontmatter and heading.
+Do NOT modify content below frontmatter and heading.
 
 #### Task #7: Fix Headers and Self-Referencing Todo
 
@@ -728,7 +720,7 @@ git diff $CHECKPOINT_COMMIT
 ```
 
 **Verify ONLY these types of changes occurred:**
-- Frontmatter block added or fields changed (within `--` delimiters)
+- Frontmatter block added or fields changed (within `---` delimiters)
 - Header level changes (`#` -> `##` for sub-sections only)
 - New self-referencing todo lines added (entirely new lines)
 - Bullet character swaps (`*` <-> `-`)
@@ -832,7 +824,7 @@ All tasks completed!
 - **Diff validation**: Always validate git diff before committing - only structural changes should appear
 - **User approval**: Always present proposed changes and get explicit approval before executing
 - **Filename deference**: Report filename mismatches but defer actual renames to fix-filenames skill
-- **Frontmatter delimiters**: NotePlan uses `--` (double dash) not `---` (triple dash) for frontmatter
+- **Frontmatter delimiters**: Plan files use `---` (triple dash) for frontmatter
 - **Self-ref format**: Self-referencing todo uses `* [ ] Is [[title]] done? >YYYY-WN` format exactly
 - **One # heading**: Only the title uses `#`, all sub-sections must use `##` or deeper
 
@@ -878,6 +870,8 @@ Commit created: a1b2c3d
 ## Related Skills
 
 - **fix-filenames** - Fix filenames to match heading conventions (handles FILENAME_MISMATCH issues reported by this skill)
+- **update-plan-status** - Change plan status (frontmatter + H1 emoji + filename rename); handles STATUS_EMOJI_MISSING issues reported by this skill
+- **flatten-plans** - One-time migration from Future/Present/Past/Paused folder structure to flat workstream layout
 - **fix-work-emojis** - Fix emoji encoding in work plan files
 - **fix-personal-emojis** - Fix emoji encoding in personal plan files
 - **sync-header-emojis** - Sync header titles with parent folder emojis
