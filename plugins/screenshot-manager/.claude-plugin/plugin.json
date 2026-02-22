@@ -1,0 +1,9 @@
+{
+  "name": "screenshot-manager",
+  "description": "Organize screenshots into chronologically sortable directories and group related content using macOS OCR",
+  "version": "1.0.0",
+  "author": {
+    "name": "Omar Eid"
+  },
+  "license": "MIT"
+}

@@ -27,6 +27,17 @@ make validate-plugin PLUGIN=experiment-manager  # Validate one plugin
 
 This checks: plugin.json validity, version-tracking, introduce skill, YAML frontmatter, task management references, AskUserQuestion usage, README size, and marketplace.json registration.
 
+## Installation
+
+Always use the Makefile for installing plugins:
+
+```bash
+make install    # Install all plugins
+make update     # Check for changes, bump versions, then update
+```
+
+**Never** manually create symlinks to `~/.claude/plugins/` or copy files there by hand. The Makefile handles caching, version tracking, and `installed_plugins.json` correctly. Manual symlinks bypass all of that and will cause version drift or conflicts.
+
 ## NotePlan Frontmatter Convention
 
 **Real note files** (plans, meetings, ideas, thoughts, questions — everything outside `@Templates/`) use `---` (triple dash) — standard YAML.

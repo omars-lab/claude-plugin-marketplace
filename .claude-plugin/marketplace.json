@@ -112,6 +112,14 @@
       "version": "1.0.0",
       "category": "productivity",
       "keywords": ["roles", "personalbook", "structure", "migrate", "validate", "archive", "organize"]
+    },
+    {
+      "name": "screenshot-manager",
+      "source": "./plugins/screenshot-manager",
+      "description": "Organize screenshots: prefix directories with dates for chronological sorting, and group related content using macOS Vision OCR",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["screenshots", "organize", "ocr", "macos", "vision", "chronological", "sort", "group"]
     }
   ]
 }
