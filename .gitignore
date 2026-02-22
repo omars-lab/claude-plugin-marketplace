@@ -4,6 +4,7 @@
 .claude/history/
 .claude/cache/
 .claude/.session-*
+.claude/plans/
 
 # macOS
 .DS_Store
