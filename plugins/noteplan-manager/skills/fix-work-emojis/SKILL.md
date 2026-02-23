@@ -74,17 +74,19 @@ Example: `🏢260118🏁 ServiceNow Onboarding Emails.md`
 
 ## Script: normalize-emojis.py
 
-A standalone script is bundled at `plugins/noteplan-manager/scripts/normalize-emojis.py`.
+A standalone script is bundled under this skill's `scripts/` directory.
 
 ```bash
+SCRIPTS_DIR="$HOME/.claude/plugins/noteplan-manager/skills/fix-work-emojis/scripts"
+
 # Normalize a single file in-place
-python3 plugins/noteplan-manager/scripts/normalize-emojis.py "path/to/file.md"
+python3 "$SCRIPTS_DIR/normalize-emojis.py" "path/to/file.md"
 
 # Dry run — show what would change
-python3 plugins/noteplan-manager/scripts/normalize-emojis.py "path/to/file.md" --dry-run --verbose
+python3 "$SCRIPTS_DIR/normalize-emojis.py" "path/to/file.md" --dry-run --verbose
 
 # Normalize from stdin
-cat file.md | python3 plugins/noteplan-manager/scripts/normalize-emojis.py -
+cat file.md | python3 "$SCRIPTS_DIR/normalize-emojis.py" -
 ```
 
 Use this when Claude needs to normalize a batch of files programmatically rather than processing them line-by-line.

@@ -90,14 +90,16 @@ Example: `🏡260115⚙️ Automating Home Tasks.md`
 
 ## Script: normalize-emojis.py
 
-A standalone script is bundled at `plugins/noteplan-manager/scripts/normalize-emojis.py`.
+A standalone script is bundled under this skill's `scripts/` directory.
 
 ```bash
+SCRIPTS_DIR="$HOME/.claude/plugins/noteplan-manager/skills/fix-personal-emojis/scripts"
+
 # Normalize a single file in-place
-python3 plugins/noteplan-manager/scripts/normalize-emojis.py "path/to/file.md"
+python3 "$SCRIPTS_DIR/normalize-emojis.py" "path/to/file.md"
 
 # Dry run — show what would change
-python3 plugins/noteplan-manager/scripts/normalize-emojis.py "path/to/file.md" --dry-run --verbose
+python3 "$SCRIPTS_DIR/normalize-emojis.py" "path/to/file.md" --dry-run --verbose
 ```
 
 Use this for batch normalization. The personal emoji fixer deals with complex sequences (skin tones, ZWJ) — NFC normalization handles the encoding layer.
