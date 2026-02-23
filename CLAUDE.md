@@ -38,6 +38,25 @@ make update     # Check for changes, bump versions, then update
 
 **Never** manually create symlinks to `~/.claude/plugins/` or copy files there by hand. The Makefile handles caching, version tracking, and `installed_plugins.json` correctly. Manual symlinks bypass all of that and will cause version drift or conflicts.
 
+## Shell Scripts and Line Endings
+
+Shell scripts (`.sh`) in this repo **must use LF line endings**, not CRLF. OneDrive silently converts LF → CRLF on sync, which causes bash to treat the `\r` as part of each command and fail with `: command not found` errors on every line.
+
+A `.gitattributes` file at the repo root enforces LF for all `.sh` files:
+```
+*.sh text eol=lf
+```
+
+**If a shell script fails with `: command not found` on blank or comment lines**, it has CRLF endings. Fix with:
+```bash
+python3 -c "
+path = 'path/to/script.sh'
+with open(path, 'rb') as f: data = f.read()
+with open(path, 'wb') as f: f.write(data.replace(b'\r\n', b'\n'))
+"
+```
+Then commit the fix and bump the plugin version so the corrected file reaches the install cache.
+
 ## NotePlan Frontmatter Convention
 
 **Real note files** (plans, meetings, ideas, thoughts, questions — everything outside `@Templates/`) use `---` (triple dash) — standard YAML.

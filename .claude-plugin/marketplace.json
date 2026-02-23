@@ -120,6 +120,14 @@
       "version": "1.0.0",
       "category": "productivity",
       "keywords": ["screenshots", "organize", "ocr", "macos", "vision", "chronological", "sort", "group"]
+    },
+    {
+      "name": "architecture-manager",
+      "source": "./plugins/architecture-manager",
+      "description": "Generate and maintain architecture artifacts — ERDs, sequence diagrams, C4 diagrams, deployment diagrams, ADRs, and architecture overviews using PlantUML and code-driven rendering",
+      "version": "1.0.0",
+      "category": "development",
+      "keywords": ["architecture", "diagrams", "erd", "plantuml", "c4", "adr", "sequence", "deployment", "documentation"]
     }
   ]
 }

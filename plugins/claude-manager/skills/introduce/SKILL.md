@@ -77,8 +77,11 @@ Based on selection, explain the relevant skill and how to invoke it.
 | Skill | Usage | Purpose |
 |---|---|---|
 | `claude-md-setup` | `/claude-manager:claude-md-setup` | Generate CLAUDE.md instruction files for any project |
+| `research-claude-md-usage` | `/claude-manager:research-claude-md-usage` | Mine all session logs and CLAUDE.md files to derive general enhancements |
 
-**When to use:** Setting up a new project for Claude Code, or updating an existing CLAUDE.md with new conventions.
+**When to use `claude-md-setup`:** Setting up a new project for Claude Code, or updating an existing CLAUDE.md with new conventions.
+
+**When to use `research-claude-md-usage`:** Before setting up or improving a CLAUDE.md — this skill surfaces patterns from your full history of instructions to Claude, so you don't have to reconstruct your preferences from scratch.
 
 ## Framework Standards
 
@@ -109,6 +112,12 @@ Use `fix-plugins` to audit any plugin against these standards.
 
 **"I'm setting up a new project for Claude Code"**
 → `/claude-manager:claude-md-setup`
+
+**"What patterns have I repeatedly asked Claude to follow across all my projects?"**
+→ `/claude-manager:research-claude-md-usage`
+
+**"Before I write a new CLAUDE.md, what have I asked for in the past?"**
+→ `/claude-manager:research-claude-md-usage` first, then `/claude-manager:claude-md-setup`
 
 ## How This Plugin Relates to Others
 
