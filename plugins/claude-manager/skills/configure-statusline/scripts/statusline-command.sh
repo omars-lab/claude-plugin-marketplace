@@ -8,18 +8,25 @@ SHOW_TOKEN_COUNT=true    # show used_k/max_k token count alongside bar
 SHOW_COST=true           # show session cost  $0.12
 SHOW_EDIT_ACTIVITY=true  # show +lines/-lines code edit activity
 SHOW_GIT=true            # git pipeline: ⎇ branch  ?=untracked  +=staged  ↑=ahead  ✓=clean
-CWD_MAX_LEN=30           # truncate cwd to last 2 components when longer than this
 # ──────────────────────────────────────────────────────────────────────────────
 
 input=$(cat)
 user=$(whoami)
 host=$(hostname -s)
 cwd=$(echo "$input"       | jq -r '.workspace.current_dir // .cwd // ""')
-
-# Shorten CWD: replace $HOME with ~, then abbreviate to …/parent/dir if still long
-cwd_short="${cwd/#$HOME/~}"
-if [ "${#cwd_short}" -gt "$CWD_MAX_LEN" ]; then
-  cwd_short="…/$(basename "$(dirname "$cwd")")/$(basename "$cwd")"
+# Shorten cwd: inside a git repo show reponame[/subdir], else last 2 segments
+if [ -n "$cwd" ] && command -v git &>/dev/null; then
+  git_root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)
+  if [ -n "$git_root" ]; then
+    repo_name=$(basename "$git_root")
+    rel="${cwd#$git_root}"
+    rel="${rel#/}"
+    cwd_short="${repo_name}${rel:+/$rel}"
+  else
+    cwd_short=$(echo "$cwd" | awk -F/ '{n=NF; print $(n-1)"/"$n}')
+  fi
+else
+  cwd_short="$cwd"
 fi
 model=$(echo "$input"     | jq -r '.model.display_name // ""')
 used_pct=$(echo "$input"  | jq -r '.context_window.used_percentage // empty')
