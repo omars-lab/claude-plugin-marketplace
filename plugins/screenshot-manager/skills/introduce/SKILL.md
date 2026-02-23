@@ -18,11 +18,12 @@ Screenshot Manager solves two common problems with topic-organized screenshot di
 ### Step 1: Welcome and Context
 
 ```
-Screenshot Manager — 2 skills to organize your Screenshots folder.
+Screenshot Manager — 3 skills for your Screenshots folder.
 
 I can help with:
 - Prefixing directories with their earliest screenshot date (sortable chronology)
-- Analyzing screenshot content via OCR to find related directories and propose consolidation
+- Finding misplaced files and importing Desktop screenshots using OCR + date proximity
+- Extracting URLs from browser screenshots
 ```
 
 ### Step 2: Ask What They Want to Do
@@ -32,8 +33,9 @@ Use `AskUserQuestion`:
 What would you like to do?
 
 - Sort directories by date (sort-dirs)
-- Find and group related screenshots (group-related)
-- Learn about both skills
+- Find misplaced files / import from Desktop (suggest-groupings)
+- Extract URLs from browser screenshots (extract-urls)
+- Learn about all skills
 ```
 
 ### Step 3: Present Relevant Skills
@@ -85,20 +87,46 @@ Keep: SF Trip and Canceling NYC Trip separate
 
 **When to use:** You have screenshots scattered on the Desktop, or suspect some files ended up in the wrong directory.
 
+---
+
+### `extract-urls` — Pull URLs out of browser screenshots
+
+**Invocation:** `/screenshot-manager:extract-urls`
+
+**What it does:** Runs OCR on one screenshot, a directory, or the whole Screenshots folder and extracts every URL found. Highlights the browser address bar URL separately from in-page links and other URLs in the content.
+
+**Example output:**
+```
+📸 Screenshot 2026-02-18 at 10.39.02 AM.png
+   🌐 Address bar: https://democrmfzu139843.service-now.com/now/nav/...
+   + https://cdnjs.cloudflare.com/ajax/libs/...
+
+📸 Screenshot 2026-02-19 at 10.54.52 AM.png
+   🌐 Address bar: https://claude.ai/settings/billing
+```
+
+**Offers to:** Copy all unique URLs to clipboard, save to a text file, or save full JSON breakdown.
+
+**When to use:** You screenshot browser tabs and want the URLs back without retyping them. Works on a single file or sweeps a whole directory at once.
+
+---
+
 ## How They Work Together
 
 ```
 suggest-groupings  →  fix misplaced files and import Desktop screenshots
 sort-dirs          →  prefix all directories with dates for chronological sorting
+extract-urls       →  pull URLs out of any screenshot, any time (independent)
 ```
 
 **Recommended workflow:**
 ```
 1. /screenshot-manager:suggest-groupings  -- clean up misplaced files first
 2. /screenshot-manager:sort-dirs          -- then prefix dirs with dates
+3. /screenshot-manager:extract-urls       -- on demand, whenever you need URLs back
 ```
 
-Run `suggest-groupings` first so directories are clean before date-prefixing. If you add new Desktop screenshots later, run `suggest-groupings` again — it's designed to be re-run incrementally.
+`extract-urls` is independent — run it any time on any screenshot without needing to run the other skills first.
 
 ## Screenshots Location
 
@@ -119,3 +147,9 @@ Both skills start by confirming the root path via `AskUserQuestion` before doing
 
 **"I want to do both organization + sorting"**
 → Run `suggest-groupings` first, then `sort-dirs`
+
+**"I screenshot a browser tab and need the URL back"**
+→ `/screenshot-manager:extract-urls`
+
+**"I want all URLs from a whole directory of screenshots"**
+→ `/screenshot-manager:extract-urls` (choose directory scope)
