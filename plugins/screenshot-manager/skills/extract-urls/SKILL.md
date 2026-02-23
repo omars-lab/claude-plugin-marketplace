@@ -29,8 +29,14 @@ TaskCreate({
 })
 
 TaskCreate({
+  subject: "Validate URLs",
+  description: "Run validate_urls.py on extracted URLs. HEAD-check reachability, follow redirects to get full URLs. Complete truncated URLs via Chrome CDP or DuckDuckGo.",
+  activeForm: "Validating URLs"
+})
+
+TaskCreate({
   subject: "Present URL results",
-  description: "Show results grouped by file. Highlight address bar URLs. Flag duplicates across files (same URL in multiple screenshots).",
+  description: "Show results grouped by file. Highlight address bar URLs. Flag partial/unreachable URLs and their completions. Flag duplicates across files.",
   activeForm: "Presenting results"
 })
 
@@ -45,6 +51,7 @@ TaskCreate({
 ```javascript
 TaskUpdate({ taskId: "2", addBlockedBy: ["1"] })
 TaskUpdate({ taskId: "3", addBlockedBy: ["2"] })
+TaskUpdate({ taskId: "4", addBlockedBy: ["3"] })
 ```
 
 ## Workflow
@@ -117,11 +124,54 @@ conda run -n screenshot-ocr python3 "$SCRIPTS/extract_urls.py" \
 
 Mark Task 1 as completed.
 
-### Step 4 (Task 2): Present Results
+### Step 4 (Task 2): Validate URLs
 
 Mark Task 2 as in_progress.
 
-For each screenshot, show:
+Run `validate_urls.py` on the extraction output to HEAD-check each URL and complete any truncated ones:
+
+```bash
+conda run -n screenshot-ocr python3 "$SCRIPTS/validate_urls.py" \
+  --json-input /tmp/extracted.json
+```
+
+**What it does per URL:**
+1. Detects if the URL looks partial (ends with `...`/`…`, incomplete `%XX`, long URL cut off mid-word)
+2. Sends HTTP HEAD — follows redirects to get the final URL
+3. For partial or unreachable URLs: searches via Chrome CDP (Google) or DuckDuckGo to find the full URL
+
+**Output (JSON list):**
+```json
+[
+  {
+    "url":               "https://stackoverflow.com/questions/79660113/azur...",
+    "is_partial":        true,
+    "head_status":       200,
+    "head_reachable":    true,
+    "head_final_url":    "https://stackoverflow.com/questions/79660113/azure-app...",
+    "completed_url":     "https://stackoverflow.com/questions/79660113/azure-app...",
+    "completion_method": "head_redirect",
+    "verdict":           "valid"
+  }
+]
+```
+
+**Verdict values:**
+- `valid` — reachable, no completion needed (or already completed via redirect)
+- `completed` — was partial/unreachable, found full URL via CDP or DDG
+- `partial` — truncated URL, couldn't complete it
+- `unreachable` — full-looking URL that doesn't respond
+
+**Chrome CDP (optional, richer results):**
+Chrome must be running with `--remote-debugging-port=9222` for CDP to work. If Chrome is not available, falls back to DuckDuckGo automatically. No manual setup required — the script detects availability.
+
+Mark Task 2 as completed.
+
+### Step 5 (Task 3): Present Results
+
+Mark Task 3 as in_progress.
+
+For each screenshot, show the **completed/final URL** where available, otherwise the raw extracted URL:
 
 ```
 📸 Screenshot 2026-02-18 at 10.39.02 AM.png
@@ -133,6 +183,16 @@ For each screenshot, show:
    🌐 Address bar: https://claude.ai/settings/billing
 ```
 
+**Flag completed URLs** — if a URL was partial and got resolved, show both:
+```
+   🔗 https://stackoverflow.com/questions/79660113/azur... → https://stackoverflow.com/questions/79660113/azure-app-service-cant-...
+```
+
+**Flag unresolvable partial URLs** with a warning:
+```
+   ⚠️  Partial URL (could not complete): https://some.internal.url/path...
+```
+
 **Skip files with no URLs** (OCR found no URL-shaped text) — just note the count at the end.
 
 **Highlight cross-file duplicates** — if the same URL appears in 3+ screenshots, flag it:
@@ -140,13 +200,13 @@ For each screenshot, show:
 🔁 Repeated URL (4 screenshots): https://democrmfzu139843.service-now.com/...
 ```
 
-Report totals: N screenshots scanned, M unique URLs found, K with no URLs.
+Report totals: N screenshots scanned, M unique URLs found, K partial/completed, K with no URLs.
 
-Mark Task 2 as completed.
+Mark Task 3 as completed.
 
-### Step 5 (Task 3): Handle Output
+### Step 6 (Task 4): Handle Output
 
-Mark Task 3 as in_progress.
+Mark Task 4 as in_progress.
 
 Use `AskUserQuestion`:
 - header: "What to do with URLs"
@@ -181,20 +241,29 @@ EOF
 python3 -c "import json; ..." > /path/to/extracted-urls.json
 ```
 
-Mark Task 3 as completed.
+Mark Task 4 as completed.
 
 ---
 
 ## URL Extraction Logic
 
-The script uses two layers:
+The skill uses two scripts:
 
-**1. Full URL regex** — finds every `https?://...` string in the OCR text, regardless of position. Covers in-page links, API endpoints, CDN URLs, and anything else that looks like a URL.
+**`extract_urls.py`** — OCR + URL extraction, two layers:
 
-**2. Address bar heuristic** — identifies which URL is most likely the browser address bar:
-- Prefers URLs that appear **alone on a line** in the OCR stream (address bar text is usually isolated)
-- Among those, picks the **longest** (full URL vs a link label)
-- Falls back to the longest URL overall if no solo-line URL exists
+1. **Full URL regex** — finds every `https?://...` string in the OCR text, regardless of position. Covers in-page links, API endpoints, CDN URLs, and anything else that looks like a URL.
+
+2. **Address bar heuristic** — identifies which URL is most likely the browser address bar:
+   - Prefers URLs that appear **alone on a line** in the OCR stream (address bar text is usually isolated)
+   - Among those, picks the **longest** (full URL vs a link label)
+   - Falls back to the longest URL overall if no solo-line URL exists
+
+**`validate_urls.py`** — URL validation and completion:
+
+1. **Partial detection** — flags URLs ending with `...`/`…`, incomplete `%XX` percent-encoding, or long URLs cut off mid-lowercase-word (common OCR truncation pattern).
+2. **HEAD check** — sends HTTP HEAD to confirm reachability and follow redirects to the final URL.
+3. **Chrome CDP** — if Chrome is running on `--remote-debugging-port=9222`, opens a tab, searches Google, and extracts the first organic result for partial/unreachable URLs.
+4. **DuckDuckGo fallback** — uses the DDG Instant Answer API (no key needed) when Chrome CDP isn't available.
 
 **U+202F handling** — macOS screenshot filenames use a narrow no-break space before AM/PM. The script resolves paths transparently, so passing a filename with a regular space works fine.
 
