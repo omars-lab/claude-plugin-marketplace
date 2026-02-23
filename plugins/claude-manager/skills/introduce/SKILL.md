@@ -22,7 +22,7 @@ Think of it as the plugin that builds and maintains other plugins.
 ### Step 1: Welcome
 
 ```
-Claude Manager — 11 skills for building and maintaining your plugin ecosystem.
+Claude Manager — 10 skills for building and maintaining your plugin ecosystem.
 
 I'm the meta-plugin. I can:
 - Create plugins and skills from scratch
@@ -58,14 +58,11 @@ Based on selection, explain the relevant skill and how to invoke it.
 |---|---|---|
 | `create-plugin` | `/claude-manager:create-plugin` | Scaffold a new plugin — directory structure, plugin.json, introduce skill, marketplace registration |
 | `fix-plugins` | `/claude-manager:fix-plugins` | Detect version drift between source and installed, auto-bump versions, run `make update`, verify |
-| `audit-plugins` | `/claude-manager:audit-plugins` | Check compliance with mandatory framework standards — version tracking, introduce skill, task management, AskUserQuestion, git safety, README bloat |
 | `suggest-plugin-maturity` | `/claude-manager:suggest-plugin-maturity` | Optional suggestions to make skills smarter — usage tracking, knowledge artifacts, feedback loops, maturity scoring |
 
 **When to use `create-plugin`:** Starting a new plugin from scratch. Ensures correct structure from day one.
 
 **When to use `fix-plugins`:** After adding new skills or editing existing ones — detects version drift and runs the update pipeline.
-
-**When to use `audit-plugins`:** Periodically or before releases. Deterministic compliance report against mandatory framework standards. Does not update plugins.
 
 **When to use `suggest-plugin-maturity`:** When you want skills to grow smarter over time. Everything here is optional — opportunities, not failures.
 
@@ -75,13 +72,13 @@ Based on selection, explain the relevant skill and how to invoke it.
 |---|---|---|
 | `create-skill` | `/claude-manager:create-skill` | Create a new skill in any existing plugin with proper SKILL.md structure |
 | `update-skill` | `/claude-manager:update-skill` | Navigate to and safely edit an existing skill's SKILL.md |
-| `evaluate-skill` | `/claude-manager:evaluate-skill` | Audit individual skill quality — frontmatter, scripts, task management, guardrails, success criteria |
+| `evaluate-skill` | `/claude-manager:evaluate-skill` | Compliance audit + quality scoring — infrastructure, mandatory patterns, guardrails, scripts, success criteria |
 
 **When to use `create-skill`:** Adding capabilities to an existing plugin. Ensures mandatory patterns (task management, AskUserQuestion, git safety) are in place.
 
 **When to use `update-skill`:** Modifying an existing skill. Reads current content first, makes changes, validates structure.
 
-**When to use `evaluate-skill`:** Scan all skills (or a single one) for quality gaps — then implement improvements. Shows a scored dashboard with HIGH/MEDIUM/LOW priorities.
+**When to use `evaluate-skill`:** The one place to check everything — compliance errors (missing version tracking, no introduce skill, missing task management) AND quality gaps (guardrails, scripts, success criteria). Shows a unified dashboard, compliance first.
 
 ### Project Configuration
 
@@ -128,10 +125,7 @@ Use `audit-plugins` to check any plugin against these standards.
 **"Are my plugins up to date?"**
 → `/claude-manager:fix-plugins`
 
-**"Are my plugins following framework standards?"**
-→ `/claude-manager:audit-plugins`
-
-**"How good is the quality of my skills? What's missing?"**
+**"Are my plugins compliant? Any missing patterns, bad infrastructure, skill quality gaps?"**
 → `/claude-manager:evaluate-skill`
 
 **"I want my fix-* skills to grow smarter over time"**
@@ -160,8 +154,7 @@ claude-manager (this plugin)
   ├── creates → all other plugins (via create-plugin)
   ├── creates → skills in any plugin (via create-skill)
   ├── updates → installed plugins (via fix-plugins)
-  ├── audits → plugin compliance (via audit-plugins)
-  ├── evaluates → skill quality (via evaluate-skill)
+  ├── evaluates → compliance + quality (via evaluate-skill)
   ├── summarizes → how you use AI across all plugins (via summarize-ai-usage)
   └── configures → project setup (via setup-claude-md, research-claude-md)
 ```

@@ -1,31 +1,40 @@
 ---
 name: evaluate-skill
-description: Audit individual skill quality across all plugins — frontmatter, extracted scripts, task management, AskUserQuestion, behavioral guardrails, success criteria, and more
+description: Unified plugin and skill evaluator — compliance audit (infrastructure, mandatory patterns) plus quality scoring (guardrails, scripts, success criteria) with a prioritized improvement dashboard
 ---
 
 # Evaluate Skill
 
-You are a skill quality auditor. When invoked, you run a deterministic scanner across skills and produce a scored quality dashboard — then offer to implement improvements.
+You are a plugin and skill evaluator. When invoked, you run two passes and present a single dashboard:
+
+1. **Compliance pass** (`scripts/audit-plugins.py`) — deterministic, pass/fail. Are the mandatory framework rules met?
+2. **Quality pass** (`scripts/evaluate-skill.py`) — scored 0–9 per skill. How well is each skill written?
+
+Then you offer to fix what's wrong.
 
 ## What This Skill Does
 
-1. Asks whether to scan all skills, a specific plugin, or a single skill
-2. Runs `scripts/evaluate-skill.py` to produce machine-readable scorecards
-3. Interprets scorecards with context (a 1-phase intro skill doesn't need TaskCreate)
-4. Presents a prioritized improvement dashboard
-5. Asks which skills to improve, then implements approved changes
+- Confirms scope (all plugins, one plugin, one skill)
+- Runs audit pass: version tracking, marketplace registration, introduce skill, task management, AskUserQuestion, git safety, README bloat
+- Runs quality pass: frontmatter, extracted scripts, guardrails, defaults, success criteria, workflow phases, size
+- Presents a unified prioritized dashboard — compliance errors first, quality gaps second
+- Asks which issues to fix, implements approved changes
 
 ## Task Management (MANDATORY)
 
 ```javascript
-TaskCreate({ subject: "Confirm scan scope", description: "Ask user: all skills, one plugin, or one skill", activeForm: "Confirming scan scope" })
-TaskCreate({ subject: "Run evaluate-skill.py", description: "Execute scanner, produce scorecards", activeForm: "Scanning skill quality" })
-TaskCreate({ subject: "Interpret and present dashboard", description: "Apply context rules, present prioritized findings", activeForm: "Building quality dashboard" })
-TaskCreate({ subject: "Apply improvements", description: "Implement user-selected improvements", activeForm: "Improving skills" })
+TaskCreate({ subject: "Confirm scope", description: "Ask user: all plugins, one plugin, or one skill", activeForm: "Confirming scope" })
+TaskCreate({ subject: "Run compliance audit", description: "Run audit-plugins.py — infrastructure and mandatory pattern checks", activeForm: "Running compliance audit" })
+TaskCreate({ subject: "Run quality scoring", description: "Run evaluate-skill.py — score each skill on 9 dimensions", activeForm: "Scoring skill quality" })
+TaskCreate({ subject: "Present unified dashboard", description: "Compliance errors + quality gaps, prioritized", activeForm: "Building dashboard" })
+TaskCreate({ subject: "Apply improvements", description: "Implement user-selected fixes", activeForm: "Applying improvements" })
 TaskUpdate({ taskId: "2", addBlockedBy: ["1"] })
-TaskUpdate({ taskId: "3", addBlockedBy: ["2"] })
-TaskUpdate({ taskId: "4", addBlockedBy: ["3"] })
+TaskUpdate({ taskId: "3", addBlockedBy: ["1"] })
+TaskUpdate({ taskId: "4", addBlockedBy: ["2", "3"] })
+TaskUpdate({ taskId: "5", addBlockedBy: ["4"] })
 ```
+
+Note: the two passes (tasks 2 and 3) run in parallel once scope is confirmed.
 
 ## Your Workflow
 
@@ -37,183 +46,206 @@ Use `AskUserQuestion`:
 What should I evaluate?
 
 Options:
-- All skills across all plugins in this marketplace (recommended)
-- All skills in a specific plugin (enter plugin name)
+- All plugins in this marketplace (recommended — full picture)
+- All skills in one plugin (enter name)
 - One specific skill (enter plugin:skill)
 ```
 
-### Phase 2: Run the Scanner
+Resolve marketplace path:
+```bash
+git rev-parse --show-toplevel
+```
 
+### Phase 2: Run Both Passes in Parallel
+
+**Compliance audit:**
+```bash
+python3 <skill-dir>/scripts/audit-plugins.py \
+  --marketplace /path/to/marketplace \
+  --out /tmp/audit-report.json
+```
+
+**Quality scoring:**
 ```bash
 python3 <skill-dir>/scripts/evaluate-skill.py \
   --marketplace /path/to/marketplace \
   [--plugin plugin-name] \
   [--skill skill-name] \
-  --out /tmp/evaluate-skill-report.json
+  --out /tmp/quality-report.json
 ```
 
-Report stats:
-> "Scanned N skills across M plugins. Found X skills scoring below 6/9."
+Both scripts are read-only and safe to re-run.
 
-### Phase 3: Interpret Results
+### Phase 3: Present Unified Dashboard
 
-The script produces raw dimension scores. Apply these context rules before presenting:
-
-| Skill type | Exempt dimensions |
-|---|---|
-| `introduce` skill | task_management, scripts_extracted |
-| Read-only skills (no file writes) | git_safety |
-| Skills with 1 phase | task_management (WARNING not ERROR) |
-| Very small skills (<50 lines) | workflow_phases (expected to be minimal) |
-
-**Scoring guide:**
-- 9/9 — exemplary
-- 7–8/9 — good, minor gaps
-- 5–6/9 — functional but missing important patterns
-- 3–4/9 — needs significant improvement
-- 0–2/9 — requires rework
-
-### Phase 4: Present Dashboard
-
-Format findings as a prioritized improvement table:
+Lead with compliance (blockers), follow with quality (improvements).
 
 ```
 ═══════════════════════════════════════════════════════════════
-              Skill Quality Dashboard
+                   Plugin Evaluation Dashboard
 ═══════════════════════════════════════════════════════════════
 
-Plugin: noteplan-manager   Skills: 16   Avg score: 6.2 / 9
+Scanned: 8 plugins, 45 skills
+Compliance: 3 errors, 7 warnings
+Quality avg: 6.1 / 9
 
-PRIORITY IMPROVEMENTS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PART 1 — COMPLIANCE  (fix these first)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-HIGH  fix-filenames (5/9)
-  ✅ frontmatter  ✅ AskUserQuestion  ✅ success_criteria
-  ❌ scripts_extracted  ❌ task_management  ❌ guardrails
-  ❌ sensible_defaults  ❌ workflow_phases (2)  ✅ size_ok
+Infrastructure:
+  ❌ some-manager: missing version-tracking.json
+  ❌ another-plugin: versionCommit is empty
 
-HIGH  suggest-improvements (4/9)
-  ❌ frontmatter  ❌ task_management  ❌ AskUserQuestion
-  ❌ guardrails  ❌ sensible_defaults  ✅ success_criteria
-  ✅ workflow_phases  ❌ scripts_extracted  ✅ size_ok
+Mandatory patterns:
+  ❌ note-manager: no 'introduce' skill
+  ⚠  note-manager:extract-knowledge — 4 phases, no TaskCreate/TaskUpdate
+  ⚠  note-manager:extract-knowledge — file-modifying, no AskUserQuestion
 
-MEDIUM  organize-daily (6/9)
-  ✅ frontmatter  ❌ scripts_extracted  ✅ task_management
-  ...
+README bloat:
+  ⚠  config-manager: README is 180 lines (>50)
 
-LOW  fix-reference (8/9) — missing only: scripts_extracted
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PART 2 — QUALITY  (improve these next)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-PASSING  introduce (9/9, intro skill — exemptions applied)
+HIGH  note-manager:extract-knowledge (3/9)
+  ✅ frontmatter  ✅ workflow_phases  ✅ size_ok
+  ❌ scripts_extracted  ❌ task_management  ❌ ask_user_question
+  ❌ guardrails  ❌ sensible_defaults  ❌ success_criteria
+
+MEDIUM  claude-manager:fix-plugins (6/9)
+  ✅ frontmatter  ✅ task_management  ✅ ask_user_question
+  ✅ workflow_phases  ✅ success_criteria  ✅ size_ok
+  ❌ scripts_extracted  ❌ guardrails  ❌ sensible_defaults
+
+LOW  noteplan-manager:fix-filenames (7/9)
+  missing only: scripts_extracted, guardrails
+
+PASSING  noteplan-manager:fix-reference (9/9)
 ```
 
-### Phase 5: Offer Improvements
+#### Context-aware exemptions (apply before presenting quality scores)
+
+| Skill type | Exempt from |
+|---|---|
+| `introduce` skill | task_management, scripts_extracted |
+| Read-only skills (no file writes) | git_safety (audit pass) |
+| Skills with 1–2 phases | task_management is WARNING not missing |
+| Skills < 50 lines | workflow_phases expected to be minimal |
+
+### Phase 4: Ask What to Fix
 
 Use `AskUserQuestion` (multiSelect):
 
 ```
-Which skills should I improve now?
+Which issues should I fix?
 
-Options:
-- fix-filenames — add scripts/, task management, guardrails
-- suggest-improvements — add frontmatter, task management, AskUserQuestion
-- organize-daily — add extracted script
-- All HIGH-priority skills
-- Let me choose one at a time
-- Skip for now
+Compliance fixes:
+- Fix version tracking (create missing version-tracking.json, set versionCommit to HEAD)
+- Fix marketplace registration (add unregistered plugins to marketplace.json)
+- Add missing introduce skills
+- Add task management to non-compliant skills
+- Slim bloated READMEs
+
+Quality improvements:
+- Extract scripts (create scripts/ subdir for skills with embedded code blocks)
+- Add behavioral guardrails (what this skill does NOT do)
+- Add sensible defaults + confirmation patterns
+- Add success criteria checklists
+- Just show report, no changes
 ```
 
-### Phase 6: Implement Improvements
+### Phase 5: Apply Fixes
 
-For each selected skill, implement approved improvements:
+#### Compliance fixes
 
-**Add YAML frontmatter:**
-- Generate `---\nname: <skill-name>\ndescription: <one-line description>\n---` block
-- Prepend to SKILL.md
+**Version tracking:**
+1. Create missing `version-tracking.json` with `{ "versionCommit": "<HEAD>" }`
+2. Set empty `versionCommit` to `git rev-parse HEAD`
+3. Flag for commit before running `make update`
+
+**Missing introduce skill:**
+1. Read all skill names and descriptions in the plugin
+2. Scaffold `introduce/SKILL.md` using the standard template
+3. Show preview, confirm before writing
+
+**Task management scaffolding:**
+1. Count workflow phases in the skill
+2. Generate `TaskCreate` block — one task per phase, linear `addBlockedBy` chain
+3. Add `## Task Management (MANDATORY)` section before the workflow
+4. Show diff, confirm before writing
+
+**README slimming:**
+1. Generate slim version: plugin name + install command + skill table (<50 lines)
+2. Show diff, confirm before writing
+
+#### Quality improvements
 
 **Extract a script:**
-- Look for code blocks (```python, ```bash, etc.) in the SKILL.md
-- Identify the most substantive block (typically the scanning/detection logic)
-- Create `scripts/<skill-name>.py` (or `.sh`) with the extracted code
-- Update SKILL.md to reference the script instead of embedding the full code
-
-**Add task management:**
-- Count workflow phases in the skill
-- Generate a `TaskCreate` block with one task per phase
-- Add `## Task Management (MANDATORY)` section before the workflow
-- Add `TaskUpdate` dependencies based on linear phase order
+1. Find the most substantive code block (```python or ```bash) in the SKILL.md
+2. Create `scripts/<skill-name>.py` (or `.sh`) with that code
+3. Update SKILL.md to reference the script with a `python3 <skill-dir>/scripts/...` call
 
 **Add behavioral guardrails:**
-- Generate a `## What This Skill Does NOT Do` section
-- List 2–4 clear boundaries based on the skill's scope
+1. Generate `## What This Skill Does NOT Do` section based on the skill's scope
+2. List 2–4 clear out-of-scope boundaries
 
-**Add sensible defaults + confirmation:**
-- Find destructive operations in the workflow
-- Add `AskUserQuestion` confirmation step before each one
-- Document defaults: "Default: apply to all — confirm to proceed"
+**Add sensible defaults:**
+1. Find destructive or irreversible operations in the workflow
+2. Pair each with a default value and an `AskUserQuestion` confirmation
+3. Add `## Defaults` section documenting them
 
 **Add success criteria:**
-- Generate a `## Success Criteria` checklist
-- One checkbox per major phase outcome
+1. Generate `## Success Criteria` checklist — one `- [ ]` per major phase outcome
 
-For each improvement:
-1. Show the proposed change (diff or new section)
-2. Use `AskUserQuestion` to confirm before writing
-3. Apply with Edit tool (prefer targeted edits over full rewrites)
-
-## Quality Dimensions
-
-The script checks 9 dimensions:
-
-| Dimension | Detection Method | Points |
-|---|---|---|
-| YAML frontmatter (`name` + `description`) | `^---` block with fields | 1 |
-| Scripts extracted | `scripts/` subdir exists and has files | 1 |
-| Task management | mentions `TaskCreate` AND `TaskUpdate` | 1 |
-| AskUserQuestion | mentions `AskUserQuestion` | 1 |
-| Behavioral guardrails | mentions "what not to do" / "avoid" / "never" / "don't" | 1 |
-| Sensible defaults | mentions "default" near "confirm" or "AskUserQuestion" | 1 |
-| Success criteria | has `- [ ]` checklist block | 1 |
-| Workflow phases | has numbered `### Phase N:` or `### Step N:` (≥2) | 1 |
-| Size check | SKILL.md line count ≤500 | 1 |
-
-Maximum score: 9/9
+For every change: show diff, confirm with `AskUserQuestion` before writing.
 
 ## Scripts
 
+Both scripts live in `scripts/` and are read-only, safe to re-run.
+
+### `scripts/audit-plugins.py`
+
+Checks 5 compliance categories:
+- Version tracking (missing/empty/invalid `version-tracking.json`)
+- Marketplace registration (plugin not in `marketplace.json`)
+- Shell script `pipefail + grep` pattern
+- Mandatory patterns (introduce skill, TaskCreate, AskUserQuestion, git safety, YAML frontmatter)
+- README bloat (>50 lines)
+
+Output: `{ summary, issues[] }` where each issue has `plugin`, `skill?`, `category`, `severity`, `message`, `fix`.
+
 ### `scripts/evaluate-skill.py`
 
-Deterministic. Accepts `--marketplace`, `--plugin`, `--skill`, `--out`. Read-only. Safe to re-run.
+Scores each skill on 9 dimensions (1 point each):
 
-Outputs per-skill JSON:
-```json
-[
-  {
-    "plugin": "noteplan-manager",
-    "skill": "fix-filenames",
-    "line_count": 287,
-    "scores": {
-      "frontmatter": 1,
-      "scripts_extracted": 0,
-      "task_management": 0,
-      "ask_user_question": 1,
-      "guardrails": 0,
-      "sensible_defaults": 0,
-      "success_criteria": 1,
-      "workflow_phases": 1,
-      "size_ok": 1
-    },
-    "total": 5,
-    "flags": ["missing TaskCreate/TaskUpdate", "no scripts/ subdir", "no guardrails section"]
-  }
-]
-```
+| Dimension | What it checks |
+|---|---|
+| `frontmatter` | `---` block with `name` and `description` |
+| `scripts_extracted` | `scripts/` subdir exists with at least one file |
+| `task_management` | mentions `TaskCreate` AND `TaskUpdate` |
+| `ask_user_question` | mentions `AskUserQuestion` |
+| `guardrails` | mentions "what not to do" / "avoid" / "never" / "don't" |
+| `sensible_defaults` | mentions "default" near "confirm" or "AskUserQuestion" |
+| `success_criteria` | has `- [ ]` checklist |
+| `workflow_phases` | has ≥2 numbered `### Phase N:` or `### Step N:` headings |
+| `size_ok` | SKILL.md ≤ 500 lines |
+
+Output: JSON array sorted by total score ascending (worst first).
+
+## What This Skill Does NOT Do
+
+- Does NOT bump versions or run `make update` — use `fix-plugins` for that
+- Does NOT suggest optional maturity improvements (usage tracking, knowledge artifacts) — use `suggest-plugin-maturity`
+- Does NOT modify anything without showing a diff and getting confirmation
 
 ## Success Criteria
 
-- [ ] User confirmed scope via AskUserQuestion
-- [ ] Scanner ran and produced scorecards for all targeted skills
-- [ ] Context rules applied (intro skill exemptions, read-only exemptions)
-- [ ] Dashboard presented with HIGH/MEDIUM/LOW priority tiers
-- [ ] User selected improvements via multiSelect AskUserQuestion
-- [ ] Each improvement shown as diff/preview before applying
-- [ ] Improvements applied with Edit tool (targeted, not full rewrites)
+- [ ] Scope confirmed via AskUserQuestion
+- [ ] Both scripts ran and produced reports
+- [ ] Context-aware exemptions applied before presenting quality scores
+- [ ] Dashboard shows compliance errors before quality gaps
+- [ ] User selected what to fix via multiSelect AskUserQuestion
+- [ ] Every change shown as diff before applying
+- [ ] Version tracking fixes flagged for commit before `make update`

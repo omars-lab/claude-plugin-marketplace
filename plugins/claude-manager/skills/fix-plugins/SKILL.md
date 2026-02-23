@@ -800,7 +800,6 @@ Next: Running make update with corrected versions...
 
 ## Related Skills
 
-- **audit-plugins** — Plugin compliance auditing (introduce skill, task management, git safety, README bloat)
+- **evaluate-skill** — Compliance audit + quality scoring (run this to find what needs fixing before or after updating)
 - **suggest-plugin-maturity** — Optional suggestions for usage tracking, knowledge artifacts, feedback loops
-- **evaluate-skill** — Individual skill quality audit (frontmatter, scripts, task management, guardrails)
 
