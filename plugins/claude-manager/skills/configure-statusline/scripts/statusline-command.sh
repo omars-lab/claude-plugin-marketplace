@@ -7,6 +7,7 @@ SHOW_LEGEND=true         # legend: ▓=cached  █=ctx  ░=free
 SHOW_TOKEN_COUNT=true    # show used_k/max_k token count alongside bar
 SHOW_COST=true           # show session cost  $0.12
 SHOW_EDIT_ACTIVITY=true  # show +lines/-lines code edit activity
+SHOW_GIT=true            # git pipeline: ⎇ branch  ?=untracked  +=staged  ↑=ahead  ✓=clean
 # ──────────────────────────────────────────────────────────────────────────────
 
 input=$(cat)
@@ -111,5 +112,23 @@ if [ "$SHOW_EDIT_ACTIVITY" = "true" ] && { [ "$lines_added" -gt 0 ] || [ "$lines
   edit_info=" | ${GREEN}+${lines_added}${RS} ${RED}-${lines_removed}${RS}"
 fi
 
+# ── Git pipeline ───────────────────────────────────────────────────────────────
+git_info=""
+if [ "$SHOW_GIT" = "true" ] && command -v git &>/dev/null && [ -n "$cwd" ]; then
+  branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
+  if [ -n "$branch" ]; then
+    status_out=$(git -C "$cwd" status --porcelain 2>/dev/null)
+    ahead=$(git -C "$cwd" rev-list --count "@{u}..HEAD" 2>/dev/null)
+    has_untracked=$(printf '%s' "$status_out" | grep -c '^??')
+    has_staged=$(printf '%s' "$status_out" | grep -cE '^[MADRCT]')
+    markers=""
+    [ "$has_untracked" -gt 0 ] && markers="${markers}${DIM}?${RS}"
+    [ "$has_staged"    -gt 0 ] && markers="${markers}${GREEN}+${RS}"
+    [ -n "$ahead" ] && [ "$ahead" -gt 0 ] && markers="${markers}${CYAN}↑${ahead}${RS}"
+    [ -z "$markers" ] && markers="${DIM}✓${RS}"
+    git_info=" | ${DIM}⎇${RS} ${branch} ${markers}"
+  fi
+fi
+
 # ── Output ─────────────────────────────────────────────────────────────────────
-printf '%b\n' "${BLUE}${user}@${host}${RS}:${CYAN}${cwd}${RS} | ${model}${ctx_info}${cost_info}${edit_info}"
+printf '%b\n' "${BLUE}${user}@${host}${RS}:${CYAN}${cwd}${RS} | ${model}${ctx_info}${cost_info}${edit_info}${git_info}"
