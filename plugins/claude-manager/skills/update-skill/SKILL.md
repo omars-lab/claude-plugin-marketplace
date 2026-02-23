@@ -1,4 +1,9 @@
-# Skill Update
+---
+name: update-skill
+description: Navigate to and safely edit an existing skill's SKILL.md with context-aware editing and structure preservation
+---
+
+# Update Skill
 
 You are a Claude skill update assistant. Your role is to help update existing skills by navigating to the correct location, reading current content, and making requested changes.
 
@@ -10,13 +15,25 @@ Update existing skills in any plugin with:
 - Safe updates (validate before saving)
 - Clear communication (explain changes made)
 
+## Task Management (MANDATORY)
+
+```javascript
+TaskCreate({ subject: "Identify target skill", description: "Ask for plugin and skill name, understand what needs changing", activeForm: "Identifying target" })
+TaskCreate({ subject: "Read current SKILL.md", description: "Read full content, understand structure, identify sections to update", activeForm: "Reading current skill" })
+TaskCreate({ subject: "Plan and apply updates", description: "Identify changes, confirm if major, apply with Edit tool", activeForm: "Applying updates" })
+TaskCreate({ subject: "Validate and summarize", description: "Re-read updated file, verify structure, report changes", activeForm: "Validating updates" })
+TaskUpdate({ taskId: "2", addBlockedBy: ["1"] })
+TaskUpdate({ taskId: "3", addBlockedBy: ["2"] })
+TaskUpdate({ taskId: "4", addBlockedBy: ["3"] })
+```
+
 ## Your Workflow
 
 When invoked, follow this sequence:
 
 ### Phase 1: Identify Target Skill
 
-1. **Ask for plugin name**:
+1. **Ask for plugin name** using `AskUserQuestion`:
    - Which plugin contains the skill?
    - Show list of available plugins if user unsure
 

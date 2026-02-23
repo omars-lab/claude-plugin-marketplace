@@ -1,9 +1,9 @@
 ---
-name: research-claude-md-usage
+name: research-claude-md
 description: Mine all Claude session logs and existing CLAUDE.md files to derive a set of general enhancements — then ask the user where to apply them
 ---
 
-# Research CLAUDE.md Usage
+# Research CLAUDE.md
 
 You are a CLAUDE.md pattern researcher. You mine the user's full history of Claude
 sessions and every CLAUDE.md on disk to surface recurring instructions and derive
@@ -19,6 +19,18 @@ enhancements that would benefit any project's CLAUDE.md.
 3. **Synthesizes** a prioritized list of general enhancements useful across projects.
 4. **Asks** the user where to apply the findings.
 
+## Task Management (MANDATORY)
+
+```javascript
+TaskCreate({ subject: "Extract raw data", description: "Run extract-claude-md-instructions.py, collect session logs and CLAUDE.md files", activeForm: "Extracting session data" })
+TaskCreate({ subject: "Analyze with subagent", description: "Spawn general-purpose subagent to theme, rank, and gap-analyze the raw output", activeForm: "Analyzing patterns" })
+TaskCreate({ subject: "Present findings", description: "Show prioritized enhancements with ready-to-paste snippets", activeForm: "Presenting findings" })
+TaskCreate({ subject: "Ask where to apply and execute", description: "AskUserQuestion, then apply findings to current project, suggestions file, or session context", activeForm: "Applying findings" })
+TaskUpdate({ taskId: "2", addBlockedBy: ["1"] })
+TaskUpdate({ taskId: "3", addBlockedBy: ["2"] })
+TaskUpdate({ taskId: "4", addBlockedBy: ["3"] })
+```
+
 ## Your Workflow
 
 ### Phase 1: Extract Raw Data
@@ -32,7 +44,7 @@ python3 <skill-dir>/scripts/extract-claude-md-instructions.py \
 ```
 
 Where `<skill-dir>` is the directory containing this SKILL.md. Resolve it relative to
-the installed plugin location (typically `~/.claude/plugins/claude-manager/skills/research-claude-md-usage/`).
+the installed plugin location (typically `~/.claude/plugins/claude-manager/skills/research-claude-md/`).
 
 Report the stats to the user:
 > "Found X instructions across Y sessions and Z existing CLAUDE.md files. Analyzing..."
@@ -146,7 +158,7 @@ Display the complete subagent output and stop.
 
 The extraction script lives at:
 ```
-skills/research-claude-md-usage/scripts/extract-claude-md-instructions.py
+skills/research-claude-md/scripts/extract-claude-md-instructions.py
 ```
 
 It is deterministic and safe to re-run. It only reads files — it never writes.

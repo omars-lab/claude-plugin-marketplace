@@ -12,7 +12,7 @@ You are a Claude plugin compliance auditor. When this skill is invoked, you run 
 - Runs `scripts/audit-plugins.py` — a deterministic scanner producing a JSON compliance report
 - Reports five categories of issues: version tracking, marketplace registration, skill naming, mandatory patterns, and README bloat
 - Asks which issues to fix
-- Does NOT version-bump or run `make update` — that's `update-plugins`
+- Does NOT version-bump or run `make update` — that's `fix-plugins`
 
 ## Task Management (MANDATORY)
 
@@ -198,6 +198,6 @@ Outputs:
 
 ## What This Skill Does NOT Do
 
-- Does NOT bump versions or run `make update` → use `update-plugins`
+- Does NOT bump versions or run `make update` → use `fix-plugins`
 - Does NOT suggest optional maturity improvements → use `suggest-plugin-maturity`
 - Does NOT audit individual skill quality → use `evaluate-skill`

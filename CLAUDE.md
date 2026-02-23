@@ -6,6 +6,34 @@
 - **Skills are actions (verbs)** — each skill is something you *do* within that role (e.g. `asking-what-if`, `fix-filenames`, `extract-knowledge`)
 - Name skills as verbs/actions, not nouns. The plugin provides the noun context.
 
+## Naming Conventions
+
+### Plugin names
+
+`<domain>-manager` is the standard pattern: `noteplan-manager`, `claude-manager`, `role-manager`. Single-purpose plugins may omit `-manager`: `experiment-manager`, `discover-oeid-plugins`.
+
+### Skill names
+
+**Verb-first kebab-case** — the action comes first, followed by the object if needed:
+
+| Verb prefix | Example skills | Notes |
+|---|---|---|
+| `fix-` | `fix-plugins`, `fix-filenames`, `fix-frontmatter` | Corrects existing problems |
+| `create-` | `create-plugin`, `create-skill` | Produces something new |
+| `update-` | `update-plan-status` | Modifies something that already exists |
+| `setup-` | `setup-claude-md` | One-time configuration |
+| `audit-` | `audit-plugins` | Reads and reports, no writes |
+| `evaluate-` | `evaluate-skill` | Scores or assesses quality |
+| `suggest-` | `suggest-plugin-maturity` | Advisory output only |
+| `research-` | `research-claude-md` | Mines/synthesizes data |
+| `summarize-` | `summarize-ai-usage` | Produces a human-readable summary |
+| `configure-` | `configure-statusline` | Wires configuration |
+| `introduce` | `introduce` | Every plugin's self-description skill |
+
+**Don't** start skill names with a noun (`skill-create`, `plugin-audit`, `note-fix`). The noun context comes from the plugin name.
+
+**`fix-` is a valid verb prefix** — it is not a violation of verb-first naming. `fix-plugins`, `fix-filenames`, `fix-frontmatter` are all correct.
+
 ## Discovery
 
 Each plugin has an `introduce` skill that explains its capabilities:

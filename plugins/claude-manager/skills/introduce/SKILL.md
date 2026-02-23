@@ -22,7 +22,7 @@ Think of it as the plugin that builds and maintains other plugins.
 ### Step 1: Welcome
 
 ```
-Claude Manager — 10 skills for building and maintaining your plugin ecosystem.
+Claude Manager — 11 skills for building and maintaining your plugin ecosystem.
 
 I'm the meta-plugin. I can:
 - Create plugins and skills from scratch
@@ -57,13 +57,13 @@ Based on selection, explain the relevant skill and how to invoke it.
 | Skill | Usage | Purpose |
 |---|---|---|
 | `create-plugin` | `/claude-manager:create-plugin` | Scaffold a new plugin — directory structure, plugin.json, introduce skill, marketplace registration |
-| `update-plugins` | `/claude-manager:update-plugins` | Detect version drift between source and installed, auto-bump versions, run `make update`, verify |
+| `fix-plugins` | `/claude-manager:fix-plugins` | Detect version drift between source and installed, auto-bump versions, run `make update`, verify |
 | `audit-plugins` | `/claude-manager:audit-plugins` | Check compliance with mandatory framework standards — version tracking, introduce skill, task management, AskUserQuestion, git safety, README bloat |
 | `suggest-plugin-maturity` | `/claude-manager:suggest-plugin-maturity` | Optional suggestions to make skills smarter — usage tracking, knowledge artifacts, feedback loops, maturity scoring |
 
 **When to use `create-plugin`:** Starting a new plugin from scratch. Ensures correct structure from day one.
 
-**When to use `update-plugins`:** After adding new skills or editing existing ones — detects version drift and runs the update pipeline.
+**When to use `fix-plugins`:** After adding new skills or editing existing ones — detects version drift and runs the update pipeline.
 
 **When to use `audit-plugins`:** Periodically or before releases. Deterministic compliance report against mandatory framework standards. Does not update plugins.
 
@@ -102,6 +102,7 @@ Based on selection, explain the relevant skill and how to invoke it.
 | Skill | Usage | Purpose |
 |---|---|---|
 | `configure-statusline` | `/claude-manager:configure-statusline` | Set up the Claude Code status line in `~/.claude/settings.json` |
+| `summarize-ai-usage` | `/claude-manager:summarize-ai-usage` | Scan all plugins and synthesize a first-person narrative of how you use AI |
 
 ## Framework Standards
 
@@ -125,7 +126,7 @@ Use `audit-plugins` to check any plugin against these standards.
 → `/claude-manager:create-skill`
 
 **"Are my plugins up to date?"**
-→ `/claude-manager:update-plugins`
+→ `/claude-manager:fix-plugins`
 
 **"Are my plugins following framework standards?"**
 → `/claude-manager:audit-plugins`
@@ -148,6 +149,9 @@ Use `audit-plugins` to check any plugin against these standards.
 **"My CLAUDE.md has grown bloated"**
 → `/claude-manager:fix-claude-md`
 
+**"How do I actually use AI? What am I using it for across all my plugins?"**
+→ `/claude-manager:summarize-ai-usage`
+
 ## How This Plugin Relates to Others
 
 ```
@@ -155,8 +159,9 @@ claude-manager (this plugin)
   │
   ├── creates → all other plugins (via create-plugin)
   ├── creates → skills in any plugin (via create-skill)
-  ├── updates → installed plugins (via update-plugins)
+  ├── updates → installed plugins (via fix-plugins)
   ├── audits → plugin compliance (via audit-plugins)
   ├── evaluates → skill quality (via evaluate-skill)
+  ├── summarizes → how you use AI across all plugins (via summarize-ai-usage)
   └── configures → project setup (via setup-claude-md, research-claude-md)
 ```

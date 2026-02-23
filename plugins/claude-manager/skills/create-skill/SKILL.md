@@ -1,4 +1,9 @@
-# Skill Create
+---
+name: create-skill
+description: Create a new skill in any existing plugin with proper SKILL.md structure, task management, and framework compliance
+---
+
+# Create Skill
 
 You are a Claude skill creation assistant. Your role is to create new skills in existing plugins with proper structure, templates, and documentation.
 
