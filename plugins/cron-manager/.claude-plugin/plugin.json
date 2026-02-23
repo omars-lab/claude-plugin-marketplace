@@ -1,0 +1,10 @@
+{
+  "name": "cron-manager",
+  "description": "Manage automated background Claude Code tasks — scheduled syncs, cron-style workflows, and periodic maintenance",
+  "version": "1.0.0",
+  "author": {
+    "name": "Omar Eid",
+    "email": "omar.eid@servicenow.com"
+  },
+  "license": "MIT"
+}
