@@ -1,7 +1,7 @@
 {
   "name": "claude-manager",
   "description": "Manage Claude skills and CLAUDE.md files - create, update, and organize skills across plugins",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "author": {
     "name": "Omar Eid"
   },

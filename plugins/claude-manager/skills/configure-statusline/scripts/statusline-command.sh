@@ -8,12 +8,19 @@ SHOW_TOKEN_COUNT=true    # show used_k/max_k token count alongside bar
 SHOW_COST=true           # show session cost  $0.12
 SHOW_EDIT_ACTIVITY=true  # show +lines/-lines code edit activity
 SHOW_GIT=true            # git pipeline: ⎇ branch  ?=untracked  +=staged  ↑=ahead  ✓=clean
+CWD_MAX_LEN=30           # truncate cwd to last 2 components when longer than this
 # ──────────────────────────────────────────────────────────────────────────────
 
 input=$(cat)
 user=$(whoami)
 host=$(hostname -s)
 cwd=$(echo "$input"       | jq -r '.workspace.current_dir // .cwd // ""')
+
+# Shorten CWD: replace $HOME with ~, then abbreviate to …/parent/dir if still long
+cwd_short="${cwd/#$HOME/~}"
+if [ "${#cwd_short}" -gt "$CWD_MAX_LEN" ]; then
+  cwd_short="…/$(basename "$(dirname "$cwd")")/$(basename "$cwd")"
+fi
 model=$(echo "$input"     | jq -r '.model.display_name // ""')
 used_pct=$(echo "$input"  | jq -r '.context_window.used_percentage // empty')
 cost=$(echo "$input"      | jq -r '.cost.total_cost_usd // empty')
@@ -131,4 +138,4 @@ if [ "$SHOW_GIT" = "true" ] && command -v git &>/dev/null && [ -n "$cwd" ]; then
 fi
 
 # ── Output ─────────────────────────────────────────────────────────────────────
-printf '%b\n' "${BLUE}${user}@${host}${RS}:${CYAN}${cwd}${RS} | ${model}${ctx_info}${cost_info}${edit_info}${git_info}"
+printf '%b\n' "${BLUE}${user}@${host}${RS}:${CYAN}${cwd_short}${RS} | ${model}${ctx_info}${cost_info}${edit_info}${git_info}"
