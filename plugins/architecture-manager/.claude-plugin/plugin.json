@@ -1,0 +1,9 @@
+{
+  "name": "architecture-manager",
+  "description": "Generate and maintain architecture artifacts — ERDs, sequence diagrams, C4 diagrams, deployment diagrams, ADRs, and architecture overviews using PlantUML and code-driven rendering",
+  "version": "1.0.0",
+  "author": {
+    "name": "Omar Eid"
+  },
+  "license": "MIT"
+}
