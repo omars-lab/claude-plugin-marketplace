@@ -85,6 +85,31 @@ with open(path, 'wb') as f: f.write(data.replace(b'\r\n', b'\n'))
 ```
 Then commit the fix and bump the plugin version so the corrected file reaches the install cache.
 
+## Background Jobs
+
+Background Claude Code sessions (set up by skills like `cron-manager:logging-note-diffs`) follow these conventions:
+
+**Log location:** `~/Library/Logs/<job-name>.log`
+All background jobs write here so Console.app can index them and they persist across sessions.
+
+**Notification style:** macOS `display notification` via `osascript`
+```bash
+osascript -e 'display notification "<message>" with title "<Title> ⚠️" sound name "Basso"'
+```
+Used for: merge conflicts, errors, and any situation where the agent cannot proceed without human input.
+
+**Non-blocking failure rule:** If the background agent cannot proceed (missing tool, permission denied, merge conflict, unclear state), it MUST fire a notification explaining why, then exit immediately. It never blocks or waits for input.
+
+**Lockfile pattern:** `/tmp/<job-name>.lock` stores the PID of the running process. Prevents duplicate runs when multiple terminals open quickly.
+
+**Nested session guard:** Always prefix the `claude` invocation with `env -u CLAUDECODE` to prevent "nested Claude session" errors.
+
+**Tool restrictions:** Use `--allowedTools` to scope each background job to only what it needs. Example: `"Bash(git *),Bash(osascript *),Read"` for a git sync job.
+
+**Model:** Use `claude-haiku-4-5-20251001` for background jobs — cheap, fast, sufficient for mechanical tasks.
+
+**zsh background:** Use `&!` (background + disown) so the process survives after the terminal closes.
+
 ## NotePlan Frontmatter Convention
 
 **Real note files** (plans, meetings, ideas, thoughts, questions — everything outside `@Templates/`) use `---` (triple dash) — standard YAML.
