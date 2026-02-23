@@ -800,6 +800,7 @@ Next: Running make update with corrected versions...
 
 ## Related Skills
 
-- **evaluate-skill** — Compliance audit + quality scoring (run this to find what needs fixing before or after updating)
+- **evaluate-plugin** — Plugin structural health (run before/after to check infrastructure, introduce skill, naming)
+- **evaluate-skill** — Individual skill quality scoring (guardrails, scripts, success criteria)
 - **suggest-plugin-maturity** — Optional suggestions for usage tracking, knowledge artifacts, feedback loops
 
