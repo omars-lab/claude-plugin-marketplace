@@ -5,15 +5,15 @@ description: Introduce the claude-manager plugin - the meta-plugin for managing 
 
 # Introduce Claude Manager
 
-You are the Claude Manager plugin - the meta-plugin that manages all other plugins in the marketplace. When this skill is invoked, introduce yourself and explain what you can do.
+You are the Claude Manager plugin — the meta-plugin that builds and maintains other plugins in the marketplace. When this skill is invoked, introduce yourself and route the user to the right skill.
 
 ## What This Plugin Does
 
-Claude Manager is the tooling layer for the plugin ecosystem. It handles:
-- **Creating new plugins** with proper structure and framework compliance
-- **Creating and updating skills** in any plugin
-- **Auditing plugin health** and fixing compliance issues
-- **Generating CLAUDE.md** project instruction files
+Claude Manager is the tooling layer for the plugin ecosystem:
+- **Building plugins** — create new plugins and skills with proper structure
+- **Keeping plugins updated** — detect version drift and run updates
+- **Auditing compliance** — check mandatory framework standards
+- **Project configuration** — generate and research CLAUDE.md files
 
 Think of it as the plugin that builds and maintains other plugins.
 
@@ -22,26 +22,28 @@ Think of it as the plugin that builds and maintains other plugins.
 ### Step 1: Welcome
 
 ```
-Claude Manager - 5 skills for building and maintaining your plugin ecosystem.
+Claude Manager — 10 skills for building and maintaining your plugin ecosystem.
 
-I'm the meta-plugin. I help you:
-- Create new plugins from scratch (with proper structure)
-- Add skills to existing plugins
-- Audit plugins for framework compliance
-- Generate CLAUDE.md files for projects
+I'm the meta-plugin. I can:
+- Create plugins and skills from scratch
+- Keep installed plugins up to date
+- Audit compliance with framework standards
+- Evaluate individual skill quality
+- Generate and research CLAUDE.md files
 ```
 
 ### Step 2: Ask What They Need
 
 Use `AskUserQuestion`:
+
 ```
 What do you want to do?
 
-- Create a new plugin (create-plugin)
-- Add a skill to an existing plugin (skill-create)
-- Audit and fix plugin issues (fix-plugins)
-- Update an existing skill (skill-update)
-- Generate a CLAUDE.md file (claude-md-setup)
+Options:
+- Manage plugins (create, update, audit, suggest improvements)
+- Manage skills (create, update, evaluate quality)
+- Configure a project (setup CLAUDE.md, research patterns)
+- Configure the status line
 ```
 
 ### Step 3: Guide to the Right Skill
@@ -54,47 +56,65 @@ Based on selection, explain the relevant skill and how to invoke it.
 
 | Skill | Usage | Purpose |
 |---|---|---|
-| `create-plugin` | `/claude-manager:create-plugin` | Scaffold a new plugin with directory structure, plugin.json, introduce skill, first skill, and marketplace registration |
-| `fix-plugins` | `/claude-manager:fix-plugins` | Audit both marketplaces for version issues, missing skills, compliance gaps, and auto-fix |
+| `create-plugin` | `/claude-manager:create-plugin` | Scaffold a new plugin — directory structure, plugin.json, introduce skill, marketplace registration |
+| `update-plugins` | `/claude-manager:update-plugins` | Detect version drift between source and installed, auto-bump versions, run `make update`, verify |
+| `audit-plugins` | `/claude-manager:audit-plugins` | Check compliance with mandatory framework standards — version tracking, introduce skill, task management, AskUserQuestion, git safety, README bloat |
+| `suggest-plugin-maturity` | `/claude-manager:suggest-plugin-maturity` | Optional suggestions to make skills smarter — usage tracking, knowledge artifacts, feedback loops, maturity scoring |
 
-**When to use `create-plugin`:** Starting a new plugin from scratch. It ensures you get the structure right from day one - introduce skill, task management, AskUserQuestion, git safety.
+**When to use `create-plugin`:** Starting a new plugin from scratch. Ensures correct structure from day one.
 
-**When to use `fix-plugins`:** After adding new skills, before releases, or periodically to check that all plugins follow framework standards. Detects missing introduce skills, skills without task management, bloated READMEs, version bump issues.
+**When to use `update-plugins`:** After adding new skills or editing existing ones — detects version drift and runs the update pipeline.
+
+**When to use `audit-plugins`:** Periodically or before releases. Deterministic compliance report against mandatory framework standards. Does not update plugins.
+
+**When to use `suggest-plugin-maturity`:** When you want skills to grow smarter over time. Everything here is optional — opportunities, not failures.
 
 ### Skill Management
 
 | Skill | Usage | Purpose |
 |---|---|---|
-| `skill-create` | `/claude-manager:skill-create` | Create a new skill in any existing plugin with proper SKILL.md structure |
-| `skill-update` | `/claude-manager:skill-update` | Navigate to and safely edit an existing skill's SKILL.md |
+| `create-skill` | `/claude-manager:create-skill` | Create a new skill in any existing plugin with proper SKILL.md structure |
+| `update-skill` | `/claude-manager:update-skill` | Navigate to and safely edit an existing skill's SKILL.md |
+| `evaluate-skill` | `/claude-manager:evaluate-skill` | Audit individual skill quality — frontmatter, scripts, task management, guardrails, success criteria |
 
-**When to use `skill-create`:** Adding capabilities to an existing plugin. Ensures the new skill follows mandatory patterns (task management, AskUserQuestion, git safety).
+**When to use `create-skill`:** Adding capabilities to an existing plugin. Ensures mandatory patterns (task management, AskUserQuestion, git safety) are in place.
 
-**When to use `skill-update`:** Modifying an existing skill. Reads the current content first, makes changes, validates structure.
+**When to use `update-skill`:** Modifying an existing skill. Reads current content first, makes changes, validates structure.
+
+**When to use `evaluate-skill`:** Scan all skills (or a single one) for quality gaps — then implement improvements. Shows a scored dashboard with HIGH/MEDIUM/LOW priorities.
 
 ### Project Configuration
 
 | Skill | Usage | Purpose |
 |---|---|---|
-| `claude-md-setup` | `/claude-manager:claude-md-setup` | Generate CLAUDE.md instruction files for any project |
-| `research-claude-md-usage` | `/claude-manager:research-claude-md-usage` | Mine all session logs and CLAUDE.md files to derive general enhancements |
+| `setup-claude-md` | `/claude-manager:setup-claude-md` | Generate CLAUDE.md instruction files for any project |
+| `fix-claude-md` | `/claude-manager:fix-claude-md` | Audit and fix an existing CLAUDE.md — reduce bloat, clarify instructions, add missing sections |
+| `research-claude-md` | `/claude-manager:research-claude-md` | Mine all session logs and existing CLAUDE.md files to surface recurring enhancement patterns |
 
-**When to use `claude-md-setup`:** Setting up a new project for Claude Code, or updating an existing CLAUDE.md with new conventions.
+**When to use `setup-claude-md`:** Setting up a new project for Claude Code, or updating conventions. Run `research-claude-md` first for best results.
 
-**When to use `research-claude-md-usage`:** Before setting up or improving a CLAUDE.md — this skill surfaces patterns from your full history of instructions to Claude, so you don't have to reconstruct your preferences from scratch.
+**When to use `fix-claude-md`:** When CLAUDE.md has grown bloated, has redundant sections, or needs auditing against current conventions.
+
+**When to use `research-claude-md`:** Before writing a new CLAUDE.md — surfaces patterns you've repeatedly asked for across all projects so you don't have to reconstruct preferences from scratch.
+
+### Meta
+
+| Skill | Usage | Purpose |
+|---|---|---|
+| `configure-statusline` | `/claude-manager:configure-statusline` | Set up the Claude Code status line in `~/.claude/settings.json` |
 
 ## Framework Standards
 
 This plugin enforces these standards across the ecosystem:
 
-1. **Every plugin must have an `introduce` skill** - explains capabilities, replaces verbose READMEs
-2. **Every skill must use `TaskCreate`/`TaskUpdate`** - progress tracking for multi-step workflows
-3. **Every skill must use `AskUserQuestion`** - user decisions, not assumptions
-4. **File-modifying skills must have git safety** - pre-commit, checkpoint, diff validation
-5. **READMEs must be minimal** (<50 lines) - name, install, skill table, requirements
-6. **Skills need YAML frontmatter** - `name` and `description` fields
+1. **Every plugin must have an `introduce` skill** — explains capabilities, replaces verbose READMEs
+2. **Every skill must use `TaskCreate`/`TaskUpdate`** — progress tracking for multi-step workflows
+3. **Every skill must use `AskUserQuestion`** — user decisions, not assumptions
+4. **File-modifying skills must have git safety** — pre-commit, checkpoint, diff validation
+5. **READMEs must be minimal** (<50 lines) — name, install, skill table
+6. **Skills need YAML frontmatter** — `name` and `description` fields
 
-Use `fix-plugins` to audit any plugin against these standards.
+Use `audit-plugins` to check any plugin against these standards.
 
 ## Common Scenarios
 
@@ -102,22 +122,31 @@ Use `fix-plugins` to audit any plugin against these standards.
 → `/claude-manager:create-plugin`
 
 **"I need to add a new skill to noteplan-manager"**
-→ `/claude-manager:skill-create`
+→ `/claude-manager:create-skill`
 
-**"Are my plugins up to date and following standards?"**
-→ `/claude-manager:fix-plugins`
+**"Are my plugins up to date?"**
+→ `/claude-manager:update-plugins`
+
+**"Are my plugins following framework standards?"**
+→ `/claude-manager:audit-plugins`
+
+**"How good is the quality of my skills? What's missing?"**
+→ `/claude-manager:evaluate-skill`
+
+**"I want my fix-* skills to grow smarter over time"**
+→ `/claude-manager:suggest-plugin-maturity`
 
 **"I need to update an existing skill"**
-→ `/claude-manager:skill-update`
+→ `/claude-manager:update-skill`
 
 **"I'm setting up a new project for Claude Code"**
-→ `/claude-manager:claude-md-setup`
+→ `/claude-manager:research-claude-md` first, then `/claude-manager:setup-claude-md`
 
-**"What patterns have I repeatedly asked Claude to follow across all my projects?"**
-→ `/claude-manager:research-claude-md-usage`
+**"Before I write a new CLAUDE.md, what patterns have I asked for before?"**
+→ `/claude-manager:research-claude-md`
 
-**"Before I write a new CLAUDE.md, what have I asked for in the past?"**
-→ `/claude-manager:research-claude-md-usage` first, then `/claude-manager:claude-md-setup`
+**"My CLAUDE.md has grown bloated"**
+→ `/claude-manager:fix-claude-md`
 
 ## How This Plugin Relates to Others
 
@@ -125,16 +154,9 @@ Use `fix-plugins` to audit any plugin against these standards.
 claude-manager (this plugin)
   │
   ├── creates → all other plugins (via create-plugin)
-  ├── creates → skills in any plugin (via skill-create)
-  ├── audits → all plugins for compliance (via fix-plugins)
-  └── configures → project setup (via claude-md-setup)
-
-config-manager (sibling)
-  │
-  ├── manages → Claude permissions
-  ├── manages → working directories
-  ├── manages → Makefiles
-  └── manages → documentation frameworks
+  ├── creates → skills in any plugin (via create-skill)
+  ├── updates → installed plugins (via update-plugins)
+  ├── audits → plugin compliance (via audit-plugins)
+  ├── evaluates → skill quality (via evaluate-skill)
+  └── configures → project setup (via setup-claude-md, research-claude-md)
 ```
-
-claude-manager builds the plugin structure. config-manager configures the development environment.
