@@ -1,0 +1,10 @@
+{
+  "name": "profile-manager",
+  "description": "Manage shell profile integrations — browser automation, aliases, and environment setup across machines",
+  "version": "1.4.0",
+  "author": {
+    "name": "Omar Eid"
+  },
+  "homepage": "https://github.com/oeid/claude-plugins",
+  "license": "MIT"
+}
