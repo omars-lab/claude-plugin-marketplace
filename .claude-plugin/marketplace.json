@@ -128,6 +128,22 @@
       "version": "1.0.0",
       "category": "development",
       "keywords": ["architecture", "diagrams", "erd", "plantuml", "c4", "adr", "sequence", "deployment", "documentation"]
+    },
+    {
+      "name": "cron-manager",
+      "source": "./plugins/cron-manager",
+      "description": "Manage automated background Claude Code tasks — scheduled syncs, cron-style workflows, and periodic maintenance",
+      "version": "1.0.0",
+      "category": "automation",
+      "keywords": ["automation", "cron", "background", "sync", "git", "zsh", "noteplan"]
+    },
+    {
+      "name": "profile-manager",
+      "source": "./plugins/profile-manager",
+      "description": "Manage shell profile integrations — browser automation, aliases, and environment setup across machines",
+      "version": "1.0.0",
+      "category": "utilities",
+      "keywords": ["shell", "profile", "zshrc", "chrome", "browser-automation", "aliases", "mcp", "setup"]
     }
   ]
 }
