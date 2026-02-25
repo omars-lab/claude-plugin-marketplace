@@ -607,3 +607,7 @@ Generate detailed reports:
 - `fix-personal-emojis` - Fix personal plan emoji encoding
 - `sync-plan-templates` - Sync template emoji lists
 - `analyze-structure` - Analyze NotePlan structure
+
+## User Interaction
+
+Use `AskUserQuestion` if the scope is unclear — which folders or note types to sync.

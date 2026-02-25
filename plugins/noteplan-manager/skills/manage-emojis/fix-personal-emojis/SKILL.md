@@ -606,3 +606,7 @@ Run this skill more frequently than fix-work-emojis due to complexity.
 - **Check rendering** after fixes to ensure they display correctly
 - **Use Unicode tools** to inspect emoji sequences when debugging
 - **Keep plan type list** synced with template
+
+## User Interaction
+
+Use `AskUserQuestion` if the scope is unclear — which folders or note types to process.

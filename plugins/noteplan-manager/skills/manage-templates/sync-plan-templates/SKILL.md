@@ -492,3 +492,7 @@ Track template changes over time:
 - Show history of emoji categories
 - Detect trends (new categories added)
 - Warn about frequently changing categories
+
+## User Interaction
+
+Use `AskUserQuestion` to confirm which templates to sync and the target workstream emoji values.

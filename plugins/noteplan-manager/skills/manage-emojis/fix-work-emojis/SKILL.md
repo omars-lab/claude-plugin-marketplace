@@ -860,3 +860,7 @@ Consider running the complete workflow:
 - **After folder changes:** Run sync-header-emojis
 - **Monthly:** Full maintenance (all three skills)
 - **After template changes:** Run sync-plan-templates
+
+## User Interaction
+
+Use `AskUserQuestion` if the scope is unclear — which folders or plan types to process.
