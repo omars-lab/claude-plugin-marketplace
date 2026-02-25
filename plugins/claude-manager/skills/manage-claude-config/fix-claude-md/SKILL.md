@@ -9,9 +9,12 @@ You are a CLAUDE.md auditor. Your role is to review an existing CLAUDE.md file a
 
 ## Principles
 
+Per [arXiv:2602.11988](https://arxiv.org/abs/2602.11988), context files that describe unnecessary requirements *reduce* task success rates and increase inference cost by >20%. CLAUDE.md is most effective as a **constraint document**, not a process guide.
+
 A good CLAUDE.md contains ONLY what an agent cannot figure out on its own by reading the code. It should be:
 
-- **Minimal** — if removing a section doesn't hurt agent performance, remove it
+- **Minimal** — if removing a section doesn't hurt agent performance, remove it. Target < 200 meaningful lines for project-level files.
+- **Constraint-focused** — describe *what NOT to do* and hard limits, not *how to do things*. Agents over-explore when given prescriptive instructions.
 - **Non-redundant** — never repeat what's in README, package.json, Makefile help, or obvious from code
 - **Hard-to-discover** — focus on gotchas, non-obvious conventions, things that broke before
 - **Actionable** — every sentence should change agent behavior; delete prose that doesn't
@@ -49,8 +52,12 @@ Before touching any files:
 3. Note every section in CLAUDE.md and classify it:
    - **KEEP** — hard-to-discover, would cause bugs if missing
    - **TRIM** — useful but too verbose, can be condensed
-   - **DELETE** — redundant with code/README, or obvious from file structure
+   - **DELETE** — redundant with code/README, or obvious from file structure; or prescribes *how* to do tasks (agents discover this from code)
    - **MISSING** — something the agent needs to know that isn't documented
+
+4. Apply the **minimality score**: count meaningful lines. Flag if > 200 lines for small projects or > 400 for large ones (20+ source files).
+
+5. Flag sections that prescribe *how* to do tasks — these increase inference cost without improving success rates (per arXiv:2602.11988). Prefer *what not to do* over *how to do it*.
 
 ### Phase 2: Present Findings and Gather User Decisions
 
@@ -100,13 +107,32 @@ For each approved change:
 - Remove templates (agents can generate these from context)
 - Remove example output (agents can run commands themselves)
 
-**ADD missing items** — only if they are genuinely hard to discover:
-- Build/test commands that aren't in Makefile help
-- Environment setup gotchas
-- Non-obvious file relationships (e.g., "changes to X require also updating Y")
-- Schema constraints or validation rules that aren't enforced by code
-- Conventions that differ from language/framework defaults
-- Agent interaction patterns (see "Mandatory CLAUDE.md Patterns" below)
+**ADD missing items** — only if they are genuinely hard to discover, and **always include a minimal concrete pattern** alongside each rule:
+
+> A rule without a pattern gets ignored. Show the exact code/command/syntax to use — not just what to do, but what it looks like.
+
+| Type of addition | What to include |
+|---|---|
+| Build/test commands | The exact command, not "run the tests" |
+| Non-obvious conventions | A one-line code snippet showing correct usage |
+| Multi-file update checklists | The exact list of files, not "update related files" |
+| Schema constraints | A minimal valid/invalid example |
+| Agent interaction patterns | A minimal `AskUserQuestion` or `TaskCreate` snippet |
+
+**Example — bad (rule without pattern):**
+```
+Always use AskUserQuestion before destructive operations.
+```
+
+**Example — good (rule + pattern):**
+```
+Before destructive operations, use AskUserQuestion:
+\`\`\`javascript
+AskUserQuestion({ questions: [{ question: "Delete X?", header: "Confirm",
+  options: [{ label: "Yes", description: "..." }, { label: "No", description: "..." }],
+  multiSelect: false }] })
+\`\`\`
+```
 
 ### Phase 4: Validate via Diff
 
@@ -146,6 +172,8 @@ When auditing, flag as **MISSING** if the CLAUDE.md lacks project-specific guida
 
 Generate project-appropriate versions of these sections from context — don't use generic templates.
 
+**Critical: rules must include patterns.** When auditing, flag any rule that names a convention without showing an example as **TRIM** — add the minimal concrete code/command that makes the rule unambiguous. A rule agents repeatedly violate is almost always one without a pattern.
+
 ## Anti-Patterns to Remove
 
 These commonly appear in CLAUDE.md files and should almost always be deleted:
@@ -162,6 +190,8 @@ These commonly appear in CLAUDE.md files and should almost always be deleted:
 | Long example CLI output | Agent can run the command |
 | Section headers with no actionable content underneath | Pure noise |
 | "Do" and "Don't" lists of generic best practices | Not project-specific |
+| Step-by-step "how to" workflows | Agents discover these from code; prescriptive instructions increase inference cost >20% (arXiv:2602.11988) |
+| Repository overview / architecture tour | Agents explore the repo on their own; this adds tokens without reducing steps |
 
 ## What Belongs in CLAUDE.md
 

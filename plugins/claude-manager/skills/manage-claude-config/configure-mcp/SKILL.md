@@ -21,9 +21,40 @@ Claude Code reads MCP servers from two user-scope files — **both are active**:
 | `~/.claude/settings.json` | Global (newer) | Preferred for new entries; also active |
 | `./.claude/settings.json` | Project-local | Overrides for a specific repo |
 
-### Tool Restriction Mechanism
+### What Actually Reduces Tokens (Critical)
 
-Add a `disabledTools` array to any server entry to suppress specific tools:
+There are two distinct mechanisms — they are **not interchangeable**:
+
+| Mechanism | Reduces system prompt tokens? | Prevents tool execution? |
+|---|---|---|
+| `disabledTools` in `~/.claude.json` | ❌ No | ✅ Yes |
+| Server-level tool filtering | ✅ Yes | ✅ Yes |
+| Opt-in alias (server not loaded) | ✅ Yes | ✅ Yes |
+
+**`disabledTools` is an execution restriction only.** Tool definitions are still reported by the server, injected into the system prompt, and billed as tokens. Use it to block tool calls — not to save context budget.
+
+To actually reduce token overhead you must either:
+- **Not load the server** (opt-in alias pattern), or
+- **Configure the server to report fewer tools** (server-level filtering)
+
+### Server-Level Tool Filtering
+
+Some servers support native filtering. Always prefer this over `disabledTools` when available.
+
+**Docker MCP Gateway** supports `--tools` to restrict which tools the gateway exposes. Unlisted tools never start, never appear in the system prompt:
+
+```json
+"MCP_DOCKER": {
+  "command": "docker",
+  "args": ["mcp", "gateway", "run", "--tools", "get_timed_transcript,get_transcript,get_video_info"]
+}
+```
+
+Check other servers for equivalent flags (`--tools`, `--filter`, `--allow`, etc.) before reaching for `disabledTools`.
+
+### Tool Restriction Mechanism (`disabledTools`)
+
+Use `disabledTools` when you want to **block execution** of specific tools (e.g. destructive tools like `delete_record`, `execute_script`) while keeping them visible in the system prompt — or when server-level filtering is not available.
 
 ```json
 "mcpServers": {
@@ -35,7 +66,48 @@ Add a `disabledTools` array to any server entry to suppress specific tools:
 }
 ```
 
-Tool names in `disabledTools` use the **raw server-reported name** — no `mcp__ServerName__` prefix.
+Tool names use the **raw server-reported name** — no `mcp__ServerName__` prefix.
+
+### Plugin-Provided MCP Servers (Critical Nuance)
+
+When a plugin registers a server via `.mcp.json`, Claude Code namespaces its tools as:
+`mcp__plugin_{plugin-name}_{server-name}__{tool}`
+
+This differs from user-configured servers (`mcp__{server-name}__{tool}`).
+
+**Two layers of failure for plugin servers:**
+1. **`disabledTools` inside a plugin's `.mcp.json` is silently ignored** — Claude Code does not read it
+2. **`disabledTools` in user `~/.claude.json` does not reduce tokens** — tool definitions still inject (execution restriction only)
+
+**The only way to actually suppress tokens from a plugin-provided server is the opt-in alias pattern:**
+
+1. Add the server to `~/.claude.json` mcpServers with **all tools in `disabledTools`** — this blocks execution in default sessions (tokens still injected, but tools can't be called)
+2. Create a version-resolving opt-in alias that loads the plugin's `.mcp.json` via `--mcp-config`
+
+```json
+// ~/.claude.json — blocks execution in default sessions
+"mcpServers": {
+  "ceg": {
+    "command": "conda", "args": ["run", ...],
+    "disabledTools": ["tool1", "tool2", ...]
+  }
+}
+```
+
+```zsh
+# ~/.zshrc — opt-in alias: auto-resolves to the latest installed plugin version
+_ceg_mcp_config() {
+  local base="${HOME}/.claude/plugins/cache/ceg-claude-plugins/ceg-mcp-plugin"
+  local ver; ver=$(ls "$base" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+    | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+  echo "${base}/${ver}/.mcp.json"
+}
+alias claude-with-servicenow='claude --mcp-config "$(_ceg_mcp_config)"'
+```
+
+The resolver auto-finds the latest plugin version — no manual update needed after `claude plugin update`.
+
+> **Note:** Token overhead from the plugin server's tools will still appear in default sessions until/unless the plugin's server registration is removed from `.mcp.json`. The `disabledTools` approach trades token cost for execution safety.
 
 ### Token Cost Tiers (rough guidance)
 
