@@ -1,4 +1,4 @@
-.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins list-plugins tree install uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register
+.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register
 
 # Colors for output
 GREEN := \033[0;32m
@@ -98,6 +98,9 @@ register: ## Register the marketplace in Claude
 
 install: ## Install all plugins using Claude CLI (non-interactive)
 	@./scripts/cli install $(MARKETPLACE_NAME)
+
+install-lite: ## Install only claude-manager plugin
+	@./scripts/cli install-single $(MARKETPLACE_NAME) claude-manager
 
 uninstall: ## Uninstall all plugins using Claude CLI (non-interactive)
 	@./scripts/cli uninstall $(MARKETPLACE_NAME)
