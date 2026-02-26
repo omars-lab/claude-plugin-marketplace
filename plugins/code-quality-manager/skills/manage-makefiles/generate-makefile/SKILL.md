@@ -38,6 +38,11 @@ You are a Makefile generator following CEG standards for actionability, consiste
 PROJECT_DIR := $(shell pwd)
 COMPONENT_DIR := $(PROJECT_DIR)/component
 
+# Terminal title helper (only fires outside Claude Code sessions)
+define set-title
+	@if [ -z "$$CLAUDECODE" ]; then echo -ne "\033]0;$(1)\007"; fi
+endef
+
 help: ## Show this help message
 	@echo "Project Name - Make Targets"
 	@echo ""
@@ -50,6 +55,7 @@ help: ## Show this help message
 
 # Testing targets
 test-component: ## Test component with description
+	$(call set-title,Testing component)
 	@echo "==> Testing component..."
 	@echo ""
 	[test commands]
@@ -58,6 +64,7 @@ test-component: ## Test component with description
 
 # Installation targets
 install-component: ## Install component (show what to run)
+	$(call set-title,Installing component)
 	@echo "==> Installing component..."
 	@echo ""
 	@echo "Prerequisites:"
@@ -69,6 +76,7 @@ install-component: ## Install component (show what to run)
 
 # Validation targets
 validate: ## Validate project configuration
+	$(call set-title,Validating project)
 	@echo "==> Validating project..."
 	@echo ""
 	[validation checks]
@@ -77,6 +85,7 @@ validate: ## Validate project configuration
 
 # Utility targets
 list-components: ## List components with status (✓/✗/⚠️)
+	$(call set-title,Listing components)
 	@echo "==> Components:"
 	@echo ""
 	@echo "✓ component-1 - installed"
@@ -84,6 +93,7 @@ list-components: ## List components with status (✓/✗/⚠️)
 	@echo "  → To install: make install-component-2"
 
 clean: ## Remove temporary files
+	$(call set-title,Cleaning project)
 	@echo "==> Cleaning up..."
 	@find . -name ".DS_Store" -delete
 	@echo "==> Clean complete!"
@@ -115,6 +125,7 @@ help: ## Show this help message
 
 ```makefile
 test-component: ## Test the component (non-interactive)
+	$(call set-title,Testing component)
 	@echo "==> Testing component..."
 	@echo "==> Running: command --flag value"
 	@echo ""
@@ -123,6 +134,7 @@ test-component: ## Test the component (non-interactive)
 	@echo "✓ Test complete!"
 
 test-all: ## Test all components sequentially
+	$(call set-title,Testing all components)
 	@echo "==> Testing all components..."
 	@echo ""
 	@$(MAKE) test-component-1
@@ -144,6 +156,7 @@ test-all: ## Test all components sequentially
 
 ```makefile
 install-component: ## Install component to system
+	$(call set-title,Installing component)
 	@echo "==> Installing component..."
 	@echo ""
 	@echo "Checking prerequisites..."
@@ -175,6 +188,7 @@ install-component: ## Install component to system
 
 ```makefile
 list-components: ## List components (shows ✓/✗/⚠️ status)
+	$(call set-title,Listing components)
 	@echo "==> Project Components"
 	@echo ""
 	@if [ -f "$$HOME/.config/state.json" ]; then \
@@ -216,6 +230,7 @@ list-components: ## List components (shows ✓/✗/⚠️ status)
 
 ```makefile
 validate: ## Validate project configuration
+	$(call set-title,Validating project)
 	@echo "==> Validating project configuration..."
 	@echo ""
 	@if command -v jq >/dev/null 2>&1; then \
@@ -298,6 +313,62 @@ echo "  brew install package"
 echo ""
 exit 1
 ```
+
+## Terminal Title Pattern
+
+When targets run in a standalone terminal (not inside a Claude Code session), set the terminal tab/window title to reflect the target being run. This gives users immediate visual context about what's executing, especially when multiple terminal tabs are open.
+
+### Detection
+
+Claude Code sets the `CLAUDECODE` environment variable. Guard the title escape so it only fires in standalone terminals:
+
+```makefile
+# Define a reusable macro at the top of the Makefile (after variables)
+define set-title
+	@if [ -z "$$CLAUDECODE" ]; then echo -ne "\033]0;$(1)\007"; fi
+endef
+```
+
+### Usage in Targets
+
+Call `$(call set-title,...)` as the **first line** of every target:
+
+```makefile
+test-component: ## Test the component
+	$(call set-title,Testing component)
+	@echo "==> Testing component..."
+	@command --flag value
+	@echo "✓ Test complete!"
+
+install-component: ## Install component
+	$(call set-title,Installing component)
+	@echo "==> Installing component..."
+	...
+
+validate: ## Validate project configuration
+	$(call set-title,Validating project)
+	@echo "==> Validating project configuration..."
+	...
+```
+
+### Title Naming Convention
+
+Use present participle form matching the target action:
+
+| Target | Title |
+|--------|-------|
+| `test-component` | `Testing component` |
+| `test-all` | `Testing all components` |
+| `install-plugin` | `Installing plugin` |
+| `validate` | `Validating project` |
+| `clean` | `Cleaning project` |
+| `list-components` | `Listing components` |
+
+**Standards:**
+- Title should be short and descriptive (what the user sees in their tab bar)
+- Use present participle ("Testing...", "Installing...", not "Test" or "Install")
+- Include the project or component name when it adds clarity
+- `help` target does NOT need a title (it runs instantly)
 
 ## Non-Interactive Testing Pattern
 
@@ -441,6 +512,7 @@ When invoked:
    - ✓ Actionable output with exact commands
    - ✓ Clear error messages with remediation steps
    - ✓ Variables defined at top
+   - ✓ `set-title` macro defined and used on all targets (except `help`)
    - ✓ `.PHONY` declarations included
 
 4. **Document patterns used:**
@@ -494,6 +566,7 @@ Before finalizing, verify:
 ✅ Error messages include remediation steps
 ✅ Variables defined and documented at top
 ✅ Test targets are non-interactive
+✅ Terminal title set via `set-title` macro on all targets (except `help`)
 ✅ No user-specific hardcoded paths (or clearly marked)
 ✅ Output is clean and readable
 ✅ Examples provided in help text
@@ -523,3 +596,11 @@ A well-generated Makefile should:
 ✅ Maintainers can easily add new targets following patterns
 
 Remember: **The Makefile is executable documentation**. It should be as clear and helpful as written docs, but with the power to actually perform actions.
+
+## Task Management
+
+Use `TaskCreate` and `TaskUpdate` to track progress across the generation workflow.
+
+## User Interaction
+
+Use `AskUserQuestion` when the intent is ambiguous — generate from scratch, enhance an existing Makefile, or focus on specific target types.

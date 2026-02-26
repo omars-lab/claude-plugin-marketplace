@@ -12,8 +12,8 @@ You are the code-quality-manager plugin. When this skill is invoked, explain wha
 Code Quality Manager improves the experience of working in a repository. It does this by treating documentation as a product — something that should be maintained, validated, and improved the same way you'd maintain code.
 
 The plugin has three skills:
-- **improve-docs** — audit, consolidate, and enhance repository documentation
-- **generate-makefile** — create Makefiles following CEG standards
+- **manage-docs** — audit, consolidate, and enhance repository documentation
+- **manage-makefiles** — create or enhance Makefiles following CEG standards
 - **poke-holes** — critically analyze code changes, surface implicit assumptions, and identify real gaps
 
 ## The Problem This Solves
@@ -50,9 +50,9 @@ Files are scattered with no predictable structure. Some docs are at the root. So
 - Inconsistent naming (mix of kebab-case, spaces, SHOUTING)
 - Docs nested more than 3 levels deep
 
-## How improve-docs Works
+## How manage-docs Works
 
-The skill runs a 6-task workflow that addresses all three failure modes:
+Runs a 6-task workflow that addresses all three failure modes:
 
 ```
 1. Git baseline     — checkpoint for safe rollback
@@ -73,11 +73,11 @@ The audit in Task 2 evaluates every file against three checklists:
 
 The skill asks for user approval at three points (Tasks 3, 5, and 6) before making changes.
 
-## How generate-makefile Works
+## How manage-makefiles Works
 
-Analyzes the repository and generates a Makefile following CEG standards:
+Analyzes the repository and generates or enhances a Makefile following CEG standards:
 - **Actionability** — copy-paste ready commands, status indicators (✓/✗/⚠️)
-- **Consistency** — standard naming (test-X, install-X), uniform output
+- **Consistency** — standard naming (`test-X`, `install-X`), uniform output
 - **Simplicity** — one target = one action, fail fast with helpful errors
 
 ## How poke-holes Works
@@ -111,25 +111,31 @@ gaps before they reach production.
 
 Use `AskUserQuestion`:
 
-```
-What would you like to do?
-
-- Improve my repo's documentation (improve-docs)
-- Generate or enhance a Makefile (generate-makefile)
-- Poke holes in my recent code changes (poke-holes)
-- Just explain more about what you do
+```javascript
+AskUserQuestion({
+  questions: [{
+    question: "What would you like to do?",
+    header: "Operation",
+    options: [
+      { label: "Improve documentation", description: "Audit, consolidate, and enhance repo docs — reduce overwhelm, eliminate redundancy, generate diagrams" },
+      { label: "Generate or enhance a Makefile", description: "Create actionable Makefiles following CEG standards — help target, test/install/validate targets, status indicators" },
+      { label: "Poke holes in code changes", description: "Surface implicit assumptions and real gaps in recent changes before they reach production" }
+    ],
+    multiSelect: false
+  }]
+})
 ```
 
 ### Step 3: Guide to the Right Skill
 
 | They want... | Skill | Command |
 |---|---|---|
-| Fix messy docs | improve-docs | `/code-quality-manager:improve-docs` |
-| Consolidate scattered files | improve-docs | `/code-quality-manager:improve-docs` |
-| Generate diagrams | improve-docs | `/code-quality-manager:improve-docs` |
-| Audit CLAUDE.md | improve-docs | `/code-quality-manager:improve-docs` |
-| Create a Makefile | generate-makefile | `/code-quality-manager:generate-makefile` |
-| Improve an existing Makefile | generate-makefile | `/code-quality-manager:generate-makefile` |
+| Fix messy docs | manage-docs | `/code-quality-manager:manage-docs` |
+| Consolidate scattered files | manage-docs | `/code-quality-manager:manage-docs` |
+| Generate diagrams | manage-docs | `/code-quality-manager:manage-docs` |
+| Audit CLAUDE.md | manage-docs | `/code-quality-manager:manage-docs` |
+| Create a Makefile | manage-makefiles | `/code-quality-manager:manage-makefiles` |
+| Improve an existing Makefile | manage-makefiles | `/code-quality-manager:manage-makefiles` |
 | Review code changes for gaps | poke-holes | `/code-quality-manager:poke-holes` |
 | Find implicit assumptions | poke-holes | `/code-quality-manager:poke-holes` |
 | Stress-test recent changes | poke-holes | `/code-quality-manager:poke-holes` |
@@ -148,13 +154,13 @@ These principles guide every decision the plugin makes:
 
 ```
 code-quality-manager (this plugin)
-  ├── improve-docs     → audits and fixes documentation quality
-  ├── generate-makefile → creates actionable Makefiles
-  └── poke-holes       → surfaces assumptions and gaps in code changes
+  ├── manage-docs       → audits and fixes documentation quality
+  ├── manage-makefiles  → creates actionable Makefiles
+  └── poke-holes        → surfaces assumptions and gaps in code changes
 
 version-manager
   └── version-bump   → determines version bumps (code-quality-manager handles the docs side)
 
 claude-manager
-  └── fix-claude-md  → focused CLAUDE.md audit (improve-docs includes this as Task 6)
+  └── manage-claude-config → fix-claude-md  → focused CLAUDE.md audit (manage-docs includes this as Task 6)
 ```
