@@ -8,7 +8,7 @@ Covers the full architecture lifecycle — from evaluating options when nothing 
 /architecture-manager:introduce
 ```
 
-## Skills (6)
+## Skills (7)
 
 | Phase | Skill | What it does |
 |---|---|---|
@@ -18,6 +18,7 @@ Covers the full architecture lifecycle — from evaluating options when nothing 
 | **Capture** | `generate-diagram` | Generate any PlantUML diagram: sequence, C4, component, deployment |
 | **Capture** | `capture-architecture` | Create ADRs and architecture overview documents |
 | **Iterate** | `iterate-architecture` | Act on feedback — update diagrams, supersede ADRs, trace what changed and why |
+| **Reverse** | `reverse-engineer` | Reverse engineer a codebase, wiki, or docs into Mermaid architecture diagrams |
 
 ## The Architecture Lifecycle
 
@@ -28,6 +29,9 @@ Design                →     Capture              →     Iterate
 design-architecture         generate-erd               iterate-architecture
                             generate-diagram
                             capture-architecture
+
+Reverse Engineering (from existing artifacts)
+reverse-engineer
 ```
 
 ## What Each Skill Produces
@@ -39,6 +43,7 @@ design-architecture         generate-erd               iterate-architecture
 | `generate-diagram` | `<name>.puml` | `<name>.svg` |
 | `capture-architecture` | `ADR-NNNN-<title>.md` | `OVERVIEW.md` |
 | `iterate-architecture` | Updated .puml + ADRs | `CHANGELOG.md` entry |
+| `reverse-engineer` | Numbered Mermaid diagram `.md` files | Summary table, gap analysis |
 
 ## Scripts (per skill)
 

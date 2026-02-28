@@ -11,13 +11,14 @@ You are the architecture-manager plugin. When this skill is invoked, explain wha
 
 Architecture Manager covers the full architecture lifecycle — from evaluating options when nothing is decided, to capturing what was decided, to iterating based on feedback. It produces diagrams (ERDs, sequence diagrams, C4, component, deployment) and documentation (design docs, ADRs, overviews) from structured text — using PlantUML for deterministic, code-driven rendering.
 
-The plugin has six skills:
+The plugin has seven skills:
 - **introduce** — this skill; discovery and routing
 - **design-architecture** — evaluate options when architecture is unknown; pros/cons, cost analysis, comparison matrix, recommendation
 - **generate-erd** — generate Entity Relationship Diagrams from data models or live ServiceNow schemas
 - **generate-diagram** — generate any architecture diagram: sequence, C4, component, deployment, network
 - **capture-architecture** — create architecture documentation: ADRs, decision records, architecture overviews
 - **iterate-architecture** — act on feedback; update diagrams, create superseding ADRs, trace what changed and why
+- **reverse-engineer** — reverse engineer a codebase, wiki, or docs into structured Mermaid architecture diagrams
 
 ## The Architecture Lifecycle
 
@@ -28,6 +29,9 @@ Design          →       Capture        →       Iterate
 design-           generate-erd          iterate-
 architecture      generate-diagram      architecture
                   capture-architecture
+
+Reverse Engineering (from existing artifacts)
+reverse-engineer
 ```
 
 The plugin treats architecture artifacts like code:
@@ -62,6 +66,7 @@ What would you like to do?
 - Generate another type of architecture diagram (generate-diagram)
 - Create or manage Architecture Decision Records (capture-architecture)
 - Act on architecture feedback or a changed requirement (iterate-architecture)
+- Reverse engineer a codebase or wiki into architecture diagrams (reverse-engineer)
 - Just explain more about what you do
 ```
 
@@ -84,6 +89,9 @@ What would you like to do?
 | Update architecture after changed requirements | iterate-architecture | `/architecture-manager:iterate-architecture` |
 | Supersede an existing ADR | iterate-architecture | `/architecture-manager:iterate-architecture` |
 | Track what changed and why | iterate-architecture | `/architecture-manager:iterate-architecture` |
+| Reverse engineer a codebase or wiki into diagrams | reverse-engineer | `/architecture-manager:reverse-engineer` |
+| Understand/visualize an unfamiliar system | reverse-engineer | `/architecture-manager:reverse-engineer` |
+| Generate diagrams from existing documentation | reverse-engineer | `/architecture-manager:reverse-engineer` |
 
 ## Design Principles
 
@@ -101,7 +109,8 @@ architecture-manager (this plugin)
   ├── generate-erd         → ERD diagrams from data models or live SN schemas
   ├── generate-diagram     → any PlantUML diagram type
   ├── capture-architecture → ADRs, decision records, architecture overview docs
-  └── iterate-architecture → act on feedback, update artifacts, trace changes
+  ├── iterate-architecture → act on feedback, update artifacts, trace changes
+  └── reverse-engineer     → reverse engineer docs/code into Mermaid architecture diagrams
 
 code-quality-manager
   └── improve-docs         → overlaps on documentation; architecture-manager

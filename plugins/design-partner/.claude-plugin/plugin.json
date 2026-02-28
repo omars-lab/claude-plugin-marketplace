@@ -1,0 +1,10 @@
+{
+  "name": "design-partner",
+  "description": "Collaborative design facilitation — build high-level design documents section by section through structured co-authoring",
+  "version": "1.0.0",
+  "author": {
+    "name": "Omar Eid",
+    "email": "omar.eid@servicenow.com"
+  },
+  "license": "MIT"
+}

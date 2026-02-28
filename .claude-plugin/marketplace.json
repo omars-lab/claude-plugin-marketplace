@@ -144,6 +144,22 @@
       "version": "1.0.0",
       "category": "utilities",
       "keywords": ["shell", "profile", "zshrc", "chrome", "browser-automation", "aliases", "mcp", "setup"]
+    },
+    {
+      "name": "code-repository-manager",
+      "source": "./plugins/code-repository-manager",
+      "description": "Manage code repository documentation — publish co-design docs to GitHub Wiki and GitHub Pages, rebuild navigation, and sync across targets",
+      "version": "1.0.0",
+      "category": "development",
+      "keywords": ["documentation", "wiki", "github-pages", "publishing", "sync", "navigation", "co-design"]
+    },
+    {
+      "name": "design-partner",
+      "source": "./plugins/design-partner",
+      "description": "Collaborative design facilitation — build high-level design documents section by section through structured co-authoring",
+      "version": "1.0.0",
+      "category": "development",
+      "keywords": ["design", "hld", "co-design", "collaboration", "architecture", "documentation"]
     }
   ]
 }

@@ -1,0 +1,10 @@
+{
+  "name": "code-repository-manager",
+  "description": "Manage code repository documentation — publish co-design docs to GitHub Wiki and GitHub Pages, rebuild navigation, and sync across targets",
+  "version": "1.0.0",
+  "author": {
+    "name": "Omar Eid",
+    "email": "omar.eid@servicenow.com"
+  },
+  "license": "MIT"
+}
