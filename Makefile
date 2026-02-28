@@ -1,4 +1,4 @@
-.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register
+.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register sync-remote
 
 # Colors for output
 GREEN := \033[0;32m
@@ -175,5 +175,30 @@ quick-start: ## Quick start guide
 
 doctor: ## Diagnose marketplace and plugin installation issues
 	@./scripts/cli doctor $(MARKETPLACE_NAME)
+
+GITHUB_REMOTE := git@github.com:omars-lab/claude-plugin-marketplace.git
+GITHUB_REMOTE_NAME := github
+
+sync-remote: ## Ensure GitHub SSH remote exists and push latest changes
+	@echo "$(BLUE)Syncing to GitHub remote...$(NC)"
+	@if git remote get-url $(GITHUB_REMOTE_NAME) > /dev/null 2>&1; then \
+		current_url=$$(git remote get-url $(GITHUB_REMOTE_NAME)); \
+		if [ "$$current_url" = "$(GITHUB_REMOTE)" ]; then \
+			echo "  $(GREEN)✓$(NC) Remote '$(GITHUB_REMOTE_NAME)' exists: $(GITHUB_REMOTE)"; \
+		else \
+			echo "  $(YELLOW)⚠$(NC) Remote '$(GITHUB_REMOTE_NAME)' exists but points to: $$current_url"; \
+			echo "  $(YELLOW)  Updating to: $(GITHUB_REMOTE)$(NC)"; \
+			git remote set-url $(GITHUB_REMOTE_NAME) $(GITHUB_REMOTE); \
+			echo "  $(GREEN)✓$(NC) Remote updated"; \
+		fi; \
+	else \
+		echo "  $(YELLOW)Adding remote '$(GITHUB_REMOTE_NAME)': $(GITHUB_REMOTE)$(NC)"; \
+		git remote add $(GITHUB_REMOTE_NAME) $(GITHUB_REMOTE); \
+		echo "  $(GREEN)✓$(NC) Remote added"; \
+	fi
+	@branch=$$(git rev-parse --abbrev-ref HEAD); \
+	echo "  $(BLUE)Pushing $$branch to $(GITHUB_REMOTE_NAME)...$(NC)"; \
+	git push $(GITHUB_REMOTE_NAME) $$branch; \
+	echo "  $(GREEN)✓$(NC) Pushed $$branch to $(GITHUB_REMOTE_NAME)"
 
 .DEFAULT_GOAL := help

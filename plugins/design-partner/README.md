@@ -8,12 +8,13 @@ Collaborative design facilitation — build high-level design documents section 
 /design-partner:introduce
 ```
 
-## Skills (2)
+## Skills (3)
 
 | Category | Skill | What it does |
 |---|---|---|
 | **Intro** | `introduce` | Explain plugin capabilities and guide to the right skill |
-| **Co-design** | `coauthor-tech-design` | Collaboratively build an HLD section by section — infer, draft, get agreement, iterate |
+| **Tech Design** | `coauthor-tech-design` | Collaboratively build an HLD section by section — infer, draft, stress-test, iterate |
+| **Business Plan** | `coauthor-business-plan` | Collaboratively build a business/product plan — market, pricing, strategy, with "but what if" hole-poking |
 
 ## Requirements
 

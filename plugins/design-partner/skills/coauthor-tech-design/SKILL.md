@@ -18,20 +18,29 @@ If the user actually needs option evaluation, redirect them to `/architecture-ma
 
 For each section of the design document:
 
-1. **Read existing context** — Use `Glob` and `Read` to review previous sections of the evolving document, existing architecture docs, and relevant code
-2. **Propose high-level wording** — Before writing a full draft, present the key points, structure, and themes you plan to cover in the section. Get alignment on direction before investing in detailed prose.
+1. **Read existing context** — Use `Glob` and `Read` to review previous sections of the evolving document, existing architecture docs, and relevant code. This is a **read-only exploration phase** — understand the landscape before proposing anything.
+2. **Propose high-level wording** — Before writing a full draft, present the key points, structure, and themes you plan to cover in the section. Get alignment on direction before investing in detailed prose. Use `AskUserQuestion` to confirm the outline before proceeding.
 3. **Infer and draft the section** — Once the high-level wording is agreed, write a complete draft based on what you know. Highlight every assumption with `**[Assumption: ...]**` inline. Include diagrams where they add clarity (e.g., Mermaid flowcharts for current-state context, sequence diagrams for interactions).
 4. **Present the draft** with all assumptions visible to the user
-5. **Ask targeted questions** about gaps — be specific, not open-ended. Example: "Does the ingestion service write directly to Postgres or go through a queue?" not "What do you think about the data layer?"
-6. **Iterate** — incorporate feedback, re-draft, repeat until the user is satisfied
-7. **Agreement gate** — use `AskUserQuestion` with exactly these options:
+5. **Poke holes — "But what if..."** — After drafting, **proactively challenge the section** with 2-3 "but what if" questions that stress-test the technical decisions. These should surface blind spots, untested assumptions, or failure scenarios. Frame challenges constructively — you're a thinking partner, not a critic.
+6. **Ask targeted questions** about gaps — be specific, not open-ended. Example: "Does the ingestion service write directly to Postgres or go through a queue?" not "What do you think about the data layer?"
+7. **Iterate** — incorporate feedback, re-draft, repeat until the user is satisfied
+8. **Agreement gate** — use `AskUserQuestion` with exactly these options:
    - "Agreed — move on"
-   - "Needs changes" (loop back to step 6)
+   - "Needs changes" (loop back to step 7)
    - "Revisit a previous section" (trigger revisiting pattern)
    - "Skip for now" (mark task as pending, note the skip, continue)
-8. **Write agreed content immediately** — use `Edit` to write the agreed text into the document, then update the section's task status to completed. **Always write agreed content to the document immediately after the gate. Do not batch writes.** Each section should be persisted before starting the next one — this ensures no work is lost if the session is interrupted.
+9. **Write agreed content immediately** — use `Edit` to write the agreed text into the document, then update the section's task status to completed. **Always write agreed content to the document immediately after the gate. Do not batch writes.** Each section should be persisted before starting the next one — this ensures no work is lost if the session is interrupted.
 
 **Important:** Never move to the next section without passing the agreement gate.
+
+**The "But What If" discipline:** After every section draft, you **must** challenge the technical decisions with realistic scenarios that could invalidate the design. This is not nitpicking — it's surfacing risks early. Examples by phase:
+- **Architecture:** "But what if this component becomes a bottleneck at 10x load — what's the scaling path?"
+- **Data model:** "But what if this relationship becomes M:N later — does the schema support that gracefully?"
+- **Integration:** "But what if the external API changes its contract — how brittle is this coupling?"
+- **Security:** "But what if an attacker gains access to this service — what's the blast radius?"
+- **Migration:** "But what if we need to roll back — is this change reversible?"
+Frame challenges constructively. The goal is a design that has been stress-tested, not one that just sounds good.
 
 **Number sourcing:** Any specific number cited in the document — context window sizes, character limits, tool limits, performance metrics, etc. — **must be a markdown link to the source documentation** it was derived from. Prefer **official product documentation** (e.g., `docs.servicenow.com`) over community articles or AI-generated content. Use reference-style links (`[128K][source-id]` + `[source-id]: URL`) when the same source is referenced multiple times. Unsourced numbers are unverifiable claims — always trace to a doc.
 
@@ -121,12 +130,23 @@ This table should be:
 
 The personas table cascades into later phases: Section 6 (who interacts with each option), Section 9.4 (UX requirements per persona), Section 13 (use case diagrams).
 
+**"But what if" prompts for this section:**
+- "But what if the stated motivation is a symptom, not the root cause — what's the deeper problem?"
+- "But what if a key persona is missing from the system users table — who else touches this system indirectly?"
+- "But what if the 'why now' driver changes — does the design still make sense?"
+
 Gate.
 
 ### Phase 2 — Objectives
 **Focus:** Business goals, technical goals, success criteria, explicit non-goals.
 
-Infer objectives from the purpose and any prior conversations. Present as bullet lists under sub-headings. Non-goals are critical — they set boundaries. Gate.
+Infer objectives from the purpose and any prior conversations. Present as bullet lists under sub-headings. Non-goals are critical — they set boundaries.
+
+**"But what if" prompts:**
+- "But what if these objectives conflict with each other at scale — which one wins?"
+- "But what if a non-goal becomes essential mid-project — how painful is the pivot?"
+
+Gate.
 
 ### Phase 3 — Scope
 **Focus:** What is in scope, what is out of scope, system boundaries.
@@ -173,6 +193,12 @@ This is the heart of the document. Draft the proposed design with:
 
 This ensures decisions are discoverable from multiple entry points and don't get buried in Section 6.
 
+**"But what if" prompts:**
+- "But what if the recommended option has a fatal flaw we haven't considered — what's the fallback?"
+- "But what if the phasing is wrong — what happens if Phase 2 needs to come before Phase 1?"
+- "But what if a key technology assumption is invalid — which options survive?"
+- "But what if the team can't execute this complexity — what's the simpler version?"
+
 Gate. This section often requires multiple iterations.
 
 ### Phase 7 — Key Components & Data Model
@@ -183,7 +209,14 @@ Break the proposed design into concrete components. For each:
 - Interfaces / API surface
 - Data it owns
 
-Define the data model: entities, key attributes, relationships. Gate.
+Define the data model: entities, key attributes, relationships.
+
+**"But what if" prompts:**
+- "But what if this component needs to be replaced — how coupled is it to the rest?"
+- "But what if the data model needs to evolve — are migrations feasible without downtime?"
+- "But what if two components need to communicate differently than planned — how rigid is this interface?"
+
+Gate.
 
 ### Phase 8 — Architecture Diagrams
 **Focus:** Visual representations of the design.
@@ -233,7 +266,14 @@ Draft NFRs as measurable statements where possible (e.g., "P95 latency < 200ms" 
 - **User Experience** — interaction patterns, discoverability, consistency with existing UX, accessibility. How will users invoke, monitor, and interact with the system? What should it feel like?
 - **Compliance & Constraints** — regulatory requirements, platform limitations, existing tech stack constraints
 
-Include constraints imposed by the environment. Gate.
+Include constraints imposed by the environment.
+
+**"But what if" prompts:**
+- "But what if the performance target is unreachable with this architecture — what's the redesign?"
+- "But what if security requirements tighten post-launch — is the design extensible?"
+- "But what if the platform constraint changes (new version, deprecated API) — how brittle is the dependency?"
+
+Gate.
 
 ### Phase 10 — Risks, Dependencies & Open Questions
 **Focus:** Risk register, external dependencies, unresolved items.
@@ -668,6 +708,26 @@ _If a live system exists, trigger Phase 0b discovery to query real data before d
 ## Appendices
 
 _Appendices are added as needed during the co-design. Common types: **Appendix A–N: [Topic] Research** (from Phase 0b — platform capabilities, protocol specs, discovery findings), **Appendix: Worked Examples** (from Phase 10b — real records illustrating design behavior), **Appendix: Detailed Specifications** (verbose details extracted during Phase 12 compression). Each appendix should have a date, purpose statement, and source citations._
+
+## Key Questions Index
+
+_This appendix provides question-first navigation into the document. Each row states a key question the design addresses and links to the section that answers it. Populate this table during Phase 11 (Final Review) by scanning each section for the core question it resolves._
+
+| # | Question | Addressed In |
+|---|----------|-------------|
+| Q1 | What problem are we solving and why now? | [Section 1 — Purpose & Context](#1-purpose--context) |
+| Q2 | What does success look like? | [Section 2 — Objectives](#2-objectives) |
+| Q3 | What is in scope and what is explicitly out? | [Section 3 — Scope](#3-scope) |
+| Q4 | How does the system work today? | [Section 4 — Current State](#4-current-state-as-is) |
+| Q5 | What gaps exist between current state and objectives? | [Section 5 — Problem Statement & Gaps](#5-problem-statement--gaps) |
+| Q6 | What architecture options were considered and why was this one chosen? | [Section 6 — Proposed Design](#6-proposed-design) |
+| Q7 | What are the key design decisions and their status? | [Section 6.5 — Key Design Decisions](#65-key-design-decisions) |
+| Q8 | What are the building blocks and how do they relate? | [Section 7 — Key Components & Data Model](#7-key-components--data-model) |
+| Q9 | What does the architecture look like visually? | [Section 8 — Architecture Diagrams](#8-architecture-diagrams) |
+| Q10 | What are the non-functional requirements and constraints? | [Section 9 — NFRs & Constraints](#9-non-functional-requirements--constraints) |
+| Q11 | What could go wrong and what's unresolved? | [Section 10 — Risks, Dependencies & Open Questions](#10-risks-dependencies--open-questions) |
+
+_Add project-specific questions as they emerge during the co-design. The question should be phrased as a reader would ask it — not as a section title._
 
 ## 11. Revision Log
 
