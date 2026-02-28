@@ -176,29 +176,87 @@ quick-start: ## Quick start guide
 doctor: ## Diagnose marketplace and plugin installation issues
 	@./scripts/cli doctor $(MARKETPLACE_NAME)
 
+# GitHub sync configuration
+# -------------------------
+# This marketplace has two remotes:
+#   - origin (mac-studio): Internal remote, keeps original commit authors
+#   - github: Public GitHub remote, rewrites commits to use GITHUB_AUTHOR_EMAIL
+#
+# Two-step workflow:
+#   1. sync-remote-init (one-time): Rewrites ALL history and force pushes to GitHub
+#   2. sync-remote (incremental): Only rewrites NEW commits since last sync
+#
+# This ensures:
+#   - GitHub shows omar_eid21@yahoo.com as author
+#   - Origin (mac-studio) preserves original commit metadata
+#   - GitHub commit IDs remain stable after initial setup
 GITHUB_REMOTE := git@github.com:omars-lab/claude-plugin-marketplace.git
 GITHUB_REMOTE_NAME := github
+GITHUB_AUTHOR_NAME := Omar Eid
+GITHUB_AUTHOR_EMAIL := omar_eid21@yahoo.com
 
-sync-remote: ## Ensure GitHub SSH remote exists and push latest changes
-	@echo "$(BLUE)Syncing to GitHub remote...$(NC)"
-	@if git remote get-url $(GITHUB_REMOTE_NAME) > /dev/null 2>&1; then \
-		current_url=$$(git remote get-url $(GITHUB_REMOTE_NAME)); \
-		if [ "$$current_url" = "$(GITHUB_REMOTE)" ]; then \
-			echo "  $(GREEN)✓$(NC) Remote '$(GITHUB_REMOTE_NAME)' exists: $(GITHUB_REMOTE)"; \
+sync-remote-init: ## DESTRUCTIVE: Rewrite ALL history and force push (requires typing RESET)
+	@./scripts/sync-to-github-init.sh "$(GITHUB_REMOTE)" "$(GITHUB_REMOTE_NAME)" "$(GITHUB_AUTHOR_NAME)" "$(GITHUB_AUTHOR_EMAIL)"
+
+sync-remote: ## Incremental sync: rewrite only NEW commits since last sync
+	@./scripts/sync-to-github.sh "$(GITHUB_REMOTE)" "$(GITHUB_REMOTE_NAME)" "$(GITHUB_AUTHOR_NAME)" "$(GITHUB_AUTHOR_EMAIL)"
+
+sync-remote-status: ## Show GitHub sync state
+	@if [ -f .git/github-sync-state ]; then \
+		echo "$(BLUE)GitHub Sync State:$(NC)"; \
+		grep -v "^#" .git/github-sync-state | grep -v "^$$" | while read line; do \
+			key=$$(echo "$$line" | cut -d: -f1); \
+			val=$$(echo "$$line" | cut -d: -f2-); \
+			printf "  $(GREEN)%-10s$(NC) %s\n" "$$key:" "$$val"; \
+		done; \
+		echo ""; \
+		local_head=$$(git rev-parse HEAD); \
+		last_synced=$$(grep "^local:" .git/github-sync-state | cut -d: -f2); \
+		if [ "$$local_head" = "$$last_synced" ]; then \
+			echo "  $(GREEN)✓ Up to date$(NC)"; \
 		else \
-			echo "  $(YELLOW)⚠$(NC) Remote '$(GITHUB_REMOTE_NAME)' exists but points to: $$current_url"; \
-			echo "  $(YELLOW)  Updating to: $(GITHUB_REMOTE)$(NC)"; \
-			git remote set-url $(GITHUB_REMOTE_NAME) $(GITHUB_REMOTE); \
-			echo "  $(GREEN)✓$(NC) Remote updated"; \
+			new_count=$$(git rev-list --count "$$last_synced..$$local_head"); \
+			echo "  $(YELLOW)$$new_count new commit(s) to sync$(NC)"; \
+		fi; \
+		if [ -f .git/github-sync-mapping ]; then \
+			mapping_count=$$(grep -v "^#" .git/github-sync-mapping | grep -v "^$$" | wc -l | tr -d ' '); \
+			echo "  $(BLUE)$$mapping_count commits mapped$(NC)"; \
 		fi; \
 	else \
-		echo "  $(YELLOW)Adding remote '$(GITHUB_REMOTE_NAME)': $(GITHUB_REMOTE)$(NC)"; \
-		git remote add $(GITHUB_REMOTE_NAME) $(GITHUB_REMOTE); \
-		echo "  $(GREEN)✓$(NC) Remote added"; \
+		echo "$(YELLOW)No sync state. Run 'make sync-remote-init' first.$(NC)"; \
 	fi
+
+push-all: ## Push to both origin (studio) and GitHub (with author rewrite)
+	@echo "$(BLUE)Pushing to all remotes...$(NC)"
+	@echo ""
+	@echo "$(BLUE)[1/2] Pushing to origin (studio)...$(NC)"
 	@branch=$$(git rev-parse --abbrev-ref HEAD); \
-	echo "  $(BLUE)Pushing $$branch to $(GITHUB_REMOTE_NAME)...$(NC)"; \
-	git push $(GITHUB_REMOTE_NAME) $$branch; \
-	echo "  $(GREEN)✓$(NC) Pushed $$branch to $(GITHUB_REMOTE_NAME)"
+	git push origin $$branch && echo "  $(GREEN)✓$(NC) Pushed to origin" || echo "  $(RED)✗$(NC) Failed to push to origin"
+	@echo ""
+	@echo "$(BLUE)[2/2] Syncing to GitHub (with author rewrite)...$(NC)"
+	@./scripts/sync-to-github.sh "$(GITHUB_REMOTE)" "$(GITHUB_REMOTE_NAME)" "$(GITHUB_AUTHOR_NAME)" "$(GITHUB_AUTHOR_EMAIL)"
+
+sync-remote-lookup: ## Look up GitHub SHA for a local commit (SHA=<commit>)
+	@if [ -z "$(SHA)" ]; then \
+		echo "$(RED)Usage: make sync-remote-lookup SHA=<commit>$(NC)"; \
+		exit 1; \
+	fi
+	@if [ ! -f .git/github-sync-mapping ]; then \
+		echo "$(RED)No mapping file. Run 'make sync-remote-init' first.$(NC)"; \
+		exit 1; \
+	fi
+	@full_sha=$$(git rev-parse "$(SHA)" 2>/dev/null); \
+	if [ -z "$$full_sha" ]; then \
+		echo "$(RED)Invalid commit: $(SHA)$(NC)"; \
+		exit 1; \
+	fi; \
+	github_sha=$$(grep "^$$full_sha " .git/github-sync-mapping | cut -d' ' -f2); \
+	if [ -z "$$github_sha" ]; then \
+		echo "$(YELLOW)No GitHub mapping for $$full_sha$(NC)"; \
+		echo "$(YELLOW)Commit may not have been synced yet.$(NC)"; \
+	else \
+		echo "$(GREEN)Local:$(NC)  $$full_sha"; \
+		echo "$(GREEN)GitHub:$(NC) $$github_sha"; \
+	fi
 
 .DEFAULT_GOAL := help
