@@ -1,7 +1,7 @@
 {
   "name": "servicenow-manager",
   "description": "ServiceNow-specific tooling: Tampermonkey userscripts for ServiceNow workflows",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "Omar Eid"
   },

@@ -1,7 +1,7 @@
 {
   "name": "discover-oeid-plugins",
   "description": "Discover available personal plugins and see what's installed with interactive guidance",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": {
     "name": "Omar Eid"
   },
