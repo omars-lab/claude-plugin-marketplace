@@ -664,9 +664,13 @@ function extractSectionLines(filename, sectionName, lineType) {{
 }}
 
 // Classify destination added lines as "moved" (matches source) or "new" (no match)
+// Shared normaliser: strip date tags + hashtags, collapse whitespace, lowercase
+const normLine = s => s.replace(/>\\d{{4}}-\\d{{2}}-\\d{{2}}/g, '').replace(/#\\w+/g, '').replace(/\\s+/g, ' ').trim().toLowerCase();
+const bodyText = s => s.replace(/^[-*]\\s*\\[[x ]\\]\\s*/i, '').trim();
+
 function classifyDestLines(removedLines, addedLines) {{
-  const norm = s => s.replace(/>\\d{{4}}-\\d{{2}}-\\d{{2}}/g, '').replace(/#\\w+/g, '').replace(/\\s+/g, ' ').trim().toLowerCase();
-  const body = s => s.replace(/^[-*]\\s*\\[[x ]\\]\\s*/i, '').trim();  // strip task checkbox prefix
+  const norm = normLine;
+  const body = bodyText;
   const removedNorms = removedLines.map(norm).filter(s => s.length > 3);
   const removedBodies = removedNorms.map(body);
   const moved = [], newContent = [];
@@ -712,7 +716,7 @@ function showSectionModal(idx) {{
   let destRaw = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
 
   const srcResult  = extractSectionLines(row.source_file, sectionName, '-');
-  const removedLines = srcResult.lines;
+  let removedLines = srcResult.lines;
 
   const destFile = allParsedFiles.find(f => {{
     const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '');
@@ -720,6 +724,22 @@ function showSectionModal(idx) {{
   }});
   const destResult  = destFile ? extractSectionLines(destFile.filename, null, '+') : {{ lines: [], matched: true }};
   const addedLines  = destResult.lines;
+
+  // Section header not found (synthetic section name) — infer removed lines by
+  // content-matching ALL source removed lines against what landed in the destination.
+  if (!srcResult.matched && addedLines.length > 0) {{
+    const allSrc = extractSectionLines(row.source_file, null, '-').lines;
+    const destNorms = new Set(addedLines.map(normLine).filter(s => s.length > 5));
+    removedLines = allSrc.filter(l => {{
+      const n = normLine(l);
+      if (n.length < 5) return false;
+      if (destNorms.has(n)) return true;
+      return [...destNorms].some(dn => {{
+        const pLen = Math.min(40, Math.min(n.length, dn.length));
+        return pLen >= 10 && (n.startsWith(dn.slice(0, pLen)) || dn.startsWith(n.slice(0, pLen)));
+      }});
+    }});
+  }}
 
   const {{ moved, newContent }} = classifyDestLines(removedLines, addedLines);
   _modalMovedLines = moved;
