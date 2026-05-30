@@ -1645,8 +1645,10 @@ function showSectionModal(idx, focusLost = false) {{
     }}
     // Group source lines by the destination section each landed in — mirrors right panel layout
     const srcGrouped = renderSrcGrouped(_modalDestGroups, new Set(moved), movedPairs, srcLineNos, srcPairIds);
-    // Lost lines: source lines that are countable but didn't arrive at destination
-    const matchedSrcSet = new Set([...movedPairs.values()]);
+    // Lost lines: source lines not covered by VALID pairs (consistent with badge classification).
+    // filterValidPairs rejects pairs where the norm-match fails — those srcLines are truly lost.
+    const _validMovedForLost = filterValidPairs(moved, movedPairs, removedLines);
+    const matchedSrcSet = new Set(_validMovedForLost.map(dl => movedPairs.get(dl)).filter(Boolean));
     const lostLines = removedLines.filter(l => !matchedSrcSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l));
     const isMixed = lostLines.length > 0 && moved.length > 0;
     let lostHtml = '';
