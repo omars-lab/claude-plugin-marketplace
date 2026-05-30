@@ -811,12 +811,12 @@ def cmd_switch_plan_org(args):
         return m.group(0)
     new_content = fm_title_re.sub(_fix_title, new_content)
 
-    if utils.DRY_RUN:
+    if utils.DRY_RUN or getattr(args, "dry_run", False):
         utils.log("[dry-run] Would write:")
         utils.log(f"  {new_path}")
         utils.log(f"  H1: # {new_namespace}{date_str}{target_workstream} {title_part}")
         utils.log(f"  Wikilink update: [[{stem}]] → [[{new_stem}]]")
-        return
+        sys.exit(utils.EXIT_OK)
 
     # Write new file
     new_path.parent.mkdir(parents=True, exist_ok=True)

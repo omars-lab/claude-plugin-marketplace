@@ -265,32 +265,32 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--date", help="YYMMDD date prefix (default: today)")
 
     # ── Group 6: URL Enrichment ────────────────────────────────────────────
-    p = sub.add_parser("fetch-title", help=COMMANDS[27][1])
+    p = sub.add_parser("fetch-title", help=COMMANDS[28][1])
     p.add_argument("url", help="URL to fetch title from")
 
-    p = sub.add_parser("to-markdown-link", help=COMMANDS[28][1])
+    p = sub.add_parser("to-markdown-link", help=COMMANDS[29][1])
     p.add_argument("url", help="URL to convert")
 
-    p = sub.add_parser("fetch-metadata", help=COMMANDS[29][1])
+    p = sub.add_parser("fetch-metadata", help=COMMANDS[30][1])
     p.add_argument("url", help="URL to fetch metadata for")
     p.add_argument("--internal-map", metavar="JSON", help="JSON file mapping known domains to descriptions")
 
-    p = sub.add_parser("enrich-urls", help=COMMANDS[30][1])
+    p = sub.add_parser("enrich-urls", help=COMMANDS[31][1])
     p.add_argument("file", help="File to enrich URLs in")
     p.add_argument("--dry-run-preview", action="store_true", help="Show replacements without writing")
 
-    p = sub.add_parser("enrich-research-doc", help=COMMANDS[31][1])
+    p = sub.add_parser("enrich-research-doc", help=COMMANDS[32][1])
     p.add_argument("file", help="Research doc to enrich")
 
-    p = sub.add_parser("check-dead-links", help=COMMANDS[32][1])
+    p = sub.add_parser("check-dead-links", help=COMMANDS[33][1])
     p.add_argument("file", help="File to check links in")
     p.add_argument("--timeout", type=float, default=5.0, help="Request timeout in seconds")
 
-    p = sub.add_parser("archive-url", help=COMMANDS[33][1])
+    p = sub.add_parser("archive-url", help=COMMANDS[34][1])
     p.add_argument("url", help="URL to archive")
 
     # ── Group 7: Link Repair ───────────────────────────────────────────────
-    p = sub.add_parser("enrich-links", help=COMMANDS[34][1])
+    p = sub.add_parser("enrich-links", help=COMMANDS[35][1])
     p.add_argument("file", help="File to enrich links in")
     p.add_argument("--use-chrome", action="store_true",
                    help="Use existing Chrome Default profile for internal/Okta URLs (requires Playwright; Chrome must be closed)")
@@ -299,7 +299,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--interactive", action="store_true",
                    help="Confirm each URL enrichment interactively")
 
-    p = sub.add_parser("fix-links", help=COMMANDS[35][1])
+    p = sub.add_parser("fix-links", help=COMMANDS[36][1])
     p.add_argument("--from-git-renames", action="store_true",
                    help="Auto-detect renames from git status --porcelain")
     p.add_argument("old_stem", nargs="?",
@@ -310,68 +310,68 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Notes root directory to scan (default: cwd)")
 
     # ── Group 8: Dashboard ────────────────────────────────────────────────
-    p = sub.add_parser("dashboard-generate", help=COMMANDS[36][1])
+    p = sub.add_parser("dashboard-generate", help=COMMANDS[37][1])
     p.add_argument("--out", metavar="PATH", help="Output path for ideas.html (default: dashboard/ideas.html)")
     p.add_argument("--dir", dest="notes_dir", help="Notes root override")
     p.add_argument("--skip-mine", action="store_true", dest="skip_mine", help="Skip conversation-mine pre-step")
 
-    p = sub.add_parser("dashboard-open", help=COMMANDS[37][1])
+    p = sub.add_parser("dashboard-open", help=COMMANDS[38][1])
 
-    p = sub.add_parser("serve", help=COMMANDS[38][1])
+    p = sub.add_parser("serve", help=COMMANDS[39][1])
     p.add_argument("--port", type=int, default=4242, help="Port to listen on (default: 4242)")
     p.add_argument("--open", action="store_true", help="Open browser after server starts")
 
     # ── Group 9: Conversation Mining ──────────────────────────────────────
-    p = sub.add_parser("conversation-mine", help=COMMANDS[39][1])
+    p = sub.add_parser("conversation-mine", help=COMMANDS[40][1])
     p.add_argument("--since", metavar="YYYY-MM-DD", help="Only process sessions on or after this date")
     p.add_argument("--full", action="store_true", help="Ignore cursor — reprocess all sessions")
     p.add_argument("--projects", metavar="PATH1,PATH2",
                    help="Comma-separated project CWDs to mine (default: NotePlan root)")
     p.add_argument("--no-writeback", action="store_true", help="Skip Phase G write-back (read-only mode)")
 
-    sub.add_parser("mine-commit", help=COMMANDS[40][1])
+    sub.add_parser("mine-commit", help=COMMANDS[41][1])
 
     # ── Group 10: Work Board ──────────────────────────────────────────────
-    sub.add_parser("work-board-generate", help=COMMANDS[41][1])
-    sub.add_parser("work-board-open",     help=COMMANDS[42][1])
+    sub.add_parser("work-board-generate", help=COMMANDS[42][1])
+    sub.add_parser("work-board-open",     help=COMMANDS[43][1])
 
     # ── Group 10b: Contributions ──────────────────────────────────────────
-    p = sub.add_parser("contributions-generate", help=COMMANDS[43][1])
+    p = sub.add_parser("contributions-generate", help=COMMANDS[44][1])
     p.add_argument("--repos-root", metavar="PATH", help="Workspace root override (default: ~/workspace)")
 
-    sub.add_parser("contributions-open", help=COMMANDS[44][1])
+    sub.add_parser("contributions-open", help=COMMANDS[45][1])
 
     # ── Group 11: AI Usage ────────────────────────────────────────────────
-    p = sub.add_parser("ai-usage-mine", help=COMMANDS[45][1])
+    p = sub.add_parser("ai-usage-mine", help=COMMANDS[46][1])
     p.add_argument("--since", metavar="YYYY-MM-DD")
     p.add_argument("--full", action="store_true", help="Reindex all sessions")
     p.add_argument("--deep", action="store_true", help="Parse full transcripts for tool counts + use case classification")
     p.add_argument("--repos-root", metavar="PATH", help="Workspace root (default: ~/workspace)")
 
-    sub.add_parser("ai-usage-generate", help=COMMANDS[46][1])
-    sub.add_parser("ai-usage-open",     help=COMMANDS[47][1])
+    sub.add_parser("ai-usage-generate", help=COMMANDS[47][1])
+    sub.add_parser("ai-usage-open",     help=COMMANDS[48][1])
 
-    p = sub.add_parser("repo-scan", help=COMMANDS[48][1])
+    p = sub.add_parser("repo-scan", help=COMMANDS[49][1])
     p.add_argument("--repos-root", metavar="PATH", help="Workspace root override (default: ~/workspace)")
 
     # ── Group 12: Conversation Graph ─────────────────────────────────────
-    sub.add_parser("graph-extract", help=COMMANDS[49][1])
-    sub.add_parser("graph-stats",   help=COMMANDS[50][1])
+    sub.add_parser("graph-extract", help=COMMANDS[50][1])
+    sub.add_parser("graph-stats",   help=COMMANDS[51][1])
 
-    p = sub.add_parser("graph-query", help=COMMANDS[51][1])
+    p = sub.add_parser("graph-query", help=COMMANDS[52][1])
     p.add_argument("text", nargs="?", help="Text to search across all node labels and attributes")
     p.add_argument("--cypher", metavar="QUERY", help="Cypher subset: MATCH (n[:Type]) [WHERE n.attr op val] RETURN n.field [ORDER BY ...] [LIMIT N]")
     p.add_argument("--limit", type=int, default=10, help="Max results (default: 10)")
 
-    p = sub.add_parser("graph-embed", help=COMMANDS[52][1])
+    p = sub.add_parser("graph-embed", help=COMMANDS[53][1])
     p.add_argument("--backend", choices=["lmstudio", "sentence-transformers"], default="lmstudio")
     p.add_argument("--model", default="nomic-embed-text-v1.5", help="Embedding model name")
     p.add_argument("--port", type=int, default=1234, help="LM Studio port (default: 1234)")
     p.add_argument("--force", action="store_true", help="Re-embed all nodes even if already embedded")
 
-    sub.add_parser("graph-build", help=COMMANDS[53][1])
+    sub.add_parser("graph-build", help=COMMANDS[54][1])
 
-    p = sub.add_parser("graph-query-vec", help=COMMANDS[54][1])
+    p = sub.add_parser("graph-query-vec", help=COMMANDS[55][1])
     p.add_argument("query", help="Query text to embed and search")
     p.add_argument("--backend", choices=["lmstudio", "sentence-transformers"], default="lmstudio")
     p.add_argument("--model", default="nomic-embed-text-v1.5")
@@ -379,26 +379,26 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--top-k", type=int, default=10, dest="top_k")
 
     # ── Group 13: Sweep Review ────────────────────────────────────────────
-    p = sub.add_parser("sweep-commit", help=COMMANDS[55][1])
+    p = sub.add_parser("sweep-commit", help=COMMANDS[56][1])
     p.add_argument("--dry-run", action="store_true", help="Print what would be committed without writing")
 
-    p = sub.add_parser("sweep-review-generate", help=COMMANDS[56][1])
+    p = sub.add_parser("sweep-review-generate", help=COMMANDS[57][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--no-carry-comments", action="store_true",
                    help="Start fresh — do not inject existing comments into new snapshot")
 
-    p = sub.add_parser("sweep-review-compile", help=COMMANDS[57][1])
+    p = sub.add_parser("sweep-review-compile", help=COMMANDS[58][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-squash", help=COMMANDS[58][1])
+    p = sub.add_parser("sweep-review-squash", help=COMMANDS[59][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-list", help=COMMANDS[59][1])
+    p = sub.add_parser("sweep-review-list", help=COMMANDS[60][1])
     p.add_argument("--date", help="Filter to a specific YYYY-MM-DD")
 
-    p = sub.add_parser("sweep-review-open", help=COMMANDS[60][1])
+    p = sub.add_parser("sweep-review-open", help=COMMANDS[61][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
     p.add_argument("--snapshot", action="store_true", help="Open raw snapshot instead of compiled review")

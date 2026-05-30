@@ -104,9 +104,9 @@ def plantype_names(notes_root: Path) -> dict[str, str]:
     result: dict[str, str] = {}
 
     plan_roots = [
-        notes_root / "🏢 ServiceNow" / "📆 Plans",
-        notes_root / "🏡 Personal"   / "🏡📆 Plans" / "Present",
-        notes_root / "👥 EarlBear"   / "📆 Plans",
+        notes_root / "Notes" / "🏢 ServiceNow" / "📆 Plans",
+        notes_root / "Notes" / "🏡 Personal"   / "🏡📆 Plans" / "Present",
+        notes_root / "Notes" / "👥 EarlBear"   / "📆 Plans",
     ]
 
     for plan_root in plan_roots:
