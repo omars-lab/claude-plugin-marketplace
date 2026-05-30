@@ -28,18 +28,9 @@ WORKSPACE_ROOTS = [
     Path.home() / "Library/CloudStorage/OneDrive-ServiceNow/workspace",
 ]
 
-_DOMAIN_KEYWORDS = {
-    "earlbear": ["earlbear", "earl-bear", "oeid"],
-    "personal": ["noteplan", "personal", "dotfiles", "home"],
-}
-
-
 def _detect_domain(repo_name: str) -> str:
-    name = repo_name.lower()
-    for domain, keywords in _DOMAIN_KEYWORDS.items():
-        if any(kw in name for kw in keywords):
-            return domain
-    return "work"
+    from noteplan_sweep.config import domain_for_label
+    return domain_for_label(repo_name)
 
 
 # ---------------------------------------------------------------------------

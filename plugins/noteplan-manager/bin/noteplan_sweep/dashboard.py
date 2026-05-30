@@ -323,12 +323,17 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
         f'<span class="chip" data-facet="project" data-val="{p}" onclick="toggleChip(this)">{p}</span>'
         for p in projects
     )
-    from noteplan_sweep.work_board import _PLANTYPE_NAMES
+    try:
+        from noteplan_sweep.config import plantype_names as _ptn
+        _pt_names = _ptn(notes_root)
+    except Exception:
+        from noteplan_sweep.work_board import _get_plantype_names
+        _pt_names = _get_plantype_names()
     plantype_chips = "".join(
         f'<span class="chip plantype-chip" data-facet="plantype" data-val="{t}" '
-        f'onclick="toggleChip(this)" title="{_PLANTYPE_NAMES.get(t, t)}">'
+        f'onclick="toggleChip(this)" title="{_pt_names.get(t, t)}">'
         f'<span style="font-size:14px">{t}</span>'
-        f'<span class="pt-label">{_PLANTYPE_NAMES.get(t, "")}</span>'
+        f'<span class="pt-label">{_pt_names.get(t, "")}</span>'
         f'</span>'
         for t in plantypes
     )

@@ -29,24 +29,31 @@ from noteplan_sweep.dashboard import (
 # Living artifact locators
 # ---------------------------------------------------------------------------
 
-_PLANTYPE_NAMES: dict[str, str] = {
-    # Work workstreams
-    "⚙️": "AI Club", "🤿": "Deep Dives", "🖼️": "Designs",
-    "🧑🏻‍💻": "Development (Work)", "✍🏻": "Documenting", "🪪": "Hiring",
-    "🎯": "Impact", "🏁": "Onboarding", "🏋": "Training",
-    "✈️": "Travel", "🖥️": "Workspace",
-    # Work project emojis
-    "🤖": "Config Agent", "💡": "esgenius", "⚗️": "Experiments", "🔧": "Setup",
-    # Personal activities
-    "📝": "Authoring", "👨🏻‍💻": "Development (Personal)", "🔍": "Discovering",
-    "👨🏻‍💼": "Entrepreneurship", "🌱": "Growth", "🏃🏻": "Health",
-    "📚": "Learning", "🧮": "Managing", "🗑️": "Organizing",
-    "🧎🏻": "Spirituality", "📊": "Tracking", "🧰": "Craftsmanship",
-    "🏢": "Career",
-    # Document types
-    "📆": "Plans", "📋": "Lists", "👤": "Meetings", "👥": "Group Meetings",
-    "🔬": "Research", "🪵": "Backlogs",
-}
+def _get_plantype_names() -> dict[str, str]:
+    """Return plantype names from live filesystem (via config.py), with a static fallback."""
+    try:
+        from noteplan_sweep.config import plantype_names
+        return plantype_names(utils.notes_root())
+    except Exception:
+        pass
+    # Static fallback — used if notes_root isn't available at import time
+    return {
+        "⚙️": "AI Club", "🤿": "Deep Dives", "🖼️": "Designs",
+        "🧑🏻‍💻": "Development", "✍🏻": "Documenting", "🪪": "Hiring",
+        "🎯": "Impact", "🏁": "Onboarding", "🏋": "Training",
+        "✈️": "Travel", "🖥️": "Workspace",
+        "🤖": "Config Agent", "💡": "esgenius", "⚗️": "Experiments", "🔧": "Setup",
+        "📝": "Authoring", "👨🏻‍💻": "Development", "🔍": "Discovering",
+        "👨🏻‍💼": "Entrepreneurship", "🌱": "Growth", "🏃🏻": "Health",
+        "📚": "Learning", "🧮": "Managing", "🗑️": "Organizing",
+        "🧎🏻": "Spirituality", "📊": "Tracking", "🧰": "Craftsmanship",
+        "🏢": "Career", "📆": "Plans", "📋": "Lists",
+        "👤": "Meetings", "👥": "Group Meetings", "🔬": "Research", "🪵": "Backlogs",
+    }
+
+
+# Resolved once per process when first needed (lazy, cached by config.py's lru_cache)
+_PLANTYPE_NAMES: dict[str, str] = {}
 
 
 def _notes_root() -> Path:
@@ -280,6 +287,9 @@ def build_work_board_html(
         "generated_at": generated_at,
     }, indent=2, ensure_ascii=False)
 
+    # Resolve live plantype names (filesystem → CLAUDE.md → static fallback)
+    _pt_names = _get_plantype_names() or _PLANTYPE_NAMES
+
     projects = sorted({p["project"] for p in plans if p.get("project")})
     plantypes = sorted({p["plantype"] for p in plans if p.get("plantype")})
     quarters = sorted({e["quarter"] for e in brag if e.get("quarter")}, reverse=True)
@@ -303,9 +313,9 @@ def build_work_board_html(
     )
     plantype_chips = "".join(
         f'<span class="chip plantype-chip" data-facet="plantype" data-val="{t}" '
-        f'onclick="toggleChip(this)" title="{_PLANTYPE_NAMES.get(t, t)}">'
+        f'onclick="toggleChip(this)" title="{_pt_names.get(t, t)}">'
         f'<span style="font-size:14px">{t}</span>'
-        f'<span class="pt-label">{_PLANTYPE_NAMES.get(t, "")}</span>'
+        f'<span class="pt-label">{_pt_names.get(t, "")}</span>'
         f'</span>'
         for t in plantypes
     )
