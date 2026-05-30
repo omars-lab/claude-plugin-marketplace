@@ -776,12 +776,17 @@ def test_sr22_dedupe_inferred_rows():
 # SR-23  Dedupe skipped: two real-header rows — V-C2 reported, no demotion
 # ---------------------------------------------------------------------------
 
-def test_sr23_no_dedupe_when_both_headers_real():
-    """SR-23: when both rows have real section headers, V-C2 fires but dedupe is skipped.
-    Both rows keep their claims so the user can investigate manually.
+def test_sr23_dedupe_real_header_collisions_auto_resolve():
+    """SR-23 (rev v3.116.0): real-header cross-row collisions auto-resolve to
+    one canonical winner — a line can only exist once in the destination, so
+    showing it in N rows misrepresents the move count. Lowest-idx row wins,
+    others get `dedupe_demoted` and drop the line entirely.
+
+    The user's authoring intent (multiple sections claiming the same content)
+    is preserved via the `dedupe_demoted` audit tag on losers, but the portal
+    no longer visually inflates the move count.
     """
     task = "- [ ] shared planning task across both sections"
-    # Both ## A and ## B headers exist in source diff; both have the same task.
     diff = _py_make_diff([
         {"path": "Calendar/20260413.md",
          "removed": ["## Section A", task, "## Section B", task], "added": []},
@@ -796,18 +801,22 @@ def test_sr23_no_dedupe_when_both_headers_real():
     ]
     results = _run_classify(diff, narrative)
     assert len(results) == 2
-    r0, r1 = results
+    winner, loser = results[0], results[1]
 
-    assert r0["inferred"] is False, "row 0 should not be inferred (real header)"
-    assert r1["inferred"] is False, "row 1 should not be inferred (real header)"
+    assert winner["inferred"] is False, "winner has real header"
+    assert loser["inferred"]  is False, "loser also has real header"
 
-    # Both rows must still claim the line — no demotion when headers are real.
-    assert task in r0["moved_lines"], f"row 0 keeps line: {r0}"
-    assert task in r1["moved_lines"], f"row 1 keeps line: {r1}"
-    assert "dedupe_demoted" not in r0.get("issues", [])
-    assert "dedupe_demoted" not in r1.get("issues", [])
+    # Winner keeps the line; loser drops it (auto-resolved).
+    assert task in winner["moved_lines"], f"winner keeps line: {winner}"
+    assert task not in loser["moved_lines"], f"loser drops line: {loser}"
+    assert "dedupe_demoted" in loser.get("issues", []), \
+        f"loser must be tagged dedupe_demoted for audit: {loser['issues']}"
+    assert task not in loser.get("truly_lost_lines", []), \
+        f"loser must NOT report the line as lost — it's at the dest, just not " \
+        f"attributed to this row anymore: {loser}"
 
-    # V-C2 still fires — flagging the cross-row collision for human review.
+    # V-C2 no longer fires — the collision was auto-resolved.
     issues = _py_cross_row_issues(results)
     vc2 = [i for i in issues if i.startswith("V-C2")]
-    assert len(vc2) >= 1, f"V-C2 must still be reported: {issues}"
+    assert len(vc2) == 0, \
+        f"V-C2 must NOT fire after auto-resolution — only one row claims the line now: {issues}"

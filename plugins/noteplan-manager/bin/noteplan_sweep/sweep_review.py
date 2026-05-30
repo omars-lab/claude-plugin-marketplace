@@ -848,7 +848,12 @@ function updateValidationBanner() {{
   }} else {{
     const parts = [];
     if (rowWarnCount) parts.push(`${{rowWarnCount}} row${{rowWarnCount !== 1 ? 's' : ''}} with integrity warnings (V-R)`);
-    if (crossCount)   parts.push(`${{crossCount}} cross-row consistency issue${{crossCount !== 1 ? 's' : ''}} (V-C) — some destination lines may be double-claimed`);
+    if (crossCount) {{
+      // V-C2/V-C3 in v3.113.1+ only fires for real-header cross-row collisions
+      // — i.e. you authored multiple breadcrumbs claiming the same content.
+      // Phantom dupes from inferred rows are auto-resolved by dedupe.
+      parts.push(`${{crossCount}} cross-row collision${{crossCount !== 1 ? 's' : ''}} (V-C) — multiple breadcrumbs you authored claim the same lines; pick which is canonical`);
+    }}
     banner.className = 'warn';
     banner.textContent = `⚠ ${{parts.join(' · ')}}  ·  ${{summary}}`;
   }}
@@ -2645,8 +2650,12 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
         unique = sorted(set(owners))
         if len(unique) < 2:
             continue
-        if not any(by_idx[i].get('inferred') for i in unique):
-            continue  # both real headers — leave V-C2 to flag, no demotion
+        # A line can only exist once in the destination file. Whether the
+        # collision is inferred-vs-real or real-vs-real, only one row's claim
+        # is canonical — auto-resolve to a single winner. Prefer non-inferred
+        # rows (real header > inference); break ties on lowest idx (first
+        # authored). Losers keep `dedupe_demoted` in their issues so the user
+        # can audit which rows were collapsed.
         non_inferred = [i for i in unique if not by_idx[i].get('inferred')]
         winner = (non_inferred or unique)[0]  # lowest idx wins
         for li in unique:
