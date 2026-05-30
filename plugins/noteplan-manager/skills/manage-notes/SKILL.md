@@ -22,6 +22,7 @@ Single entry point for all note creation, organization, analysis, and improvemen
 | Analyze organization patterns | "analyze", "structure", "patterns", "organization" | [analyze-structure/SKILL.md](analyze-structure/SKILL.md) |
 | Suggest organization improvements | "suggest", "improve", "recommendations", "optimize" | [suggest-improvements/SKILL.md](suggest-improvements/SKILL.md) |
 | Review notes health | "review", "health check", "broken links", "scan tasks" | [review-noteplan/SKILL.md](review-noteplan/SKILL.md) |
+| Enrich bare URLs with summaries | "enrich links", "bare URLs", "unenriched links", "hook said enrich" | [enrich-links/SKILL.md](enrich-links/SKILL.md) |
 
 ## Task Management (MANDATORY)
 
@@ -45,6 +46,7 @@ Check if the user's message clearly signals an operation from the table above. C
 - "analyze structure" / "how are my notes organized" → analyze-structure
 - "suggest improvements" / "optimize my system" → suggest-improvements
 - "review notes" / "health check" / "broken links" / "scan tasks" → review-noteplan
+- "enrich links" / "bare URLs" / "hook said enrich" / "unenriched links" → enrich-links
 - "organize note" / "sub-headers" / "this section is too long" / "add headers" → organize-note
 
 If the intent is **clear** from the message, proceed directly to Phase 2 without asking.

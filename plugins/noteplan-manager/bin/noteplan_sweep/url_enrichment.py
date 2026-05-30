@@ -34,6 +34,7 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -50,6 +51,26 @@ INTERNAL_DOMAINS_RE = re.compile(
     r'https?://[^/\s]*(?:service-now\.com|servicenow\.com|sharepoint\.com|okta\.com)',
     re.IGNORECASE,
 )
+
+# URLs to skip entirely (local networks, auth callbacks, search queries — no stable title)
+_SKIP_DOMAIN_RE = re.compile(
+    r'https?://[^/\s]*(?:'
+    r'service-now\.com|servicenow\.com|sharepoint\.com|okta\.com'
+    r'|localhost|attlocal\.net|\.local(?:[:/]|$)'
+    r'|google\.com/search|bing\.com/search|duckduckgo\.com/\?'
+    r')',
+    re.IGNORECASE,
+)
+_PRIVATE_IP_RE = re.compile(r'https?://(?:192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)')
+_OAUTH_PARAM_RE = re.compile(r'[?&](?:code|state|auth_callback|access_token|id_token)=', re.IGNORECASE)
+
+def _should_skip_url(url: str) -> bool:
+    """Return True if a URL should be skipped for enrichment (no stable/useful title)."""
+    if _SKIP_DOMAIN_RE.search(url): return True
+    if _PRIVATE_IP_RE.match(url): return True
+    if _OAUTH_PARAM_RE.search(url): return True
+    if len(url) > 300: return True
+    return False
 
 _CHROME_PROFILE = Path.home() / "Library/Application Support/Google/Chrome"
 
