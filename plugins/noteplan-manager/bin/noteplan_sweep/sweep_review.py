@@ -15,7 +15,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import noteplan_sweep.utils as utils
@@ -1662,6 +1662,27 @@ def cmd_sweep_review_compile(args):
     pre_classification = _py_classify_all_rows(diff_text, narrative or [], _np_root())
     cross_row_issues   = _py_cross_row_issues(pre_classification)
 
+    # #86 production invariant monitoring — surface mental-model violations
+    # to the quality log so drift on real data is visible on the next sweep
+    # without waiting for tests to catch it. Don't fail compile; warn + log.
+    inv_violations = _py_invariant_violations(pre_classification, cross_row_issues)
+    if inv_violations:
+        utils.err(f"[INV] {len(inv_violations)} mental-model invariant violation(s) — see quality-log.jsonl")
+        try:
+            log_path = _quality_log_path(_np_root())
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            entry = {
+                "ts":            datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "run_id":        run_id,
+                "kind":          "invariant_violations",
+                "count":         len(inv_violations),
+                "violations":    inv_violations[:50],  # cap to keep log bounded
+            }
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError as e:
+            utils.err(f"[INV] failed to write quality log: {e}")
+
     new_html = _build_snapshot_html(run_id, date_str, sha, stat_text, diff_text, merged_comments, narrative, changed_cal,
                                     pre_classification=pre_classification,
                                     cross_row_issues=cross_row_issues)
@@ -2737,6 +2758,115 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
                 o['lines'] = o.get('lines', [])[:_LOST_CAP]
 
     return results
+
+
+def _py_invariant_violations(results: list[dict], cross_row_issues: list[str]) -> list[dict]:
+    """Check the #86 mental-model invariants on a classified result set.
+
+    Returns a list of violation dicts (empty list = clean). Production callers
+    log these to quality-log.jsonl so drift surfaces on the next sweep without
+    waiting for tests to catch it. Mirrors assertions in test_invariants.py
+    (kept independent to avoid making tests a runtime dep).
+    """
+    violations: list[dict] = []
+    valid_kinds = {'move', 'went-to', 'lost', 'anomaly', 'empty'}
+
+    # INV-4 — outcomes shape
+    for r in results:
+        idx = r.get('idx')
+        outcomes = r.get('outcomes')
+        if not isinstance(outcomes, list) or not outcomes:
+            violations.append({'inv': 'INV-4', 'idx': idx,
+                               'detail': 'outcomes missing or empty'})
+            continue
+        for o in outcomes:
+            if not isinstance(o, dict) or 'kind' not in o or 'lines' not in o:
+                violations.append({'inv': 'INV-4', 'idx': idx,
+                                   'detail': f'malformed outcome: {o!r}'[:200]})
+                continue
+            if o['kind'] not in valid_kinds:
+                violations.append({'inv': 'INV-4', 'idx': idx,
+                                   'detail': f'invalid kind: {o["kind"]!r}'})
+            if o['kind'] == 'lost':
+                if o.get('dest') is not None or o.get('dest_stem') is not None:
+                    violations.append({'inv': 'INV-4', 'idx': idx,
+                                       'detail': 'lost outcome has non-null dest/dest_stem'})
+            elif o.get('dest_stem') is None:
+                violations.append({'inv': 'INV-4', 'idx': idx,
+                                   'detail': f'non-lost outcome missing dest_stem (kind={o["kind"]})'})
+
+    # INV-5 — outcomes ↔ legacy parity (within truncation caps)
+    for r in results:
+        idx = r.get('idx')
+        outs = r.get('outcomes') or []
+        moved_legacy = len(r.get('moved_lines') or [])
+        wt_legacy = sum(len(v) for v in (r.get('went_to_details') or {}).values())
+        lost_legacy = len(r.get('truly_lost_lines') or [])
+        moved_o = sum(len(o['lines']) for o in outs if o['kind'] == 'move')
+        wt_o    = sum(len(o['lines']) for o in outs if o['kind'] == 'went-to')
+        lost_o  = sum(len(o['lines']) for o in outs if o['kind'] == 'lost')
+        if moved_legacy <= 20 and moved_o != moved_legacy:
+            violations.append({'inv': 'INV-5', 'idx': idx,
+                               'detail': f'move parity: outcomes={moved_o} legacy={moved_legacy}'})
+        if wt_legacy <= 10 and wt_o != wt_legacy:
+            violations.append({'inv': 'INV-5', 'idx': idx,
+                               'detail': f'went-to parity: outcomes={wt_o} legacy={wt_legacy}'})
+        if lost_legacy <= 20 and lost_o != lost_legacy:
+            violations.append({'inv': 'INV-5', 'idx': idx,
+                               'detail': f'lost parity: outcomes={lost_o} legacy={lost_legacy}'})
+
+    # INV-6 — dedupe non-duplication when ≥1 inferred (move-outcomes only)
+    move_owners: dict[tuple[str, str], list[tuple[int, bool]]] = {}
+    for r in results:
+        idx = r.get('idx')
+        inferred = bool(r.get('inferred'))
+        for o in (r.get('outcomes') or []):
+            if o.get('kind') != 'move':
+                continue
+            stem = o.get('dest_stem')
+            if not stem:
+                continue
+            for line in o.get('lines', []):
+                key = (stem, _norm_line(line))
+                move_owners.setdefault(key, []).append((idx, inferred))
+    for (stem, norm), entries in move_owners.items():
+        distinct_idxs = sorted({i for i, _ in entries})
+        if len(distinct_idxs) < 2:
+            # Within-row duplicates (same line appearing twice in one row's moves)
+            # are not a cross-row dedupe miss — out of scope for INV-6.
+            continue
+        if any(inferred for _, inferred in entries):
+            violations.append({'inv': 'INV-6', 'idxs': distinct_idxs,
+                               'detail': f'dedupe missed at stem={stem[:40]!r}: {norm[:80]!r}'})
+
+    # INV-7 — no phantom losses (line_statuses[lost] ⊆ truly_lost_lines for demoted rows)
+    for r in results:
+        if 'dedupe_demoted' not in (r.get('issues') or []):
+            continue
+        idx = r.get('idx')
+        truly_lost_norms = {_norm_line(l) for l in (r.get('truly_lost_lines') or [])}
+        for n, status in (r.get('line_statuses') or {}).items():
+            if status == 'lost' and n not in truly_lost_norms:
+                violations.append({'inv': 'INV-7', 'idx': idx,
+                                   'detail': f'phantom lost line_status without truly_lost entry: {n[:80]!r}'})
+
+    # INV-8 — breadcrumb_idx == idx (1:1 staged shape)
+    for r in results:
+        idx = r.get('idx')
+        if 'breadcrumb_idx' not in r:
+            violations.append({'inv': 'INV-8', 'idx': idx, 'detail': 'breadcrumb_idx missing'})
+        elif r['breadcrumb_idx'] != idx:
+            violations.append({'inv': 'INV-8', 'idx': idx,
+                               'detail': f'breadcrumb_idx={r["breadcrumb_idx"]} != idx={idx}'})
+
+    # INV-9 — V-C2/V-C3 issues include dest stem context
+    for issue in (cross_row_issues or []):
+        if issue.startswith('V-C2') and ' at ' not in issue:
+            violations.append({'inv': 'INV-9', 'detail': f'V-C2 missing stem: {issue[:120]!r}'})
+        elif issue.startswith('V-C3') and ' to ' not in issue:
+            violations.append({'inv': 'INV-9', 'detail': f'V-C3 missing stem: {issue[:120]!r}'})
+
+    return violations
 
 
 def _py_cross_row_issues(pre_classification: list[dict]) -> list[str]:

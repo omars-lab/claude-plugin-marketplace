@@ -37,6 +37,7 @@ from noteplan_sweep.sweep_review import (
     _norm_line,
     _py_classify_all_rows,
     _py_cross_row_issues,
+    _py_invariant_violations,
 )
 
 VALID_KINDS = {"move", "went-to", "lost", "anomaly", "empty"}
@@ -261,11 +262,12 @@ def assert_dedupe_non_duplication(results: list[dict]) -> None:
                 owners.setdefault(key, []).append((idx, inferred))
 
     for (stem, n), entries in owners.items():
-        if len(entries) <= 1:
+        distinct_idxs = sorted({idx for idx, _ in entries})
+        if len(distinct_idxs) < 2:
+            # Within-row duplicates aren't a cross-row dedupe miss — out of scope.
             continue
         any_inferred = any(inferred for _, inferred in entries)
         if any_inferred:
-            distinct_idxs = sorted({idx for idx, _ in entries})
             raise AssertionError(
                 f"INV-6: dedupe missed: rows {distinct_idxs} all claim "
                 f"line at stem={stem!r}: {n!r} — at least one is inferred, "
@@ -667,3 +669,55 @@ def test_inv9_helper_catches_vc2_without_stem():
     """Negative: a V-C2 issue without 'at <stem>' context must trip the helper."""
     with pytest.raises(AssertionError, match="INV-9"):
         assert_vc_issues_include_dest_stem(["V-C2: dest line claimed by rows [0,1]: foo"])
+
+
+# ---------------------------------------------------------------------------
+# Production invariant monitoring (#140)
+# ---------------------------------------------------------------------------
+
+def test_py_invariant_violations_empty_on_clean_results():
+    """_py_invariant_violations returns [] when classification is well-formed.
+    Drives the compile-time monitoring path — no log spam on clean sweeps.
+    """
+    moved = "- [ ] move this task to dest correctly please"
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md", "removed": ["## Goals", moved], "added": []},
+        {"path": "Plans/Bikar.md",       "removed": [], "added": ["## Goals", moved]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Goals",
+                  "destination": "[[Plans/Bikar]]", "date": "2026-04-13", "summary": ""}]
+    results = _classify(diff, narrative)
+    issues = _py_cross_row_issues(results)
+    violations = _py_invariant_violations(results, issues)
+    assert violations == [], (
+        f"Clean classification must produce 0 invariant violations, got: {violations}"
+    )
+
+
+def test_py_invariant_violations_catches_lost_with_dest():
+    """Inject a synthetic outcomes shape violation — INV-4 must surface it."""
+    bad = [{
+        "idx": 0, "breadcrumb_idx": 0, "type": "lost",
+        "moved_lines": [], "dest_lines": [], "truly_lost_lines": [],
+        "went_to_details": {}, "line_statuses": {}, "issues": [], "dest_stem": "x",
+        "outcomes": [{"kind": "lost", "dest": "Plans/X", "dest_stem": "x", "lines": []}],
+    }]
+    violations = _py_invariant_violations(bad, [])
+    inv_codes = {v["inv"] for v in violations}
+    assert "INV-4" in inv_codes, (
+        f"INV-4 must catch lost outcome with non-null dest, got: {violations}"
+    )
+
+
+def test_py_invariant_violations_catches_breadcrumb_idx_mismatch():
+    """Inject breadcrumb_idx != idx — INV-8 must surface it."""
+    bad = [{
+        "idx": 0, "breadcrumb_idx": 99, "type": "empty",
+        "moved_lines": [], "dest_lines": [], "truly_lost_lines": [],
+        "went_to_details": {}, "line_statuses": {}, "issues": [], "dest_stem": "x",
+        "outcomes": [{"kind": "empty", "dest": "x", "dest_stem": "x", "lines": []}],
+    }]
+    violations = _py_invariant_violations(bad, [])
+    assert any(v["inv"] == "INV-8" for v in violations), (
+        f"INV-8 must catch breadcrumb_idx mismatch, got: {violations}"
+    )
