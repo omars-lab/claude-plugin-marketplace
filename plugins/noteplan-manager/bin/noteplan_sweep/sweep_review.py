@@ -285,7 +285,9 @@ def cmd_sweep_review_generate(args):
     stat_text = _decode_git_quoted_paths(stat_text)
 
     # Extract sweep narrative from breadcrumb tables in swept Calendar files
-    narrative = _extract_sweep_narrative(root, base_commit)
+    narrative_data = _extract_sweep_narrative(root, base_commit)
+    narrative = narrative_data["rows"]
+    changed_calendar_files = narrative_data["changed_calendar_files"]
 
     # Check for existing comments file to carry forward
     existing_comments: list = []
@@ -311,7 +313,7 @@ def cmd_sweep_review_generate(args):
         utils.log(f"[dry-run] Would write {sweeps / (run_id + '.snapshot.html')}")
         return
 
-    html = _build_snapshot_html(run_id, date_str, sweep_sha, stat_text, diff_text, seed_comments, narrative)
+    html = _build_snapshot_html(run_id, date_str, sweep_sha, stat_text, diff_text, seed_comments, narrative, changed_calendar_files)
     out_path = sweeps / f"{run_id}.snapshot.html"
     out_path.write_text(html, encoding="utf-8")
     utils.log(f"sweep-review-generate: wrote {out_path}")
@@ -416,9 +418,8 @@ def _extract_sweep_narrative(root: "Path", base_commit: str) -> list:
                 "destination": dest,
             })
 
-    # Sort by date then source file
     rows.sort(key=lambda r: (r["date"], r["source_file"]))
-    return rows
+    return {"rows": rows, "changed_calendar_files": changed_files}
 
 
 def _build_snapshot_html(
@@ -426,13 +427,11 @@ def _build_snapshot_html(
     stat_text: str, diff_text: str,
     seed_comments: list,
     narrative: list | None = None,
+    changed_calendar_files: list | None = None,
 ) -> str:
     seed_json = json.dumps(seed_comments, indent=2)
-
-    # Inline diff2html + Prism.js from CDN URLs would require internet.
-    # For full offline support we embed a minimal self-contained diff renderer.
-    # The HTML uses vanilla JS to parse the unified diff and render side-by-side.
     narrative_json = json.dumps(narrative or [], indent=2)
+    changed_cal_json = json.dumps(changed_calendar_files or [], indent=2)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -440,14 +439,23 @@ def _build_snapshot_html(
 <title>Sweep Review — {run_id}</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;background:#0d1117;color:#e6edf3}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;background:#0d1117;color:#e6edf3;display:flex;flex-direction:column;height:100vh}}
 #hdr{{background:#161b22;border-bottom:1px solid #30363d;padding:10px 20px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}}
 #hdr h1{{font-size:15px;font-weight:600;color:#58a6ff}}
 .stat{{font-size:12px;color:#8b949e}}
 .tabs{{display:flex;gap:4px;margin-left:auto}}
 .tab{{padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;background:transparent;color:#8b949e;border:1px solid transparent}}
 .tab.active{{background:#21262d;color:#e6edf3;border-color:#30363d}}
-#layout{{display:flex;height:calc(100vh - 44px)}}
+#filter-bar{{background:#161b22;border-bottom:1px solid #30363d;padding:6px 20px;display:flex;align-items:center;gap:8px;flex-shrink:0}}
+.domain-chip{{padding:3px 10px;border-radius:12px;cursor:pointer;font-size:12px;background:#21262d;color:#8b949e;border:1px solid #30363d}}
+.domain-chip.active{{background:#1a3a28;color:#3fb950;border-color:#3fb950}}
+.copy-btn{{margin-left:auto;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;background:#21262d;color:#8b949e;border:1px solid #30363d}}
+.copy-btn:hover{{color:#e6edf3}}
+.orphaned-block{{margin-top:16px;padding:12px 16px;border:1px solid #4a2f10;border-radius:8px;background:#1a1200}}
+.orphaned-hdr{{font-size:12px;color:#d29922;margin-bottom:6px;font-weight:600}}
+.orphaned-block ul{{list-style:none;padding:0}}
+.orphaned-block li{{font-size:11.5px;color:#8b949e;font-family:'SF Mono','Fira Code',monospace;padding:2px 0}}
+#layout{{display:flex;flex:1;min-height:0}}
 #sidebar{{width:260px;min-width:160px;background:#161b22;border-right:1px solid #30363d;overflow-y:auto;flex-shrink:0;padding:8px 0}}
 .fi{{padding:5px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;border-left:3px solid transparent;font-size:12px}}
 .fi:hover{{background:#21262d}}
@@ -490,14 +498,24 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 <div id="hdr">
   <h1>Sweep Review — {run_id}</h1>
   <span class="stat" id="stat-line"></span>
-  <span class="stat" style="color:#484f58">base→HEAD: {sha}</span>
+  <span class="stat" id="date-range" style="color:#484f58"></span>
+  <span class="stat" style="color:#484f58">base {sha}</span>
   <div class="tabs">
     <button class="tab active" onclick="showTab('narrative')">📋 Narrative</button>
     <button class="tab" onclick="showTab('diff')">🔀 Diff</button>
   </div>
 </div>
+<div id="filter-bar">
+  <span style="font-size:11px;color:#484f58;margin-right:2px">Domain:</span>
+  <button class="domain-chip active" data-domain="all" onclick="setDomain('all')">All</button>
+  <button class="domain-chip" data-domain="work" onclick="setDomain('work')">🏢 Work</button>
+  <button class="domain-chip" data-domain="personal" onclick="setDomain('personal')">🏡 Personal</button>
+  <button class="domain-chip" data-domain="earlbear" onclick="setDomain('earlbear')">👥 EarlBear</button>
+  <button class="domain-chip" data-domain="coffee" onclick="setDomain('coffee')">☕️ Naqsh</button>
+  <button class="copy-btn" id="copy-btn" onclick="copyNarrative()">📋 Copy</button>
+</div>
 <div id="layout">
-  <nav id="sidebar"></nav>
+  <nav id="sidebar" style="display:none"></nav>
   <main id="main">
     <div id="narrative"></div>
     <div id="diff" style="display:none"></div>
@@ -510,26 +528,62 @@ const DIFF_TEXT = {json.dumps(diff_text)};
 const STAT_TEXT = {json.dumps(stat_text)};
 const SEED_COMMENTS = {seed_json};
 const NARRATIVE = {narrative_json};
+const CHANGED_CALENDAR_FILES = {changed_cal_json};
 
 // ── Tab switching ──────────────────────────────────────────────────────────
 function showTab(name) {{
   document.getElementById('narrative').style.display = name === 'narrative' ? '' : 'none';
   document.getElementById('diff').style.display      = name === 'diff'      ? '' : 'none';
   document.getElementById('sidebar').style.display   = name === 'diff'      ? '' : 'none';
+  document.getElementById('filter-bar').style.display = name === 'narrative' ? '' : 'none';
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.includes(name === 'narrative' ? 'Narrative' : 'Diff')));
+}}
+
+// ── Domain helpers ─────────────────────────────────────────────────────────
+function inferDomain(dest) {{
+  if (/🏢|ServiceNow/.test(dest)) return 'work';
+  if (/👥|EarlBear/.test(dest))   return 'earlbear';
+  if (/☕|NaqshCoffee/.test(dest)) return 'coffee';
+  if (/🏡|Personal/.test(dest))   return 'personal';
+  return 'other';
+}}
+
+function normDest(dest) {{
+  let s = dest.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1');
+  const slash = s.lastIndexOf('/');
+  if (slash >= 0) s = s.slice(slash + 1);
+  return s.replace(/\\.md$/, '') || dest;
+}}
+
+let activeDomain = 'all';
+
+function setDomain(d) {{
+  activeDomain = d;
+  document.querySelectorAll('.domain-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.domain === d));
+  renderNarrative();
 }}
 
 // ── Narrative renderer ─────────────────────────────────────────────────────
 function renderNarrative() {{
   const el = document.getElementById('narrative');
+
   if (!NARRATIVE.length) {{
     el.innerHTML = '<div class="empty">No sweep breadcrumb data found.<br>Breadcrumb tables are written to each swept Calendar note.</div>';
     return;
   }}
 
-  // Group by date
+  const rows = activeDomain === 'all'
+    ? NARRATIVE
+    : NARRATIVE.filter(r => inferDomain(r.destination) === activeDomain);
+
+  if (!rows.length) {{
+    el.innerHTML = '<div class="empty">No sections match the selected domain filter.</div>';
+    return;
+  }}
+
   const byDate = {{}};
-  NARRATIVE.forEach(r => {{
+  rows.forEach(r => {{
     const d = r.date || 'Unknown';
     if (!byDate[d]) byDate[d] = [];
     byDate[d].push(r);
@@ -538,8 +592,7 @@ function renderNarrative() {{
   const dayNames = {{ '1':'Mon','2':'Tue','3':'Wed','4':'Thu','5':'Fri','6':'Sat','7':'Sun' }};
 
   let html = '';
-  for (const [d, rows] of Object.entries(byDate).sort()) {{
-    // Convert YYYY-MM-DD to readable date + day
+  for (const [d, dayRows] of Object.entries(byDate).sort()) {{
     let label = d;
     try {{
       const dt = new Date(d + 'T12:00:00');
@@ -547,23 +600,58 @@ function renderNarrative() {{
       label = `${{d}} (${{dow}})`;
     }} catch(e) {{}}
 
-    const rowsHtml = rows.map(r => `
+    const rowsHtml = dayRows.map(r => `
       <tr>
         <td class="section-col">${{esc(r.section)}}</td>
         <td class="summary-col">${{esc(r.summary)}}</td>
-        <td class="dest-col">${{esc(r.destination)}}</td>
+        <td class="dest-col" title="${{esc(r.destination)}}">${{esc(normDest(r.destination))}}</td>
       </tr>`).join('');
 
     html += `
       <div class="day-block">
-        <div class="day-hdr">📅 ${{esc(label)}} — ${{rows.length}} section${{rows.length !== 1 ? 's' : ''}} swept</div>
+        <div class="day-hdr">📅 ${{esc(label)}} — ${{dayRows.length}} section${{dayRows.length !== 1 ? 's' : ''}} swept</div>
         <table class="nav-tbl">
           <thead><tr><th>Section</th><th>Summary</th><th>Destination</th></tr></thead>
           <tbody>${{rowsHtml}}</tbody>
         </table>
       </div>`;
   }}
+
+  // Orphaned: Calendar files changed but no breadcrumb rows written
+  const sourcesWithBreadcrumbs = new Set(NARRATIVE.map(r => r.source_file));
+  const orphaned = CHANGED_CALENDAR_FILES.filter(f => !sourcesWithBreadcrumbs.has(f));
+  if (orphaned.length) {{
+    html += `<div class="orphaned-block">
+      <div class="orphaned-hdr">⚠️ ${{orphaned.length}} swept file${{orphaned.length !== 1 ? 's' : ''}} with no breadcrumb rows</div>
+      <ul>${{orphaned.map(f => `<li>${{esc(f.split('/').pop())}}</li>`).join('')}}</ul>
+    </div>`;
+  }}
+
   el.innerHTML = html;
+}}
+
+// ── Copy narrative as Markdown ─────────────────────────────────────────────
+function copyNarrative() {{
+  const rows = activeDomain === 'all'
+    ? NARRATIVE
+    : NARRATIVE.filter(r => inferDomain(r.destination) === activeDomain);
+  const byDate = {{}};
+  rows.forEach(r => {{ if (!byDate[r.date]) byDate[r.date] = []; byDate[r.date].push(r); }});
+  const lines = ['# Sweep — Narrative'];
+  for (const [d, dayRows] of Object.entries(byDate).sort()) {{
+    lines.push('', `## ${{d}}`, '', '| Section | Summary | Destination |', '|---|---|---|');
+    dayRows.forEach(r => {{ lines.push(`| ${{r.section}} | ${{r.summary}} | ${{normDest(r.destination)}} |`); }});
+  }}
+  const md = lines.join('\n');
+  navigator.clipboard.writeText(md).then(() => {{
+    const btn = document.getElementById('copy-btn');
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied';
+    setTimeout(() => btn.textContent = orig, 1500);
+  }}).catch(() => {{
+    const w = window.open('');
+    if (w) w.document.write('<pre>' + md.replace(/</g, '&lt;') + '</pre>');
+  }});
 }}
 
 // ── Unified diff parser ────────────────────────────────────────────────────
@@ -589,7 +677,7 @@ function parseDiff(text) {{
     }}
     if (l.startsWith('--- ') || l.startsWith('index ') || l.startsWith('new file') || l.startsWith('deleted file') || l.startsWith('old mode') || l.startsWith('new mode')) continue;
     if (l.startsWith('@@')) {{
-      const m = l.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      const m = l.match(/@@ -(\\d+)(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/);
       if (m) {{ leftN = parseInt(m[1]); rightN = parseInt(m[2]); }}
       cur.hunks.push({{ hdr: l, left: [], right: [] }});
       continue;
@@ -601,8 +689,6 @@ function parseDiff(text) {{
     }} else if (l.startsWith('-')) {{
       hunk.left.push({{ n: leftN++, c: l.slice(1) }});
     }} else {{
-      // context: flush paired sides, then add to both
-      const ctx = {{ n: null, c: l.slice(1) }};
       hunk.left.push({{ n: leftN++, c: l.slice(1) }});
       hunk.right.push({{ n: rightN++, c: l.slice(1) }});
     }}
@@ -617,26 +703,16 @@ function esc(s) {{
 }}
 
 function renderHunk(hunk) {{
-  // Pair deletion/addition rows for side-by-side
-  const maxLen = Math.max(hunk.left.length, hunk.right.length);
-  let leftRows = '', rightRows = '';
-
-  // Context lines — they appear in both sides at the same position
-  // We need to interleave: track alignment
-
-  // Simple approach: emit all left rows, all right rows aligned by index
   const llen = hunk.left.length, rlen = hunk.right.length;
   const total = Math.max(llen, rlen);
+  let leftRows = '', rightRows = '';
 
   for (let i = 0; i < total; i++) {{
     const l = i < llen ? hunk.left[i] : null;
     const r = i < rlen ? hunk.right[i] : null;
-
-    // If both sides have same content at this index → context
     const isCtx = l && r && l.c === r.c;
     const lCls = isCtx ? 'ctx' : (l ? 'del' : 'ctx');
     const rCls = isCtx ? 'ctx' : (r ? 'add' : 'ctx');
-
     leftRows  += `<div class="row ${{lCls}}"><span class="ln">${{l ? l.n : ''}}</span><span class="lc">${{l ? esc(l.c) : ''}}</span></div>`;
     rightRows += `<div class="row ${{rCls}}"><span class="ln">${{r ? r.n : ''}}</span><span class="lc">${{r ? esc(r.c) : ''}}</span></div>`;
   }}
@@ -676,7 +752,7 @@ function renderDiffFiles(files) {{
     const adds = f.hunks.reduce((s, h) => s + h.right.length, 0);
     const dels = f.hunks.reduce((s, h) => s + h.left.length, 0);
     const hunksHtml = f.hunks.map(renderHunk).join('');
-    const displayName = f.filename || '(unknown file — emoji path encoding issue)';
+    const displayName = f.filename || '(unknown file)';
     return `<div class="fd" id="file-${{fi}}">
       <div class="fdh">
         <span class="fn">${{esc(displayName)}}</span>
@@ -699,9 +775,20 @@ function setActive(fi) {{
 
 // ── Init ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {{
-  // Parse stat summary
   const statLines = STAT_TEXT.trim().split('\n');
   document.getElementById('stat-line').textContent = statLines[statLines.length - 1] || '';
+
+  // Date range from swept Calendar filenames (YYYYMMDD.md)
+  const calDates = CHANGED_CALENDAR_FILES
+    .map(f => {{ const m = f.match(/(\\d{{8}})\\.md$/); return m ? m[1] : null; }})
+    .filter(Boolean).sort();
+  if (calDates.length > 0) {{
+    const fmt = d => `${{d.slice(0,4)}}-${{d.slice(4,6)}}-${{d.slice(6,8)}}`;
+    const rangeStr = calDates.length === 1
+      ? fmt(calDates[0])
+      : `${{fmt(calDates[0])}} → ${{fmt(calDates[calDates.length - 1])}}`;
+    document.getElementById('date-range').textContent = rangeStr;
+  }}
 
   renderNarrative();
 
