@@ -174,6 +174,9 @@ When you encounter a bare URL, use this table to decide how to handle it. Apply 
 | **GitHub subdirectory (tree view)** | `github.com/<owner>/<repo>/tree/<branch>/path/` | **Label from URL path segments** — page title may be null for subdirs (unlike repo root or file views); extract owner/repo + last path segment(s) | `[omars-lab/blueprints: coffee cups business plan](url)` |
 | **GitHub file (blob view)** | `github.com/<owner>/<repo>/blob/<branch>/path/file.ext` | **Use page title** — format is reliable: "path/file.ext at branch · owner/repo · GitHub" — descriptive, includes file path | `[quip/quip-apps: create-quip-app package.json for building Quip Live Apps](url)` |
 | **Google Sheets** | `docs.google.com/spreadsheets/d/<id>/edit` | **Use surrounding note context** — returns "Loading..." (JS-rendered, requires Google login); no stable title available from bot fetch | `[Google Sheets: Hifz (Quran memorization) schedule spreadsheet](url)` |
+| **Google Maps short URL** | `maps.app.goo.gl/<id>` (opaque short ID, no address params) | **Use surrounding note context** — title is always "Google Maps"; short IDs are opaque — no location info from URL or metadata | `[Google Maps: NY trip location pin](url)` |
+| **Google share link** | `share.google/<id>` | **Use surrounding note context** — title is "Google Search" or generic; link may be a shared Maps list, doc, or location — infer from note topic | `[Google: shared NY trip link](url)` |
+| **Figma FigJam board** | `figma.com/board/<id>/<name-slug>` | **Extract board name from URL slug** — description is "Created with FigJam"; board name is URL-encoded in the path (decode `%E2%9C%88%EF%B8%8F` etc.) | `[Figma FigJam: Planning Trips travel board](url)` |
 
 **Rule of thumb:**
 - If the URL type gives you enough info without a network call → auto-format
