@@ -2994,6 +2994,23 @@ def cmd_sweep_review_audit(args):
 
         # Match removed lines against destination added lines (diff only)
         dest_added = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
+
+        # B-15: Redirect-stub FP — if dest file on disk contains "> Migrated: see [[LinkedPlan]]",
+        # recheck removed lines against the linked plan's diff additions instead.
+        _dest_file_b15 = _find_dest_on_disk(root, dest_raw)
+        if _dest_file_b15:
+            try:
+                _dest_text_b15 = _dest_file_b15.read_text(errors='replace')
+                _redir = re.search(r'> Migrated: see \[\[([^\]]+)\]\]', _dest_text_b15, re.IGNORECASE)
+                if _redir:
+                    _linked_stem = _redir.group(1).strip()
+                    _linked_added = _extract_section_lines(diff_text, _linked_stem + '.md', None, '+')
+                    if _linked_added:
+                        dest_added = _linked_added
+                        issues.append('b15_redirect')
+            except OSError:
+                pass
+
         dest_norms = [(_norm_line(l), l) for l in dest_added
                       if not _is_noise(l) and len(_norm_line(l)) > 2]
 
