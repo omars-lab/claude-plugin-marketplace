@@ -221,7 +221,7 @@ namespace: ${ns}
 
 // ─── HTML form ────────────────────────────────────────────────────────────────
 
-function buildFormHTML(initialType, allWorkstreams) {
+function buildFormHTML(initialType, allWorkstreams, existingNotes = {}) {
   const todayISO = formatDate(0, 'iso')
   const data = JSON.stringify({
     workstreams: allWorkstreams,
@@ -229,6 +229,7 @@ function buildFormHTML(initialType, allWorkstreams) {
     devProjects: DEV_PROJECT_OPTIONS.filter(p => p !== '— none —'),
     domainEmojis: DOMAIN_EMOJIS,
     todayISO,
+    existingNotes,
   })
 
   return `<!DOCTYPE html>
@@ -311,6 +312,13 @@ function buildFormHTML(initialType, allWorkstreams) {
   .btn-create:disabled { opacity: .4; cursor: not-allowed; }
   .hidden { display: none !important; }
   #err { font-size: 12px; color: #ff3b30; margin-top: 6px; min-height: 14px; }
+  .sug-wrap { position: relative; }
+  .sug { position: absolute; top: calc(34px + 3px); left: 0; right: 0; z-index: 30;
+         background: var(--bg); border: 1.5px solid var(--border); border-radius: 8px;
+         box-shadow: 0 4px 16px rgba(0,0,0,.14); }
+  .sug-item { padding: 9px 12px; font-size: 13px; cursor: pointer; color: var(--text);
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sug-item:hover, .sug-item:active { background: var(--accent-dim); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -370,7 +378,10 @@ function buildFormHTML(initialType, allWorkstreams) {
 
 <div class="field">
   <label>Title</label>
-  <input type="text" id="title" placeholder="Descriptive title…" autocomplete="off" spellcheck="false">
+  <div class="sug-wrap">
+    <input type="text" id="title" placeholder="Descriptive title…" autocomplete="off" spellcheck="false">
+    <div class="sug hidden" id="sug"></div>
+  </div>
   <div class="preview-wrap" id="preview">
     <span class="preview-prefix" id="preview-prefix"></span><span class="preview-placeholder" id="preview-ph">your title here</span>
   </div>
@@ -469,6 +480,7 @@ function refresh() {
   $('date-field').classList.toggle('hidden', type !== 'meeting');
   updateWsField();
   updatePreview();
+  sugHide();
 }
 
 // ── Event wiring ─────────────────────────────────────────────────────────────
@@ -487,7 +499,16 @@ pillGroup('type-pills', v => { type = v; });
 pillGroup('domain-pills', v => { domain = v; });
 $('ws-select').addEventListener('change', () => { updateProjField(); updatePreview(); });
 $('proj-select').addEventListener('change', updatePreview);
-$('title').addEventListener('input', updatePreview);
+$('title').addEventListener('input', function() {
+  updatePreview();
+  var q = this.value.trim().toLowerCase();
+  if (!q) { sugHide(); return; }
+  var key = type + '-' + domain;
+  var pool = (C.existingNotes && C.existingNotes[key]) || [];
+  var matches = pool.filter(function(n) { return (n.t||n.f).toLowerCase().includes(q); }).slice(0,8);
+  sugShow(matches);
+});
+$('title').addEventListener('blur', function() { setTimeout(sugHide, 100); });
 
 // ── Calendar picker ───────────────────────────────────────────────────────────
 
@@ -555,6 +576,33 @@ function toggleCal() {
 document.addEventListener('click', function(e) {
   if (!e.target.closest('.cal-wrap')) $('cal').classList.add('hidden');
 });
+
+// ── Autocomplete ───────────────────────────────────────────────────────────────
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function sugHide() { var s=$('sug'); s.classList.add('hidden'); s.innerHTML=''; }
+
+function sugShow(items) {
+  var s=$('sug');
+  if (!items.length) { sugHide(); return; }
+  s.innerHTML = items.map(function(n) {
+    return '<div class="sug-item" data-f="'+n.f.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'" onmousedown="sugPick(this.dataset.f)">'+esc(n.t||n.f.split('/').pop().replace(/\\.md$/,''))+'</div>';
+  }).join('');
+  s.classList.remove('hidden');
+}
+
+function sugPick(filename) {
+  sugHide();
+  document.removeEventListener('keydown', handleKeyDown);
+  clearTimeout(focusTimer);
+  document.body.innerHTML = '<div style="font-family:-apple-system,sans-serif;padding:40px 24px;text-align:center">' +
+    '<div style="font-size:32px;margin-bottom:12px">&#8599;</div>' +
+    '<div style="font-size:15px;font-weight:600;color:#007AFF">Opening note…</div>' +
+    '</div>';
+  var code = '(function(){ Editor.openNoteByFilename('+JSON.stringify(filename)+'); DataStore.invokePluginCommandByName("Close Quick Note","oeid.noteplan-quicknote",[]); })()';
+  window.webkit.messageHandlers.jsBridge.postMessage({ code: code, onHandle: '', id: 'open-existing' });
+}
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
@@ -629,7 +677,23 @@ async function showCreateForm(initialType = 'plan') {
     coffee:   getWorkstreams('coffee'),
     earlbear: getWorkstreams('earlbear'),
   }
-  const html = buildFormHTML(initialType, allWorkstreams)
+  const existingNotes = {}
+  if (DataStore.projectNotes) {
+    const roots = { plan: PLAN_ROOTS, meeting: MEETING_FOLDERS, note: NOTE_FOLDERS }
+    for (const t of ['plan', 'meeting', 'note']) {
+      for (const d of ['work', 'personal', 'coffee', 'earlbear']) {
+        const root = roots[t][d]
+        if (!root) continue
+        const prefix = root + '/'
+        existingNotes[t + '-' + d] = DataStore.projectNotes
+          .filter(n => n.filename && n.filename.startsWith(prefix))
+          .map(n => ({ t: n.title || '', f: n.filename }))
+          .sort((a, b) => b.f.localeCompare(a.f))
+          .slice(0, 50)
+      }
+    }
+  }
+  const html = buildFormHTML(initialType, allWorkstreams, existingNotes)
   await HTMLView.showWindowWithOptions(html, 'New Note', {
     width: 460, height: 520, shouldFocus: true, customId: 'oeid-quicknote-form',
   })

@@ -4,7 +4,7 @@
   "plugin.name": "Omar's System",
   "plugin.description": "Create correctly-named, correctly-placed notes across all domains with /plan, /meeting, /note",
   "plugin.author": "Omar Eid",
-  "plugin.version": "2.2.0",
+  "plugin.version": "2.3.0",
   "plugin.script": "script.js",
   "plugin.url": "https://github.com/omars-lab/claude-plugin-marketplace",
   "plugin.commands": [
