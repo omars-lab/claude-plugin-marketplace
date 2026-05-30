@@ -111,6 +111,8 @@ COMMANDS = [
     ("sweep-review-squash",     "Squash all rN comment files for a run into r1.comments.jsonl"),
     ("sweep-review-list",       "List all sweep runs grouped by date with comment + compile status"),
     ("sweep-review-open",       "Open compiled review (or snapshot) in browser"),
+    ("sweep-review-export",     "Export raw sweep data (diff, narrative, stats, rows) as JSON"),
+    ("sweep-review-audit",      "Data quality audit: classify all rows, report lost lines and structural issues"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -409,6 +411,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
     p.add_argument("--snapshot", action="store_true", help="Open raw snapshot instead of compiled review")
 
+    p = sub.add_parser("sweep-review-export", help=COMMANDS[63][1])
+    p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
+    p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
+    p.add_argument("--output", "-o", metavar="FILE", help="Write JSON to FILE instead of stdout")
+
+    p = sub.add_parser("sweep-review-audit", help=COMMANDS[64][1])
+    p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
+    p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
+    p.add_argument("--output", "-o", metavar="FILE", help="Write report to FILE instead of stdout")
+
     return parser
 
 # ---------------------------------------------------------------------------
@@ -478,6 +490,8 @@ DISPATCH = {
     "sweep-review-squash":      sweep_review.cmd_sweep_review_squash,
     "sweep-review-list":        sweep_review.cmd_sweep_review_list,
     "sweep-review-open":        sweep_review.cmd_sweep_review_open,
+    "sweep-review-export":      sweep_review.cmd_sweep_review_export,
+    "sweep-review-audit":       sweep_review.cmd_sweep_review_audit,
 }
 
 def cmd_list_commands(_args=None):

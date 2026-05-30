@@ -447,8 +447,10 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .tab{{padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;background:transparent;color:#8b949e;border:1px solid transparent}}
 .tab.active{{background:#21262d;color:#e6edf3;border-color:#30363d}}
 #filter-bar{{background:#161b22;border-bottom:1px solid #30363d;padding:6px 20px;display:flex;align-items:center;gap:8px;flex-shrink:0}}
-.domain-chip{{padding:3px 10px;border-radius:12px;cursor:pointer;font-size:12px;background:#21262d;color:#8b949e;border:1px solid #30363d}}
+.domain-chip,.type-chip{{padding:3px 10px;border-radius:12px;cursor:pointer;font-size:12px;background:#21262d;color:#8b949e;border:1px solid #30363d}}
 .domain-chip.active{{background:#1a3a28;color:#3fb950;border-color:#3fb950}}
+.type-chip.active{{background:#1c2128;color:#e6edf3;border-color:#58a6ff}}
+.filter-sep{{color:#30363d;font-size:14px;margin:0 2px}}
 .copy-btn{{margin-left:auto;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;background:#21262d;color:#8b949e;border:1px solid #30363d}}
 .copy-btn:hover{{color:#e6edf3}}
 .orphaned-block{{margin-top:16px;padding:12px 16px;border:1px solid #4a2f10;border-radius:8px;background:#1a1200}}
@@ -507,6 +509,9 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .row.hdr{{background:#1c2128}}.row.hdr .lc{{color:#8b949e}}
 .diff-ctx-hdr{{font-family:'SF Mono','Fira Code',monospace;font-size:11px;padding:4px 8px 2px;color:#58a6ff;font-weight:600;background:#0d1117;border-top:1px solid #21262d;margin-top:6px}}
 .diff-ctx-skip{{font-family:'SF Mono','Fira Code',monospace;font-size:11px;padding:0 8px 4px;color:#484f58;background:#0d1117}}
+.line-no{{color:#484f58;font-size:10px;min-width:30px;display:inline-block;text-align:right;padding-right:8px;user-select:none;flex-shrink:0}}
+.pair-highlight{{background:rgba(255,255,255,0.06)!important;outline:1px solid rgba(255,255,255,0.15);z-index:1;position:relative}}
+[data-pair-id]{{cursor:pointer}}
 .move-badge{{margin-left:6px;padding:0 5px;border-radius:3px;font-size:10px;background:#1a3a28;color:#3fb950;border:1px solid #3fb950;text-decoration:none;white-space:nowrap;flex-shrink:0}}
 .move-badge:hover{{background:#204830}}
 .lost-badge{{margin-left:6px;padding:0 5px;border-radius:3px;font-size:10px;background:#2d0a0a;color:#f85149;border:1px solid #f85149;white-space:nowrap;flex-shrink:0}}
@@ -517,7 +522,9 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .day-hdr{{font-size:14px;font-weight:600;color:#58a6ff;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #30363d}}
 .nav-tbl{{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}}
 .nav-tbl th{{background:#161b22;padding:6px 10px;text-align:left;color:#8b949e;font-weight:500;border-bottom:2px solid #30363d;position:sticky;top:0;z-index:1}}
-.nav-tbl th:nth-child(1){{width:18%}}.nav-tbl th:nth-child(2){{width:37%}}.nav-tbl th:nth-child(3){{width:39%}}.nav-tbl th:nth-child(4){{width:44px}}
+.nav-tbl th:nth-child(1){{width:28px}}.nav-tbl th:nth-child(2){{width:18%}}.nav-tbl th:nth-child(3){{width:37%}}.nav-tbl th:nth-child(4){{width:38%}}.nav-tbl th:nth-child(5){{width:44px}}
+.row-badge{{display:inline-block;font-size:11px;min-width:16px;text-align:center;border-radius:3px;padding:1px 4px;font-weight:600}}
+.rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-anomaly{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}
 .nav-tbl td{{padding:5px 10px;border-bottom:1px solid #21262d;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .nav-tbl tr:hover td{{background:#161b22}}
 .nav-tbl .section-col{{color:#e6edf3;font-weight:500}}
@@ -549,6 +556,13 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
   <button class="domain-chip" data-domain="personal" onclick="setDomain('personal')">🏡 Personal</button>
   <button class="domain-chip" data-domain="earlbear" onclick="setDomain('earlbear')">👥 EarlBear</button>
   <button class="domain-chip" data-domain="coffee" onclick="setDomain('coffee')">☕️ Naqsh</button>
+  <span class="filter-sep">|</span>
+  <span style="font-size:11px;color:#484f58;margin-right:2px">Type:</span>
+  <button class="type-chip active" data-type="all" onclick="setType('all')" title="Show all rows">All</button>
+  <button class="type-chip" data-type="move" onclick="setType('move')" title="Move — all source lines confirmed at destination">→ Move</button>
+  <button class="type-chip" data-type="lost" onclick="setType('lost')" title="Lost — one or more source lines did not arrive">✗ Lost</button>
+  <button class="type-chip" data-type="anomaly" onclick="setType('anomaly')" title="Anomaly — destination has additions with no matching source">+ Anomaly</button>
+  <button class="type-chip" data-type="empty" onclick="setType('empty')" title="Unverifiable — source or destination not found in diff">· Empty</button>
   <button class="copy-btn" id="copy-btn" onclick="copyNarrative()">📋 Copy</button>
 </div>
 <div id="layout">
@@ -642,7 +656,8 @@ function extractSectionLines(filename, sectionName, lineType) {{
   let inFile = false;
   let inSection = sectionName === null;
   let sectionLevel = 0;
-  const result = [];
+  const result = [], lineNos = [];
+  let curLineNo = 0;
 
   for (const line of rawLines) {{
     if (line.startsWith('diff --git ')) {{
@@ -651,10 +666,18 @@ function extractSectionLines(filename, sectionName, lineType) {{
       sectionLevel = 0;
       continue;
     }}
-    if (!inFile || line.startsWith('+++') || line.startsWith('---') || line.startsWith('index') || line.startsWith('@@')) continue;
+    if (!inFile || line.startsWith('+++') || line.startsWith('---') || line.startsWith('index')) continue;
+    if (line.startsWith('@@')) {{
+      const m = line.match(/@@ -(\\d+)(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/);
+      if (m) curLineNo = lineType === '-' ? parseInt(m[1], 10) - 1 : parseInt(m[2], 10) - 1;
+      continue;
+    }}
     const type = line.length ? line[0] : ' ';
     if (type !== '+' && type !== '-' && type !== ' ') continue;
     const content = line.slice(1);
+
+    // Advance line counter: context advances both sides; each typed line advances its own side
+    if (type === ' ' || type === lineType) curLineNo++;
 
     if (sectionName !== null) {{
       const headerDepth = (content.match(/^(#+)\\s/) || [])[1]?.length ?? 0;
@@ -666,9 +689,12 @@ function extractSectionLines(filename, sectionName, lineType) {{
       }}
     }}
 
-    if (inSection && type === lineType) result.push(content);
+    if (inSection && type === lineType) {{
+      result.push(content);
+      lineNos.push(curLineNo);
+    }}
   }}
-  return {{ lines: result, matched: result.length > 0 }};
+  return {{ lines: result, lineNos, matched: result.length > 0 }};
 }}
 
 // Classify destination added lines as "moved" (matches source) or "new" (no match)
@@ -679,31 +705,167 @@ const bodyText = s => s.replace(/^[-*]\\s*\\[[x ]\\]\\s*/i, '').trim();
 function classifyDestLines(removedLines, addedLines) {{
   const norm = normLine;
   const body = bodyText;
-  const removedNorms = removedLines.map(norm).filter(s => s.length > 3);
-  const removedBodies = removedNorms.map(body);
+  // Keep original index alongside norm so matchIdx maps back to removedLines correctly
+  const removedEntries = removedLines
+    .map((l, origIdx) => {{ const n = norm(l); return {{ line: l, n, b: body(n), origIdx }}; }})
+    .filter(e => e.n.length > 3);
   const moved = [], newContent = [];
+  const movedPairs = new Map(); // destLine → srcLine (for grouped source panel)
   for (const line of addedLines) {{
     const n = norm(line);
-    if (!n || n.length <= 2) {{ moved.push(line); continue; }}
+    if (!n || n.length <= 2) continue; // skip empty/blank lines — not real content
     const nb = body(n);
-    const isMatch = removedNorms.some((r, i) => {{
-      if (!r) return false;
-      if (n === r) return true;
-      // Prefix match using startsWith (more precise than includes)
-      const pLen = Math.min(50, Math.min(n.length, r.length));
-      if (pLen >= 10 && (n.startsWith(r.slice(0, pLen)) || r.startsWith(n.slice(0, pLen)))) return true;
-      // Body-text match: compare after stripping "- [ ] " prefix
-      const rb = removedBodies[i];
-      if (!rb || rb.length < 8 || nb.length < 8) return false;
-      const bLen = Math.min(40, Math.min(nb.length, rb.length));
-      return nb.startsWith(rb.slice(0, bLen)) || rb.startsWith(nb.slice(0, bLen));
+    const matchIdx = removedEntries.findIndex(e => {{
+      if (n === e.n) return true;
+      const pLen = Math.min(50, Math.min(n.length, e.n.length));
+      if (pLen >= 10 && (n.startsWith(e.n.slice(0, pLen)) || e.n.startsWith(n.slice(0, pLen)))) return true;
+      if (!e.b || e.b.length < 8 || nb.length < 8) return false;
+      const bLen = Math.min(40, Math.min(nb.length, e.b.length));
+      return nb.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(nb.slice(0, bLen));
     }});
-    (isMatch ? moved : newContent).push(line);
+    if (matchIdx >= 0) {{
+      moved.push(line);
+      movedPairs.set(line, removedEntries[matchIdx].line); // use original line, not filtered index
+    }} else {{
+      newContent.push(line);
+    }}
   }}
-  return {{ moved, newContent }};
+  return {{ moved, newContent, movedPairs }};
+}}
+
+// Shared pair validator — same logic as showSectionModal's validation pass.
+// Returns only the moved lines whose (destLine, srcLine) pair passes norm-match.
+// Used by both classifyRow and showSectionModal so tooltip counts == modal counts.
+function filterValidPairs(moved, movedPairs, removedLines) {{
+  const removedSet = new Set(removedLines);
+  return moved.filter(destLine => {{
+    const srcLine = movedPairs.get(destLine);
+    if (!srcLine || !removedSet.has(srcLine)) return false;
+    const dn = normLine(destLine), sn = normLine(srcLine);
+    const db = bodyText(dn), sb = bodyText(sn);
+    const pLen = Math.min(50, Math.min(dn.length, sn.length));
+    const bLen = Math.min(40, Math.min(db.length, sb.length));
+    return dn === sn ||
+      (pLen >= 10 && (dn.startsWith(sn.slice(0, pLen)) || sn.startsWith(dn.slice(0, pLen)))) ||
+      (sb.length >= 8 && db.length >= 8 && bLen >= 8 &&
+        (db.startsWith(sb.slice(0, bLen)) || sb.startsWith(db.slice(0, bLen))));
+  }});
+}}
+
+// Noise filter — shared by classifyRow and showSectionModal
+const isNoiseLine = line => {{
+  if (/^#+\\s/.test(line.trim())) return true;          // markdown headings never move
+  const n = normLine(line);
+  if (n.length <= 3) return true;
+  if (/^`+(\\w*)$/.test(n)) return true;
+  if (/^-{{2,}}$/.test(n) || /^—{{1,}}$/.test(n)) return true;
+  if (/^[-*]\\s*\\[\\s*\\]\\s*$/.test(n)) return true;
+  return false;
+}};
+
+// Row classification cache: idx → {{type, movedCount, newCount}}
+const _rowClassifications = new Map();
+
+// Classify a narrative row by running extract + classify (same logic as showSectionModal).
+// Result is cached so badge updates and modal opens share the same computation.
+function classifyRow(idx) {{
+  if (_rowClassifications.has(idx)) return _rowClassifications.get(idx);
+  const row = MODAL_ROWS[idx];
+  if (!row) return null;
+
+  const sectionName = row.section.replace(/^#+\\s*/, '').trim();
+  const srcResult = extractSectionLines(row.source_file, sectionName, '-');
+  let removedLines = srcResult.lines;
+
+  const destRaw = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
+  const destFile = allParsedFiles.find(f => {{
+    const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '');
+    return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
+  }});
+  const destGroups = destFile ? extractDestWithContext(destFile.filename) : [];
+  const addedLines = destGroups.flatMap(g => g.lines);
+
+  if (!srcResult.matched && addedLines.length > 0) {{
+    const allSrc = extractSectionLines(row.source_file, null, '-').lines;
+    const destNorms = new Set(addedLines.map(normLine).filter(s => s.length > 5));
+    removedLines = allSrc.filter(l => {{
+      const n = normLine(l);
+      if (n.length < 5) return false;
+      if (destNorms.has(n)) return true;
+      return [...destNorms].some(dn => {{
+        const pLen = Math.min(40, Math.min(n.length, dn.length));
+        return pLen >= 10 && (n.startsWith(dn.slice(0, pLen)) || dn.startsWith(n.slice(0, pLen)));
+      }});
+    }});
+  }}
+
+  const {{ moved, newContent, movedPairs }} = classifyDestLines(removedLines, addedLines);
+  const validMoved = filterValidPairs(moved, movedPairs, removedLines);
+  const movedCount = validMoved.length;
+  // Score = Moved / removedLines.length — measures whether source lines arrived.
+  // "New" lines in destination are a separate anomaly concern and do NOT affect migration score.
+  // Cross lines (from other source files) are also excluded — they have their own rows.
+  const globalMap = getGlobalRemovedMap();
+  const srcStem = row.source_file.split('/').pop().replace(/\\.md$/, '');
+  let trueNewCount = 0;
+  for (const line of newContent) {{
+    if (isNoiseLine(line)) continue;
+    const n = normLine(line);
+    const fromStem = globalMap.get(n);
+    if (!fromStem || fromStem === srcStem) trueNewCount++;
+  }}
+  // Denominator: count only non-empty, non-noise source lines — blank lines are skipped
+  // by classifyDestLines so they must not inflate the denominator either.
+  // For inferred rows the section boundary is unknown so use movedCount (only judge what matched).
+  const countableRemoved = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l));
+  const total = srcResult.matched ? countableRemoved.length : movedCount;
+
+  const destRawC = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
+  const destMissing = !DIFF_TEXT.toLowerCase().includes((destRawC + '.md').toLowerCase());
+  const srcMissing  = !DIFF_TEXT.toLowerCase().includes(row.source_file.split('/').pop().toLowerCase());
+
+  // Binary classification: every source line either arrived (move) or didn't (lost).
+  // No partial — a row with any lost lines is Lost, even if others moved.
+  let type;
+  if (destMissing || srcMissing) type = 'empty';
+  else if (total === 0 && addedLines.length === 0) type = 'empty';
+  else if (total === 0 && addedLines.length > 0) type = 'anomaly';
+  else if (movedCount === total) type = 'move';   // ALL source lines arrived
+  else type = 'lost';                              // ANY source line missing → lost
+
+  const lostCount = total - movedCount;
+  const result = {{ type, movedCount, lostCount, newCount: trueNewCount }};
+  _rowClassifications.set(idx, result);
+  return result;
+}}
+
+const _badgeLabels   = {{ move: '→', lost: '✗', anomaly: '+', empty: '·' }};
+const _badgeTitles   = {{
+  move:    'Move — all source lines confirmed at destination',
+  lost:    'Lost — one or more source lines did not arrive at destination',
+  anomaly: 'Anomaly — destination has additions with no matching source',
+  empty:   'Unverifiable — source or destination not found in diff',
+}};
+
+function updateRowBadge(idx, classification) {{
+  const tr = document.querySelector(`tr[data-row-idx="${{idx}}"]`);
+  if (!tr) return;
+  const badge = tr.querySelector('.row-badge');
+  if (!badge) return;
+  const {{ type, movedCount, lostCount, newCount }} = classification;
+  badge.className = `row-badge rb-${{type}}`;
+  badge.textContent = _badgeLabels[type] || '?';
+  let counts = '';
+  if (type === 'move')    counts = ` (${{movedCount}} line${{movedCount!==1?'s':''}} moved)`;
+  if (type === 'lost')    counts = ` (${{lostCount}} line${{lostCount!==1?'s':''}} not arrived)`;
+  if (type === 'anomaly') counts = newCount ? ` (${{newCount}} unexpected)` : '';
+  badge.title = (_badgeTitles[type] || type) + counts;
+  tr.dataset.rowType = type;
+  if (activeType !== 'all' && type !== activeType) tr.style.display = 'none';
 }}
 
 let _modalMovedLines = [], _modalNewLines = [], _modalCrossLines = [];
+let _modalMovedPairs = new Map(); // destLine → srcLine, populated by classifyDestLines
 let _modalDestGroups = []; // [{{header, lines}}] — all dest + lines with their section context
 
 // Global removed-lines map: normLine → source filename stem (lazy, built once per page)
@@ -729,13 +891,14 @@ function getGlobalRemovedMap() {{
 }}
 
 // Walk dest file diff, grouping + lines by nearest preceding # header in context lines.
-// Returns [{{header: string|null, lines: string[]}}]
+// Returns [{{header: string|null, lines: string[], lineNos: number[]}}]
 function extractDestWithContext(filename) {{
   const rawLines = DIFF_TEXT.split('\\n');
   const baseName = filename.split('/').pop().toLowerCase();
   let inFile = false, curHeader = null;
   const groups = [];
   let curGroup = null;
+  let curLineNo = 0;
 
   for (const line of rawLines) {{
     if (line.startsWith('diff --git ')) {{
@@ -744,26 +907,32 @@ function extractDestWithContext(filename) {{
       continue;
     }}
     if (!inFile || line.startsWith('+++') || line.startsWith('---') || line.startsWith('index')) continue;
-    if (line.startsWith('@@')) {{ curGroup = null; continue; }}
+    if (line.startsWith('@@')) {{
+      const m = line.match(/@@ -\\d+(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/);
+      if (m) curLineNo = parseInt(m[1], 10) - 1;
+      curGroup = null;
+      continue;
+    }}
     const type = line.length ? line[0] : ' ';
     if (type !== '+' && type !== '-' && type !== ' ') continue;
     const content = line.slice(1);
 
     if (type === ' ') {{
-      // Context line — track nearest # header, break current group
+      curLineNo++;
       if (/^#+\\s/.test(content)) curHeader = content;
       curGroup = null;
     }} else if (type === '+') {{
+      curLineNo++;
       if (/^#+\\s/.test(content)) {{
-        // Added header line — use as section marker, don't add to content group
         curHeader = content;
         curGroup = null;
       }} else {{
         if (!curGroup || curGroup.header !== curHeader) {{
-          curGroup = {{ header: curHeader, lines: [] }};
+          curGroup = {{ header: curHeader, lines: [], lineNos: [] }};
           groups.push(curGroup);
         }}
         curGroup.lines.push(content);
+        curGroup.lineNos.push(curLineNo);
       }}
     }} else {{
       curGroup = null; // deleted line breaks adjacency
@@ -772,17 +941,52 @@ function extractDestWithContext(filename) {{
   return groups;
 }}
 
-function renderDestGroups(groups, lineSet, cls) {{
+function renderDestGroups(groups, lineSet, cls, pairIds) {{
   let html = '';
   for (const g of groups) {{
-    const filtered = g.lines.filter(l => lineSet.has(l));
-    if (!filtered.length) continue;
+    const idxs = g.lines.map((l, i) => i).filter(i => lineSet.has(g.lines[i]));
+    if (!idxs.length) continue;
     if (g.header) {{
       html += `<div class="diff-ctx-hdr">${{esc(g.header)}}</div><div class="diff-ctx-skip">…</div>`;
     }}
-    html += filtered.map(l => `<div class="diff-line ${{cls}}">${{esc(l)}}</div>`).join('');
+    html += idxs.map(i => {{
+      const lno = g.lineNos?.[i];
+      const lnoHtml = lno ? `<span class="line-no">${{lno}}</span>` : '';
+      const pid = pairIds?.get(g.lines[i]);
+      const pidAttr = pid != null ? ` data-pair-id="${{pid}}"` : '';
+      return `<div class="diff-line ${{cls}}"${{pidAttr}}>${{lnoHtml}}${{esc(g.lines[i])}}</div>`;
+    }}).join('');
   }}
   return html || '<div class="modal-empty">No lines in this category</div>';
+}}
+
+// Render source lines grouped by the destination section each landed in.
+// Mirrors renderDestGroups but shows srcLine (via movedPairs) instead of destLine.
+function renderSrcGrouped(destGroups, movedSet, movedPairs, srcLineNos, pairIds) {{
+  let html = '';
+  const renderedSrc = new Set(); // prevent same source line appearing under multiple dest sections
+  for (const g of destGroups) {{
+    const srcLines = [];
+    for (const destLine of g.lines) {{
+      if (!movedSet.has(destLine)) continue;
+      const srcLine = movedPairs.get(destLine) || destLine;
+      if (renderedSrc.has(srcLine)) continue;
+      renderedSrc.add(srcLine);
+      srcLines.push(srcLine);
+    }}
+    if (!srcLines.length) continue;
+    if (g.header) {{
+      html += `<div class="diff-ctx-hdr">${{esc(g.header)}}</div><div class="diff-ctx-skip">…</div>`;
+    }}
+    html += srcLines.map(l => {{
+      const lno = srcLineNos?.get(l);
+      const lnoHtml = lno ? `<span class="line-no">${{lno}}</span>` : '';
+      const pid = pairIds?.get(l);
+      const pidAttr = pid != null ? ` data-pair-id="${{pid}}"` : '';
+      return `<div class="diff-line removed"${{pidAttr}}>${{lnoHtml}}${{esc(l)}}</div>`;
+    }}).join('');
+  }}
+  return html || '<div class="modal-empty">No source lines matched</div>';
 }}
 
 function switchDestTab(type, btn) {{
@@ -812,10 +1016,12 @@ function showSectionModal(idx) {{
 
   // Section header not found (synthetic section name) — infer removed lines by
   // content-matching ALL source removed lines against what landed in the destination.
+  let _allSrcResult = null;
   if (!srcResult.matched && addedLines.length > 0) {{
-    const allSrc = extractSectionLines(row.source_file, null, '-').lines;
+    _allSrcResult = extractSectionLines(row.source_file, null, '-');
+    const allSrcLines = _allSrcResult.lines;
     const destNorms = new Set(addedLines.map(normLine).filter(s => s.length > 5));
-    removedLines = allSrc.filter(l => {{
+    removedLines = allSrcLines.filter(l => {{
       const n = normLine(l);
       if (n.length < 5) return false;
       if (destNorms.has(n)) return true;
@@ -846,22 +1052,40 @@ function showSectionModal(idx) {{
   //           appear as +lines due to section restructuring. Not real content.
   // ─────────────────────────────────────────────────────────────────────────
 
-  const {{ moved, newContent }} = classifyDestLines(removedLines, addedLines);
+  const {{ moved, newContent, movedPairs }} = classifyDestLines(removedLines, addedLines);
   _modalMovedLines = moved;
+  _modalMovedPairs = movedPairs;
+
+  // ── Validation pass ────────────────────────────────────────────────────────
+  // Verify every moved pair: destLine must norm-match its srcLine, and srcLine
+  // must actually be present in removedLines. Flags bad pairs so phantom matches
+  // never silently inflate the "N lines confirmed moved" count.
+  const removedSet = new Set(removedLines);
+  const badPairs = [];
+  for (const [destLine, srcLine] of movedPairs) {{
+    if (!removedSet.has(srcLine)) {{
+      badPairs.push({{ reason: 'src not in removed', destLine, srcLine }});
+      continue;
+    }}
+    const dn = normLine(destLine), sn = normLine(srcLine);
+    const db = bodyText(dn), sb = bodyText(sn);
+    const pLen = Math.min(50, Math.min(dn.length, sn.length));
+    const bLen = Math.min(40, Math.min(db.length, sb.length));
+    const passes =
+      dn === sn ||
+      (pLen >= 10 && (dn.startsWith(sn.slice(0, pLen)) || sn.startsWith(dn.slice(0, pLen)))) ||
+      (sb.length >= 8 && db.length >= 8 && bLen >= 8 &&
+        (db.startsWith(sb.slice(0, bLen)) || sb.startsWith(db.slice(0, bLen))));
+    if (!passes) badPairs.push({{ reason: 'norm mismatch', destLine, srcLine }});
+  }}
+  if (badPairs.length > 0) {{
+    console.warn('[sweep-review] validation: bad moved pairs for row', idx, badPairs);
+  }}
 
   // Separate New from Cross; drop noise from both.
   // Cross lines are retained internally for future anomaly detection but not displayed.
   const globalMap = getGlobalRemovedMap();
   const srcStem = row.source_file.split('/').pop().replace(/\\.md$/, '');
-
-  const isNoiseLine = line => {{
-    const n = normLine(line);
-    if (n.length <= 3) return true;                    // near-empty after stripping
-    if (/^`+(\\w*)$/.test(n)) return true;              // code fence ``` or ```lang
-    if (/^-{{2,}}$/.test(n) || /^—{{1,}}$/.test(n)) return true; // --- or ———
-    if (/^[-*]\\s*\\[\\s*\\]\\s*$/.test(n)) return true;   // bare empty checkbox - [ ]
-    return false;
-  }};
 
   _modalCrossLines = [];
   _modalNewLines = [];
@@ -886,10 +1110,37 @@ function showSectionModal(idx) {{
     : '';
   const srcTabBar = `<div class="modal-panel-tabs">${{inferTag}}</div>`;
 
+  // Pair ID maps hoisted to function scope so renderDestGroups (called after this block) can use them
+  let destPairIds = null, srcPairIds = null;
+
   if (removedLines.length > 0) {{
-    srcBody = `${{srcTabBar}}<div class="diff-lines">${{
-      removedLines.map(l => `<div class="diff-line removed">${{esc(l)}}</div>`).join('')
-    }}</div>`;
+    // Build srcLine → lineNo map; use allSrc result in the inferred case (srcResult had no match)
+    const _srcForNos = _allSrcResult || srcResult;
+    const srcLineNos = new Map();
+    _srcForNos.lines.forEach((l, i) => {{ if (!srcLineNos.has(l)) srcLineNos.set(l, _srcForNos.lineNos[i]); }});
+    // Build pair ID maps for hover sync + click-to-scroll: same ID on the matching src and dest line
+    destPairIds = new Map(); srcPairIds = new Map();
+    let _pid = 0;
+    for (const [destLine, srcLine] of movedPairs) {{
+      destPairIds.set(destLine, _pid);
+      srcPairIds.set(srcLine, _pid);
+      _pid++;
+    }}
+    // Group source lines by the destination section each landed in — mirrors right panel layout
+    const srcGrouped = renderSrcGrouped(_modalDestGroups, new Set(moved), movedPairs, srcLineNos, srcPairIds);
+    // Lost lines: source lines that are countable but didn't arrive at destination
+    const matchedSrcSet = new Set([...movedPairs.values()]);
+    const lostLines = removedLines.filter(l => !matchedSrcSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l));
+    const lostHtml = lostLines.length > 0
+      ? `<div style="margin-top:8px;border-top:1px solid #30363d;padding-top:6px">` +
+        `<div style="color:#f85149;font-size:10px;padding:2px 0 4px">✗ ${{lostLines.length}} line${{lostLines.length>1?'s':''}} not found at destination</div>` +
+        lostLines.map(l => {{
+          const lno = srcLineNos?.get(l);
+          const lnoHtml = lno ? `<span class="line-no">${{lno}}</span>` : '';
+          return `<div class="diff-line removed" style="opacity:0.45">${{lnoHtml}}${{esc(l)}}</div>`;
+        }}).join('') + `</div>`
+      : '';
+    srcBody = `${{srcTabBar}}<div class="diff-lines">${{srcGrouped}}${{lostHtml}}</div>`;
   }} else {{
     // No lines found — show collapsed fallback
     const allRemoved = extractSectionLines(row.source_file, null, '-').lines;
@@ -904,33 +1155,59 @@ function showSectionModal(idx) {{
   }}
   const srcPanel = `<div><div class="modal-panel-hdr">Removed from source — ${{srcName}}</div>${{srcBody}}</div>`;
 
-  // Destination panel — shows only THIS row's moved lines; New tab only when anomalous.
-  // Cross (lines from other source dates) is shown as a footnote, not content to inspect here.
+  // Destination panel — PURE migration view. Only shows lines confirmed moved from
+  // THIS row's source. No tabs. No New, no Cross.
+  // New + Cross are anomalies that will surface as separate rows in the table (Phase A).
   const destName = destFile ? destFile.filename.split('/').pop() : destRaw;
   const destHdr = `Added to destination — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(destName)}}</span>`;
-  const hasNew   = _modalNewLines.length > 0;
-  const initLines = moved.length ? moved : _modalNewLines;
-  const initCls   = moved.length ? 'added' : 'new-content';
-  const destBody  = renderDestGroups(_modalDestGroups, new Set(initLines), initCls);
-
-  // Tabs only when New lines exist (anomaly); otherwise a clean count label.
-  // Cross lines are NOT shown here — they belong to their own breadcrumb rows in the table.
-  const tabBar = hasNew
-    ? `<div class="modal-panel-tabs">
-        <button class="mpanel-tab${{moved.length ? ' active' : ''}}" onclick="switchDestTab('moved',this)">↔ Moved (${{moved.length}})</button>
-        <button class="mpanel-tab new-tab${{!moved.length ? ' active' : ''}}" onclick="switchDestTab('new',this)">✦ New (${{_modalNewLines.length}})</button>
-      </div>`
-    : `<div class="modal-panel-tabs"><span style="color:#3fb950;font-size:10px">✓ ${{moved.length}} line${{moved.length!==1?'s':''}} confirmed moved</span></div>`;
+  const validMoved = filterValidPairs(moved, movedPairs, removedLines);
+  const destBody = renderDestGroups(_modalDestGroups, new Set(validMoved), 'added', destPairIds);
+  const validationWarning = badPairs.length > 0
+    ? `<div style="color:#e3b341;font-size:10px;padding:2px 0 4px">⚠ ${{badPairs.length}} unverified pair${{badPairs.length>1?'s':''}} excluded</div>`
+    : '';
+  // Diagnose empty-panel cases so the user knows WHY nothing is shown
+  const destNotInDiff = !DIFF_TEXT.toLowerCase().includes((destRaw + '.md').toLowerCase());
+  const srcNotInDiff  = !DIFF_TEXT.toLowerCase().includes(row.source_file.split('/').pop().toLowerCase());
+  let countLabel;
+  if (validMoved.length === 0 && removedLines.length === 0 && addedLines.length === 0) {{
+    const why = destNotInDiff
+      ? `<span style="color:#e3b341;font-size:10px">⚠ destination not found in diff</span>`
+      : srcNotInDiff
+        ? `<span style="color:#e3b341;font-size:10px">⚠ source file not found in diff</span>`
+        : `<span style="color:#8b949e;font-size:10px">— nothing to verify</span>`;
+    countLabel = `<div class="modal-panel-tabs">${{why}}</div>`;
+  }} else if (validMoved.length === 0) {{
+    countLabel = `<div class="modal-panel-tabs"><span style="color:#f85149;font-size:10px">✗ 0 lines confirmed moved</span>${{validationWarning}}</div>`;
+  }} else {{
+    countLabel = `<div class="modal-panel-tabs"><span style="color:#3fb950;font-size:10px">✓ ${{validMoved.length}} line${{validMoved.length!==1?'s':''}} confirmed moved</span>${{validationWarning}}</div>`;
+  }}
 
   const destPanel = `<div>
     <div class="modal-panel-hdr">${{destHdr}}</div>
-    ${{tabBar}}
+    ${{countLabel}}
     <div class="diff-lines" id="modal-dest-lines">${{destBody}}</div>
   </div>`;
 
   document.getElementById('modal-title').textContent = sectionName + ' → ' + normDest(row.destination);
   document.getElementById('modal-body').innerHTML = srcPanel + destPanel;
   document.getElementById('modal-overlay').classList.add('open');
+
+  // Update table badge — score = Moved / removedLines.length (direct) or Moved (inferred).
+  // New lines in destination are a separate anomaly, not part of migration score.
+  const movedCount = validMoved.length;
+  const trueNewCount = _modalNewLines.length;
+  const countableRemovedM = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l));
+  const srcTotal = srcResult.matched ? countableRemovedM.length : movedCount;
+  let type;
+  if (destNotInDiff || srcNotInDiff) type = 'empty';
+  else if (srcTotal === 0 && addedLines.length === 0) type = 'empty';
+  else if (srcTotal === 0 && addedLines.length > 0) type = 'anomaly';
+  else if (movedCount === srcTotal) type = 'move';  // all arrived
+  else type = 'lost';                               // any missing → lost
+  const lostCountM = srcTotal - movedCount;
+  const classification = {{ type, movedCount, lostCount: lostCountM, newCount: trueNewCount }};
+  _rowClassifications.set(idx, classification);
+  updateRowBadge(idx, classification);
 }}
 
 // ── Tab switching ──────────────────────────────────────────────────────────
@@ -959,12 +1236,37 @@ function normDest(dest) {{
 }}
 
 let activeDomain = 'all';
+let activeType = 'all';
 
 function setDomain(d) {{
   activeDomain = d;
+  activeType = 'all'; // reset type filter on domain change — indices will shift
   document.querySelectorAll('.domain-chip').forEach(c =>
     c.classList.toggle('active', c.dataset.domain === d));
+  document.querySelectorAll('.type-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.type === 'all'));
   renderNarrative();
+}}
+
+function setType(t) {{
+  activeType = t;
+  document.querySelectorAll('.type-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.type === t));
+  // Show/hide rows by their current classified type (no re-render needed)
+  document.querySelectorAll('tr[data-row-idx]').forEach(tr => {{
+    const rowType = tr.dataset.rowType || 'pending';
+    tr.style.display = (t === 'all' || rowType === t) ? '' : 'none';
+  }});
+  // Also hide/show day separator rows — hide if all their rows are hidden
+  document.querySelectorAll('tr.day-sep-row').forEach(sep => {{
+    let next = sep.nextElementSibling;
+    let anyVisible = false;
+    while (next && !next.classList.contains('day-sep-row')) {{
+      if (next.style.display !== 'none') anyVisible = true;
+      next = next.nextElementSibling;
+    }}
+    sep.style.display = anyVisible ? '' : 'none';
+  }});
 }}
 
 // ── Narrative renderer ─────────────────────────────────────────────────────
@@ -1014,6 +1316,7 @@ function renderNarrative() {{
     tbody += dayRows.map(r => {{
       const idx = MODAL_ROWS.push(r) - 1;
       return `<tr data-row-idx="${{idx}}">
+        <td style="padding:3px 6px;text-align:center"><span class="row-badge rb-pending" title="Not yet classified">·</span></td>
         <td class="section-col"><button class="sec-toggle" onclick="toggleSectionItems(${{idx}},this)" title="Expand items">▶</button>${{esc(r.section)}}</td>
         <td class="summary-col">${{esc(r.summary)}}</td>
         <td class="dest-col" title="${{esc(r.destination)}}"><a class="dest-link" href="${{xcallbackUrl(r.destination)}}">${{esc(normDest(r.destination))}}</a></td>
@@ -1023,7 +1326,7 @@ function renderNarrative() {{
   }}
 
   let html = `<table class="nav-tbl">
-    <thead><tr><th>Section</th><th>Summary</th><th>Destination</th><th></th></tr></thead>
+    <thead><tr><th></th><th>Section</th><th>Summary</th><th>Destination</th><th></th></tr></thead>
     <tbody>${{tbody}}</tbody>
   </table>`;
 
@@ -1256,6 +1559,41 @@ window.addEventListener('DOMContentLoaded', () => {{
 
   allParsedFiles = parseDiff(DIFF_TEXT);
   renderDiffFiles(allParsedFiles);
+
+  // Background scan: classify all rows in idle time, 10 per frame
+  function classifyAllRows() {{
+    let i = 0;
+    function batch() {{
+      const end = Math.min(i + 10, MODAL_ROWS.length);
+      for (; i < end; i++) {{
+        const c = classifyRow(i);
+        if (c) updateRowBadge(i, c);
+      }}
+      if (i < MODAL_ROWS.length) requestIdleCallback(batch);
+    }}
+    if (MODAL_ROWS.length > 0) requestIdleCallback(batch);
+  }}
+  classifyAllRows();
+
+  // Hover sync + click-to-scroll: pair src/dest lines by data-pair-id
+  const modalBody = document.getElementById('modal-body');
+  modalBody.addEventListener('mouseover', e => {{
+    const el = e.target.closest('[data-pair-id]');
+    const id = el?.dataset.pairId;
+    modalBody.querySelectorAll('[data-pair-id]').forEach(n => {{
+      n.classList.toggle('pair-highlight', n.dataset.pairId === id && id != null);
+    }});
+  }});
+  modalBody.addEventListener('mouseleave', () => {{
+    modalBody.querySelectorAll('.pair-highlight').forEach(n => n.classList.remove('pair-highlight'));
+  }});
+  modalBody.addEventListener('click', e => {{
+    const el = e.target.closest('[data-pair-id]');
+    if (!el) return;
+    const id = el.dataset.pairId;
+    const peer = [...modalBody.querySelectorAll(`[data-pair-id="${{id}}"]`)].find(n => n !== el);
+    if (peer) peer.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+  }});
 }});
 </script>
 <div id="modal-overlay" onclick="if(event.target===this)closeModal()">
@@ -1499,6 +1837,308 @@ def cmd_sweep_review_open(args):
     import subprocess as sp
     sp.run(["open", str(path)])
     utils.log(f"sweep-review-open: opened {path}")
+
+
+# ---------------------------------------------------------------------------
+# sweep-review-export
+# ---------------------------------------------------------------------------
+
+def cmd_sweep_review_export(args):
+    """Export raw sweep data (diff, narrative, stats, rows) as JSON to stdout or a file."""
+    root = _np_root()
+    sweeps = _sweeps_dir(root)
+
+    date_str = args.date or date.today().strftime("%Y-%m-%d")
+    run_n = args.run
+
+    if run_n is None:
+        d, n = _latest_run(sweeps, date_str)
+        if d is None:
+            utils.err(f"No snapshot found for {date_str}.")
+            sys.exit(utils.EXIT_NOT_FOUND)
+        date_str, run_n = d, n
+
+    run_id = f"{date_str}-{run_n:02d}"
+    snap_path = sweeps / f"{run_id}.snapshot.html"
+    if not snap_path.exists():
+        utils.err(f"Snapshot not found: {snap_path}. Run sweep-review-generate first.")
+        sys.exit(utils.EXIT_NOT_FOUND)
+
+    html = snap_path.read_text(encoding="utf-8")
+    diff_text  = _extract_js_str(html, "DIFF_TEXT")
+    stat_text  = _extract_js_str(html, "STAT_TEXT")
+    narrative  = _extract_js_val(html, "NARRATIVE")
+    modal_rows = _extract_js_val(html, "MODAL_ROWS")
+    cal_files  = _extract_js_val(html, "CHANGED_CALENDAR_FILES")
+
+    # Extract sweep SHA from snapshot comment header
+    sha_m = re.search(r'sha:\s*([0-9a-f]{7,40})', html)
+    sweep_sha = sha_m.group(1) if sha_m else ""
+
+    payload = {
+        "run_id":   run_id,
+        "date":     date_str,
+        "sha":      sweep_sha,
+        "stats":    stat_text,
+        "diff":     diff_text,
+        "narrative": narrative,
+        "modal_rows": modal_rows,
+        "changed_calendar_files": cal_files,
+    }
+
+    out = json.dumps(payload, ensure_ascii=False, indent=2)
+
+    if args.output:
+        out_path = Path(args.output)
+        out_path.write_text(out, encoding="utf-8")
+        utils.log(f"sweep-review-export: wrote {out_path}")
+    else:
+        print(out)
+
+
+# ---------------------------------------------------------------------------
+# sweep-review-audit
+# ---------------------------------------------------------------------------
+
+def _norm_line(s: str) -> str:
+    """Python mirror of JS normLine — strips date tags, hashtags, collapses whitespace."""
+    import re as _re
+    s = _re.sub(r'>\d{4}-\d{2}-\d{2}', '', s)
+    s = _re.sub(r'#\w+', '', s)
+    s = _re.sub(r'\s+', ' ', s).strip().lower()
+    return s
+
+def _fuzzy_match(a: str, b: str) -> bool:
+    """Python mirror of classifyDestLines prefix/body matching."""
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    p = min(50, min(len(a), len(b)))
+    if p >= 10 and (a.startswith(b[:p]) or b.startswith(a[:p])):
+        return True
+    body_a = re.sub(r'^[-*]\s*\[[x ]\]\s*', '', a, flags=re.I).strip()
+    body_b = re.sub(r'^[-*]\s*\[[x ]\]\s*', '', b, flags=re.I).strip()
+    if len(body_a) >= 8 and len(body_b) >= 8:
+        bl = min(40, min(len(body_a), len(body_b)))
+        if bl >= 8 and (body_a.startswith(body_b[:bl]) or body_b.startswith(body_a[:bl])):
+            return True
+    return False
+
+def _is_noise(line: str) -> bool:
+    if re.match(r'^#+\s', line.strip()): return True   # markdown headings never move
+    n = _norm_line(line)
+    if len(n) <= 3: return True
+    if re.match(r'^`+\w*$', n): return True
+    if re.match(r'^-{2,}$', n) or re.match(r'^—+$', n): return True
+    if re.match(r'^[-*]\s*\[\s*\]\s*$', n): return True
+    return False
+
+def _parse_diff_sections(diff_text: str) -> dict:
+    """Parse diff into {filename: {removed: [lines], added: [lines]}}."""
+    files: dict = {}
+    cur: dict | None = None
+    for line in diff_text.splitlines():
+        if line.startswith('diff --git '):
+            m = re.search(r'b/(.+)$', line)
+            fname = m.group(1) if m else ''
+            cur = {'removed': [], 'added': []}
+            files[fname] = cur
+        elif cur is None:
+            continue
+        elif line.startswith('---') or line.startswith('+++') or line.startswith('index') or line.startswith('@@'):
+            continue
+        elif line.startswith('-') and len(line) > 1:
+            cur['removed'].append(line[1:])
+        elif line.startswith('+') and len(line) > 1:
+            cur['added'].append(line[1:])
+    return files
+
+
+def _extract_section_lines(diff_text: str, filename: str, section_name: str, line_type: str) -> list[str]:
+    """Python mirror of JS extractSectionLines — returns lines of given type within a section."""
+    base = filename.split('/')[-1].lower()
+    name_lower = section_name.lower().strip() if section_name else None
+    in_file = False
+    in_section = section_name is None
+    section_level = 0
+    result = []
+
+    def header_matches(content: str) -> bool:
+        h = re.sub(r'^#+\s*', '', content).strip().lower()
+        return h == name_lower or h.startswith(name_lower or '')
+
+    for raw in diff_text.splitlines():
+        if raw.startswith('diff --git '):
+            in_file = base in raw.lower()
+            in_section = section_name is None
+            section_level = 0
+            continue
+        if not in_file:
+            continue
+        if raw.startswith('+++') or raw.startswith('---') or raw.startswith('index') or raw.startswith('@@'):
+            continue
+        if not raw:
+            continue
+        t = raw[0]
+        if t not in ('+', '-', ' '):
+            continue
+        content = raw[1:]
+        hm = re.match(r'^(#+)\s', content)
+        depth = len(hm.group(1)) if hm else 0
+
+        if section_name is not None:
+            if depth > 0 and header_matches(content):
+                in_section = True
+                section_level = depth
+            elif in_section and depth > 0 and depth <= section_level and t != '+':
+                in_section = False
+
+        if in_section and t == line_type:
+            result.append(content)
+
+    # Fallback: if section not found, return empty (caller handles inferred match)
+    return result
+
+def cmd_sweep_review_audit(args):
+    """Data quality audit: classify all rows, report lost lines, mixed rows, and structural issues."""
+    root = _np_root()
+    sweeps = _sweeps_dir(root)
+
+    date_str = args.date or date.today().strftime("%Y-%m-%d")
+    run_n = args.run
+    if run_n is None:
+        d, n = _latest_run(sweeps, date_str)
+        if d is None:
+            utils.err(f"No snapshot found for {date_str}.")
+            sys.exit(utils.EXIT_NOT_FOUND)
+        date_str, run_n = d, n
+
+    run_id = f"{date_str}-{run_n:02d}"
+    snap_path = sweeps / f"{run_id}.snapshot.html"
+    if not snap_path.exists():
+        utils.err(f"Snapshot not found: {snap_path}")
+        sys.exit(utils.EXIT_NOT_FOUND)
+
+    html = snap_path.read_text(encoding="utf-8")
+    diff_text  = _extract_js_str(html, "DIFF_TEXT")
+    narrative  = _extract_js_val(html, "NARRATIVE")
+
+    if not diff_text:
+        utils.err("Empty diff — nothing to audit.")
+        sys.exit(utils.EXIT_VALIDATION_FAILURE)
+
+    # Build global diff index
+    diff_index = _parse_diff_sections(diff_text)
+    diff_lower = {k.lower(): v for k, v in diff_index.items()}
+
+    def get_file(name: str) -> dict | None:
+        stem = name.split('/')[-1].lower()
+        for k, v in diff_lower.items():
+            if k.endswith(stem):
+                return v
+        return None
+
+    def classify_row(row: dict) -> dict:
+        src_file  = (row.get('source_file') or '').split('/')[-1]
+        dest_raw  = re.sub(r'\[\[([^\]]+)\]\]', r'\1', row.get('destination', '')).strip()
+        dest_raw  = re.sub(r'\.md$', '', dest_raw).strip()
+        section   = re.sub(r'^#+\s*', '', row.get('section', '')).strip()
+
+        issues = []
+        src_in_diff  = any(k.endswith(src_file.lower()) for k in diff_lower)
+        dest_in_diff = any(k.endswith((dest_raw + '.md').lower()) for k in diff_lower)
+        if not src_in_diff:  issues.append('src_not_in_diff')
+        if not dest_in_diff: issues.append('dest_not_in_diff')
+        if src_file.lower() == (dest_raw + '.md').lower(): issues.append('self_migration')
+
+        if not src_in_diff or not dest_in_diff:
+            return {'type': 'empty', 'issues': issues, 'moved': [], 'lost': [], 'new': []}
+
+        # Extract SECTION-scoped removed lines (mirrors JS extractSectionLines)
+        raw_removed = _extract_section_lines(diff_text, src_file, section, '-')
+
+        # Infer from full file if section not found
+        if not raw_removed:
+            all_removed = _extract_section_lines(diff_text, src_file, None, '-')
+            dest_added_all = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
+            dest_norms_all = {_norm_line(l) for l in dest_added_all if len(_norm_line(l)) > 5}
+            raw_removed = [l for l in all_removed
+                           if not _is_noise(l) and len(_norm_line(l)) > 4
+                           and any(_fuzzy_match(_norm_line(l), dn) for dn in dest_norms_all)]
+
+        removed = [l for l in raw_removed if not _is_noise(l) and len(_norm_line(l)) > 2]
+        if not removed:
+            dest_added = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
+            dest_content = [l for l in dest_added if not _is_noise(l) and len(_norm_line(l)) > 2]
+            return {'type': 'anomaly' if dest_content else 'empty', 'issues': issues,
+                    'moved': [], 'lost': [], 'new': dest_content[:5]}
+
+        # Match removed lines against destination added lines
+        dest_added = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
+        dest_norms = [(_norm_line(l), l) for l in dest_added
+                      if not _is_noise(l) and len(_norm_line(l)) > 2]
+
+        moved, lost = [], []
+        for src_line in removed:
+            sn = _norm_line(src_line)
+            matched = any(_fuzzy_match(sn, dn) for dn, _ in dest_norms)
+            (moved if matched else lost).append(src_line)
+
+        row_type = 'move' if (moved and not lost) else 'lost'
+        if moved and lost: issues.append('mixed_row')
+
+        return {'type': row_type, 'issues': issues, 'moved': moved, 'lost': lost, 'new': []}
+
+    # Run audit
+    sep = lambda: '─' * 60
+    lines_out = [f"Sweep audit — {run_id}", sep()]
+
+    isSep = lambda r: re.match(r'^-+$', (r.get('section') or '').strip())
+    rows = [r for r in (narrative or []) if not isSep(r)]
+
+    counts: dict = {'move': 0, 'lost': 0, 'anomaly': 0, 'empty': 0}
+    problems = []
+
+    for row in rows:
+        result = classify_row(row)
+        t = result['type']
+        counts[t] = counts.get(t, 0) + 1
+
+        if result['issues'] or result['lost'] or result['new']:
+            problems.append((row, result))
+
+    total = sum(counts.values())
+    lines_out.append(f"  {total} rows — ✓ {counts.get('move',0)} moved  ✗ {counts.get('lost',0)} lost  + {counts.get('anomaly',0)} anomaly  · {counts.get('empty',0)} empty")
+    lines_out.append(sep())
+
+    if not problems:
+        lines_out.append("  No issues found.")
+    else:
+        for row, result in problems:
+            src  = row.get('source_file', '?').split('/')[-1]
+            dest = re.sub(r'\[\[([^\]]+)\]\]', r'\1', row.get('destination', '?')).strip()
+            sect = row.get('section', '?')
+            lines_out.append(f"\n  {result['type'].upper()}  {sect}  →  {dest}  [{src}]")
+            for issue in result['issues']:
+                lines_out.append(f"    ⚠  {issue.replace('_', ' ')}")
+            for l in result['lost'][:5]:
+                lines_out.append(f"    ✗  {l[:80]}")
+            if len(result['lost']) > 5:
+                lines_out.append(f"    ✗  … {len(result['lost'])-5} more lost lines")
+            for l in result['new'][:3]:
+                lines_out.append(f"    +  {l[:80]}")
+            if len(result['new']) > 3:
+                lines_out.append(f"    +  … {len(result['new'])-3} more new lines")
+
+    lines_out.append('')
+    report = '\n'.join(lines_out)
+
+    if args.output:
+        Path(args.output).write_text(report, encoding='utf-8')
+        utils.log(f"sweep-review-audit: wrote {args.output}")
+    else:
+        print(report)
 
 
 # ---------------------------------------------------------------------------
