@@ -788,8 +788,8 @@ function renderDestGroups(groups, lineSet, cls) {{
 function switchDestTab(type, btn) {{
   document.querySelectorAll('.mpanel-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  const lines = type === 'moved' ? _modalMovedLines : type === 'cross' ? _modalCrossLines : _modalNewLines;
-  const cls   = type === 'moved' ? 'added' : type === 'cross' ? 'cross-moved' : 'new-content';
+  const lines = type === 'moved' ? _modalMovedLines : _modalNewLines;
+  const cls   = type === 'moved' ? 'added' : 'new-content';
   document.getElementById('modal-dest-lines').innerHTML = renderDestGroups(_modalDestGroups, new Set(lines), cls);
 }}
 
@@ -826,12 +826,31 @@ function showSectionModal(idx) {{
     }});
   }}
 
+  // ── Line classification mental model ────────────────────────────────────
+  // Each breadcrumb row = one (source_date × section) → destination pair.
+  // The modal answers: "did THIS row's chunk land at the destination?"
+  //
+  // Moved   = lines removed from THIS source that appear in the destination.
+  //           These confirm the sweep worked for this specific row.
+  //
+  // Cross   = lines in the destination that came from a DIFFERENT source file.
+  //           If that other source has its own breadcrumb row → it shows as
+  //           Moved in THAT row's modal. Cross only matters when no breadcrumb
+  //           accounts for it = a sweep that happened without a record = anomaly.
+  //           Cross lines are NOT shown in this modal at all.
+  //
+  // New     = lines in the destination with no match in ANY removed lines
+  //           across the entire diff. Truly net-new content. Anomaly if unexpected.
+  //
+  // Noise   = formatting artifacts (code fences, empty checkboxes, HRs) that
+  //           appear as +lines due to section restructuring. Not real content.
+  // ─────────────────────────────────────────────────────────────────────────
+
   const {{ moved, newContent }} = classifyDestLines(removedLines, addedLines);
   _modalMovedLines = moved;
 
-  // Re-classify "new" lines against the global removed map — lines found in ANY
-  // other source file are "cross-moved", not truly new.
-  // Noise lines (empty tasks, code fences, HRs) are dropped from both buckets.
+  // Separate New from Cross; drop noise from both.
+  // Cross lines are retained internally for future anomaly detection but not displayed.
   const globalMap = getGlobalRemovedMap();
   const srcStem = row.source_file.split('/').pop().replace(/\\.md$/, '');
 
@@ -885,20 +904,27 @@ function showSectionModal(idx) {{
   }}
   const srcPanel = `<div><div class="modal-panel-hdr">Removed from source — ${{srcName}}</div>${{srcBody}}</div>`;
 
-  // Destination panel with Moved / New tabs
+  // Destination panel — shows only THIS row's moved lines; New tab only when anomalous.
+  // Cross (lines from other source dates) is shown as a footnote, not content to inspect here.
   const destName = destFile ? destFile.filename.split('/').pop() : destRaw;
   const destHdr = `Added to destination — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(destName)}}</span>`;
-  const activeInit = moved.length ? 'moved' : _modalCrossLines.length ? 'cross' : 'new';
-  const initSet = new Set(activeInit === 'moved' ? moved : activeInit === 'cross' ? _modalCrossLines : _modalNewLines);
-  const initCls = activeInit === 'moved' ? 'added' : activeInit === 'cross' ? 'cross-moved' : 'new-content';
-  const destBody = renderDestGroups(_modalDestGroups, initSet, initCls);
+  const hasNew   = _modalNewLines.length > 0;
+  const initLines = moved.length ? moved : _modalNewLines;
+  const initCls   = moved.length ? 'added' : 'new-content';
+  const destBody  = renderDestGroups(_modalDestGroups, new Set(initLines), initCls);
+
+  // Tabs only when New lines exist (anomaly); otherwise a clean count label.
+  // Cross lines are NOT shown here — they belong to their own breadcrumb rows in the table.
+  const tabBar = hasNew
+    ? `<div class="modal-panel-tabs">
+        <button class="mpanel-tab${{moved.length ? ' active' : ''}}" onclick="switchDestTab('moved',this)">↔ Moved (${{moved.length}})</button>
+        <button class="mpanel-tab new-tab${{!moved.length ? ' active' : ''}}" onclick="switchDestTab('new',this)">✦ New (${{_modalNewLines.length}})</button>
+      </div>`
+    : `<div class="modal-panel-tabs"><span style="color:#3fb950;font-size:10px">✓ ${{moved.length}} line${{moved.length!==1?'s':''}} confirmed moved</span></div>`;
+
   const destPanel = `<div>
     <div class="modal-panel-hdr">${{destHdr}}</div>
-    <div class="modal-panel-tabs">
-      <button class="mpanel-tab${{activeInit==='moved'?' active':''}}" onclick="switchDestTab('moved',this)">↔ Moved (${{moved.length}})</button>
-      <button class="mpanel-tab cross-tab${{activeInit==='cross'?' active':''}}" onclick="switchDestTab('cross',this)">↗ Cross (${{_modalCrossLines.length}})</button>
-      <button class="mpanel-tab new-tab${{activeInit==='new'?' active':''}}" onclick="switchDestTab('new',this)">✦ New (${{_modalNewLines.length}})</button>
-    </div>
+    ${{tabBar}}
     <div class="diff-lines" id="modal-dest-lines">${{destBody}}</div>
   </div>`;
 

@@ -1200,6 +1200,8 @@ For each section confirmed for moving:
 
   **CRITICAL — one row per section, one destination per row.** Every row must map exactly one section to exactly one destination. Never group multiple sections into a single row (e.g. `Section A + Section B + Section C → [[dest1]] [[dest2]] [[dest3]]`). If 10 sections are swept, write 10 rows. This rule applies equally to the pre-execution routing proposal table shown to the user for confirmation. Grouping obscures the sweep audit trail and makes it impossible to trace individual sections.
 
+  **Why this matters for the sweep review portal:** The portal's diff modal is built around the one-row-one-section model. Each row's modal asks: "did the lines from THIS section of THIS source note land at the destination?" When multiple calendar dates sweep content to the same destination plan file (expected), each date gets its OWN breadcrumb row — the portal shows each date's contribution separately. If sections are grouped, the portal cannot tell which lines came from which section, and the verification breaks.
+
   **When the source note is swept again on a later date**: check if a breadcrumb table already exists. If so, **append new rows** to the existing table rather than creating a second table. This ensures the full sweep history for a note is visible in one table.
 
   Update the `is_allowed_new` check in Phase 7 to permit lines matching `^\| ` (table rows) and `^\| Swept ` (table header).
