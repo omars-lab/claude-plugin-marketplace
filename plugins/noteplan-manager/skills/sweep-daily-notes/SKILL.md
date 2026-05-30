@@ -1493,12 +1493,13 @@ During the sweep you've read many daily notes and observed the user's ideas, col
    - **Habit reflections**: self-commentary about habits, scope overload signals, seasonal resets (Ramadan, New Year, etc.) → append to `## 💡 Habit Reflection Notes`
 3. Write the updated file back (preserve existing entries — only add new rows or update `Last Seen` / frequency on existing ones)
 
-**Also update the Brag Sheets** using TaskCreate to make the update visible:
+**Also update the Brag Sheets and Impact Timeline** using TaskCreate to make the update visible:
 
-1. Create two tasks before updating:
+1. Create tasks before updating:
    ```javascript
-   TaskCreate({ title: "Update work brag sheet (sweep {YYYY-MM-DD})", status: "in_progress" })
+   TaskCreate({ title: "Update work brag sheet + impact timeline (sweep {YYYY-MM-DD})", status: "in_progress" })
    TaskCreate({ title: "Update personal brag sheet (sweep {YYYY-MM-DD})", status: "in_progress" })
+   TaskCreate({ title: "Update EarlBear progress log (sweep {YYYY-MM-DD})", status: "in_progress" })
    ```
 
 2. **Work brag sheet** — `$NOTES_ROOT/🏢 ServiceNow/📋 Lists/🏢📋 Brag Sheet.md`
@@ -1509,18 +1510,47 @@ During the sweep you've read many daily notes and observed the user's ideas, col
      A running log of work achievements, impact, and value delivered.
      Updated each sweep — use this at review time to justify your impact.
      ```
-   - Append under a `## {YYYY} Q{Q}` quarter header (create if absent), then a `### {YYYY-MM-DD} Sweep` sub-header:
+   - Append under a `## {YYYY} Q{Q}` quarter header (create if absent), then a `### {YYYY-MM-DD} Sweep` sub-header
+   - Write **only verifiable, concrete achievements** from the notes read — no speculation
+   - Focus on: shipped features/POCs, unblocked collaborators, delivered demos, architectural decisions made, external recognition
+   - **Tag each entry with a next-level signal** when applicable:
+     - `[SCOPE+]` — decision or action taken at a scope above individual contributor (cross-team, org-wide, customer-facing)
+     - `[LEADERSHIP]` — owned a process, led a review, guided collaborators, set direction
+     - `[INNOVATION]` — novel technical approach, pioneering use of new technology, frontier-adjacent work
+     - `[VISIBILITY]` — external recognition, demo to leadership, cross-org exposure, Anthropic collaboration
+     - `[IMPACT]` — unblocked others, accelerated a timeline, moved a milestone, shipped something used by others
+   - Example entry format:
      ```markdown
      ### {YYYY-MM-DD} Sweep
 
-     - [concrete achievement bullet — what was built, shipped, or unblocked]
-     - [collaborator impact — e.g. "Supported Dennis in ATF eval design"]
-     - [metric or milestone if visible — e.g. "A2A POC moved to pilot framing"]
+     - **[SCOPE+][LEADERSHIP]** Owned ARB process for AXIS Config Agent end-to-end — PRD, architecture diagrams, security model, and institutional review accountability
+     - **[INNOVATION]** Designed eval stress test mode for parallel agent load testing with session ID logging for post-run debugging
+     - **[IMPACT]** Unblocked Chandran on deployment by routing A2A hardening tasks and consolidating sandbox provisioning steps
      ```
-   - Write **only verifiable, concrete achievements** from the notes read — no speculation
-   - Focus on: shipped features/POCs, unblocked collaborators, delivered demos, architectural decisions made, external recognition
 
-3. **Personal brag sheet** — `$NOTES_ROOT/🏡 Personal/🏡📋 Lists/🏡📋 Brag Sheet.md`
+3. **Work impact timeline** — `$NOTES_ROOT/🏢 ServiceNow/📋 Lists/🏢📋 Impact Timeline.md`
+   - Create if it doesn't exist:
+     ```markdown
+     # 🏢📋 Impact Timeline
+
+     A structured, career-framing record of contributions over time.
+     Used to build next-level cases and performance review narratives.
+     Maintained alongside the Brag Sheet — brag sheet = activity log, impact timeline = career narrative.
+     ```
+   - Append under `## {YYYY} Q{Q}` → `### {Month YYYY}`:
+     ```markdown
+     ### {Month YYYY}
+
+     | Initiative | What was delivered | Next-level signal | Evidence |
+     |---|---|---|---|
+     | AXIS Config Agent ARB | Owned arch review end-to-end | SCOPE+ / LEADERSHIP | PRD, arch diagrams, ARB responses |
+     | A2A POC Hardening | Advanced from exploration to 100-project pilot target | IMPACT | Pilot framing doc, Anthropic collaboration |
+     | Eval Harness Design | Designed stress test mode + session ID logging | INNOVATION | Eval harness doc, implementation plan |
+     ```
+   - Only include items with at least one next-level signal — purely routine items stay in the brag sheet only
+   - This file is the primary input for `/noteplan-manager:generate-impact-narrative`
+
+4. **Personal brag sheet** — `$NOTES_ROOT/🏡 Personal/🏡📋 Lists/🏡📋 Brag Sheet.md`
    - Create if it doesn't exist with header:
      ```markdown
      # 🏡📋 Brag Sheet
@@ -1531,12 +1561,23 @@ During the sweep you've read many daily notes and observed the user's ideas, col
    - Same format: `## {YYYY} Q{Q}` → `### {YYYY-MM-DD} Sweep`
    - Focus on: personal projects launched/progressed, new tools built, family milestones, spiritual growth, skills deepened
 
-4. Mark both brag sheet tasks `completed` after writing.
+5. **EarlBear progress log** — `$NOTES_ROOT/👥 EarlBear/📋 Lists/👥📋 Progress Log.md`
+   - Create if it doesn't exist:
+     ```markdown
+     # 👥📋 Progress Log
+
+     A running log of EarlBear progress — what was built, decided, or validated each sweep.
+     ```
+   - Append under `## {YYYY} Q{Q}` → `### {YYYY-MM-DD} Sweep`
+   - Focus on: features shipped, customer development conversations, product decisions, infra milestones, co-founder alignment
+   - Only write if EarlBear content was swept this session — skip if no EarlBear notes in scope
+
+6. Mark all three tasks `completed` after writing.
 
 - Commit and push after writing all reflection files and brag sheets:
   ```bash
   git add -A
-  git commit -m "reflect(sweep): add {YYYY-MM-DD} self-knowledge observations + habits update"
+  git commit -m "reflect(sweep): add {YYYY-MM-DD} self-knowledge observations + brag sheets + impact timeline"
   git pull --rebase   # resolve any conflicts before pushing
   git push
   ```
@@ -1583,7 +1624,9 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Meeting planning → next business day | When routing unscheduled meeting tasks from Unsorted (e.g. "Figure out meetings — Jeff, Khusbha, etc."), place them in the **next business day's daily note** (create it if needed), not in a general backlog. |
 | Self-knowledge capture | After each sweep's final commit (Phase 8.5), append dated observations to `🪞 Reflections/🏡💭💻 GenAI Thoughts/Observations.md`, `Gaps.md`, and `Superpowers.md`. Only write what's verifiable from the notes read. |
 | Habits tracking in sweep | Phase 8.5 also updates `🏡📋 Habits.md`: scan swept notes for habit signals (observed habits, aspired habits, habit reflections). Update `Last Seen` and frequency on existing rows; add new rows for newly spotted habits. |
-| Brag sheets via tasks | Phase 8.5 updates two brag sheets using TaskCreate: `🏢📋 Brag Sheet.md` (work) and `🏡📋 Brag Sheet.md` (personal). Create a task per sheet before updating, mark completed after. Only concrete, verifiable achievements from the swept notes. |
+| Brag sheets via tasks | Phase 8.5 updates three brag sheets using TaskCreate: `🏢📋 Brag Sheet.md` (work), `🏡📋 Brag Sheet.md` (personal), `👥📋 Progress Log.md` (EarlBear, if EarlBear content was swept). Create a task per sheet before updating, mark completed after. Only concrete, verifiable achievements from the swept notes. |
+| Next-level signal tagging | Work brag sheet entries MUST be tagged with signal types when applicable: `[SCOPE+]` (cross-team/org decisions), `[LEADERSHIP]` (owned process or guided others), `[INNOVATION]` (frontier/novel technical approach), `[VISIBILITY]` (external recognition, leadership exposure), `[IMPACT]` (unblocked others, shipped, moved milestone). Multiple tags allowed per entry. |
+| Impact Timeline maintained | Phase 8.5 also appends to `🏢📋 Impact Timeline.md` — a structured career-framing table. Only entries with at least one next-level signal qualify. This file is the primary input for `/noteplan-manager:generate-impact-narrative`. |
 | Git pull before sweep | Phase 2 must run `git pull` before the pre-sweep commit. Stop if pull fails. |
 | Git push after every commit | After every commit in the sweep (pre-sweep, checkpoint, Unsorted re-route, final, reflect), run `git push` immediately. |
 | Tasks are mandatory, not optional | Create ALL phase tasks with dependencies at session start using TaskCreate. Mark `in_progress` before each phase, `completed` after. The task list is the user's primary visibility window. |
