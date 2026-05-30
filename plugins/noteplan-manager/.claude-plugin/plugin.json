@@ -1,7 +1,7 @@
 {
   "name": "noteplan-manager",
   "description": "Comprehensive NotePlan management - organize, create, analyze, and manage notes, templates, and references",
-  "version": "3.19.0",
+  "version": "3.20.0",
   "author": {
     "name": "Omar Eid"
   },

@@ -254,11 +254,45 @@ For each file, extract H1 + first 3–5 non-empty body lines. Add to the index w
 
 The **self-knowledge reflection files** (`Observations.md`, `Gaps.md`, `Superpowers.md`) in `🪞 Reflections/🏡💭💻 GenAI Thoughts/` are NOT routing targets — they are written by the sweep assistant itself in Phase 8.5.
 
-Report: "Found N recently-touched plans + M list files + K meeting files + J thought files." List all with descriptions.
+### Research Index (extend routing options with research docs and deep dives)
+
+Also index **research documents** from the Research directories and the Deep Dives workstream:
+- Work research: `$NOTES_ROOT/🏢 ServiceNow/🔬 Research/`
+- Work deep dives (concluded research): `$NOTES_ROOT/🏢 ServiceNow/📆 Plans/🤿 Deep Dives/`
+- Personal research: `$NOTES_ROOT/🏡 Personal/🏡🔬 Research/` — **create this directory if it does not exist**
+
+```bash
+RESEARCH_ROOT_WORK="$NOTES_ROOT/🏢 ServiceNow/🔬 Research"
+DEEP_DIVES_ROOT_WORK="$NOTES_ROOT/🏢 ServiceNow/📆 Plans/🤿 Deep Dives"
+RESEARCH_ROOT_PERSONAL="$NOTES_ROOT/🏡 Personal/🏡🔬 Research"
+
+find "$RESEARCH_ROOT_WORK" "$DEEP_DIVES_ROOT_WORK" "$RESEARCH_ROOT_PERSONAL" -name "*.md" 2>/dev/null | sort
+```
+
+For each research file, extract H1 + frontmatter (especially `description` and `domains`). Add to the index with `"type": "research"`. Deep dive plans have `"subtype": "deep_dive"` and a `status` field — completed deep dives (`🏁`) are shown as a historical reference, not a primary routing target.
+
+Research index entry shape:
+```json
+{
+  "filename_stem": "🔬 Researching Docs for Graph Building",
+  "path": "/full/path.md",
+  "type": "research",
+  "subtype": "note",          // "note" | "deep_dive"
+  "namespace": "🏢",
+  "status": "🟢",
+  "description": "...",
+  "domains": ["code.devsnc.com", "servicenow.com/docs"],
+  "description_missing": false
+}
+```
+
+**Domain scoring**: `domains` extracted from frontmatter are used as routing signals in Step 6b/6c — a section containing a URL whose domain appears in a research doc's `domains` list scores **+4** toward that research doc.
+
+Report: "Found N recently-touched plans + M list files + K meeting files + J thought files + R research docs." List all with descriptions.
 
 ---
 
-## Phase 4: Enrich Plans Missing Descriptions + Filename/Title Consistency Check
+## Phase 4: Enrich Plans + Research Docs Missing Descriptions + Filename/Title Consistency Check
 
 ### Filename/Title Consistency Check (run alongside description enrichment)
 
@@ -290,6 +324,16 @@ While reading plan bodies for description inference, also scan for contributor n
 Include contributor additions in the same bulk commit as descriptions. Do not prompt separately unless the user asks.
 
 ---
+
+### Research Doc Enrichment (run alongside plan enrichment)
+
+For each research doc in the research index:
+
+1. **Extract domains**: Scan the full body for all URLs. Extract unique hostname domains (strip `www.`, keep the meaningful part: `code.devsnc.com`, `servicenow.com`, `fluidtopics.com`). Write/update the `domains:` frontmatter list — merge with any already present.
+2. **Infer description** (if missing): Summarize from H1 + first paragraph + domain list. E.g. `"Mapping available ServiceNow documentation APIs, PPM project hierarchy, and content connectors for the graph builder agent."`. Write to `description:` frontmatter.
+3. Include research doc enrichment in the same bulk commit as plan descriptions: `chore(plans/research): add descriptions + domains to N files`
+
+Research docs always use `---` (three dashes) for frontmatter delimiters.
 
 ### Bulk path (preferred when N > 5 plans missing descriptions)
 
@@ -382,9 +426,27 @@ For each sweepable section, determine the best destination using the plan index 
 2. Section header text closely matches a plan name → `✅ Confident`
 3. Section's workstream emoji matches a single plan's workstream → `✅ Confident`
 4. Section mentions a person's name that appears in a plan's `contributors` field → `✅ Confident` (e.g. "Dennis 1-1" content matching a plan with `contributors: ["Dennis"]`)
-5. Clearly personal content (shopping, errands, `[[🏡...]]` wikilinks in work mode) → `⏭️ Skip` (but see **Personal in Both mode** below)
-6. Completed-task-only block → `⏭️ Skip` by default, but see **Completed task routing** below
-7. Anything else → `❓ Uncertain`
+5. Section matches **2+ research signals** (see below) → `🔬 Research candidate` — present research routing UI instead of plan routing
+6. Clearly personal content (shopping, errands, `[[🏡...]]` wikilinks in work mode) → `⏭️ Skip` (but see **Personal in Both mode** below)
+7. Completed-task-only block → `⏭️ Skip` by default, but see **Completed task routing** below
+8. Anything else → `❓ Uncertain`
+
+**Research candidate signals** (classify `🔬` when 2+ apply):
+
+| Signal | Example |
+|---|---|
+| Section header contains: Research, Deep Dive, Investigating, Exploring, Landscape, Survey, Notes on, Background, Docs for, Overview | `# Researching Docs for Graph Building` |
+| 3+ URLs present, concentrated on 1–2 domains | 10 `code.devsnc.com` + `servicenow.com` links |
+| Zero `- [ ]` tasks — prose and/or links only | No tasks in section |
+| Investigative language: "What does X mean", "context for", "overview of", "how does X work", "important context" | `"What does product mean ..."` |
+| Section content domain overlaps with an existing research doc's `domains:` frontmatter | URL from `fluidtopics.com` → matches existing research doc |
+| Conclusion language: "decided to use", "conclusion:", "final approach:", "we will use X" | → flag as **concluded** → prefer Deep Dive destination |
+
+**Cross-day consolidation**: While classifying sections across multiple days, track research candidates in a topic map keyed by dominant domain/keyword cluster (e.g., `servicenow-docs`, `a2a-protocol`, `eval-frameworks`). When two candidates from different days share a cluster, flag them as **consolidation candidates** and present them together during routing:
+```
+🔬 Consolidation candidate: 3 research blocks across 2026-03-19/20/25 all relate to "ServiceNow docs / graph building"
+Route all to one research doc?
+```
 
 **Completed task routing:** Completed `[x]` blocks are historical record and normally stay in source. However, when an entire section is `[x]`-only AND there is a confident plan match, offer to move them to a `## Done` or `## Completed` section in the matched plan file. Present this as an optional action at the end of the day's routing plan — never auto-move completed tasks without confirmation.
 
@@ -418,6 +480,7 @@ Announce the classification before routing:
 ```
 📅 {fileDate} — {n} sweepable section(s):
   ✅ {k} confident match(es) — will auto-route
+  🔬 {r} research candidate(s) — will ask to route to research doc or deep dive
   ❓ {m} uncertain section(s) — will ask individually
   ⏭️  {j} skip(s) — personal/completed
 ```
@@ -430,34 +493,35 @@ Announce the classification before routing:
 
 Before presenting the routing question, score every plan in the index against the section's content and header. Use the following signals (additive):
 
+**Scoring applies to plans, lists, meetings, and research docs** — all are scored together. Additional signals for research docs:
+
 | Signal | Score |
 |---|---|
 | Section content contains `[[filename_stem]]` exact wikilink match | +10 |
-| Section header text contains a word from the plan's filename stem (case-insensitive) | +5 |
-| Section content contains a word from the plan's filename stem (case-insensitive, ≥ 4 chars) | +3 |
+| Section header text contains a word from the plan/research filename stem (case-insensitive) | +5 |
+| Section content contains a word from the plan/research filename stem (case-insensitive, ≥ 4 chars) | +3 |
 | Plan's workstream/plantype emoji appears in section header or content | +2 |
-| Plan has `status: 🟢` (active) | +1 |
+| Plan/research doc has `status: 🟢` (active) | +1 |
+| Section URL domain matches a research doc's `domains:` frontmatter entry | +4 per matching domain |
+| Research doc keyword appears in section header (Research, Deep Dive, Investigating, etc.) | +3 |
 
-Select the **top 5 plans** by score (break ties by recency — most-recently-modified first). These are the only plan options shown. Always append the fixed options below.
+Select the **top 5 results** across all index types by score (break ties by recency). Always append the fixed options below.
 
-For each uncertain section (in source order):
+**For `🔬 Research candidate` sections**, use a dedicated routing question that surfaces research destinations first:
 
 ```javascript
-// Compute top5 before calling AskUserQuestion
-const top5 = scoredPlanIndex
-  .sort((a, b) => b.score - a.score || b.mtime - a.mtime)
-  .slice(0, 5);
-
 AskUserQuestion({
   questions: [{
-    question: `Section "${sectionHeader}" from ${fileDate}:\n\n${sectionPreview}\n\nTop suggested destinations (scored by content match):`,
-    header: `Route: "${sectionHeader}" (${currentIndex}/${totalUncertain})`,
+    question: `Research section "${sectionHeader}" from ${fileDate}:\n\n${sectionPreview}\n\nSuggested destinations (scored by domain + keyword match):`,
+    header: `Route research: "${sectionHeader}" (${currentIndex}/${totalResearch})`,
     options: [
-      ...top5.map((p, i) => ({
-        label: `[[${p.filename_stem}]]`,
-        description: `#${i+1} match · ${p.description || `(${p.workstream_or_plantype} — no description)`}`
+      // Top 3 research docs / deep dives from research index (domain-scored):
+      ...top3Research.map((r, i) => ({
+        label: `[[${r.filename_stem}]]`,
+        description: `#${i+1} · ${r.subtype === 'deep_dive' ? '🤿 Deep Dive (concluded)' : '🔬 Research'} · ${r.description ?? '(no description)'}`
       })),
-      { label: "🆕 Create a new plan/file for this", description: "This section deserves its own plan file" },
+      { label: "🔬 New Research note", description: `Create 🔬 {Title}.md in 🔬 Research/ — ongoing investigation, reference material` },
+      { label: "🤿 New Deep Dive plan", description: `Create 🏢{YYMMDD}🤿 {Title}.md — concluded research, decision reached` },
       { label: "📥 Unsorted", description: "Place under # Unsorted in the target note" },
       { label: "⏭️ Skip — leave it here", description: "Don't move this section" }
     ],
@@ -466,7 +530,29 @@ AskUserQuestion({
 })
 ```
 
-> **Note:** If none of the top-5 match the user's intent, the user can choose "🆕 Create a new plan/file" or "📥 Unsorted". The full plan index is available in the description enrichment step if needed, but is never dumped into the routing UI.
+**For `❓ Uncertain` sections**, use the standard plan routing question with the full top-5 (plans + research + lists mixed by score):
+
+```javascript
+AskUserQuestion({
+  questions: [{
+    question: `Section "${sectionHeader}" from ${fileDate}:\n\n${sectionPreview}\n\nTop suggested destinations (scored by content match):`,
+    header: `Route: "${sectionHeader}" (${currentIndex}/${totalUncertain})`,
+    options: [
+      ...top5.map((p, i) => ({
+        label: `[[${p.filename_stem}]]`,
+        description: `#${i+1} match · ${p.type === 'research' ? '🔬 ' : ''}${p.description || `(${p.workstream_or_plantype ?? p.type} — no description)`}`
+      })),
+      { label: "🆕 Create a new plan/file for this", description: "This section deserves its own plan file" },
+      { label: "🔬 New Research note", description: "Create a standalone research doc" },
+      { label: "📥 Unsorted", description: "Place under # Unsorted in the target note" },
+      { label: "⏭️ Skip — leave it here", description: "Don't move this section" }
+    ],
+    multiSelect: false
+  }]
+})
+```
+
+> **Note:** If none of the top-5 match the user's intent, the user can choose "🆕 Create a new plan/file", "🔬 New Research note", or "📥 Unsorted". The full index is never dumped into the routing UI.
 
 **User notes in AskUserQuestion answers are authoritative context.** When the user provides a free-text note alongside their answer (e.g. "this is billing for Lana's daycare" or "this is part of me understanding servicenow"), treat it as a clarification that should immediately inform your interpretation of the content. If the note suggests a different category or plan than you had scored, re-score the plan index against the user's description and present better-matched options in the next follow-up question. Never ignore user notes.
 
@@ -482,7 +568,8 @@ If the search produces **ambiguous or multiple valid routings** → include the 
 
 Show a **progress counter** in the header (`1/3`, `2/3`, etc.) so the user knows how many uncertain sections remain.
 
-If **"🆕 Create a new plan"** is selected → go to **Step 6d: Create New Plan**, then return to routing.
+If **"🆕 Create a new plan"** is selected → go to **Step 6d: Create New Plan/Research Doc**, then return to routing.
+If **"🔬 New Research note"** or **"🤿 New Deep Dive plan"** is selected → go to **Step 6d: Create New Plan/Research Doc** (research path), then return to routing.
 
 After all uncertain sections are routed, **present the complete day plan** (confident + newly routed):
 
@@ -526,7 +613,7 @@ AskUserQuestion({
 })
 ```
 
-### Step 6d — Create New Plan (optional sub-flow)
+### Step 6d — Create New Plan / Research Doc (optional sub-flow)
 
 When a section should become its own plan, gather the needed inputs:
 
@@ -653,6 +740,56 @@ Confirm creation to the user: "Created `[[{filename_stem}]]` at `{path}`."
 
 The section's content will be swept into this new plan file directly (not the target daily note) — place it after the `* [ ]` task line in the new plan. This is the one case where content goes to a plan file rather than the target daily note.
 
+#### Research Doc Creation Path
+
+When the user selects **"🔬 New Research note"** or **"🤿 New Deep Dive plan"**:
+
+**Path A — Research note** (ongoing investigation, reference material, not yet concluded):
+
+Ask for a title only — all other fields are auto-inferred:
+
+```javascript
+AskUserQuestion({ questions: [{ question: "What is this research about?", header: "New research note: title", freeText: true }] })
+```
+
+- Filename: `🔬 {Title}.md` (no date prefix — research docs are evergreen)
+- Location: work → `🔬 Research/`; personal → `🏡🔬 Research/` (create dir if absent)
+- Auto-extract `domains:` from URL content in the section being routed
+- Auto-infer `description:` from H1 + section content summary
+- Write with full frontmatter (`---` three dashes):
+
+```markdown
+---
+doctype: 🔬
+status: 🟢
+started: {YYMMDD}
+namespace: 🏢  // or 🏡
+description: {auto-inferred one-sentence summary}
+domains:
+  - {extracted-domain-1}
+  - {extracted-domain-2}
+---
+# 🔬 {Title}
+
+## From {YYYY-MM-DD}
+{content verbatim}
+```
+
+**Path B — Deep Dive plan** (concluded research, decision reached, goal achieved):
+
+- Filename: `🏢{YYMMDD}🤿 {Title}.md` (work) / `🏡{YYMMDD}🔍 {Title}.md` (personal — use Discovering emoji)
+- Location: `Plans/🤿 Deep Dives/` (discover the subdir — never hardcode)
+- Use the standard plan template (`🏢📆 Work Plan.md`) with `workstream: 🤿`
+- Add `domains:` field to frontmatter (same auto-extraction as research notes)
+- Content placed after the `* [ ]` boilerplate line (same as any new plan)
+
+**Appending to an existing research doc** (when user routes to an existing `🔬` entry):
+- Append content under `## From {fileDate}` sub-header (same as plans)
+- **Also update `domains:` frontmatter**: extract URL domains from the newly appended content, merge (set union) with existing `domains:` list, rewrite frontmatter in-place
+- Do NOT rewrite `description:` on append — only set at creation
+
+Add the new research doc to the research index so it's available for the rest of the sweep.
+
 ### Step 6e — Execute the confirmed plan
 
 After the user confirms the day's routing plan:
@@ -664,6 +801,8 @@ For each section confirmed for moving:
   - Prefix the moved block with a `## From {fileDate}` date sub-header so content origin is traceable
 - **To existing plan file (direct)**: append verbatim after existing content in the plan, under a `## From {fileDate}` sub-header
 - **To new plan file**: append verbatim after the opening `* [ ]` line in the new plan (no date sub-header needed — the plan's `started:` field captures this)
+- **To existing research doc**: append verbatim under `## From {fileDate}` sub-header; also update `domains:` frontmatter with any new URL domains from the appended content (set union, rewrite frontmatter in-place)
+- **To new research note**: content is placed after the opening H1 in the new research doc (Step 6d handled creation)
 - **To meeting file**: append verbatim under a `## {YYYY-MM-DD} Notes` sub-header in the meeting file
 - **Unsorted**: append under `# Unsorted` in the target note (no date sub-header needed in Unsorted)
 - **Remove** from source: all content lines AND their section header (`# SectionName`). Do NOT move the original section header to the target — the target gets `# [[PlanName]]` instead.
@@ -690,10 +829,11 @@ For each section confirmed for moving:
 
 **No content modification rule:** Copy every line exactly as-is. Preserve all leading whitespace / indentation. The only new text introduced is:
 - `# [[PlanName]]` headers in the target note
-- `## From {fileDate}` sub-headers when appending to an existing plan or target daily note
+- `## From {fileDate}` sub-headers when appending to an existing plan, research doc, or target daily note
 - `## {YYYY-MM-DD} Notes` sub-headers when appending to a meeting file
 - `# Unsorted` header (if needed)
 - The plan file boilerplate when creating a new plan
+- The research doc frontmatter + H1 when creating a new research note or deep dive
 
 **Permitted task annotations (the only allowed content additions to moved lines):**
 
@@ -1102,6 +1242,13 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Verbatim moves — read from source | When executing content moves via Python, always read lines directly from the source file rather than hardcoding them as strings. Hardcoded strings silently lose `\xa0` non-breaking spaces and other non-standard whitespace that NotePlan embeds in rich text exports. |
 | NotePlan date format is `>YYYY-MM-DD` | Date scheduling tags MUST use hyphens (`>2026-03-20`), never compact (`>20260320`). Tags without hyphens are silently ignored by NotePlan. Step 6f runs a repair pass after each day to fix any broken tags in touched files. |
 | Raw links are routing signals | Inspect URL domains during classification. ServiceNow instance/docs links route to matching work plans. Learning/reference URLs route to `📋 Lists/References[...]` when standalone. Standalone raw links are `❓ Uncertain` — present with domain context. |
+| Research candidate classification | When a section matches 2+ research signals (labeled header, 3+ URLs, zero tasks, investigative language, domain overlap with existing research doc), classify as `🔬 Research candidate` and present the research routing UI instead of the standard plan routing UI. |
+| Research vs Deep Dive distinction | `🔬 Research/` = active/ongoing investigation (evergreen reference). `🤿 Deep Dives/` = concluded research where a decision was reached or goal achieved. Default to Research during sweep; suggest Deep Dive only when conclusion language is detected. |
+| Research docs indexed | Index `🔬 Research/` (work + personal) and `Plans/🤿 Deep Dives/` alongside plans/lists/meetings. Research docs' `domains:` frontmatter scores +4 per URL domain match in a section. |
+| Research doc frontmatter | Research notes use `---` (three dashes) and include: `doctype: 🔬`, `status`, `started`, `namespace`, `description` (auto-inferred), `domains` (auto-extracted from URL content). Enrich missing descriptions + domains in Phase 4 alongside plans. |
+| Personal research folder | `🏡 Personal/🏡🔬 Research/` — create on first use if absent. Same indexing and routing as work research. |
+| Research doc domains update on append | When appending to an existing research doc, extract URL domains from the new content and merge (set union) into the doc's `domains:` frontmatter. Rewrite frontmatter in-place. |
+| Cross-day research consolidation | Track research candidates across all days in a topic/domain cluster map. When two or more candidates share a cluster, present them as a single consolidation question before individual routing. |
 
 ---
 
