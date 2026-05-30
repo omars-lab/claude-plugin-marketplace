@@ -1,4 +1,4 @@
-.PHONY: help test-all test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register sync-remote
+.PHONY: help test-all test-noteplan-manager test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register sync-remote
 
 # Colors for output
 GREEN := \033[0;32m
@@ -84,6 +84,10 @@ test-creator: ## Test noteplan-note-creator skills
 test-workflow: ## Test complete plugin lifecycle (uninstall -> install -> update)
 	@./scripts/cli test-workflow $(MARKETPLACE_NAME)
 
+test-noteplan-manager: ## Run noteplan-manager JS browser tests (requires venv)
+	@echo "$(BLUE)Testing noteplan-manager sweep review portal JS...$(NC)"
+	@cd plugins/noteplan-manager/bin && .venv/bin/python -m pytest noteplan_sweep/tests/test_sweep_review_js.py -v
+
 test-all: ## Run all plugin tests
 	@make --no-print-directory test-discover
 	@echo ""
@@ -96,6 +100,8 @@ test-all: ## Run all plugin tests
 	@make --no-print-directory test-analyzer
 	@echo ""
 	@make --no-print-directory test-creator
+	@echo ""
+	@make --no-print-directory test-noteplan-manager
 
 register: ## Register the marketplace in Claude
 	@./scripts/cli register $(MARKETPLACE_NAME)
