@@ -126,6 +126,50 @@ def extract_work_logs(notes_root: Path) -> list[dict]:
     return sorted(work_logs, key=lambda x: x["date"], reverse=True)
 
 
+def extract_task_completions(notes_root: Path, days: int = 90) -> list[dict]:
+    """Scan plan files for - [x] task lines; return daily counts for last N days."""
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    daily: dict[str, int] = {}
+    _DONE_RE = re.compile(r'^\s*[-*]\s+\[x\]\s+', re.IGNORECASE)
+    _DATE_CTX_RE = re.compile(r'(\d{4}-\d{2}-\d{2})')
+
+    for md in notes_root.rglob("*.md"):
+        if "@Trash" in str(md) or "@Archive" in str(md):
+            continue
+        try:
+            content = md.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        # Use file mtime as proxy date if no inline date
+        try:
+            file_date = date.fromtimestamp(md.stat().st_mtime).isoformat()
+        except Exception:
+            file_date = date.today().isoformat()
+
+        if file_date < cutoff:
+            continue
+
+        for line in content.splitlines():
+            if not _DONE_RE.match(line):
+                continue
+            # Try to find an inline date on the line; fall back to file mtime
+            dm = _DATE_CTX_RE.search(line)
+            d = dm.group(1) if dm else file_date
+            if d < cutoff:
+                continue
+            daily[d] = daily.get(d, 0) + 1
+
+    # Return sorted list with zeros filled for the range
+    result = []
+    cur = date.today() - timedelta(days=days - 1)
+    for _ in range(days):
+        iso = cur.isoformat()
+        result.append({"date": iso, "count": daily.get(iso, 0)})
+        cur += timedelta(days=1)
+    return result
+
+
 def extract_shipped_plans(notes_root: Path) -> list[dict]:
     """Plans with completed: frontmatter and ✅ status."""
     shipped: list[dict] = []
@@ -194,6 +238,10 @@ def cmd_contributions_generate(args):
     utils.verbose("Extracting shipped plans...")
     shipped = extract_shipped_plans(notes)
 
+    # 4b. Task completion sparkline (last 90 days)
+    utils.verbose("Extracting task completions...")
+    task_completions = extract_task_completions(notes, days=90)
+
     # 5. Merge repo-audit.json (adds skill_count / has_claude_md)
     audit_by_name: dict[str, dict] = {}
     audit_path = dash_dir / "repo-audit.json"
@@ -204,10 +252,19 @@ def cmd_contributions_generate(args):
         except Exception:
             pass
 
-    # Slim repos (drop raw commits list, add audit fields)
+    # Slim repos — keep recent commits for drill-down, add audit fields
     repos_slim = []
     for r in repo_data:
         audit = audit_by_name.get(r["name"], {})
+        # Mini heatmap: daily counts for last 90 days
+        cutoff_90 = (date.today() - timedelta(days=89)).isoformat()
+        daily_90: dict[str, int] = {}
+        for c in r.get("commits", []):
+            if c["date"] >= cutoff_90:
+                daily_90[c["date"]] = daily_90.get(c["date"], 0) + 1
+        # Last 5 commit messages
+        recent_msgs = [c["message"] for c in r.get("commits", [])[:5]]
+        last_active = r["commits"][0]["date"] if r.get("commits") else ""
         repos_slim.append({
             "name": r["name"],
             "domain": r["domain"],
@@ -215,6 +272,9 @@ def cmd_contributions_generate(args):
             "ai_commit_count": r["ai_commit_count"],
             "skill_count": audit.get("skill_count", 0),
             "has_claude_md": audit.get("has_claude_md", False),
+            "last_active": last_active,
+            "daily_90": daily_90,
+            "recent_commits": recent_msgs,
         })
 
     # 6. Summary
@@ -234,6 +294,7 @@ def cmd_contributions_generate(args):
         "work_logs": work_logs[:500],
         "shipped": shipped,
         "repos": repos_slim,
+        "task_completions": task_completions,
         "summary": {
             "total_commits": total_commits,
             "total_ai_commits": total_ai,
@@ -241,6 +302,7 @@ def cmd_contributions_generate(args):
             "shipped_count": len(shipped),
             "work_log_count": len(work_logs),
             "repo_count": len(repo_data),
+            "tasks_completed_90d": sum(t["count"] for t in task_completions),
         },
     }
 
@@ -280,6 +342,7 @@ def build_contributions_html(data: dict) -> str:
 <head>
 <meta charset="utf-8">
 <title>Contributions</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; background: #0d1117; color: #e6edf3; }}
@@ -365,6 +428,22 @@ def build_contributions_html(data: dict) -> str:
   .filter-bar input {{ background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 5px 10px; color: #e6edf3; font-size: 13px; width: 220px; }}
   .filter-bar input::placeholder {{ color: #484f58; }}
   .count-badge {{ font-size: 12px; color: #484f58; }}
+
+  /* Sparkline tile */
+  .sparkline-tile {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; }}
+  .sparkline-tile h3 {{ font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }}
+  .sparkline-tile canvas {{ display: block; width: 100% !important; height: 60px !important; }}
+
+  /* Repo drill-down */
+  .repo-card {{ cursor: pointer; transition: border-color 0.15s; }}
+  .repo-card:hover {{ border-color: #58a6ff; }}
+  .repo-card.expanded {{ border-color: #58a6ff; }}
+  .repo-expand {{ display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #30363d; }}
+  .repo-card.expanded .repo-expand {{ display: block; }}
+  .repo-mini-heatmap {{ display: flex; gap: 1px; flex-wrap: nowrap; overflow-x: auto; margin-bottom: 8px; height: 14px; align-items: flex-end; }}
+  .repo-mini-bar {{ background: #0e4429; flex-shrink: 0; width: 3px; border-radius: 1px; min-height: 2px; transition: height 0.2s; }}
+  .repo-commits {{ font-size: 11px; color: #8b949e; line-height: 1.6; }}
+  .repo-commits li {{ list-style: none; padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 </style>
 </head>
 <body>
@@ -435,6 +514,14 @@ def build_contributions_html(data: dict) -> str:
         <span class="tile-num">{summary.get("shipped_count", 0)}</span>
         <div class="tile-label">Plans shipped</div>
       </div>
+      <div class="sum-tile" style="--c:#d2a8ff">
+        <span class="tile-num" style="color:#d2a8ff">{summary.get("tasks_completed_90d", 0)}</span>
+        <div class="tile-label">Tasks done (90d)</div>
+      </div>
+    </div>
+    <div class="sparkline-tile">
+      <h3>Tasks completed — last 90 days</h3>
+      <canvas id="sparkline-chart"></canvas>
     </div>
     <div id="heatmap-container">
       <svg id="heatmap-svg"></svg>
@@ -660,10 +747,25 @@ function renderRepos() {{
   document.getElementById('n-repos').textContent = '(' + repos.length + ')';
 
   const domainClass = {{ work: 'd-work', personal: 'd-personal', earlbear: 'd-earlbear' }};
-  document.getElementById('repo-body').innerHTML = repos.map(r => {{
+  document.getElementById('repo-body').innerHTML = repos.map((r, idx) => {{
     const aiPct = r.commit_count > 0 ? Math.round(r.ai_commit_count / r.commit_count * 100) : 0;
+    const daily90 = r.daily_90 || {{}};
+    const maxCount = Math.max(1, ...Object.values(daily90));
+    // Build 90-day mini bar chart (3px wide bars)
+    const today = new Date();
+    const bars = [];
+    for (let i = 89; i >= 0; i--) {{
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0,10);
+      const cnt = daily90[iso] || 0;
+      const h = Math.max(2, Math.round((cnt / maxCount) * 12));
+      const opacity = cnt > 0 ? 0.4 + (cnt / maxCount) * 0.6 : 0.15;
+      bars.push(`<div class="repo-mini-bar" style="height:${{h}}px;opacity:${{opacity.toFixed(2)}}"></div>`);
+    }}
+    const commits = (r.recent_commits || []).slice(0, 5).map(m =>
+      `<li>· ${{esc(m.slice(0,60))}}${{m.length > 60 ? '…' : ''}}</li>`).join('');
     return `
-      <div class="repo-card">
+      <div class="repo-card" id="repo-${{idx}}" onclick="toggleRepo(${{idx}})">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
           <div class="repo-name">${{esc(r.name)}}</div>
           <span class="domain-badge ${{domainClass[r.domain]||'d-work'}}">${{esc(r.domain)}}</span>
@@ -672,12 +774,22 @@ function renderRepos() {{
           <div><span class="repo-stat-val">${{r.commit_count}}</span> commits</div>
           <div><span class="repo-stat-val">${{r.ai_commit_count}}</span> AI</div>
           ${{r.skill_count > 0 ? `<div><span class="repo-stat-val">${{r.skill_count}}</span> skills</div>` : ''}}
+          ${{r.last_active ? `<div style="color:#484f58;font-size:10px;margin-left:auto">${{esc(r.last_active)}}</div>` : ''}}
         </div>
         <div class="ai-bar" title="${{aiPct}}% AI-assisted">
           <div class="ai-bar-fill" style="width:${{aiPct}}%"></div>
         </div>
+        <div class="repo-expand">
+          <div class="repo-mini-heatmap">${{bars.join('')}}</div>
+          ${{commits ? `<ul class="repo-commits">${{commits}}</ul>` : ''}}
+        </div>
       </div>`;
   }}).join('');
+}}
+
+function toggleRepo(idx) {{
+  const card = document.getElementById('repo-' + idx);
+  if (card) card.classList.toggle('expanded');
 }}
 
 // ── Init ──────────────────────────────────────────────────────────────────
@@ -695,6 +807,30 @@ window.addEventListener('DOMContentLoaded', () => {{
   document.getElementById('n-shipped').textContent = '(' + DATA.shipped.length + ')';
   document.getElementById('n-repos').textContent = '(' + DATA.repos.length + ')';
   renderHeatmap();
+
+  // Task completion sparkline (Chart.js)
+  const tc = DATA.task_completions || [];
+  if (tc.length && document.getElementById('sparkline-chart')) {{
+    new Chart(document.getElementById('sparkline-chart'), {{
+      type: 'bar',
+      data: {{
+        labels: tc.map(t => t.date),
+        datasets: [{{ data: tc.map(t => t.count), backgroundColor: '#3fb950', borderRadius: 1 }}]
+      }},
+      options: {{
+        animation: false,
+        plugins: {{ legend: {{ display: false }}, tooltip: {{ callbacks: {{
+          title: items => items[0].label,
+          label: item => item.raw + ' tasks done',
+        }} }} }},
+        scales: {{
+          x: {{ display: false }},
+          y: {{ display: false, min: 0 }},
+        }},
+        maintainAspectRatio: false,
+      }}
+    }});
+  }}
 }});
 </script>
 </body>

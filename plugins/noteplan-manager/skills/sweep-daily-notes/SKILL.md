@@ -1948,14 +1948,23 @@ noteplan-sweep dashboard-generate --skip-mine
 noteplan-sweep work-board-open
 ```
 
-### 9.4 — Repo scan (weekly, not every sweep)
+### 9.4 — Repo scan + Graph rebuild (weekly, not every sweep)
 
 Run once per week or after adding a new AI-assisted project:
 
 ```bash
 noteplan-sweep repo-scan
-noteplan-sweep ai-usage-generate   # re-generate to include new repo data
-noteplan-sweep contributions-generate   # re-generate to include updated AI commit data
+noteplan-sweep ai-usage-generate         # re-generate to include new repo data
+noteplan-sweep contributions-generate    # re-generate to include updated AI commit data
+
+# Rebuild the conversation knowledge graph
+noteplan-sweep graph-extract             # Session/Plan/Repo/Skill/UseCase/App nodes + edges
+noteplan-sweep graph-build               # validate + write embedding_meta to graph.json
+noteplan-sweep ai-usage-generate         # re-generate to inject updated graph.json into D3 pane
+
+# Optional: embed nodes for vector search (requires LM Studio running)
+# noteplan-sweep graph-embed
+# noteplan-sweep graph-query-vec "config agent planning sessions"
 ```
 
 ### Phase 9 checklist
@@ -1970,6 +1979,7 @@ noteplan-sweep contributions-generate   # re-generate to include updated AI comm
 - [ ] `ai-usage-generate` — AI Usage HTML refreshed
 - [ ] `dashboard-generate --skip-mine` — Plans Dashboard HTML refreshed
 - [ ] `work-board-open` — Insights Hub visible in browser
+- [ ] *(weekly)* `repo-scan` + `graph-extract` + `graph-build` — graph.json rebuilt
 
 ---
 

@@ -165,6 +165,44 @@ Global facet chips: Status (single-select), Project (multi-toggle), Plantype (mu
 
 ---
 
+### Contributions Dashboard (`dashboard/contributions.html`)
+
+**Commands:** `noteplan-sweep contributions-generate` · `noteplan-sweep contributions-open`
+
+4-tab HTML dashboard:
+
+| Tab | Contents |
+|---|---|
+| **Commit Heatmap** | SVG 52×7 grid (GitHub-style), colored by commit count, domain toggle (All / Work / Personal / EarlBear), 4 summary tiles |
+| **Work Logs** | `## Work Log` table rows from plan files, grouped by ISO week |
+| **Shipped Plans** | Vertical timeline of plans with `completed:` + ✅ frontmatter |
+| **Repos** | Repo cards with domain badge, commit count, AI-assisted % bar |
+
+`contributions-generate` scans `~/workspace/` + OneDrive workspace repos (365 days of git history), extracts work logs from plan files, and writes `contributions.json` + `contributions.html`.
+
+---
+
+### Conversation Graph (`dashboard/graph.json`)
+
+**Commands:** `noteplan-sweep graph-extract` · `noteplan-sweep graph-stats` · `noteplan-sweep graph-query` · `noteplan-sweep graph-embed` · `noteplan-sweep graph-build` · `noteplan-sweep graph-query-vec`
+
+Knowledge graph built from all Claude sessions, NotePlan plans, repos, and skills:
+
+| Node type | Source | Shape in D3 |
+|---|---|---|
+| Session | ai-usage.json | Circle (colored by use case) |
+| Plan | NotePlan .md files | Square (colored by status) |
+| Repo | repo-audit.json | Rounded rect (colored by domain) |
+| Skill | SKILL.md files | Triangle (orange) |
+| UseCase | Fixed set (8) | Labeled halo |
+| App | Extracted from plan titles | Teal triangle |
+
+Edge types: `TOUCHES` (session→plan), `CLASSIFIED_AS` (session→use_case), `IN_REPO` (session→repo), `DEFINED_IN` (skill→repo), `BUILT` (session/plan→app).
+
+`graph-embed` stores L2-normalized Float32 vectors in binary format (`graph.embeddings.bin` + `.keys`, compatible with icon-kit). `graph-query-vec` does cosine similarity search. The D3 pane in `ai-usage.html` auto-loads `graph.json` when present.
+
+---
+
 ### Insights Hub (`dashboard/insights.html`)
 
 **Commands:** `noteplan-sweep work-board-generate` · `noteplan-sweep work-board-open`
@@ -281,11 +319,13 @@ Snapshots are immutable. Comments download as `.jsonl` sidecars via the "Save Co
 | Dashboard | `dashboard-generate`, `dashboard-open` |
 | Conversation Mining | `conversation-mine`, `mine-commit` |
 | Work Board | `work-board-generate`, `work-board-open` |
+| Contributions | `contributions-generate`, `contributions-open` |
 | AI Usage | `ai-usage-mine`, `ai-usage-generate`, `ai-usage-open`, `repo-scan` |
+| Conversation Graph | `graph-extract`, `graph-stats`, `graph-query`, `graph-embed`, `graph-build`, `graph-query-vec` |
 | Sweep Review | `sweep-commit`, `sweep-review-generate`, `sweep-review-compile`, `sweep-review-squash`, `sweep-review-list`, `sweep-review-open` |
 
 ```bash
-noteplan-sweep list-commands   # full listing
+noteplan-sweep list-commands   # full listing (61 commands)
 noteplan-sweep <command> --help
 ```
 
@@ -330,6 +370,21 @@ noteplan-sweep --version
 
 **"Scan my repos for AI artifacts and update the usage dashboard"**
 → `noteplan-sweep repo-scan && noteplan-sweep ai-usage-generate`
+
+**"What did I actually ship / what's my commit history?"**
+→ `noteplan-sweep contributions-generate && noteplan-sweep contributions-open`
+
+**"Build the full knowledge graph of my Claude sessions and plans"**
+→ `noteplan-sweep graph-extract && noteplan-sweep graph-build && noteplan-sweep ai-usage-generate`
+
+**"Find sessions related to a topic (semantic search)"**
+→ `noteplan-sweep graph-embed` (requires LM Studio), then `noteplan-sweep graph-query-vec "your query"`
+
+**"Quick text search across all graph nodes"**
+→ `noteplan-sweep graph-query "config agent"` or `noteplan-sweep graph-query --cypher "MATCH (n:Plan) WHERE n.status contains 'active' RETURN n.label LIMIT 20"`
+
+**"See the hub dashboard linking all views"**
+→ `noteplan-sweep serve --open` (starts local server at localhost:4242)
 
 **"I'm setting up on a new machine"**
 → `/noteplan-manager:manage-notes` → discover structure, then CLI setup above

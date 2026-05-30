@@ -106,6 +106,31 @@ for i in sorted(transcript_ideas, key=lambda x: x.get('date',''), reverse=True)[
 
 ---
 
+## Downstream: Graph Pipeline
+
+After `conversation-mine`, optionally rebuild the conversation knowledge graph (weekly or after a significant batch of new sessions):
+
+```bash
+noteplan-sweep graph-extract    # build graph.json (Session/Plan/Repo/Skill/UseCase/App nodes)
+noteplan-sweep graph-build      # validate + write embedding_meta
+noteplan-sweep ai-usage-generate  # inject updated graph.json into D3 pane
+```
+
+Then for semantic search (requires LM Studio running at localhost:1234):
+```bash
+noteplan-sweep graph-embed           # embed all unembedded nodes
+noteplan-sweep graph-query-vec "infrastructure planning sessions"
+```
+
+Text/Cypher search (no embedding required):
+```bash
+noteplan-sweep graph-query "config agent"
+noteplan-sweep graph-query --cypher "MATCH (n:Plan) WHERE n.status contains 'active' RETURN n.label LIMIT 10"
+noteplan-sweep graph-stats
+```
+
+---
+
 ## Troubleshooting
 
 **"Could not locate Claude transcript directory"**
