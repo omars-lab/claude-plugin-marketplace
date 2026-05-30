@@ -810,11 +810,13 @@ function extractSectionLines(filename, sectionName, lineType) {{
         const sc = v47aScore(hdr, nameLower);
         if (sc > bestScore) {{ bestScore = sc; bestHdr = hdr; }}
       }}
-      // Normalize threshold by query token count: a 3-token query like "Config Agent ARB"
-      // needs score >= 1.5, not 0.5, so a single shared token ("agent") can't lock the
-      // wrong destination section (e.g. "## Agent Development" scoring 1.0 wins over nothing).
+      // Normalize threshold by query token count so a single de-pluralized stem match
+      // (score=1.0) can't lock the wrong destination section for 2+ token queries.
+      // Factor 0.6: 2-token query needs ≥1.2 (rejects 1/2 token match at score 1.0),
+      // 3-token needs ≥1.8 (rejects 1/3 match). Perfect sectionHeaderMatches → 999,
+      // always accepted. "jeff goals"→"Training & Goals" → 999 via last-tok, unaffected.
       const _qTokCnt = nameLower.split(/[\\s\\/\\-,\\.]+/).filter(w => w.length >= 3).length;
-      const _v47aThresh = Math.max(0.5, _qTokCnt * 0.5);
+      const _v47aThresh = Math.max(0.5, _qTokCnt * 0.6);
       if (bestHdr !== null && bestScore >= _v47aThresh) {{
         fuzzyHeader = bestHdr;
         const fuzzyNameLower = normSectionStr(bestHdr);

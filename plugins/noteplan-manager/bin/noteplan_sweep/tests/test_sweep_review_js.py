@@ -22,6 +22,8 @@ Bug index:
   JS-22  V-47a: composite section name ("Config Agent ARB") doesn't lock dest to wrong section
          ("## Agent Development" scores 1.0/3 tokens = 0.33 < 0.5 normalized → falls back to
          full-file additions → ARB lines found → type=move, not lost)
+  JS-23  V-47a: de-pluralized stem match ("eval checks"→"## For Evals", score=1.0) must not
+         lock dest for 2-token query (threshold 2×0.6=1.2 > 1.0 → fallback → type=move)
 """
 
 import http.server
@@ -1160,4 +1162,62 @@ def test_js22_v47a_composite_section_name_fallback(playwright, http_server):
         f"Expected rb-move (ARB lines in full-file dest additions) but got: {badge_class!r}. "
         "V-47a likely locked destination to '## Agent Development' (1-token match) instead of "
         "falling back to full-file additions."
+    )
+
+
+# JS-23  V-47a: de-pluralized stem match must not lock dest for 2-token query.
+#        "eval checks" → "## For Evals": "evals" de-pluralizes to "eval" = qtS → score 1.0.
+#        Old threshold 0.5 (flat): 1.0 ≥ 0.5 → wrongly locks to ## For Evals.
+#        New threshold 2×0.6=1.2: 1.0 < 1.2 → fallback → eval lines in full-file → move.
+# ---------------------------------------------------------------------------
+
+def test_js23_v47a_deplural_stem_match_fallback(playwright, http_server):
+    """JS-23: 'eval checks' vs '## For Evals' — de-plural stem gives score 1.0 which
+    must NOT pass threshold 1.2 (2 tokens × 0.6). Must fallback → rb-move."""
+    base_url, serve_dir = http_server
+
+    eval_task1 = "- [ ] Add deterministic grader vs llm in eval report"
+    eval_task2 = "- [ ] Claude is not taking a straight line from a/b"
+    eval_task3 = "straight light check"
+
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Eval checks", "summary": "Quality benchmarks",
+                  "destination": "[[Hardening A2A POC]]"}]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": ["# Eval checks", eval_task1, eval_task2, eval_task3],
+         "added": []},
+        {"path": "Hardening A2A POC.md",
+         "added": [
+             # Eval tasks land under ## Collaborators — unrelated section name
+             "## Collaborators",
+             eval_task1 + " >2026-04-26",
+             eval_task2 + " >2026-04-26",
+             eval_task3,
+             # The de-plural trap: "For Evals" de-pluralizes "evals"→"eval" = "eval" in query
+             # Old code: score 1.0 ≥ 0.5 → locks here (wrong). New: 1.0 < 1.2 → fallback.
+             "## For Evals",
+             "- [ ] Unrelated eval framework task",
+             "- [ ] Another unrelated evals task",
+         ],
+         "removed": []},
+    ])
+    page_name = _write_page(serve_dir, "js23.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    browser.close()
+
+    assert "rb-move" in badge_class, (
+        f"Expected rb-move (eval lines in ## Collaborators, full-file fallback) but got: {badge_class!r}. "
+        "V-47a likely locked to '## For Evals' via de-plural stem match (score=1.0 ≥ old threshold 0.5)."
     )
