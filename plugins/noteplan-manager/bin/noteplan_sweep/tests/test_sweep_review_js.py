@@ -75,7 +75,7 @@ def http_server(tmp_path_factory) -> Generator[str, None, None]:
 
 
 def _write_page(serve_dir: Path, name: str, diff: str, narrative: list,
-                stat: str = "1 file changed") -> str:
+                stat: str = "1 file changed", pre_classification: list | None = None) -> str:
     """Build + write a review HTML page, return its filename."""
     html = _build_snapshot_html(
         run_id="test-01",
@@ -86,6 +86,7 @@ def _write_page(serve_dir: Path, name: str, diff: str, narrative: list,
         seed_comments=[],
         narrative=narrative,
         changed_calendar_files=[f for f in re.findall(r'b/(Calendar/\S+\.md)', diff)],
+        pre_classification=pre_classification,
     )
     path = serve_dir / name
     path.write_text(html, encoding="utf-8")
@@ -1525,3 +1526,73 @@ def test_js28_absent_not_anywhere(playwright, http_server):
     )
     assert "rb-went-to" not in badge_class, "rb-went-to must NOT appear when lines are absent from diff"
     assert "rb-move" not in badge_class, "rb-move must NOT appear when lines didn't arrive"
+
+
+# ---------------------------------------------------------------------------
+# JS-29  PRE_CLASSIFICATION fallback: Python says moved but JS re-classification
+#         fails (e.g. B-15 redirect). Modal must show source lines with a
+#         "confirmed by sweep engine" note instead of "0 lines confirmed moved".
+# ---------------------------------------------------------------------------
+
+def test_js29_py_move_confirmed_fallback(playwright, http_server):
+    """JS-29: When PRE_CLASSIFICATION says moved_count>0 but JS finds nothing at
+    the breadcrumb dest, the modal must show source lines with a sweep-engine
+    confirmation note — not 'No source lines matched' / '0 lines confirmed moved'."""
+    base_url, serve_dir = http_server
+
+    task = "- [ ] Design a Bikar pattern plugin for Figma with palette generation"
+
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Bikar",
+                  "summary": "Bikar Figma plugin",
+                  "destination": "[[Notes/Plans/Developing Bikar]]"}]
+    # Diff: source has task removed; breadcrumb dest has only a redirect stub (no task line)
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": ["# Bikar", task], "added": []},
+        # Breadcrumb dest: only a redirect stub — no matching task line
+        {"path": "Notes/Plans/Developing Bikar.md",
+         "removed": [], "added": ["status: done", "> Migrated: see [[Notes/Plans/New Bikar]]"]},
+        # Actual landing (linked plan) — task IS here but JS won't follow the redirect
+        {"path": "Notes/Plans/New Bikar.md",
+         "removed": [], "added": [task]},
+    ])
+    # Python PRE_CLASSIFICATION says this is a move (Python followed the B-15 redirect)
+    pre_class = [{"idx": 0, "type": "move", "moved_count": 1, "lost_count": 0,
+                  "truly_lost_lines": [], "misrouted_count": 0, "went_to_files": [],
+                  "issues": ["b15_redirect"]}]
+    page_name = _write_page(serve_dir, "js29.html", diff, narrative, pre_classification=pre_class)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    # Badge should show → (move) from PRE_CLASSIFICATION
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    assert "rb-move" in badge_class, f"Expected rb-move from PRE_CLASSIFICATION, got: {badge_class!r}"
+
+    # Open modal
+    page.click("tr[data-row-idx='0'] button.view-btn")
+    page.wait_for_selector("#modal-overlay.open")
+
+    modal_text = page.eval_on_selector("#modal-body", "el => el.textContent")
+    browser.close()
+
+    assert "confirmed" in modal_text.lower(), (
+        f"Modal must show 'confirmed by sweep engine' note when Python says moved. Got: {modal_text!r}"
+    )
+    assert "No source lines matched" not in modal_text, (
+        f"Modal must NOT show 'No source lines matched' when Python confirmed the move"
+    )
+    # Source task line must appear in the modal
+    clean_task = "Design a Bikar pattern plugin for Figma with palette generation"
+    assert clean_task.lower() in modal_text.lower(), (
+        f"Source task line must be visible in modal. Got: {modal_text!r}"
+    )
