@@ -210,18 +210,29 @@ npm run test:coverage
 
 ## Phase 4: Dev Loop
 
-Edit `script.js` → install to NotePlan → verify in-app:
+**Preferred: use the NotePlan MCP** (when active in the Claude Code session):
+
+```
+noteplan_plugins → install / reload / list
+```
+
+The `.mcp.json` in the NotePlan repo root wires in `@noteplanco/noteplan-mcp`. MCP servers load at session start — if you added it mid-session, restart Claude Code first.
+
+**Fallback: Makefile targets** (terminal, CI, or when MCP is not connected):
 
 ```bash
-# One command: copy files + reload
+# Copy files + quit/relaunch NotePlan
 make -C "$MARKETPLACE" install-noteplan-{slug}
-# (reload-noteplan target reloads without copying, if NotePlan is already running)
+
+# Relaunch only (no file copy)
 make -C "$MARKETPLACE" reload-noteplan
 ```
 
-Test in NotePlan: Cmd-J → type the alias (e.g. `/plan`) → step through prompts.
+**How reload works without MCP**: NotePlan's AppleScript dictionary (`Scriptable.sdef`) does not expose a plugin-reload command — only `selectedNoteUrl`, `selectedNoteTitle`, and `addNote`. The `reload-noteplan` target quits via `tell application "NotePlan" to quit` and relaunches with `open -a NotePlan`. Plugins load fresh on startup.
 
-If NotePlan is not running, open it first; the install target copies files even when closed.
+**In-app alternative**: Cmd-J → "Install or Update Plugins" → rescan without relaunching.
+
+Test: Cmd-J → type the alias (e.g. `/plan`) → step through prompts.
 
 ---
 
