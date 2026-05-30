@@ -1,81 +1,189 @@
 # OEID Claude Plugin Marketplace
 
-## Mental Model
+## Guiding Principles
 
-- **Plugins are roles** — each plugin represents a domain or responsibility (e.g. `experiment-manager`, `noteplan-manager`)
-- **Skills are actions (verbs)** — each skill is something you *do* within that role (e.g. `asking-what-if`, `fix-filenames`, `extract-knowledge`)
-- Name skills as verbs/actions, not nouns. The plugin provides the noun context.
+### Plugins are roles, skills are abilities
+
+- A **plugin** represents a domain or responsibility — it is the noun (`noteplan-manager`, `experiment-manager`)
+- A **skill** is something you *do* within that role — it is the verb (`fix-filenames`, `asking-what-if`)
+- The plugin provides context; the skill provides action. Never put the noun in the skill name.
+
+### Every plugin must have an `introduce` skill
+
+The `introduce` skill is the authoritative reference for what a plugin does. It is what gets surfaced when someone asks "what can this plugin do?" Plugin READMEs are minimal pointers only.
+
+### Skills should be atomic and focused
+
+One skill = one clear action. If a skill is doing multiple unrelated things, split it. Meta-skills (orchestrators that route to other skills) are fine, but their job is routing, not doing.
+
+### Prefer meta-skills over flat lists
+
+When a plugin has many skills, group them under a small set of meta-skills that route by intent. This keeps the plugin surface area small and discoverable.
+
+---
+
+## Plugin File Structure
+
+```
+plugins/<plugin-name>/
+├── README.md                          # Minimal pointer only (link to introduce skill)
+├── .claude-plugin/
+│   ├── plugin.json                    # Plugin metadata (name, version, description, author)
+│   └── version-tracking.json         # Auto-managed by Makefile — do not edit by hand
+└── skills/
+    ├── introduce/
+    │   └── SKILL.md                   # Required: self-description skill
+    └── <skill-name>/
+        └── SKILL.md                   # One SKILL.md per skill
+```
+
+`plugin.json` minimum shape:
+```json
+{
+  "name": "<plugin-name>",
+  "description": "One-line description",
+  "version": "1.0.0",
+  "author": { "name": "Omar Eid", "email": "omar.eid@servicenow.com" },
+  "license": "MIT"
+}
+```
+
+---
 
 ## Naming Conventions
 
 ### Plugin names
 
-`<domain>-manager` is the standard pattern: `noteplan-manager`, `claude-manager`, `role-manager`. Single-purpose plugins may omit `-manager`: `experiment-manager`, `discover-oeid-plugins`.
+`<domain>-manager` is the standard pattern. Single-purpose plugins may omit `-manager`: `experiment-manager`, `discover-oeid-plugins`.
 
 ### Skill names
 
-**Verb-first kebab-case** — the action comes first, followed by the object if needed:
+**Verb-first kebab-case** — the action comes first, followed by the object:
 
 | Verb prefix | Example skills | Notes |
 |---|---|---|
-| `fix-` | `fix-plugins`, `fix-filenames`, `fix-frontmatter` | Corrects existing problems |
+| `fix-` | `fix-filenames`, `fix-frontmatter` | Corrects existing problems |
 | `create-` | `create-plugin`, `create-skill` | Produces something new |
-| `update-` | `update-plan-status` | Modifies something that already exists |
+| `update-` | `update-plan-status` | Modifies something existing |
 | `setup-` | `setup-claude-md` | One-time configuration |
 | `audit-` | `audit-plugins` | Reads and reports, no writes |
 | `evaluate-` | `evaluate-skill` | Scores or assesses quality |
-| `suggest-` | `suggest-plugin-maturity` | Advisory output only |
+| `suggest-` | `suggest-groupings` | Advisory output only |
 | `research-` | `research-claude-md` | Mines/synthesizes data |
-| `summarize-` | `summarize-ai-usage` | Produces a human-readable summary |
 | `configure-` | `configure-statusline` | Wires configuration |
-| `introduce` | `introduce` | Every plugin's self-description skill |
+| `manage-` | `manage-skills` | Meta-skill orchestrator |
+| `introduce` | `introduce` | Every plugin's self-description |
 
-**Don't** start skill names with a noun (`skill-create`, `plugin-audit`, `note-fix`). The noun context comes from the plugin name.
+---
 
-**`fix-` is a valid verb prefix** — it is not a violation of verb-first naming. `fix-plugins`, `fix-filenames`, `fix-frontmatter` are all correct.
+## Marketplace Skills
+
+Use `claude-manager` to create and modify plugins and skills in this repo — it handles all the scaffolding, validation, and version bumping automatically:
+
+| Task | Skill |
+|---|---|
+| Create a new plugin | `/claude-manager:manage-plugins` |
+| Add a skill to an existing plugin | `/claude-manager:manage-skills` |
+| Configure CLAUDE.md or MCP servers | `/claude-manager:manage-claude-config` |
+
+Run `/claude-manager:introduce` to see the full capability list.
+
+The manual steps below are the underlying mechanics — prefer the skills for day-to-day work.
+
+---
+
+## Lifecycle: Adding a New Plugin
+
+1. Create `plugins/<name>/` with the structure above
+2. Write `.claude-plugin/plugin.json`
+3. Create `skills/introduce/SKILL.md`
+4. Add the plugin entry to `.claude-plugin/marketplace.json`
+5. Run `make install` to install, then `make validate-plugin PLUGIN=<name>`
+
+**marketplace.json entry shape:**
+```json
+{
+  "name": "<plugin-name>",
+  "source": "./plugins/<plugin-name>",
+  "description": "One-line description",
+  "version": "1.0.0",
+  "category": "<category>",
+  "keywords": ["..."]
+}
+```
+
+## Lifecycle: Adding a Skill to an Existing Plugin
+
+1. Create `skills/<skill-name>/SKILL.md`
+2. Update the plugin's `introduce` skill to mention the new skill
+3. Bump the plugin version: `make version-bump PLUGIN=<name> TYPE=minor`
+4. Run `make update` to push the change to the install cache
+5. Run `make validate-plugin PLUGIN=<name>` to verify
+
+## Lifecycle: Removing a Plugin
+
+```bash
+make uninstall          # Uninstall all plugins
+```
+
+To remove a plugin entirely: delete `plugins/<name>/`, remove its entry from `marketplace.json`, then run `make install` to re-sync.
+
+**Never** manually remove symlinks from `~/.claude/plugins/`. Always go through the Makefile.
+
+---
+
+## Installation & Updates
+
+```bash
+make install            # Install all plugins
+make update             # Check for changes, bump versions, then update
+make verify-installs    # Verify all plugins are correctly installed
+make doctor             # Diagnose installation issues
+make uninstall          # Uninstall all plugins
+```
+
+**Never** manually create symlinks to `~/.claude/plugins/` or copy files there by hand. The Makefile handles caching, version tracking, and `installed_plugins.json` correctly. Manual symlinks bypass all of that and cause version drift or conflicts.
+
+---
+
+## Validation
+
+Run after adding or modifying plugins:
+
+```bash
+make validate-plugins                        # Validate all plugins
+make validate-plugin PLUGIN=<name>           # Validate one plugin
+```
+
+Checks: `plugin.json` validity, version-tracking, `introduce` skill, YAML frontmatter, task management references, AskUserQuestion usage, README size, marketplace.json registration.
+
+---
 
 ## Discovery
 
-Each plugin has an `introduce` skill that explains its capabilities:
+Use the built-in skill to see what's installed and available — don't rely on the CLAUDE.md list, which goes stale:
 
-- `/noteplan-manager:introduce` — NotePlan management (20 skills)
-- `/experiment-manager:introduce` — What-if analysis and experiment ideation (2 skills)
-- `/discover-oeid-plugins:explore-plugins` — See all plugins and installation status
-
-Plugin-level README files are minimal pointers. The `introduce` skill is the authoritative reference for each plugin's capabilities and workflows.
-
-## After Making Changes
-
-Run validation after adding or modifying plugins:
-
-```bash
-make validate-plugins          # Validate all plugins
-make validate-plugin PLUGIN=experiment-manager  # Validate one plugin
+```
+/discover-oeid-plugins:explore-plugins
 ```
 
-This checks: plugin.json validity, version-tracking, introduce skill, YAML frontmatter, task management references, AskUserQuestion usage, README size, and marketplace.json registration.
-
-## Installation
-
-Always use the Makefile for installing plugins:
-
-```bash
-make install    # Install all plugins
-make update     # Check for changes, bump versions, then update
+Each plugin's `introduce` skill is the authoritative reference for its capabilities:
+```
+/<plugin-name>:introduce
 ```
 
-**Never** manually create symlinks to `~/.claude/plugins/` or copy files there by hand. The Makefile handles caching, version tracking, and `installed_plugins.json` correctly. Manual symlinks bypass all of that and will cause version drift or conflicts.
+---
 
 ## Shell Scripts and Line Endings
 
-Shell scripts (`.sh`) in this repo **must use LF line endings**, not CRLF. OneDrive silently converts LF → CRLF on sync, which causes bash to treat the `\r` as part of each command and fail with `: command not found` errors on every line.
+Shell scripts (`.sh`) in this repo **must use LF line endings**, not CRLF. OneDrive silently converts LF → CRLF on sync, which causes bash to fail with `: command not found` on every line.
 
-A `.gitattributes` file at the repo root enforces LF for all `.sh` files:
+A `.gitattributes` file enforces LF:
 ```
 *.sh text eol=lf
 ```
 
-**If a shell script fails with `: command not found` on blank or comment lines**, it has CRLF endings. Fix with:
+**If a script fails with `: command not found` on blank or comment lines**, it has CRLF endings. Fix with:
 ```bash
 python3 -c "
 path = 'path/to/script.sh'
@@ -85,39 +193,27 @@ with open(path, 'wb') as f: f.write(data.replace(b'\r\n', b'\n'))
 ```
 Then commit the fix and bump the plugin version so the corrected file reaches the install cache.
 
+---
+
 ## Background Jobs
 
-Background Claude Code sessions (set up by skills like `cron-manager:logging-note-diffs`) follow these conventions:
+Background Claude Code sessions follow these conventions:
 
 **Log location:** `~/Library/Logs/<job-name>.log`
-All background jobs write here so Console.app can index them and they persist across sessions.
 
 **Notification style:** macOS `display notification` via `osascript`
 ```bash
 osascript -e 'display notification "<message>" with title "<Title> ⚠️" sound name "Basso"'
 ```
-Used for: merge conflicts, errors, and any situation where the agent cannot proceed without human input.
 
-**Non-blocking failure rule:** If the background agent cannot proceed (missing tool, permission denied, merge conflict, unclear state), it MUST fire a notification explaining why, then exit immediately. It never blocks or waits for input.
+**Non-blocking failure rule:** If the agent cannot proceed, fire a notification and exit immediately. Never block or wait for input.
 
-**Lockfile pattern:** `/tmp/<job-name>.lock` stores the PID of the running process. Prevents duplicate runs when multiple terminals open quickly.
+**Lockfile pattern:** `/tmp/<job-name>.lock` stores the running PID. Prevents duplicate runs.
 
-**Nested session guard:** Always prefix the `claude` invocation with `env -u CLAUDECODE` to prevent "nested Claude session" errors.
+**Nested session guard:** Prefix `claude` with `env -u CLAUDECODE` to prevent "nested Claude session" errors.
 
-**Tool restrictions:** Use `--allowedTools` to scope each background job to only what it needs. Example: `"Bash(git *),Bash(osascript *),Read"` for a git sync job.
+**Tool restrictions:** Use `--allowedTools` to scope each job to only what it needs.
 
 **Model:** Use `claude-haiku-4-5-20251001` for background jobs — cheap, fast, sufficient for mechanical tasks.
 
 **zsh background:** Use `&!` (background + disown) so the process survives after the terminal closes.
-
-## NotePlan Frontmatter Convention
-
-**Real note files** (plans, meetings, ideas, thoughts, questions — everything outside `@Templates/`) use `---` (triple dash) — standard YAML.
-
-**Template files** (`@Templates/*.md`) have a two-section structure:
-1. **`---` outer block** — NotePlan template metadata (`title`, `type: empty-note`). This is standard YAML consumed by NotePlan itself.
-2. **`--` inner block** — The note frontmatter template containing EJS placeholders (`<%- field %>`). This uses `--` intentionally — it is EJS source that generates frontmatter in the created note, not YAML itself.
-
-When a template is used to create a note, the `--` EJS block is evaluated and the output becomes a `---` frontmatter block in the new note file.
-
-Skills working on **real notes** (`flatten-plans`, `update-plan-status`, `fix-frontmatter`) validate and use `---`. The `fix-frontmatter` skill skips template files' `--` inner blocks (EJS source, not YAML to fix).
