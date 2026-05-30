@@ -862,7 +862,11 @@ function classifyDestLines(removedLines, addedLines) {{
     }});
     if (matchIdx >= 0) {{
       moved.push(line);
-      movedPairs.set(line, removedEntries[matchIdx].line); // use original line, not filtered index
+      movedPairs.set(line, removedEntries[matchIdx].line);
+      // One-to-one: consume the matched source entry so it can't double-count.
+      // Without this, a typo variant (e.g. "Do goals for Jef") prefix-matches the same
+      // source line a second time, inflating movedCount beyond countableRemoved → lostCount < 0.
+      removedEntries.splice(matchIdx, 1);
     }} else {{
       newContent.push(line);
     }}
