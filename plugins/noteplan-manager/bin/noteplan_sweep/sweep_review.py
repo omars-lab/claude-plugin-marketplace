@@ -1956,10 +1956,18 @@ def cmd_sweep_review_export(args):
 # ---------------------------------------------------------------------------
 
 def _norm_line(s: str) -> str:
-    """Python mirror of JS normLine — strips date tags, hashtags, collapses whitespace."""
+    """Python mirror of JS normLine — strips date tags, hashtags, collapses whitespace.
+
+    Also normalizes `[label](url)` markdown link syntax to just `url`, so that a
+    bare URL bullet in a source line matches the same URL after a post-sweep
+    link-enrichment pass converted it to a labeled link. This is what lets the
+    classifier recognize that an enriched bullet in the destination plan is the
+    same content as the unenriched bullet that was removed from the calendar.
+    """
     import re as _re
     s = _re.sub(r'>\d{4}-\d{2}-\d{2}', '', s)
     s = _re.sub(r'#\w+', '', s)
+    s = _re.sub(r'\[[^\]]+\]\((https?://[^)]+)\)', r'\1', s)
     s = _re.sub(r'\s+', ' ', s).strip().lower()
     return s
 
@@ -2179,6 +2187,34 @@ def cmd_sweep_review_audit(args):
     _sibling_norms = _build_sibling_norms()
     _global_removed_norms = _build_global_removed_norms()
 
+    # V-R6b: cross-row / split-destination disk fallback for the audit too.
+    # Snapshot the on-disk normalized content of every plan/list/meeting file
+    # touched by this sweep. Reused by classify_row() to demote lost→present
+    # when a "lost" line is actually living in a sibling row's dest or in a
+    # plan that the sweep split content into without writing a breadcrumb.
+    _changed_plan_disk_norms: dict[str, set[str]] = {}
+    for _fname in diff_index:
+        _fpath = root / _fname
+        if not _fpath.exists():
+            continue
+        try:
+            _changed_plan_disk_norms[_fname] = {
+                _norm_line(l) for l in _fpath.read_text(errors='replace').splitlines()
+                if len(_norm_line(l)) > 4
+            }
+        except OSError:
+            pass
+
+    def _dest_stem_audit(efname: str) -> str:
+        stem = efname.split('/')[-1]
+        if stem.lower().endswith('.md'):
+            stem = stem[:-3]
+        m = re.match(r'^\s*\[\[([^\]]+)\]\]', stem)
+        if m:
+            stem = m.group(1)
+        stem = re.split(r'\s+#', stem, maxsplit=1)[0]
+        return stem.strip().lower()
+
     def classify_row(row: dict) -> dict:
         src_file  = (row.get('source_file') or '').split('/')[-1]
         dest_raw  = re.sub(r'\[\[([^\]]+)\]\]', r'\1', row.get('destination', '')).strip()
@@ -2297,6 +2333,34 @@ def cmd_sweep_review_audit(args):
                         truly_lost.append(l)
                 lost = truly_lost
 
+        # V-R6b: cross-row / split-destination disk fallback. If a "lost" line
+        # is present on disk in any OTHER plan file touched by this sweep, it
+        # was routed there (either by a sibling breadcrumb or by an unrecorded
+        # split routing inside the same sweep). Demote lost → already_present
+        # so the row stops flagging a data-loss event.
+        if lost and _changed_plan_disk_norms:
+            own_stem = _dest_stem_audit(dest_raw)
+            own_src_fname = (row.get('source_file') or '').split('/')[-1]
+            still_lost = []
+            for l in lost:
+                sn = _norm_line(l)
+                if len(sn) < 6:
+                    still_lost.append(l)
+                    continue
+                hit = False
+                for plan_fname, plan_norms in _changed_plan_disk_norms.items():
+                    if _dest_stem_audit(plan_fname) == own_stem:
+                        continue
+                    if plan_fname.split('/')[-1] == own_src_fname:
+                        continue
+                    if any(_fuzzy_match(sn, dn) for dn in plan_norms):
+                        already_present.append(l)
+                        hit = True
+                        break
+                if not hit:
+                    still_lost.append(l)
+            lost = still_lost
+
         row_type = 'move' if (moved and not lost) else 'lost'
         if not lost and not moved and already_present: row_type = 'move'  # all present on disk
         if already_present: issues.append(f'{len(already_present)} line(s) already in dest file')
@@ -2394,6 +2458,29 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             if len(n) > 2 and not _is_noise(line):
                 all_added_entries.append((n, fname))
 
+    # V-R6b: cross-row / split-destination disk fallback.
+    # For every plan/list/meeting file touched by this sweep, snapshot the
+    # current on-disk normalized content. Used when a lost line is absent from
+    # diff additions (because the dest file already contained it at base, or
+    # because a later commit reshaped the bullet) but is present on disk in a
+    # plan file that wasn't the row's claimed destination. This catches:
+    #   • split-destination sweeps (one source section routed to multiple plans
+    #     within one sweep, but only one breadcrumb written)
+    #   • cross-row claims where the line landed at a sibling row's destination
+    #     and the dest file already had the line at the diff base
+    changed_plan_disk_norms: dict[str, set[str]] = {}
+    for fname in diff_index:
+        fpath = root / fname
+        if not fpath.exists():
+            continue
+        try:
+            changed_plan_disk_norms[fname] = {
+                _norm_line(l) for l in fpath.read_text(errors='replace').splitlines()
+                if len(_norm_line(l)) > 4
+            }
+        except OSError:
+            pass
+
     # Build global removed map: normLine → source filename (for inference cross-source filter)
     # Allows us to exclude dest additions that came from other source files.
     global_removed_srcs: dict[str, str] = {}
@@ -2404,18 +2491,32 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
                 global_removed_srcs[n] = fname
 
     def _dest_stem(efname: str) -> str:
-        """Extract bare filename stem (no path, no .md), lowercased for matching."""
+        """Extract bare filename stem (no path, no .md), lowercased for matching.
+
+        Accepts either a real filename (`Notes/.../Foo.md`) or a narrative
+        destination string (`[[Foo]]` or `[[Foo]] # Section`). Strips path,
+        `.md` extension, `[[...]]` wrappers, and any trailing `# Section` suffix
+        so comparisons between dest_raw and added_entry filenames work.
+        """
         stem = efname.split('/')[-1]
         if stem.lower().endswith('.md'):
             stem = stem[:-3]
-        return stem.lower()
+        m = re.match(r'^\s*\[\[([^\]]+)\]\]', stem)
+        if m:
+            stem = m.group(1)
+        stem = re.split(r'\s+#', stem, maxsplit=1)[0]
+        return stem.strip().lower()
 
     def _dest_stem_pretty(efname: str) -> str:
         """Like _dest_stem but preserves original casing — used for display."""
         stem = efname.split('/')[-1]
         if stem.lower().endswith('.md'):
             stem = stem[:-3]
-        return stem
+        m = re.match(r'^\s*\[\[([^\]]+)\]\]', stem)
+        if m:
+            stem = m.group(1)
+        stem = re.split(r'\s+#', stem, maxsplit=1)[0]
+        return stem.strip()
 
     def _misroute_count(lost_lines: list[str], dest_raw: str) -> int:
         dest_stem_key = _dest_stem(dest_raw)
@@ -2617,6 +2718,35 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
                               if not any(_fuzzy_match(_norm_line(l), dn) for dn in disk_norms)]
             except OSError:
                 pass
+
+        # V-R6b: cross-row / split-destination disk fallback.
+        # For each remaining truly_lost line, scan disk content of OTHER plan
+        # files touched by this sweep. A match means the line landed at a plan
+        # file that wasn't the row's claimed dest — reclassify as went-to so
+        # the row reports a misroute, not a data-loss event.
+        if truly_lost and changed_plan_disk_norms:
+            own_src_basename = (row.get('source_file') or '').split('/')[-1]
+            still_lost: list[str] = []
+            for ll in truly_lost:
+                nll = _norm_line(ll)
+                if len(nll) < 6:
+                    still_lost.append(ll)
+                    continue
+                hit_stem: str | None = None
+                for plan_fname, plan_norms in changed_plan_disk_norms.items():
+                    if _dest_stem(plan_fname) == dest_stem_key:
+                        continue
+                    if plan_fname.split('/')[-1] == own_src_basename:
+                        continue
+                    if any(_fuzzy_match(nll, dn) for dn in plan_norms):
+                        hit_stem = _dest_stem_pretty(plan_fname)
+                        break
+                if hit_stem:
+                    went_to_files_set.add(hit_stem)
+                    went_to_details.setdefault(hit_stem, []).append(ll)
+                else:
+                    still_lost.append(ll)
+            truly_lost = still_lost
 
         misrouted_count = len(lost_lines) - len(truly_lost)
         if not truly_lost and not moved_lines and misrouted_count > 0:
