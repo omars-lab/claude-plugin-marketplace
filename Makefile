@@ -158,6 +158,27 @@ verify-installs: ## Verify all plugins are correctly installed
 clean: ## Clean build artifacts and caches
 	@./scripts/cli clean $(MARKETPLACE_NAME)
 
+NOTEPLAN_PLUGINS_DIR = $(HOME)/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Plugins
+
+install-noteplan-quicknote: ## Install oeid-noteplan-quicknote into NotePlan Plugins dir and reload
+	@mkdir -p "$(NOTEPLAN_PLUGINS_DIR)/oeid.noteplan-quicknote"
+	@cp plugins/oeid-noteplan-quicknote/plugin.json "$(NOTEPLAN_PLUGINS_DIR)/oeid.noteplan-quicknote/"
+	@cp plugins/oeid-noteplan-quicknote/script.js "$(NOTEPLAN_PLUGINS_DIR)/oeid.noteplan-quicknote/"
+	@echo "$(GREEN)✓ Installed to $(NOTEPLAN_PLUGINS_DIR)/oeid.noteplan-quicknote$(NC)"
+	@osascript -e 'tell application "NotePlan 3" to reloadPlugins' 2>/dev/null \
+		&& echo "$(GREEN)✓ NotePlan plugins reloaded$(NC)" \
+		|| echo "$(YELLOW)⚠ NotePlan not running — reload plugins manually$(NC)"
+
+reload-noteplan: ## Reload NotePlan plugins via AppleScript (no file copy)
+	@osascript -e 'tell application "NotePlan 3" to reloadPlugins' 2>/dev/null \
+		&& echo "$(GREEN)✓ Plugins reloaded$(NC)" \
+		|| echo "$(YELLOW)⚠ NotePlan not running$(NC)"
+
+uninstall-noteplan-quicknote: ## Remove oeid-noteplan-quicknote from NotePlan Plugins dir
+	@rm -rf "$(NOTEPLAN_PLUGINS_DIR)/oeid.noteplan-quicknote"
+	@echo "$(GREEN)✓ Removed oeid.noteplan-quicknote$(NC)"
+	@osascript -e 'tell application "NotePlan 3" to reloadPlugins' 2>/dev/null || true
+
 noteplan-info: ## Show NotePlan directory information
 	@echo "$(BLUE)NotePlan Directories:$(NC)"
 	@echo ""

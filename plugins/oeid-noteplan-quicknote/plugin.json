@@ -1,0 +1,30 @@
+{
+  "noteplan.minAppVersion": "3.4.0",
+  "plugin.id": "oeid.noteplan-quicknote",
+  "plugin.name": "Quick Note",
+  "plugin.description": "Create correctly-named, correctly-placed notes across all domains with /plan, /meeting, /note",
+  "plugin.author": "Omar Eid",
+  "plugin.version": "1.0.0",
+  "plugin.script": "script.js",
+  "plugin.url": "https://github.com/omars-lab/claude-plugin-marketplace",
+  "plugin.commands": [
+    {
+      "name": "New Plan",
+      "alias": ["plan"],
+      "description": "Create a new plan — Work, Personal, NaqshCoffee, or EarlBear",
+      "jsFunction": "plan"
+    },
+    {
+      "name": "New Meeting",
+      "alias": ["meeting"],
+      "description": "Create a new meeting note — Work, Personal, NaqshCoffee, or EarlBear",
+      "jsFunction": "meeting"
+    },
+    {
+      "name": "New Note",
+      "alias": ["note"],
+      "description": "Create a freeform note — Work, Personal, or NaqshCoffee",
+      "jsFunction": "note"
+    }
+  ]
+}
