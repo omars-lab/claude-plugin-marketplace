@@ -40,6 +40,7 @@ from noteplan_sweep.sweep_review import (
     _extract_js_str,
     _extract_js_val,
     _build_snapshot_html,
+    _py_classify_all_rows,
 )
 
 # ---------------------------------------------------------------------------
@@ -390,3 +391,102 @@ class TestCompileRoundTrip:
         assert '☕️' in final, "Emoji not found after decode round-trip"
         assert '\\342' not in final, "Octal escape still present after decode"
         assert '"b/' not in final, "Git-quoted path still present after decode"
+
+
+# ---------------------------------------------------------------------------
+# Helpers for _py_classify_all_rows tests
+# ---------------------------------------------------------------------------
+
+def _py_make_diff(files: list[dict]) -> str:
+    """Build a synthetic unified diff string for Python-level tests."""
+    lines = []
+    for f in files:
+        p = f["path"]
+        added   = f.get("added", [])
+        removed = f.get("removed", [])
+        lines.append(f"diff --git a/{p} b/{p}")
+        lines.append("index 000000..abc123 100644")
+        lines.append(f"--- a/{p}")
+        lines.append(f"+++ b/{p}")
+        lines.append(f"@@ -1,{len(removed)} +1,{len(added)} @@")
+        for l in removed: lines.append(f"-{l}")
+        for l in added:   lines.append(f"+{l}")
+    return "\n".join(lines) + "\n"
+
+
+def _run_classify(diff_text: str, narrative: list) -> list[dict]:
+    """Run _py_classify_all_rows with a nonexistent root (no disk lookups)."""
+    return _py_classify_all_rows(diff_text, narrative, Path("/nonexistent"))
+
+
+# ---------------------------------------------------------------------------
+# SR-16  _py_classify_all_rows: moved_lines and dest_lines populated for move
+# ---------------------------------------------------------------------------
+
+def test_sr16_py_classify_moved_lines():
+    """SR-16: move rows include actual moved_lines + dest_lines line content."""
+    task = "- [ ] Implement Bikar pattern system in Figma"
+    diff = _py_make_diff([
+        {"path": "Calendar/20260413.md", "removed": [task], "added": []},
+        {"path": "Plans/Bikar.md",       "removed": [],     "added": [task]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Design",
+                  "destination": "[[Plans/Bikar]]", "date": "2026-04-13", "summary": ""}]
+    results = _run_classify(diff, narrative)
+    assert len(results) == 1
+    r = results[0]
+    assert r["type"] == "move", f"expected move, got {r['type']}"
+    assert task in r["moved_lines"], f"moved_lines must contain source task: {r['moved_lines']}"
+    assert task in r["dest_lines"],  f"dest_lines must contain matching addition: {r['dest_lines']}"
+
+
+# ---------------------------------------------------------------------------
+# SR-17  _py_classify_all_rows: line_statuses maps each source line
+# ---------------------------------------------------------------------------
+
+def test_sr17_py_classify_line_statuses():
+    """SR-17: line_statuses maps normLine → 'move'|'absent' for each source line."""
+    moved_task  = "- [ ] Implement Bikar pattern system in Figma"
+    absent_task = "- [ ] Another task that went nowhere at all here"
+    diff = _py_make_diff([
+        # Section header ensures direct extraction (not inference) so absent_task is included
+        {"path": "Calendar/20260413.md", "removed": ["## Design", moved_task, absent_task], "added": []},
+        {"path": "Plans/Bikar.md",       "removed": [],   "added": [moved_task]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Design",
+                  "destination": "[[Plans/Bikar]]", "date": "2026-04-13", "summary": ""}]
+    results = _run_classify(diff, narrative)
+    assert len(results) == 1
+    r = results[0]
+    statuses = r["line_statuses"]
+    moved_norm  = moved_task.strip().lower()
+    absent_norm = absent_task.strip().lower()
+    assert statuses.get(moved_norm)  == "move",   f"moved task must map to 'move': {statuses}"
+    assert statuses.get(absent_norm) == "absent",  f"absent task must map to 'absent': {statuses}"
+
+
+# ---------------------------------------------------------------------------
+# SR-18  _py_classify_all_rows: went_to_details for went-to rows
+# ---------------------------------------------------------------------------
+
+def test_sr18_py_classify_went_to_details():
+    """SR-18: went-to rows include went_to_details mapping stem→source lines."""
+    task = "- [ ] Setup Figma design system workspace for NaqshCoffee branding"
+    diff = _py_make_diff([
+        # Include section header so _extract_section_lines finds the "Design" section
+        {"path": "Calendar/20260413.md", "removed": ["## Design", task], "added": []},
+        {"path": "Plans/Breadcrumb.md",  "removed": [],     "added": ["status: done"]},
+        {"path": "Plans/DesignSystem.md","removed": [],     "added": [task]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Design",
+                  "destination": "[[Plans/Breadcrumb]]", "date": "2026-04-13", "summary": ""}]
+    results = _run_classify(diff, narrative)
+    assert len(results) == 1
+    r = results[0]
+    assert r["type"] == "went-to", f"expected went-to, got {r['type']}"
+    assert len(r["went_to_details"]) > 0, "went_to_details must be populated"
+    all_lines = [l for lines in r["went_to_details"].values() for l in lines]
+    assert task in all_lines, f"task must appear in went_to_details values: {r['went_to_details']}"
+    norm_task = task.strip().lower()
+    assert r["line_statuses"].get(norm_task) == "went-to", \
+        f"line_statuses must map went-to task: {r['line_statuses']}"

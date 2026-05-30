@@ -1596,3 +1596,65 @@ def test_js29_py_move_confirmed_fallback(playwright, http_server):
     assert clean_task.lower() in modal_text.lower(), (
         f"Source task line must be visible in modal. Got: {modal_text!r}"
     )
+
+
+# JS-30  PRE_CLASSIFICATION: moved_lines and dest_lines embedded and accessible
+#         from _rowClassifications after Phase E seeding.
+# ---------------------------------------------------------------------------
+
+def test_js30_pre_classification_has_line_content(playwright, http_server):
+    """JS-30: After Phase E seeding, _rowClassifications entry has movedLines and
+    destLines arrays derived from Python PRE_CLASSIFICATION moved_lines/dest_lines."""
+    base_url, serve_dir = http_server
+
+    task = "- [ ] Implement Bikar palette generation feature in Figma plugin"
+
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Design", "summary": "Bikar palette",
+                  "destination": "[[Notes/Plans/Bikar]]"}]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md", "removed": [task], "added": []},
+        {"path": "Notes/Plans/Bikar.md", "removed": [], "added": [task]},
+    ])
+    clean = "Implement Bikar palette generation feature in Figma plugin"
+    pre_class = [{"idx": 0, "type": "move", "moved_count": 1, "lost_count": 0,
+                  "truly_lost_lines": [], "moved_lines": [task], "dest_lines": [task],
+                  "went_to_details": {}, "line_statuses": {task.strip().lower(): "move"},
+                  "misrouted_count": 0, "went_to_files": [], "issues": []}]
+    page_name = _write_page(serve_dir, "js30.html", diff, narrative, pre_classification=pre_class)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    # Check that PRE_CLASSIFICATION constant has moved_lines and dest_lines embedded
+    moved_lines_len = page.evaluate(
+        "() => { const pc = PRE_CLASSIFICATION && PRE_CLASSIFICATION.find(p => p.idx === 0); "
+        "return pc ? (pc.moved_lines || []).length : -1; }"
+    )
+    assert moved_lines_len == 1, (
+        f"PRE_CLASSIFICATION[0].moved_lines must have 1 entry, got {moved_lines_len}"
+    )
+
+    dest_lines_len = page.evaluate(
+        "() => { const pc = PRE_CLASSIFICATION && PRE_CLASSIFICATION.find(p => p.idx === 0); "
+        "return pc ? (pc.dest_lines || []).length : -1; }"
+    )
+    assert dest_lines_len == 1, (
+        f"PRE_CLASSIFICATION[0].dest_lines must have 1 entry, got {dest_lines_len}"
+    )
+
+    # Open modal — source line must appear
+    page.click("tr[data-row-idx='0'] button.view-btn")
+    page.wait_for_selector("#modal-overlay.open")
+    modal_text = page.eval_on_selector("#modal-body", "el => el.textContent")
+    browser.close()
+
+    assert clean.lower() in modal_text.lower(), (
+        f"Source task must appear in modal body. Got: {modal_text!r}"
+    )

@@ -2553,6 +2553,10 @@ window.addEventListener('DOMContentLoaded', () => {{
         misroutedCount:  pc.misrouted_count || 0,
         wentToFiles:     pc.went_to_files || [],
         trulyLostLines:  pc.truly_lost_lines || [],
+        movedLines:      pc.moved_lines   || [],
+        destLines:       pc.dest_lines    || [],
+        wentToDetails:   pc.went_to_details || {{}},
+        lineStatuses:    pc.line_statuses  || {{}},
         emptyReason:     (pc.issues || []).join(', '),
         blocks:          [],
         _fromPython:     true,
@@ -3429,7 +3433,9 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
 
         if not src_in_diff or not dest_in_diff:
             results.append({'idx': modal_idx, 'type': 'empty', 'moved_count': 0,
-                            'lost_count': 0, 'truly_lost_lines': [], 'issues': issues})
+                            'lost_count': 0, 'truly_lost_lines': [], 'moved_lines': [],
+                            'dest_lines': [], 'went_to_details': {}, 'line_statuses': {},
+                            'issues': issues})
             modal_idx += 1
             continue
 
@@ -3458,7 +3464,9 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
         removed = [l for l in raw_removed if not _is_noise(l) and len(_norm_line(l)) > 2]
         if not removed:
             results.append({'idx': modal_idx, 'type': 'empty', 'moved_count': 0,
-                            'lost_count': 0, 'truly_lost_lines': [], 'issues': issues})
+                            'lost_count': 0, 'truly_lost_lines': [], 'moved_lines': [],
+                            'dest_lines': [], 'went_to_details': {}, 'line_statuses': {},
+                            'issues': issues})
             modal_idx += 1
             continue
 
@@ -3479,24 +3487,40 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             except OSError:
                 pass
 
-        dest_norms = [_norm_line(l) for l in dest_added if not _is_noise(l) and len(_norm_line(l)) > 2]
+        # Build norm→original mapping to recover actual dest line text for moved_lines/dest_lines
+        _dest_norm_to_orig: dict[str, str] = {}
+        for _dl in dest_added:
+            _dn = _norm_line(_dl)
+            if not _is_noise(_dl) and len(_dn) > 2 and _dn not in _dest_norm_to_orig:
+                _dest_norm_to_orig[_dn] = _dl
+        dest_norms = list(_dest_norm_to_orig.keys())
 
         moved_lines, lost_lines = [], []
+        _matched_dest_norms: set[str] = set()
         for src_line in removed:
             sn = _norm_line(src_line)
-            (moved_lines if any(_fuzzy_match(sn, dn) for dn in dest_norms) else lost_lines).append(src_line)
+            _match = next((_dn for _dn in dest_norms if _fuzzy_match(sn, _dn)), None)
+            if _match is not None:
+                moved_lines.append(src_line)
+                _matched_dest_norms.add(_match)
+            else:
+                lost_lines.append(src_line)
+        dest_lines = [_dest_norm_to_orig[_dn] for _dn in dest_norms if _dn in _matched_dest_norms]
 
         # V-R6: check if lost lines exist elsewhere in the diff
         dest_stem_key = _dest_stem(dest_raw)
         truly_lost = []
         went_to_files_set: set[str] = set()
+        went_to_details: dict[str, list[str]] = {}  # stem → [source lines found there]
         for ll in lost_lines:
             nll = _norm_line(ll)
             found_elsewhere = False
             if len(nll) >= 6:
                 for en, efname in all_added_entries:
-                    if _fuzzy_match(nll, en) and _dest_stem(efname) != dest_stem_key:
-                        went_to_files_set.add(_dest_stem(efname))
+                    _stem = _dest_stem(efname)
+                    if _fuzzy_match(nll, en) and _stem != dest_stem_key:
+                        went_to_files_set.add(_stem)
+                        went_to_details.setdefault(_stem, []).append(ll)
                         found_elsewhere = True
                         break
             if not found_elsewhere:
@@ -3520,12 +3544,26 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
         else:
             row_type = 'lost'
 
+        # Per-line status map: normLine → 'move'|'went-to'|'absent'
+        line_statuses: dict[str, str] = {}
+        for _sl in moved_lines:
+            line_statuses[_norm_line(_sl)] = 'move'
+        for _stem_lines in went_to_details.values():
+            for _ll in _stem_lines:
+                line_statuses[_norm_line(_ll)] = 'went-to'
+        for _ll in truly_lost:
+            line_statuses[_norm_line(_ll)] = 'absent'
+
         results.append({
             'idx':              modal_idx,
             'type':             row_type,
             'moved_count':      len(moved_lines),
             'lost_count':       len(truly_lost),
-            'truly_lost_lines': truly_lost[:20],  # cap at 20 to keep HTML size reasonable
+            'truly_lost_lines': truly_lost[:20],
+            'moved_lines':      moved_lines[:20],
+            'dest_lines':       dest_lines[:20],
+            'went_to_details':  {k: v[:10] for k, v in went_to_details.items()},
+            'line_statuses':    line_statuses,
             'misrouted_count':  misrouted_count,
             'went_to_files':    sorted(went_to_files_set),
             'issues':           issues,
