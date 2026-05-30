@@ -185,7 +185,25 @@ find "$LIST_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} | sort
 
 For each list file, infer a one-sentence description from the H1 + first 3–5 non-empty body lines. Add to the index with `"type": "list"` (vs `"type": "plan"` for plans). Lists are presented as routing options in Step 6c alongside plans — useful for reference URLs, research notes, and backlog items.
 
-Report: "Found N recently-touched plans + M list files." List both with their descriptions.
+### Meetings Index (extend the plan index with meeting note files)
+
+Also index **meeting note files** from the Meetings directories:
+- Work: `$NOTES_ROOT/🏢 ServiceNow/👤 Meetings/` (recursively — includes `1-1s/`, `Workshops/`, root-level meetings)
+
+```bash
+MEETINGS_ROOT_WORK="$NOTES_ROOT/🏢 ServiceNow/👤 Meetings"
+
+find "$MEETINGS_ROOT_WORK" -name "*.md" -mtime -${LOOKBACK_DAYS} | sort
+```
+
+For each meeting file, extract the H1 + date from the filename. Add to the index with `"type": "meeting"`. Meeting files are **strongly preferred** for routing when:
+- The section header contains a person's name that matches a meeting file (e.g. `# Dennis 1-1` → search for files with "Dennis" in the name under `1-1s/`)
+- The section content looks like raw meeting notes (bulleted talking points, no clear task structure, names present)
+- The section's first line contains a date or a name + activity keyword ("sync", "1-1", "catch up", "meeting", "chat")
+
+When a meeting file match is found, route to the **actual meeting file** (append under a `## YYYY-MM-DD Notes` date header) rather than the target daily note.
+
+Report: "Found N recently-touched plans + M list files + K meeting files." List all with descriptions.
 
 ---
 
@@ -545,8 +563,11 @@ For each section confirmed for moving:
 - **To target daily note**: append verbatim under `# [[PlanName]]` header in `$CALENDAR_ROOT/<TARGET_DATE>.md`
   - Merge under existing header if already present; create if not
   - **Same-plan sections from different parts of the source day get merged** under one header
-- **To new plan file**: append verbatim after the opening `* [ ]` line in the new plan
-- **Unsorted**: append under `# Unsorted` in the target note
+  - Prefix the moved block with a `## From {fileDate}` date sub-header so content origin is traceable
+- **To existing plan file (direct)**: append verbatim after existing content in the plan, under a `## From {fileDate}` sub-header
+- **To new plan file**: append verbatim after the opening `* [ ]` line in the new plan (no date sub-header needed — the plan's `started:` field captures this)
+- **To meeting file**: append verbatim under a `## {YYYY-MM-DD} Notes` sub-header in the meeting file
+- **Unsorted**: append under `# Unsorted` in the target note (no date sub-header needed in Unsorted)
 - **Remove** from source: all content lines AND their section header (`# SectionName`). Do NOT move the original section header to the target — the target gets `# [[PlanName]]` instead.
 - **Split sections**: when individual lines within a section go to different plans, remove the section header and each line individually, routing each line to its designated plan header.
 
@@ -556,6 +577,8 @@ For each section confirmed for moving:
 
 **No content modification rule:** Copy every line exactly as-is. Preserve all leading whitespace / indentation. The only new text introduced is:
 - `# [[PlanName]]` headers in the target note
+- `## From {fileDate}` sub-headers when appending to an existing plan or target daily note
+- `## {YYYY-MM-DD} Notes` sub-headers when appending to a meeting file
 - `# Unsorted` header (if needed)
 - The plan file boilerplate when creating a new plan
 
@@ -674,6 +697,8 @@ def is_allowed_new(l):
         re.match(r'^---$', l) or             # frontmatter delimiters
         re.match(r'^(doctype|status|started|namespace|workstream|plantype|contributors):', l) or
         re.match(r'^# [🏡🏢🔁]', l) or      # H1 for new plan files
+        re.match(r'^## From \d{4}', l) or   # date annotation sub-headers
+        re.match(r'^## \d{4}-\d{2}-\d{2}', l) or  # meeting date headers
         re.match(r'^#', l.strip())           # any section header in Unsorted context
     )
 
@@ -738,7 +763,9 @@ git commit -m "sweep(daily): complete ${MODE} sweep → ${TARGET_DATE}
 | Lists files indexed | Index recently-modified list files from `📋 Lists/` alongside plans. Show them as routing options for reference URLs and research notes. |
 | Filename/title consistency | During Phase 4, check H1 vs filename for every plan. Rename plain-text filenames to match proper-convention H1s; fix H1s to match proper-convention filenames. Flag ambiguous cases and report them post-commit. |
 | Personal in Both mode — ask | In Both mode, personal side projects in work-day notes should not be silently skipped. Batch-ask once per day: route to personal target, work Unsorted, or skip. |
-| Meeting notes routing | 1-1 meeting notes in daily notes should be routed to the actual meeting notes file in `👤 Meetings/1-1s/`, not to Unsorted. Search for an existing meeting file by person's name before routing to Unsorted. |
+| Meeting notes routing | Route meeting/1-1 content to the actual meeting file in `👤 Meetings/`, not to Unsorted. Search by person name, event name, or date. Raw prose blocks and bullet talking-points may also be meeting notes even without explicit headers. |
+| Meetings indexed | Index recently-modified meeting files alongside plans and lists. Show them in routing UI with highest priority when section content matches a person's name or meeting keyword. |
+| Date annotation on moved blocks | When appending to an existing plan or target daily note, prefix each moved block with `## From {fileDate}` so content origin is traceable. Omit for new plan files (the `started:` field serves this purpose). |
 | User notes are authoritative | Free-text notes in AskUserQuestion answers override scoring. Re-score the plan index against the user's clarification before presenting the next question. |
 | New plans follow the template | Use the computed filename convention and frontmatter structure exactly. |
 | New plan subdirs are discovered | `ls $PLAN_ROOT` to find the right workstream/plantype subdir. Never hardcode. |

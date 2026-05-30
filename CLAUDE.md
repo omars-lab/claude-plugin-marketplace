@@ -20,6 +20,16 @@ One skill = one clear action. If a skill is doing multiple unrelated things, spl
 
 When a plugin has many skills, group them under a small set of meta-skills that route by intent. This keeps the plugin surface area small and discoverable.
 
+### Refine skills with session learnings
+
+After completing a sweep, migration, or long guided session, **update the skill's SKILL.md** with key observations that would have made the process smoother. Look for:
+- Edge cases not covered by existing rules (e.g. personal content in work notes, meeting notes in daily notes)
+- Patterns the user corrected you on mid-session (e.g. routing 1-1 meeting content to actual meeting files)
+- Ambiguity points where the skill was unclear (e.g. contributors as routing signals)
+- Quality-of-life improvements to prompts or checks (e.g. top-5 scoring, user note handling)
+
+Update SKILL.md, bump the plugin version (minor), and run `make update`. This ensures the next session benefits from hard-won observations without requiring the user to re-explain them.
+
 ---
 
 ## Plugin File Structure
