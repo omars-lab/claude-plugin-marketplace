@@ -557,7 +557,7 @@ function renderHeatmap() {{
   const LEFT_PAD = 30, TOP_PAD = 24, GAP = 2;
   const WEEKS = 52;
   const containerW = document.getElementById('heatmap-container').clientWidth || 900;
-  const CELL = Math.max(10, Math.min(16, Math.floor((containerW - LEFT_PAD - GAP * (WEEKS - 1)) / WEEKS)));
+  const CELL = Math.max(10, Math.floor((containerW - LEFT_PAD - GAP * (WEEKS - 1)) / WEEKS));
   const STEP = CELL + GAP;
 
   // Build date → count lookup
@@ -808,6 +808,13 @@ window.addEventListener('DOMContentLoaded', () => {{
     }});
     svg.innerHTML = inner;
   }})();
+
+  // Re-render heatmap on window resize
+  if (window.ResizeObserver) {{
+    new ResizeObserver(() => renderHeatmap()).observe(document.getElementById('heatmap-container'));
+  }} else {{
+    window.addEventListener('resize', () => renderHeatmap());
+  }}
 }});
 </script>
 </body>

@@ -838,11 +838,15 @@ def cmd_ai_usage_generate(args):
 const DATA = {data_json};
 const GRAPH_DATA = {graph_json};
 
+let graphInitialized = false;
+
 function showTab(tab) {{
   const names = ['stats','projects','skills','graph'];
   document.querySelectorAll('.tab').forEach((el, i) => el.classList.toggle('active', names[i] === tab));
   document.querySelectorAll('.pane').forEach(el => el.classList.remove('active'));
   document.getElementById('pane-' + tab).classList.add('active');
+  if (tab === 'skills' && !document.getElementById('skill-count').textContent) renderSkillCards();
+  if (tab === 'graph' && !graphInitialized) {{ graphInitialized = true; setTimeout(initGraph, 50); }}
 }}
 
 function esc(s) {{ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
@@ -1009,19 +1013,7 @@ function copyPrompt() {{
   }});
 }}
 
-// Init skill cards when pane becomes visible
-const _origShowTab = showTab;
 let graphInitialized = false;
-function showTab(tab) {{
-  _origShowTab(tab);
-  if (tab === 'skills' && !document.getElementById('skill-count').textContent) {{
-    renderSkillCards();
-  }}
-  if (tab === 'graph' && !graphInitialized) {{
-    graphInitialized = true;
-    setTimeout(initGraph, 50);
-  }}
-}}
 
 // ── Prompt Graph (CG-F) ─────────────────────────────────────────────────
 const UC_COLORS = {{
