@@ -12,7 +12,6 @@ Auto-updated when new issues are found during development.
 | ID | Component | Description | Fixed in |
 |---|---|---|---|
 | B-13 | `classifyRow` / anomaly detection | **Cross-row anomaly FP**: when multiple breadcrumb rows share the same destination file, every row sees the full set of dest additions as potentially untraced. Should partition dest additions across rows that claim that destination — each row gets only the additions that can't be attributed to any sibling row's removed lines. | — |
-| B-14 | `classifyRow` / anomaly detection | **New-file frontmatter FP**: newly created plan/meeting files show `---` frontmatter as anomalous additions. The diff hunk for new files (`new file mode`) should be excluded from anomaly scoring — frontmatter lines are always portal-generated noise. Detect via `new file mode` in diff header for the dest file. | — |
 | B-15 | `classifyRow` (lost) | **Redirect-stub FP**: when a destination plan has been migrated to a new namespace (e.g. `🏡260313👨🏻‍💻 Developing Bikar` → `☕️260313🎨 Developing Bikar`), the old stub contains only a `> Migrated: see [[...]]` pointer. Lines classified as lost against the stub should follow the redirect and re-check the linked destination. | — |
 
 <!-- /BUGS:OPEN -->
@@ -37,6 +36,7 @@ Auto-updated when new issues are found during development.
 | B-10 | `showSectionModal` | focusLost amber header repeated in source panel when row was mixed. Fixed with clean `lostLineHtmlClean` without section header for focusLost path. | 3.95.1 |
 | B-11 | `showSectionModal` | "No lost lines detected" — `isLineInDestFile` filtered all lost lines in `showSectionModal`'s panel. Fixed by removing from `lostLines` filter in modal (dest-file check only belongs in classification, not display). | 3.96.0 |
 | B-12 | `renderNarrative` | `day-sep-row` used `colspan="6"` in a 7-column table. Fixed to `colspan="7"`. | 3.97.0 |
+| B-14 | `classifyRow` + audit Python | **New-file FP**: newly created plan/note files classified as anomaly because all diff additions (frontmatter + boilerplate + content) had no matching source removed lines. Fixed: `parseDiff` sets `isNewFile=true`; JS `classifyRow` returns `empty` when `total===0 && isNewFile`; Python audit returns `empty` with `new_file` issue tag. 25→13 anomaly on run 2026-04-21-14. | 3.100.2 |
 
 <!-- /BUGS:FIXED -->
 
