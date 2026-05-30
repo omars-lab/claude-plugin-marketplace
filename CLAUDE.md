@@ -30,6 +30,16 @@ After completing a sweep, migration, or long guided session, **update the skill'
 
 Update SKILL.md, bump the plugin version (minor), and run `make update`. This ensures the next session benefits from hard-won observations without requiring the user to re-explain them.
 
+### Build user self-knowledge from note inspection
+
+Long-running skills (especially `sweep-daily-notes`) read many notes and passively accumulate knowledge about the user. **Capture this as structured reflections** at the end of the session, written to the user's own notes:
+
+- `🏡💭 Thoughts/🪞 Reflections/🏡💭💻 GenAI Thoughts/Observations.md` — factual: collaborators, interests, recurring topics
+- `🏡💭 Thoughts/🪞 Reflections/🏡💭💻 GenAI Thoughts/Gaps.md` — friction: untracked areas, stuck tasks, orphaned ideas
+- `🏡💭 Thoughts/🪞 Reflections/🏡💭💻 GenAI Thoughts/Superpowers.md` — strengths: expertise domains, patterns of excellence
+
+Write with care and specificity. Only write what's verifiable from the notes actually read. Append a dated entry each session — never overwrite prior observations.
+
 ---
 
 ## Plugin File Structure

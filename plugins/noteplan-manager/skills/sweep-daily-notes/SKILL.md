@@ -41,13 +41,14 @@ Use `TaskCreate` and `TaskUpdate` to track all phases with dependencies:
 
 1. Ask mode
 2. Pre-sweep git commit (blocked by 1) — **HARD MUST**
-3. Build plan index + lists + meetings index (blocked by 2)
+3. Build plan index + lists + meetings + thoughts index (blocked by 2)
 4. Enrich missing descriptions + contributors (blocked by 3)
 5. Discover daily notes in scope (blocked by 4)
 6. Day-by-day guided sweep (blocked by 5) — **one sub-task per day** (see below)
 7. Validate via git diff (blocked by 6)
 7b. Post-sweep Unsorted review (blocked by 7) — only if Unsorted grew during sweep
 8. Final commit (blocked by 7b)
+8.5. Self-knowledge capture (blocked by 8)
 
 ### Per-day task checklist
 
@@ -216,7 +217,23 @@ For each meeting file, extract the H1 + date from the filename. Add to the index
 
 When a meeting file match is found, route to the **actual meeting file** (append under a `## YYYY-MM-DD Notes` date header) rather than the target daily note.
 
-Report: "Found N recently-touched plans + M list files + K meeting files." List all with descriptions.
+### Thoughts Index (extend routing options with personal Ideas and Reflections files)
+
+Also index **Ideas files** from the personal Thoughts directory:
+- Personal: `$NOTES_ROOT/🏡 Personal/🏡💭 Thoughts/💡 Ideas/`
+
+```bash
+THOUGHTS_IDEAS_ROOT="$NOTES_ROOT/🏡 Personal/🏡💭 Thoughts/💡 Ideas"
+find "$THOUGHTS_IDEAS_ROOT" -name "*.md" | sort
+```
+
+For each file, extract H1 + first 3–5 non-empty body lines. Add to the index with `"type": "thought"`. Thoughts files are presented as routing options when:
+- A section looks like a raw idea, braindump, or speculative thinking (no clear task structure, hypothetical language, product/startup concepts)
+- A section's content matches a recurring topic (AI, entrepreneurship, personal projects) without fitting a concrete plan
+
+The **self-knowledge reflection files** (`Observations.md`, `Gaps.md`, `Superpowers.md`) in `🪞 Reflections/🏡💭💻 GenAI Thoughts/` are NOT routing targets — they are written by the sweep assistant itself in Phase 8.5.
+
+Report: "Found N recently-touched plans + M list files + K meeting files + J thought files." List all with descriptions.
 
 ---
 
@@ -606,6 +623,17 @@ For each section confirmed for moving:
 - **Unsorted**: append under `# Unsorted` in the target note (no date sub-header needed in Unsorted)
 - **Remove** from source: all content lines AND their section header (`# SectionName`). Do NOT move the original section header to the target — the target gets `# [[PlanName]]` instead.
 - **Split sections**: when individual lines within a section go to different plans, remove the section header and each line individually, routing each line to its designated plan header.
+- **Leave a swept breadcrumb in the source note**: after all sections for a day are moved, append a brief sweep-log block at the end of the source daily note so the user can see where things went. Format:
+  ```
+  ---
+  *Swept {YYYY-MM-DD}:*
+  - → [[PlanName1]]: {section1 name}, {section2 name}
+  - → [[PlanName2]]: {section3 name}
+  - → {TARGET_DATE} Errands: {count} errand task(s)
+  - → Unsorted ({TARGET_DATE}): {section name}
+  - → {YYYYMMDD} (meeting file): {section name}
+  ```
+  Only list destinations where content was actually moved. Skip skipped sections. The breadcrumb is the one exception to "no new content in source" — it is allowed because it is a reference to swept content, not content itself. Update the `is_allowed_new` check in Phase 7 to permit lines matching `^- → ` and `^\*Swept ` patterns.
 
 **Wikilink todos are ordinary content:** Tasks whose body is a wikilink (e.g. `- [ ] [[PlanName]]`) are moved verbatim exactly like any other task line. The wikilink in the body is the routing signal, but the full line (including `- [ ]` prefix) is preserved as-is.
 
@@ -617,6 +645,19 @@ For each section confirmed for moving:
 - `## {YYYY-MM-DD} Notes` sub-headers when appending to a meeting file
 - `# Unsorted` header (if needed)
 - The plan file boilerplate when creating a new plan
+
+**Permitted task annotations (the only allowed content additions to moved lines):**
+
+When moving a block, two types of metadata may be appended to **root-level task lines only** (lines with no leading whitespace / indentation — i.e. direct children of the section, not nested sub-tasks):
+
+1. **Date scheduling tag** — append `>{TARGET_DATE}` (the target note's date, e.g. `>2026-03-20`) so the task surfaces in NotePlan's calendar view for that week and doesn't get buried silently in a plan file.
+   - Format: `- [ ] Original task text >{YYYYMMDD}` (one space before `>`)
+   - Use the **target note's date** (next Friday for work, next Sunday for personal)
+   - Only on `- [ ]` or `* [ ]` lines at root indentation level
+
+2. **Hash tags** — append relevant `#tag` labels to root-level task lines when a clear categorical tag is warranted (e.g. `#errand`, `#meeting`, `#followup`). Only add tags that are already present in the surrounding plan file or that are clearly implied by the routing destination. Never invent tags.
+
+All other lines (nested tasks, prose, URLs, code blocks) are moved strictly verbatim with zero modification.
 
 ### Step 6f — Checkpoint commit and advance to the next day
 
@@ -712,7 +753,11 @@ for line in lines:
     if line.startswith('-'):
         removed.add(content)
     elif line.startswith('+'):
-        added.add(content)
+        # Normalize permitted task annotations before comparison:
+        # strip trailing >YYYYMMDD date tags and #hashtags appended during the move
+        # so these additions don't falsely trigger "content loss" failures
+        normalized = re.sub(r'(\s+(>\d{8}|#\w+))+$', '', content)
+        added.add(normalized)
 
 # today_date = current date as YYYYMMDD string, exclude from diff
 today_date = __import__('datetime').date.today().strftime('%Y%m%d')
@@ -731,11 +776,13 @@ def is_allowed_new(l):
         l.strip() == '' or                   # blank lines
         re.match(r'^\* \[ \] Is \[\[', l) or # plan boilerplate
         re.match(r'^---$', l) or             # frontmatter delimiters
-        re.match(r'^(doctype|status|started|namespace|workstream|plantype|contributors):', l) or
+        re.match(r'^(doctype|status|started|namespace|workstream|plantype|contributors|description):', l) or
         re.match(r'^# [🏡🏢🔁]', l) or      # H1 for new plan files
         re.match(r'^## From \d{4}', l) or   # date annotation sub-headers
         re.match(r'^## \d{4}-\d{2}-\d{2}', l) or  # meeting date headers
-        re.match(r'^#', l.strip())           # any section header in Unsorted context
+        re.match(r'^#', l.strip()) or        # any section header in Unsorted context
+        re.match(r'^\- → ', l) or            # swept breadcrumb destination lines
+        re.match(r'^\*Swept \d{4}-\d{2}-\d{2}', l)  # swept breadcrumb header
     )
 
 disallowed_new = [l for l in new if l.strip() and not is_allowed_new(l)]
@@ -813,6 +860,56 @@ git commit -m "sweep(daily): complete ${MODE} sweep → ${TARGET_DATE}
 
 ---
 
+## Phase 8.5: Self-Knowledge Capture
+
+During the sweep you've read many daily notes and observed the user's ideas, collaborators, interests, and patterns. After the final commit, synthesize what you've learned and update three structured files in the user's Reflections directory.
+
+**Target directory:** `$NOTES_ROOT/🏡 Personal/🏡💭 Thoughts/🪞 Reflections/🏡💭💻 GenAI Thoughts/`
+
+**Files to update (append a dated entry — do not overwrite prior entries):**
+
+| File | What to write |
+|---|---|
+| `Observations.md` | Factual observations: who they work with, what they're building, recurring topics, work style |
+| `Gaps.md` | Friction points, untracked areas, ideas that never became plans, recurring stuck tasks |
+| `Superpowers.md` | Strengths, domains of expertise, high-engagement topics, distinctive thinking patterns |
+
+**What to observe passively while sweeping:**
+
+- **Collaborators**: names recurring across multiple days → consistent colleagues
+- **Domains of interest**: recurring topics across daily notes → what they're focused on
+- **Work style**: spikes on POCs? Fragmentary ideation? Many started plans with no next steps?
+- **Gap signals**: sections that can't be routed (no matching plan = untracked area); recurring tasks that never complete
+- **Superpower signals**: dense, detailed, confident notes in specific areas → expertise
+- **Career trajectory**: open job applications, recurring career questions ("should I become X?"), salary/role explorations → direction of career gravitational pull
+- **Completion patterns**: which task types actually get done vs. accumulate indefinitely; tasks deferred to distant past dates reveal the intention-execution gap
+- **Learning deferred**: bought/bookmarked courses and resources not yet started → gap between acquiring and acting on learning material
+- **Scope overload signals**: self-identified overwhelm tasks ("I am trying to do too much"), explicitly deferred items, domains that never produce completed tasks → unsustainable breadth
+- **Publishing intent**: recurring aspirations to blog, post, share publicly that keep getting deferred → unblocking opportunity
+- **Relationship maintenance pressure**: recurring "reply to / follow up with" tasks for same people → relationship investment under time pressure
+- **Energy map**: days with dense, structured notes vs. sparse ones → actual working rhythms vs. ideal-self assumptions
+- **Financial awareness**: subscription audits, upcoming large expenses, payment obligations → growing financial consciousness
+- **Spiritual integration**: faith-related tasks woven into technical work → a coherent worldview, not compartmentalized
+
+**Entry format** (append under a `## {YYYY-MM-DD} Sweep` date header in each file):
+
+```markdown
+## {YYYY-MM-DD} Sweep
+
+- [observation or gap or superpower bullet]
+- [another bullet]
+```
+
+**Rules for this phase:**
+- Write with care and respect — avoid negative framings. "Has a growing backlog of ideas that aren't yet tracked in plans" > "tends to forget things"
+- Be specific: "Consistently collaborates with Dennis on ATF work" not "works with people"
+- Only write what's verifiable from the notes you actually read — no speculation
+- Keep entries concise: 3–7 bullets per file per sweep
+- Create the file if it doesn't exist yet (plain markdown, no frontmatter needed)
+- Commit after writing: `git commit -m "reflect(sweep): add {YYYY-MM-DD} self-knowledge observations"`
+
+---
+
 ## Rules
 
 | Rule | Detail |
@@ -849,6 +946,10 @@ git commit -m "sweep(daily): complete ${MODE} sweep → ${TARGET_DATE}
 | Uncertain sections are individual | Never bulk-ask about routing. Every uncertain/ambiguous block gets its own AskUserQuestion, one at a time, with a progress counter. |
 | Top-5 routing suggestions | Score every plan against the section header + content; show only the top 5 matches. Never dump the full plan list into the routing UI. |
 | Both mode supported | When mode = "Both", build both work + personal indexes. Each note's day-of-week determines which index and target to use. |
+| Thoughts directory indexed | Index `🏡💭 Thoughts/💡 Ideas/` alongside plans and lists. Present as routing option for raw ideas, braindumps, and speculative product/startup thinking. |
+| Meeting planning → next business day | When routing unscheduled meeting tasks from Unsorted (e.g. "Figure out meetings — Jeff, Khusbha, etc."), place them in the **next business day's daily note** (create it if needed), not in a general backlog. |
+| Self-knowledge capture | After each sweep's final commit (Phase 8.5), append dated observations to `🪞 Reflections/🏡💭💻 GenAI Thoughts/Observations.md`, `Gaps.md`, and `Superpowers.md`. Only write what's verifiable from the notes read. |
+| Swept breadcrumbs in source | After sweeping a daily note, append a `---` separator and a brief `*Swept YYYY-MM-DD:*` log at the end of the source file listing each destination wikilink and the section names routed there. This lets the user trace where content went without opening the target files. Update the Phase 7 `is_allowed_new` check to permit `^- → ` and `^\*Swept ` patterns. |
 
 ---
 
