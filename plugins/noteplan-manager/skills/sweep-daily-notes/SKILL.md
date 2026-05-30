@@ -270,6 +270,7 @@ Build a compact plan index (metadata only, no content):
 **Storage:** The People Index is persisted across sessions in dedicated reference files — one per namespace:
 - Work: `$NOTES_ROOT/🏢 ServiceNow/📋 Lists/🏢📋 References[People].md`
 - EarlBear: `$NOTES_ROOT/👥 EarlBear/📋 Lists/👥📋 References[People].md` *(create dir if absent)*
+- NaqshCoffee: `$NOTES_ROOT/☕️ NaqshCoffee/📋 Lists/☕️📋 References[People].md` *(create dir if absent)*
 - Personal: omitted for now (personal contacts don't typically have plan associations)
 
 **At Phase 3 start:** Read the existing file(s) to pre-load the People Index. Then enrich it by scanning `contributors:` frontmatter across all plans (inverting the map). Merge both sources — the file is authoritative for domain (work/EarlBear/personal), plan frontmatter is authoritative for which plans a person is on.
@@ -426,6 +427,11 @@ Also index **EarlBear plan files** from the EarlBear plans directory:
 ```bash
 EARLBEAR_PLAN_ROOT="$NOTES_ROOT/👥 EarlBear/📆 Plans"
 EARLBEAR_MEETINGS_ROOT="$NOTES_ROOT/👥 EarlBear/👥👤 Meetings"
+NAQSH_PLAN_ROOT="$NOTES_ROOT/☕️ NaqshCoffee/📆 Plans"
+NAQSH_MEETINGS_ROOT="$NOTES_ROOT/☕️ NaqshCoffee/☕️👤 Meetings"
+
+find "$NAQSH_PLAN_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} 2>/dev/null | sort
+find "$NAQSH_MEETINGS_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} 2>/dev/null | sort
 
 find "$EARLBEAR_PLAN_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} 2>/dev/null | sort
 find "$EARLBEAR_MEETINGS_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} 2>/dev/null | sort
@@ -452,6 +458,14 @@ EarlBear index entry shape:
 - Section content contains `[[👥...]]` wikilink
 - `👥` emoji in section header or content
 - Section mentions "Saad" (EarlBear co-founder) without matching a work meeting
+
+**NaqshCoffee domain** (`☕️`): a creative business initiative (coffee brand + Islamic design/Bikar). Plans live in `☕️ NaqshCoffee/📆 Plans/` with workstream subdirs (same structure as EarlBear). Naming convention: `☕️YYMMDD{workstream} Title.md`, frontmatter `namespace: ☕️`. NaqshCoffee content routes to the personal target note (next Sunday) alongside EarlBear content.
+
+**NaqshCoffee detection signals** (used in Step 6b):
+- Section header contains "NaqshCoffee", "Naqsh", "Bikar", or "Coffee House" (case-insensitive)
+- Section content contains `[[☕️...]]` wikilink
+- `☕️` emoji in section header or content
+- Section mentions Islamic design, geometric patterns, or Arabic coffee brand names
 
 Report: "Found N recently-touched plans + M list files + K meeting files + J thought files + R research docs + E EarlBear plans — People index: P people across Q plans." List all with descriptions, then list the People Index grouped by person.
 
