@@ -240,12 +240,17 @@ def test_js05_empty_narrative_shows_diff(playwright, http_server):
 # ---------------------------------------------------------------------------
 
 def test_js06_classify_moved_vs_new(playwright, http_server):
-    """JS-06: Lines matching source removed → Moved; unmatched → New."""
+    """JS-06: Lines matching source removed appear in dest panel; unmatched lines are excluded.
+
+    The old tab-based UI (Moved/New/Cross tabs) was removed. The dest panel now shows only
+    confirmed-moved lines. 'Brand new' dest lines that have no source match are NOT shown
+    in the dest panel (they surface as untraced/anomaly if unclaimed by any row).
+    """
     base_url, serve_dir = http_server
 
     src_removed = "- [ ] task one"
     dest_added_moved = "- [ ] task one >2026-04-24"   # matches (prefix match after norm)
-    dest_added_new   = "- [ ] brand new task"           # no match
+    dest_added_new   = "- [ ] brand new task"           # no match → not in dest panel
 
     narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
                   "section": "Work", "summary": "tasks",
@@ -253,7 +258,7 @@ def test_js06_classify_moved_vs_new(playwright, http_server):
 
     diff = _make_diff([
         {"path": "Calendar/20260413.md",
-         "removed": [src_removed], "added": []},
+         "removed": ["## Work", src_removed], "added": []},
         {"path": "Calendar/20260421.md",
          "added": [dest_added_moved, dest_added_new], "removed": []},
     ])
@@ -264,22 +269,26 @@ def test_js06_classify_moved_vs_new(playwright, http_server):
     page.goto(f"{base_url}/{page_name}")
     page.wait_for_selector(".nav-tbl")
 
-    # Click the section modal
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    # Open modal and check dest panel shows matched line, not unmatched
     page.click(".view-btn")
     page.wait_for_selector("#modal-overlay.open")
 
-    moved_count = page.eval_on_selector(
-        ".mpanel-tab:has-text('Moved')",
-        "el => parseInt(el.textContent.match(/\\d+/)[0])"
-    )
-    new_count = page.eval_on_selector(
-        ".mpanel-tab.new-tab",
-        "el => parseInt(el.textContent.match(/\\d+/)[0])"
-    )
+    dest_text = page.eval_on_selector("#modal-dest-lines", "el => el.textContent")
+    badge_class = page.eval_on_selector("tr[data-row-idx='0'] .row-badge", "el => el.className")
     browser.close()
 
-    assert moved_count >= 1, f"Expected >=1 Moved, got {moved_count}"
-    assert new_count >= 1,   f"Expected >=1 New, got {new_count}"
+    assert "task one" in dest_text, (
+        f"Matched line 'task one' should appear in dest panel. dest_text={dest_text!r}"
+    )
+    assert "brand new task" not in dest_text, (
+        f"Unmatched 'brand new task' must NOT appear in dest panel. dest_text={dest_text!r}"
+    )
+    assert "rb-move" in badge_class, f"Row should be rb-move. Got: {badge_class}"
 
 
 # ---------------------------------------------------------------------------
@@ -336,19 +345,23 @@ def test_js07_header_context_in_dest_panel(playwright, http_server):
 # ---------------------------------------------------------------------------
 
 def test_js08_cross_move_tab(playwright, http_server):
-    """JS-08: Line removed from file B but present in dest shown as Cross in file A's modal."""
+    """JS-08: Line from file B that lands in dest doesn't inflate row A's move count.
+
+    The old Cross tab was removed. Now cross-file lines are handled by the global
+    removed map (B-13 layer 2): they are NOT counted as untraced anomalies for row A.
+    Row A should classify as rb-move (its own line confirmed moved).
+    """
     base_url, serve_dir = http_server
 
-    # Source A has one task; Source B also has one task; both land in dest
     narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
                   "section": "Work", "summary": "items",
                   "destination": "[[Calendar/20260421]]"}]
 
     shared_task = "- [ ] shared task"
     diff = _make_diff([
-        # Source A (this row's source) — removes "unique task"
+        # Source A — removes unique task A
         {"path": "Calendar/20260413.md",
-         "removed": ["- [ ] unique task A"], "added": []},
+         "removed": ["## Work", "- [ ] unique task A"], "added": []},
         # Source B (different file) — removes the shared task
         {"path": "Calendar/20260414.md",
          "removed": [shared_task], "added": []},
@@ -364,19 +377,20 @@ def test_js08_cross_move_tab(playwright, http_server):
     page.goto(f"{base_url}/{page_name}")
     page.wait_for_selector(".nav-tbl")
 
-    page.click(".view-btn")
-    page.wait_for_selector("#modal-overlay.open")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
 
-    cross_btn = page.query_selector(".mpanel-tab.cross-tab")
-    assert cross_btn is not None, "Cross tab button not found"
-
-    cross_count = page.eval_on_selector(
-        ".mpanel-tab.cross-tab",
-        "el => parseInt(el.textContent.match(/\\d+/)[0])"
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
     )
     browser.close()
 
-    assert cross_count >= 1, f"Expected >=1 Cross-moved line, got {cross_count}"
+    # Row A's unique task arrived at dest → should be rb-move, not rb-lost or rb-untraced
+    assert "rb-move" in badge_class, (
+        f"JS-08: Row A should be rb-move (unique task A confirmed moved). Got: {badge_class}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -441,10 +455,14 @@ def test_js09_diff_view_moved_badge(playwright, http_server):
 # ---------------------------------------------------------------------------
 
 def test_js10_noise_lines_excluded_from_new(playwright, http_server):
-    """JS-10: Code fences, empty checkboxes, and HRs are not shown in New tab."""
+    """JS-10: Noise lines (code fences, empty checkboxes, HRs) don't inflate classification.
+
+    The old New tab was removed. Noise lines in the dest diff should be filtered by
+    isNoiseLine() and not count toward untraced/anomaly scoring. With noise filtered out,
+    the dest has no real unclaimed content → row should be rb-empty (not rb-untraced).
+    """
     base_url, serve_dir = http_server
 
-    real_task    = "- [ ] a genuine new task"
     noise_lines  = ["```", "```python", "---", "- [ ]", "- [ ]  >2026-04-24"]
 
     narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
@@ -452,9 +470,10 @@ def test_js10_noise_lines_excluded_from_new(playwright, http_server):
                   "destination": "[[Calendar/20260421]]"}]
 
     diff = _make_diff([
-        {"path": "Calendar/20260413.md", "removed": ["- [ ] source task"], "added": []},
+        # Source has no removed lines that match dest → total=0
+        {"path": "Calendar/20260413.md", "removed": [], "added": []},
         {"path": "Calendar/20260421.md",
-         "added": [real_task] + noise_lines, "removed": []},
+         "added": noise_lines, "removed": []},
     ])
     page_name = _write_page(serve_dir, "js10.html", diff, narrative)
 
@@ -462,22 +481,21 @@ def test_js10_noise_lines_excluded_from_new(playwright, http_server):
     page = browser.new_page()
     page.goto(f"{base_url}/{page_name}")
     page.wait_for_selector(".nav-tbl")
-    page.click(".view-btn")
-    page.wait_for_selector("#modal-overlay.open")
 
-    # Click New tab
-    page.click(".mpanel-tab.new-tab")
-    new_count = page.eval_on_selector(
-        ".mpanel-tab.new-tab",
-        "el => parseInt(el.textContent.match(/\\d+/)[0])"
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
     )
-    new_text = page.eval_on_selector("#modal-dest-lines", "el => el.textContent")
+
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
     browser.close()
 
-    # Only the real task should count; noise lines should be absent
-    assert new_count == 1, f"Expected 1 new line (real task only), got {new_count}"
-    assert real_task.replace("- [ ] ", "").strip() in new_text
-    assert "```" not in new_text, "Code fence leaked into New tab"
+    # All dest additions are noise → should be empty (or move), NOT untraced
+    assert "rb-untraced" not in badge_class, (
+        f"JS-10: noise lines must not count as untraced. Badge: {badge_class}"
+    )
 
 
 # ---------------------------------------------------------------------------
