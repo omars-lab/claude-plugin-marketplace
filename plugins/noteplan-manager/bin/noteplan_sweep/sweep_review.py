@@ -1084,21 +1084,34 @@ function classifyRow(idx) {{
   if (noisyExcluded.length > 0) console.debug('V-P3:', noisyExcluded.length, 'source lines normalized to empty (excluded from match)', idx);
   // Store movedPairs for cross-row pass (Layer 4)
   _rowMovedPairs.set(idx, movedPairs);
+  // Block model: decompose the row into typed content blocks (move / lost / untraced).
+  // Only mixed rows produce >1 block (move+lost). Anomaly rows use untraced block only.
+  // Dest additions in non-anomaly rows are NOT classified as separate blocks.
+  const _movedNormSet = new Set(validMoved.map(l => normLine(l)));
+  const lostLines = countableRemoved.filter(l => !_movedNormSet.has(normLine(l)));
+  const blocks = [];
+  if (type === 'anomaly') {{
+    if (trueNewCount > 0) blocks.push({{ type: 'untraced', count: trueNewCount }});
+  }} else if (type !== 'empty') {{
+    if (movedCount > 0) blocks.push({{ type: 'move', lines: validMoved, count: movedCount }});
+    if (lostLines.length > 0) blocks.push({{ type: 'lost', lines: lostLines, count: lostLines.length }});
+  }}
   const result = {{ type, movedCount, lostCount, newCount: trueNewCount, mixed, emptyReason,
-                   v47Fallback: destSectionResult.v47Fallback && !b15Applied }};
+                   v47Fallback: destSectionResult.v47Fallback && !b15Applied, blocks }};
   _rowClassifications.set(idx, result);
   return result;
 }}
 
-const _badgeLabels   = {{ move: '→', lost: '✗', anomaly: '?', empty: '·', mixed: '⚡' }};
+const _badgeLabels   = {{ move: '→', lost: '✗', anomaly: '?', untraced: '?', empty: '·', mixed: '⚡' }};
 // Internal type 'anomaly' maps to CSS class 'rb-untraced' and label '?'
 const _badgeCls      = {{ anomaly: 'untraced' }};
 const _badgeTitles   = {{
-  move:    'Move — all source lines confirmed at destination',
-  lost:    'Lost — one or more source lines did not arrive at destination',
-  anomaly: 'Untraced — destination has additions with no traceable source row',
-  empty:   'Empty — nothing to verify',
-  mixed:   'Mixed — some lines moved, some lost. This section should have been split into separate rows during sweep.',
+  move:     'Move — all source lines confirmed at destination',
+  lost:     'Lost — one or more source lines did not arrive at destination',
+  anomaly:  'Untraced — destination has additions with no traceable source row',
+  untraced: 'Untraced — destination has additions with no traceable source row',
+  empty:    'Empty — nothing to verify',
+  mixed:    'Mixed — some lines moved, some lost. This section should have been split into separate rows during sweep.',
 }};
 
 function injectMixedLostSubRow(idx, lostCount) {{
@@ -1141,8 +1154,33 @@ function updateRowBadge(idx, classification) {{
   if (!tr) return;
   const badge = tr.querySelector('.row-badge');
   if (!badge) return;
+  classification = classification || _rowClassifications.get(idx);
+  if (!classification) return;
   const {{ type, movedCount, lostCount, newCount, mixed }} = classification;
-  // Mixed rows: parent always shows → Move (the lost block is owned by the sub-row)
+  const blocks = classification.blocks || [];
+  // Multi-block: render compound badge (→N ✗M) and skip sub-row injection
+  if (blocks.length > 1) {{
+    badge.className = 'row-badge rb-mixed';
+    badge.textContent = blocks.map(b => (_badgeLabels[b.type] || '?') + b.count).join(' ');
+    badge.title = blocks.map(b => `${{b.count}} ${{b.type}}`).join(' + ');
+    if (classification.v47Fallback) {{
+      badge.dataset.scoped = 'false';
+      badge.title += ' ⚠ Section not matched — showing full file';
+    }} else {{ delete badge.dataset.scoped; }}
+    badge.style.cursor = '';
+    badge.onclick = null;
+    const mbCountCell = tr.querySelector('.count-col');
+    if (mbCountCell) {{
+      mbCountCell.textContent = blocks.map(b => b.count).join('+');
+      mbCountCell.title = blocks.map(b => `${{b.count}} ${{b.type}}`).join(', ');
+    }}
+    const mbDestCell = tr.querySelector('.dest-col');
+    if (mbDestCell) {{ mbDestCell.style.opacity = ''; mbDestCell.title = ''; }}
+    tr.dataset.rowType = 'mixed';
+    if (activeType !== 'all' && activeType !== 'mixed') tr.style.display = 'none';
+    return;
+  }}
+  // Single-block: existing path (mixed is always false here since multi-block returns above)
   const displayType = mixed ? 'move' : type;
   const badgeCls = _badgeCls[displayType] || displayType;
   badge.className = `row-badge rb-${{badgeCls}}`;
@@ -1822,7 +1860,16 @@ function showSectionModal(idx, focusLost = false) {{
   else type = 'lost';                               // any missing → lost
   const lostCountM = srcTotal - movedCount;
   const mixed = type === 'lost' && movedCount > 0 && lostCountM > 0;
-  const classification = {{ type, movedCount, lostCount: lostCountM, newCount: trueNewCount, mixed }};
+  const _movedNormSetM = new Set(validMoved.map(l => normLine(l)));
+  const lostLinesM = countableRemovedM.filter(l => !_movedNormSetM.has(normLine(l)));
+  const blocksM = [];
+  if (type === 'anomaly') {{
+    if (trueNewCount > 0) blocksM.push({{ type: 'untraced', count: trueNewCount }});
+  }} else if (type !== 'empty') {{
+    if (movedCount > 0) blocksM.push({{ type: 'move', lines: validMoved, count: movedCount }});
+    if (lostLinesM.length > 0) blocksM.push({{ type: 'lost', lines: lostLinesM, count: lostLinesM.length }});
+  }}
+  const classification = {{ type, movedCount, lostCount: lostCountM, newCount: trueNewCount, mixed, blocks: blocksM }};
   _rowClassifications.set(idx, classification);
   updateRowBadge(idx, classification);
 }}

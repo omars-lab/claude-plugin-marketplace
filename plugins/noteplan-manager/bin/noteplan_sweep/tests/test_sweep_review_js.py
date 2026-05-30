@@ -541,11 +541,11 @@ def test_js11_move_row_badge_and_modal(playwright, http_server):
 
 
 # ---------------------------------------------------------------------------
-# JS-12  Mixed row — badge shows ⚡, modal has moved header + lost section
+# JS-12  Mixed row — compound badge →1 ✗1 (blocks model), no sub-row injection
 # ---------------------------------------------------------------------------
 
 def test_js12_mixed_row_badge_and_modal(playwright, http_server):
-    """JS-12: Some lines moved, some lost → badge ⚡ (mixed), modal shows both sections."""
+    """JS-12: Some lines moved, some lost → compound badge →1 ✗1 (rb-mixed), no sub-row."""
     base_url, serve_dir = http_server
 
     moved_task = "- [ ] task that arrives"
@@ -573,16 +573,22 @@ def test_js12_mixed_row_badge_and_modal(playwright, http_server):
     badge_class = page.eval_on_selector(
         "tr[data-row-idx='0'] .row-badge", "el => el.className"
     )
+    badge_text = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.textContent"
+    )
     modal_text = page.eval_on_selector("#modal-body", "el => el.textContent")
-    # Mixed rows: parent badge shows → move (lost portion injected as a sub-row)
+    # Blocks model: no sub-row — the compound badge carries both counts
     sub_row = page.query_selector("tr[data-mixed-lost-for='0']")
     browser.close()
 
-    # Parent badge shows → (move) because some lines arrived; sub-row carries ✗ (lost)
-    assert "rb-move" in badge_class, (
-        f"Expected rb-move badge on mixed row parent, got: {badge_class}"
+    # Compound badge: rb-mixed class, text shows →N ✗M
+    assert "rb-mixed" in badge_class, (
+        f"Expected rb-mixed badge on mixed row, got: {badge_class}"
     )
-    assert sub_row is not None, "Expected mixed-lost sub-row to be injected after modal open"
+    assert "→" in badge_text and "✗" in badge_text, (
+        f"Expected compound →N ✗M badge text, got: {badge_text!r}"
+    )
+    assert sub_row is None, "Expected no sub-row injection (blocks model replaces sub-row)"
     # Modal should show the moved task
     assert "task that arrives" in modal_text, (
         f"Expected moved task in modal body, got: {modal_text!r}"
