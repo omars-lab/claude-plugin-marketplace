@@ -822,6 +822,84 @@ def test_js17_cross_row_anomaly_cleared_by_sibling(playwright, http_server):
 
 
 # ---------------------------------------------------------------------------
+# JS-18  B-15: redirect-stub — lost lines rechecked against linked plan
+# ---------------------------------------------------------------------------
+
+def test_js18_redirect_stub_fp(playwright, http_server):
+    """JS-18 (B-15): When the dest file is a redirect stub containing
+    '> Migrated: see [[NewPlan]]' as a context line in the diff, lost lines
+    should be rechecked against the linked NewPlan's diff additions.
+
+    Setup:
+      Source 20260313.md: removes '- [ ] task from Bikar'
+      OldPlan.md: in diff with '> Migrated: see [[NewPlan]]' as context line (no additions)
+      NewPlan.md: in diff with '- [ ] task from Bikar' as an addition
+
+    Without B-15: addedLines = OldPlan's additions = [] → lost.
+    With B-15:    addedLines = NewPlan's additions = ['- [ ] task from Bikar'] → move.
+
+    The row should be classified as 'rb-move', NOT 'rb-lost'.
+    """
+    base_url, serve_dir = http_server
+
+    task_line = "- [ ] task from Bikar"
+    narrative = [{"date": "2026-03-13", "source_file": "Calendar/20260313.md",
+                  "section": "## Developing Bikar", "summary": "bikar tasks",
+                  "destination": "[[OldPlan]]"}]
+
+    # Manual diff: OldPlan has context line with redirect; NewPlan has the actual addition.
+    diff = textwrap.dedent("""\
+        diff --git a/Calendar/20260313.md b/Calendar/20260313.md
+        index 000000..abc123 100644
+        --- a/Calendar/20260313.md
+        +++ b/Calendar/20260313.md
+        @@ -1,3 +1,2 @@
+         ## Developing Bikar
+        -""" + task_line + """
+        diff --git a/Notes/OldPlan.md b/Notes/OldPlan.md
+        index abc123..def456 100644
+        --- a/Notes/OldPlan.md
+        +++ b/Notes/OldPlan.md
+        @@ -1,2 +1,2 @@
+         # Old Plan
+         > Migrated: see [[NewPlan]]
+        diff --git a/Notes/NewPlan.md b/Notes/NewPlan.md
+        index 000000..abc123 100644
+        --- a/Notes/NewPlan.md
+        +++ b/Notes/NewPlan.md
+        @@ -1,1 +1,2 @@
+         # New Plan
+        +""" + task_line + """
+    """)
+
+    page_name = _write_page(serve_dir, "js18.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    browser.close()
+
+    assert "rb-lost" not in badge_class, (
+        f"B-15: redirect stub OldPlan → should follow redirect to NewPlan and classify "
+        f"as move, not lost. Badge: {badge_class}"
+    )
+    assert "rb-move" in badge_class, (
+        f"B-15: redirect stub OldPlan → should be rb-move after following redirect. "
+        f"Badge: {badge_class}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # JS-19  V-47a: fuzzy section name matching scopes dest additions correctly
 # ---------------------------------------------------------------------------
 

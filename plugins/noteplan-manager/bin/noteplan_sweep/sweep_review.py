@@ -958,6 +958,52 @@ function classifyRow(idx) {{
     }});
   }}
 
+  // B-15: Redirect-stub FP — if the dest file is a stub containing
+  // "> Migrated: see [[LinkedPlan]]", recheck lost lines against the linked plan.
+  // Source 1: DEST_FILE_LINES (normalized disk content — works in production).
+  // Source 2: context lines in DIFF_TEXT (works in tests + when stub is in diff).
+  {{
+    let b15Target = null;
+    const diskNorms = DEST_FILE_LINES[destRaw.toLowerCase()] || [];
+    const diskRedir = diskNorms.find(l => /^> migrated: see \\[\\[/.test(l));
+    if (diskRedir) {{
+      b15Target = diskRedir.replace(/^> migrated: see \\[\\[/, '').replace(/\\]\\].*$/, '').trim();
+    }}
+    if (!b15Target) {{
+      const destBase = destFilenameC.split('/').pop().toLowerCase();
+      let inDestBlk = false;
+      for (const l of DIFF_TEXT.split('\\n')) {{
+        if (l.startsWith('diff --git ')) {{ inDestBlk = l.toLowerCase().includes(destBase); continue; }}
+        if (!inDestBlk) continue;
+        if (l.startsWith('+++') || l.startsWith('---') || l.startsWith('index') || l.startsWith('@@')) continue;
+        if (l.length > 0 && l[0] === ' ') {{
+          const c = l.slice(1);
+          if (/^> Migrated: see \\[\\[/i.test(c)) {{
+            b15Target = c.replace(/^> Migrated: see \\[\\[/i, '').replace(/\\]\\].*$/, '').trim();
+            break;
+          }}
+        }}
+      }}
+    }}
+    if (b15Target) {{
+      const b15Lower = b15Target.toLowerCase();
+      const linkedFile = allParsedFiles.find(f => {{
+        const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '');
+        return stem.toLowerCase() === b15Lower;
+      }});
+      if (linkedFile) {{
+        const lkSec = extractSectionLines(linkedFile.filename, sectionName, '+');
+        const lkAdded = (lkSec.lines.length > 0 || lkSec.sectionFound)
+          ? lkSec.lines
+          : extractSectionLines(linkedFile.filename, null, '+').lines;
+        if (lkAdded.length > 0) {{
+          addedLines = lkAdded;
+          console.debug('B-15: redirect stub → recheck via', linkedFile.filename.split('/').pop());
+        }}
+      }}
+    }}
+  }}
+
   const {{ moved, newContent, movedPairs }} = classifyDestLines(removedLines, addedLines);
   const validMoved = filterValidPairs(moved, movedPairs, removedLines);
   const movedCount = validMoved.length;

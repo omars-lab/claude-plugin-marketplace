@@ -11,7 +11,6 @@ Auto-updated when new issues are found during development.
 
 | ID | Component | Description | Fixed in |
 |---|---|---|---|
-| B-15 | `classifyRow` (lost) | **Redirect-stub FP**: when a destination plan has been migrated to a new namespace (e.g. `🏡260313👨🏻‍💻 Developing Bikar` → `☕️260313🎨 Developing Bikar`), the old stub contains only a `> Migrated: see [[...]]` pointer. Lines classified as lost against the stub should follow the redirect and re-check the linked destination. | — |
 
 <!-- /BUGS:OPEN -->
 
@@ -39,6 +38,7 @@ Auto-updated when new issues are found during development.
 | B-14 | `classifyRow` + audit Python | **New-file FP**: newly created plan/note files classified as anomaly because all diff additions (frontmatter + boilerplate + content) had no matching source removed lines. Fixed: `parseDiff` sets `isNewFile=true`; JS `classifyRow` returns `empty` when `total===0 && isNewFile`; Python audit returns `empty` with `new_file` issue tag. 25→13 anomaly on run 2026-04-21-14. | 3.100.2 |
 | V-47a | `extractSectionLines` + audit Python | **Fuzzy section name matching**: breadcrumb section names (e.g. "Anthropic GitHub refs") didn't match `##` headers in dest diff block (e.g. "## References") because exact/last-token checks failed. Added `v47aScore()` with de-plural stem prefix overlap ("refs"→"ref" matches "references" → score 0.7 ≥ 0.5). `extractSectionLines` refactored to inner `doExtract(activeName, strictBoundary)` with `sectionEntered` tracking. `sectionFound` return flag prevents full-file fallback even for empty scoped sections. Python mirror `_extract_section_lines_scoped` added. JS-19 regression test. 13→12 anomaly on run 2026-04-21-14. | 3.100.4–5 |
 | B-16 | audit `classify_row` | **Multi-commit sweep FP (disk confirmation)**: sweep creates separate commits for content removal and breadcrumb addition; snapshot only captures one diff. Source removal missing → `removed=[]` → unclaimed dest additions → false anomaly. Fix: if ALL unclaimed additions in the V-47a-scoped section are confirmed present in dest file on disk, classify `empty` (tag: `disk_confirmed`). 12→0 anomaly on run 2026-04-21-14. Python-only (JS portal can't check disk). | 3.100.6 |
+| B-15 | `classifyRow` (lost) | **Redirect-stub FP**: when a destination plan has been migrated (`> Migrated: see [[NewPlan]]`), lines classified as lost against the stub now follow the redirect and recheck against the linked plan's diff additions. Checks both DEST_FILE_LINES (disk) and DIFF_TEXT context lines for the redirect marker. JS-18 regression test. | 3.100.8 |
 
 <!-- /BUGS:FIXED -->
 
