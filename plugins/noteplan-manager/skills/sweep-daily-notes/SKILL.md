@@ -1955,6 +1955,30 @@ noteplan-sweep sweep-commit
 # Generate immutable HTML diff snapshot for this sweep
 noteplan-sweep sweep-review-generate
 
+# Show the diff range (base commit → HEAD) used for this snapshot
+noteplan-sweep sweep-review-diff-range
+
+# Flag thin-coverage files (B-16 risk — sections swept in prior runs may not appear in this diff)
+noteplan-sweep sweep-diff-coverage
+```
+
+If `sweep-diff-coverage` reports any **⚠ THIN** files, show the user:
+> "⚠ Some calendar files have thin diff coverage — sections may have been swept in a prior run and won't appear in the diff. The audit uses disk-confirmation (B-16) to handle these automatically. No manual action needed unless you want to re-generate with a wider `--base-commit`."
+
+```bash
+# Run data quality audit — authoritative row classification
+noteplan-sweep sweep-review-audit
+```
+
+If the audit reports **anomaly count > 0**, run diagnose to get root cause labels:
+
+```bash
+noteplan-sweep sweep-review-diagnose --show anomaly
+```
+
+Diagnose output labels each row as one of: `B-14 new_file`, `B-13 claimed`, `B-16 disk_confirmed`, `V-47 scope miss`, or `genuine anomaly`. Only rows labelled **genuine anomaly** need user attention — present those to the user. All other labels are automatically resolved by the audit.
+
+```bash
 # Compile snapshot + any existing comments into review.html
 noteplan-sweep sweep-review-compile
 
@@ -2011,6 +2035,10 @@ noteplan-sweep contributions-generate    # re-generate to include updated AI com
 
 - [ ] `sweep-commit` — changes committed
 - [ ] `sweep-review-generate` — diff snapshot written to `sweeps/`
+- [ ] `sweep-review-diff-range` — diff range logged, commits shown
+- [ ] `sweep-diff-coverage` — thin-coverage files flagged (if any)
+- [ ] `sweep-review-audit` — row classification verified, anomaly count checked
+- [ ] *(if anomaly > 0)* `sweep-review-diagnose --show anomaly` — root cause labels shown; only genuine anomalies escalated to user
 - [ ] `sweep-review-compile` — compiled review HTML ready
 - [ ] `sweep-review-open` — review opened in browser
 - [ ] `conversation-mine` — transcripts mined, discovered_ideas.json updated

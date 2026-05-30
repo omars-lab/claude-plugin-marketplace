@@ -90,6 +90,19 @@ AskUserQuestion({
 Then run:
 
 ```bash
+# Get authoritative row classification from the audit tool
+noteplan-sweep sweep-review-audit --date YYYY-MM-DD [--run N]
+
+# Get per-row root cause labels (auto-labels B-14/B-13/B-16/V-47/genuine)
+noteplan-sweep sweep-review-diagnose --date YYYY-MM-DD [--run N]
+
+# Flag thin-coverage files (B-16 risk from retroactive sweeps)
+noteplan-sweep sweep-diff-coverage --date YYYY-MM-DD [--run N]
+```
+
+Also export the raw JSON for disk verification in Phase 2:
+
+```bash
 noteplan-sweep sweep-review-export [--date YYYY-MM-DD] > /tmp/sweep-export.json
 ```
 
@@ -100,7 +113,55 @@ Parse the JSON. Key fields used:
 
 ---
 
-## Phase 1: Classify Rows From Diff
+## Phase 1: Classify Rows Using CLI Diagnose Output
+
+Use the `sweep-review-diagnose` output from Phase 0 to pre-label each row. Do NOT re-implement classification logic — the CLI is authoritative.
+
+### 1a. Parse diagnose output
+
+`sweep-review-diagnose` produces one row per narrative entry with a `root_cause` label:
+
+| Label | Meaning | Action |
+|---|---|---|
+| `B-14 new_file` | Dest created by this sweep — additions are boilerplate | **Auto-skip** — no action needed |
+| `B-13 claimed` | Additions traced to sibling rows or other diff sources | **Auto-skip** — no action needed |
+| `B-16 disk_confirmed` | Retroactive sweep — content moved in prior run, confirmed on disk | **Auto-skip** — no action needed |
+| `V-47 scope miss` | Section header not in diff hunk; full-file fallback used | Note in summary — inspect if dest content looks wrong |
+| `genuine anomaly` | Dest has additions with no traceable source; not on disk | **Escalate to user** |
+| `lost` | Source lines removed but not in dest diff | **Verify on disk** (Phase 2) |
+| `mixed` | Some lines moved, some lost | **Verify lost subset** (Phase 2) |
+| `move` | All source lines confirmed at dest | **Auto-skip** — clean |
+| `empty` | Source section had only noise lines | **Auto-skip** — nothing to verify |
+
+### 1b. Build the work list
+
+From the diagnose output:
+- **Auto-skip**: B-14, B-13, B-16, move, empty rows → report count to user but don't pause
+- **Work list**: lost, mixed, V-47 scope miss, and genuine anomaly rows → these go to Phase 2/3
+
+Show a pre-labelled summary before Phase 2:
+
+```
+Total rows: N
+  → move:             N  (auto-skip)
+  → lost:             N  (verify on disk)
+  → mixed:            N  (verify lost subset)
+  → genuine anomaly:  N  (escalate to user)
+  → V-47 scope miss:  N  (inspect if suspicious)
+  → B-14/B-13/B-16:  N  (auto-skip — known FP patterns)
+  → empty:            N  (auto-skip)
+```
+
+If **thin-coverage files** were flagged by `sweep-diff-coverage`, inform the user:
+> "⚠ N files have thin diff coverage. B-16 disk-confirmation handled these automatically in the audit."
+
+Show summary to user before proceeding to Phase 2.
+
+---
+
+### Legacy: Manual row classification (reference only)
+
+The following manual classification is kept as reference for understanding the portal's logic. **Do not use it** — use `sweep-review-diagnose` output instead. Skills must not re-implement classification logic (see CLI contract below).
 
 For each narrative row, extract lines from the diff and classify without the portal's JS engine.
 
@@ -256,7 +317,7 @@ After all issues are processed, generate a data quality report and use it to imp
 
 ### 4a. Write quality log + update BUGS.md
 
-Write findings to `NOTEPLAN_ROOT/sweeps/quality-log.jsonl` (append):
+Write findings to `NOTEPLAN_ROOT/sweeps/quality-log.jsonl` (append), including thin-coverage stats from `sweep-diff-coverage`:
 
 ```json
 {
@@ -271,7 +332,10 @@ Write findings to `NOTEPLAN_ROOT/sweeps/quality-log.jsonl` (append):
     ...
   ],
   "remediated": 2,
-  "intentional": 1
+  "intentional": 1,
+  "thin_coverage_files": ["20260414.md", "20260415.md"],
+  "thin_coverage_ratio": 0.08,
+  "b16_rows": 12
 }
 ```
 
@@ -350,6 +414,17 @@ Before closing, verify the current sweep report matches the intended mental mode
 | Empty (·) | Source section had only noise lines | No real content removed |
 
 If the portal is showing incorrect types for a majority of rows, recommend running Phase 4c fixes and re-running `sweep-review-compile` before continuing.
+
+---
+
+## CLI Contract
+
+This skill MUST use the CLI commands for all classification and diagnosis. It must NOT:
+- Parse the snapshot HTML directly — use `sweep-review-export` for raw data
+- Re-implement classification logic — use `sweep-review-audit` for authoritative results
+- Ignore thin-coverage warnings silently — always surface ⚠ THIN to the user
+- Assume anomaly/untraced = data problem — always run `sweep-review-diagnose` to get root cause first
+- Auto-skip rows without checking the root cause label from `sweep-review-diagnose`
 
 ---
 
