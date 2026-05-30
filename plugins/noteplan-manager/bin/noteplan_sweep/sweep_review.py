@@ -651,7 +651,7 @@ function toggleSectionItems(rowIdx, btn) {{
       ? `<span style="color:#3fb950;font-size:9px;margin-right:4px">→</span>`
       : `<span style="color:#f85149;font-size:9px;margin-right:4px">✗</span>`;
     const color = inDest ? '' : 'color:#f85149;opacity:0.8;';
-    tr.innerHTML = `<td class="sec-toggle" style="color:#30363d;text-align:right">↳</td><td class="item-text" colspan="2" style="${{color}}">${{badge}}${{esc(clean)}}</td><td></td>`;
+    tr.innerHTML = `<td class="sec-toggle" style="color:#30363d;text-align:right">↳</td><td></td><td class="item-text" colspan="2" style="${{color}}">${{badge}}${{esc(clean)}}</td><td></td>`;
     insertAfter.insertAdjacentElement('afterend', tr);
     insertAfter = tr;
   }}
@@ -919,6 +919,7 @@ function injectMixedLostSubRow(idx, lostCount) {{
   subTr.onclick = () => {{ showSectionModal(idx, true); }};
   subTr.innerHTML = `
     <td style="padding:3px 6px;text-align:center"><span class="row-badge rb-lost">✗</span></td>
+    <td class="count-col" style="width:36px;text-align:center;font-size:10px;color:#f85149;font-family:monospace">${{lostCount}}</td>
     <td class="section-col" style="color:#f85149">↳ Lost (${{lostCount}} line${{lostCount!==1?'s':''}}) — not found at destination</td>
     <td class="summary-col" style="color:#6e7681">Needs separate row — split this section during sweep</td>
     <td class="dest-col" style="color:#6e7681">?? unknown</td>
@@ -956,6 +957,15 @@ function updateRowBadge(idx, classification) {{
   const emptyDetail = (displayType === 'empty' && classification.emptyReason)
     ? ` — ${{classification.emptyReason}}` : '';
   badge.title = (_badgeTitles[displayType] || displayType) + counts + emptyDetail;
+  // Populate count cell
+  const countCell = tr.querySelector('.count-col');
+  if (countCell) {{
+    if (mixed)                   {{ countCell.textContent = `${{movedCount}}+${{lostCount}}`; countCell.title = `${{movedCount}} moved, ${{lostCount}} lost`; }}
+    else if (type === 'move')    {{ countCell.textContent = movedCount; countCell.title = `${{movedCount}} lines moved`; countCell.style.color = '#3fb950'; }}
+    else if (type === 'lost')    {{ countCell.textContent = lostCount; countCell.title = `${{lostCount}} lines not arrived`; countCell.style.color = '#f85149'; }}
+    else if (type === 'anomaly') {{ countCell.textContent = newCount ? `+${{newCount}}` : '+?'; countCell.title = `${{newCount}} unexpected lines`; countCell.style.color = '#e3b341'; }}
+    else                         {{ countCell.textContent = '·'; countCell.style.color = '#484f58'; }}
+  }}
   // Lost/anomaly/empty badges are clickable — open the modal directly
   if (displayType === 'lost' || displayType === 'anomaly' || displayType === 'empty') {{
     badge.style.cursor = 'pointer';
@@ -1485,12 +1495,13 @@ function renderNarrative() {{
       label = `${{d}} (${{dow}})`;
     }} catch(e) {{}}
 
-    tbody += `<tr class="day-sep-row"><td colspan="4">📅 ${{esc(label)}} — ${{dayRows.length}} section${{dayRows.length !== 1 ? 's' : ''}} swept</td></tr>`;
+    tbody += `<tr class="day-sep-row"><td colspan="5">📅 ${{esc(label)}} — ${{dayRows.length}} section${{dayRows.length !== 1 ? 's' : ''}} swept</td></tr>`;
 
     tbody += dayRows.map(r => {{
       const idx = MODAL_ROWS.push(r) - 1;
       return `<tr data-row-idx="${{idx}}">
         <td style="padding:3px 6px;text-align:center"><span class="row-badge rb-pending" title="Not yet classified">·</span></td>
+        <td class="count-col" style="width:36px;text-align:center;font-size:10px;color:#484f58;font-family:monospace">—</td>
         <td class="section-col"><button class="sec-toggle" onclick="toggleSectionItems(${{idx}},this)" title="Expand items">▶</button>${{esc(r.section)}}</td>
         <td class="summary-col">${{esc(r.summary)}}</td>
         <td class="dest-col" title="${{esc(r.destination)}}"><a class="dest-link" href="${{xcallbackUrl(r.destination)}}">${{esc(normDest(r.destination))}}</a></td>
@@ -1500,7 +1511,7 @@ function renderNarrative() {{
   }}
 
   let html = `<table class="nav-tbl">
-    <thead><tr><th></th><th>Section</th><th>Summary</th><th>Destination</th><th></th></tr></thead>
+    <thead><tr><th></th><th style="width:36px;text-align:center">#</th><th>Section</th><th>Summary</th><th>Destination</th><th></th></tr></thead>
     <tbody>${{tbody}}</tbody>
   </table>`;
 
