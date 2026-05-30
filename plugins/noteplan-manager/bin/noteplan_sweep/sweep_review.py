@@ -455,6 +455,20 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .orphaned-hdr{{font-size:12px;color:#d29922;margin-bottom:6px;font-weight:600}}
 .orphaned-block ul{{list-style:none;padding:0}}
 .orphaned-block li{{font-size:11.5px;color:#8b949e;font-family:'SF Mono','Fira Code',monospace;padding:2px 0}}
+.dest-link{{color:#79c0ff;text-decoration:none;font-family:'SF Mono','Fira Code',monospace;font-size:11px}}
+.dest-link:hover{{text-decoration:underline;color:#a5d6ff}}
+.view-btn{{padding:1px 6px;border-radius:3px;cursor:pointer;font-size:11px;background:#21262d;color:#8b949e;border:1px solid #30363d}}
+.view-btn:hover{{color:#e6edf3;border-color:#8b949e}}
+#modal-overlay{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1000;align-items:center;justify-content:center}}
+#modal-overlay.open{{display:flex}}
+.modal{{background:#161b22;border:1px solid #30363d;border-radius:10px;width:92vw;max-width:1400px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden}}
+.modal-hdr{{padding:10px 20px;border-bottom:1px solid #30363d;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px}}
+.modal-title{{font-size:13px;font-weight:600;color:#e6edf3;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+.modal-close{{background:none;border:none;color:#8b949e;cursor:pointer;font-size:18px;line-height:1;padding:0 2px;flex-shrink:0}}
+.modal-close:hover{{color:#e6edf3}}
+.modal-body{{flex:1;min-height:0;overflow-y:auto;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px}}
+.modal-panel-hdr{{font-size:11px;font-weight:600;color:#8b949e;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #30363d}}
+.modal-empty{{color:#484f58;font-size:12px;padding:16px;text-align:center}}
 #layout{{display:flex;flex:1;min-height:0}}
 #sidebar{{width:260px;min-width:160px;background:#161b22;border-right:1px solid #30363d;overflow-y:auto;flex-shrink:0;padding:8px 0}}
 .fi{{padding:5px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;border-left:3px solid transparent;font-size:12px}}
@@ -484,13 +498,14 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 #narrative{{padding:16px}}
 .day-block{{margin-bottom:24px}}
 .day-hdr{{font-size:14px;font-weight:600;color:#58a6ff;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #30363d}}
-.nav-tbl{{width:100%;border-collapse:collapse;font-size:12px}}
-.nav-tbl th{{background:#161b22;padding:6px 10px;text-align:left;color:#8b949e;font-weight:500;border-bottom:1px solid #30363d}}
-.nav-tbl td{{padding:6px 10px;border-bottom:1px solid #21262d;vertical-align:top}}
+.nav-tbl{{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}}
+.nav-tbl th{{background:#161b22;padding:6px 10px;text-align:left;color:#8b949e;font-weight:500;border-bottom:2px solid #30363d;position:sticky;top:0;z-index:1}}
+.nav-tbl th:nth-child(1){{width:18%}}.nav-tbl th:nth-child(2){{width:37%}}.nav-tbl th:nth-child(3){{width:39%}}.nav-tbl th:nth-child(4){{width:44px}}
+.nav-tbl td{{padding:5px 10px;border-bottom:1px solid #21262d;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .nav-tbl tr:hover td{{background:#161b22}}
-.nav-tbl .section-col{{color:#e6edf3;font-weight:500;max-width:180px}}
-.nav-tbl .summary-col{{color:#8b949e;max-width:240px}}
-.nav-tbl .dest-col{{color:#79c0ff;font-family:'SF Mono','Fira Code',monospace;font-size:11px}}
+.nav-tbl .section-col{{color:#e6edf3;font-weight:500}}
+.nav-tbl .summary-col{{color:#8b949e}}
+.day-sep-row td{{background:#0d1117;padding:14px 10px 5px;font-size:13px;font-weight:600;color:#58a6ff;border-bottom:1px solid #30363d;white-space:normal;overflow:visible}}
 .empty{{color:#484f58;padding:24px;text-align:center}}
 </style>
 </head>
@@ -530,6 +545,61 @@ const SEED_COMMENTS = {seed_json};
 const NARRATIVE = {narrative_json};
 const CHANGED_CALENDAR_FILES = {changed_cal_json};
 
+let allParsedFiles = [];
+const MODAL_ROWS = [];
+
+// ── xcallback links ────────────────────────────────────────────────────────
+function xcallbackUrl(dest) {{
+  let raw = dest.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
+  if (/^\\d{{8}}$/.test(raw)) {{
+    return 'noteplan://x-callback-url/openNote?filename=' + raw;
+  }}
+  return 'noteplan://x-callback-url/openNote?noteTitle=' + encodeURIComponent(raw);
+}}
+
+// ── Section diff modal ─────────────────────────────────────────────────────
+function closeModal() {{
+  document.getElementById('modal-overlay').classList.remove('open');
+}}
+
+document.addEventListener('keydown', e => {{ if (e.key === 'Escape') closeModal(); }});
+
+function showSectionModal(idx) {{
+  const row = MODAL_ROWS[idx];
+  if (!row) return;
+  const sourceFile = row.source_file;
+  let destRaw = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
+
+  const sourceFileDiff = allParsedFiles.find(f => f.filename === sourceFile);
+  const destFileDiff = allParsedFiles.find(f => {{
+    if (!f.filename) return false;
+    const fStem = f.filename.split('/').pop().replace(/\\.md$/, '');
+    return fStem === destRaw || f.filename.endsWith(destRaw + '.md');
+  }});
+
+  const sectionKey = row.section.replace(/^#+\\s*/, '').trim().toLowerCase();
+
+  const renderPanel = (title, fileDiff) => {{
+    if (!fileDiff) return `<div><div class="modal-panel-hdr">${{esc(title)}}</div><div class="modal-empty">No diff found for this file</div></div>`;
+    const displayName = fileDiff.filename.split('/').pop();
+    const relevant = fileDiff.hunks.filter(h =>
+      [...h.left, ...h.right].some(l => l.c.toLowerCase().includes(sectionKey))
+    );
+    const hunks = (relevant.length > 0 ? relevant : fileDiff.hunks).slice(0, 6);
+    const body = hunks.map(h => renderHunk(h)).join('') || '<div class="modal-empty">No changes</div>';
+    return `<div>
+      <div class="modal-panel-hdr">${{esc(title)}} — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(displayName)}}</span></div>
+      ${{body}}
+    </div>`;
+  }};
+
+  document.getElementById('modal-title').textContent = row.section + ' → ' + normDest(row.destination);
+  document.getElementById('modal-body').innerHTML =
+    renderPanel('Removed from source', sourceFileDiff) +
+    renderPanel('Added to destination', destFileDiff);
+  document.getElementById('modal-overlay').classList.add('open');
+}}
+
 // ── Tab switching ──────────────────────────────────────────────────────────
 function showTab(name) {{
   document.getElementById('narrative').style.display = name === 'narrative' ? '' : 'none';
@@ -567,6 +637,7 @@ function setDomain(d) {{
 // ── Narrative renderer ─────────────────────────────────────────────────────
 function renderNarrative() {{
   const el = document.getElementById('narrative');
+  MODAL_ROWS.length = 0;
 
   if (!NARRATIVE.length) {{
     el.innerHTML = '<div class="empty">No sweep breadcrumb data found.<br>Breadcrumb tables are written to each swept Calendar note.</div>';
@@ -591,7 +662,8 @@ function renderNarrative() {{
 
   const dayNames = {{ '1':'Mon','2':'Tue','3':'Wed','4':'Thu','5':'Fri','6':'Sat','7':'Sun' }};
 
-  let html = '';
+  // Single table for aligned columns across all days
+  let tbody = '';
   for (const [d, dayRows] of Object.entries(byDate).sort()) {{
     let label = d;
     try {{
@@ -600,26 +672,34 @@ function renderNarrative() {{
       label = `${{d}} (${{dow}})`;
     }} catch(e) {{}}
 
-    const rowsHtml = dayRows.map(r => `
-      <tr>
+    tbody += `<tr class="day-sep-row"><td colspan="4">📅 ${{esc(label)}} — ${{dayRows.length}} section${{dayRows.length !== 1 ? 's' : ''}} swept</td></tr>`;
+
+    tbody += dayRows.map(r => {{
+      const idx = MODAL_ROWS.push(r) - 1;
+      return `<tr>
         <td class="section-col">${{esc(r.section)}}</td>
         <td class="summary-col">${{esc(r.summary)}}</td>
-        <td class="dest-col" title="${{esc(r.destination)}}">${{esc(normDest(r.destination))}}</td>
-      </tr>`).join('');
-
-    html += `
-      <div class="day-block">
-        <div class="day-hdr">📅 ${{esc(label)}} — ${{dayRows.length}} section${{dayRows.length !== 1 ? 's' : ''}} swept</div>
-        <table class="nav-tbl">
-          <thead><tr><th>Section</th><th>Summary</th><th>Destination</th></tr></thead>
-          <tbody>${{rowsHtml}}</tbody>
-        </table>
-      </div>`;
+        <td class="dest-col" title="${{esc(r.destination)}}"><a class="dest-link" href="${{xcallbackUrl(r.destination)}}">${{esc(normDest(r.destination))}}</a></td>
+        <td style="padding:3px 6px;text-align:center"><button class="view-btn" onclick="showSectionModal(${{idx}})">⌕</button></td>
+      </tr>`;
+    }}).join('');
   }}
 
-  // Orphaned: Calendar files changed but no breadcrumb rows written
+  let html = `<table class="nav-tbl">
+    <thead><tr><th>Section</th><th>Summary</th><th>Destination</th><th></th></tr></thead>
+    <tbody>${{tbody}}</tbody>
+  </table>`;
+
+  // Orphaned: SOURCE Calendar files swept but with no breadcrumb rows written.
+  // Exclude target notes (files that appear as destinations — content was swept INTO them).
   const sourcesWithBreadcrumbs = new Set(NARRATIVE.map(r => r.source_file));
-  const orphaned = CHANGED_CALENDAR_FILES.filter(f => !sourcesWithBreadcrumbs.has(f));
+  const destCalStems = new Set(
+    NARRATIVE.map(r => normDest(r.destination)).filter(d => /^\\d{{8}}$/.test(d))
+  );
+  const orphaned = CHANGED_CALENDAR_FILES.filter(f => {{
+    const stem = f.split('/').pop().replace(/\\.md$/, '');
+    return !sourcesWithBreadcrumbs.has(f) && !destCalStems.has(stem);
+  }});
   if (orphaned.length) {{
     html += `<div class="orphaned-block">
       <div class="orphaned-hdr">⚠️ ${{orphaned.length}} swept file${{orphaned.length !== 1 ? 's' : ''}} with no breadcrumb rows</div>
@@ -792,10 +872,19 @@ window.addEventListener('DOMContentLoaded', () => {{
 
   renderNarrative();
 
-  const files = parseDiff(DIFF_TEXT);
-  renderDiffFiles(files);
+  allParsedFiles = parseDiff(DIFF_TEXT);
+  renderDiffFiles(allParsedFiles);
 }});
 </script>
+<div id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-hdr">
+      <span class="modal-title" id="modal-title"></span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
 </body>
 </html>"""
 
