@@ -153,6 +153,11 @@ When you encounter a bare URL, use this table to decide how to handle it. Apply 
 | **Service listing** | `thumbtack.com/*/service/<id>` | **Use page title** — service name + location already in title | `[TJK Security & Automation — Liberty Hill TX security on Thumbtack](url)` |
 | **HA community forum** | `community.home-assistant.io/t/<slug>/<id>` | **Extract from URL slug** — like Reddit, title is embedded in slug | `[HA forum: Duck DNS not working — challenge validation failed](url)` |
 | **GitHub discussion** | `github.com/<owner>/<repo>/discussions/<id>` | **Use page title** — discussion title is in the HTML title | `[HA OS GitHub: include open-vm-tools in OVA image for VMware](url)` |
+| **Docker Hub image** | `hub.docker.com/r/<publisher>/<image>` | **Use page title** — title is `<publisher>/<image> - Docker Image` | `[minlag/mermaid-cli — official Mermaid CLI Docker image](url)` |
+| **LinkedIn short URL** | `lnkd.in/<id>` | **Use surrounding context** — LinkedIn blocks metadata fetch; use the text label written before or after the URL in the note | `[Sebastian Raschka: LLM Architecture Gallery with visual fact sheets](url)` |
+| **X/Twitter post** | `x.com/<handle>/status/<id>`, `twitter.com/<handle>/status/<id>` | **Use handle + context** if available; strip tracking params (`?s=`, `?t=`); fallback: `X/@<handle> announcement` | `[X/@openaidevs announcement](url)` |
+| **Reddit share link** | `reddit.com/r/<sub>/s/<id>` (short share URL, no title slug) | **Use subreddit context** — no title in URL; fallback: `Reddit/r/<sub> discussion` | `[Reddit/r/ClaudeAI discussion](url)` |
+| **Internal code host** | `code.devsnc.com`, GitHub Enterprise behind SSO | **Skip silently** (hook); for manual enrichment: use URL path segments as label with `(internal, Okta)` suffix | `[snowops-mcp-server: ServiceNow ops MCP server (internal, Okta)](url)` |
 
 **Rule of thumb:**
 - If the URL type gives you enough info without a network call → auto-format
@@ -205,7 +210,7 @@ r'\.(jpe?g|png|gif|webp|svg|ico|bmp|tiff?|mp4|mov|pdf|zip)(\?|$)'
 r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 
 # Internal tools (require --use-chrome in CLI, skip in skill context)
-r'https?://[^/\s]*(?:service-now\.com|servicenow\.com|sharepoint\.com|okta\.com)'
+r'https?://[^/\s]*(?:service-now\.com|servicenow\.com|sharepoint\.com|okta\.com|code\.devsnc\.com)'
 
 # Too long — session-specific
 len(url) > 300

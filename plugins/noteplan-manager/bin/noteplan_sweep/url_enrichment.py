@@ -48,7 +48,8 @@ MD_LINK_RE = re.compile(r'\[.*?\]\((https?://[^\s\)\]\'"<>]+)\)')
 
 # Internal / Okta-protected domains — skip unless --use-chrome is set
 INTERNAL_DOMAINS_RE = re.compile(
-    r'https?://[^/\s]*(?:service-now\.com|servicenow\.com|sharepoint\.com|okta\.com)',
+    r'https?://[^/\s]*(?:service-now\.com|servicenow\.com|sharepoint\.com|okta\.com'
+    r'|code\.devsnc\.com)',
     re.IGNORECASE,
 )
 
@@ -57,6 +58,7 @@ INTERNAL_DOMAINS_RE = re.compile(
 _SKIP_DOMAIN_RE = re.compile(
     r'https?://[^/\s]*(?:'
     r'service-now\.com|servicenow\.com|sharepoint\.com|okta\.com'
+    r'|code\.devsnc\.com'                        # ServiceNow internal GitHub (Okta)
     r'|localhost|attlocal\.net|\.local(?:[:/]|$)'
     r')',
     re.IGNORECASE,
