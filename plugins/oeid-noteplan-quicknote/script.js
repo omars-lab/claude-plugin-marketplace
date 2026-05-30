@@ -45,6 +45,16 @@ const DAYS_AGO_OPTIONS = ['0', '1', '3', '7', '14', '30']
 // Project subfolders under 🧑🏻‍💻 Development (Work or EarlBear)
 const DEV_PROJECT_OPTIONS = ['— none —', '🤖 Config Agent', '💡 esgenius', '⚗️ Experiments', '🔧 Setup']
 
+// Static workstream labels for domains that have no subfolder structure.
+// Used for filename emoji only — these never become folder paths.
+const STATIC_WORKSTREAMS = {
+  coffee:   ['🎨 Design', '🏪 Site', '👨🏻‍💼 Strategy', '🖼️ Vision'],
+  earlbear: ['🧑🏻‍💻 Development', '👨🏻‍💼 Strategy'],
+}
+
+// Domains where workstream is a subfolder path (vs filename-only)
+const WORKSTREAM_IS_FOLDER = { work: true, personal: true }
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function domainKey(label) {
@@ -72,15 +82,18 @@ function formatDate(daysAgo, fmt) {
   return ''
 }
 
-// Discover immediate subdirectories of a plan root via DataStore.folders
+// Discover immediate subdirectories of a plan root via DataStore.folders.
+// Falls back to STATIC_WORKSTREAMS for domains that have no subfolder structure
+// (coffee, earlbear) — these provide the filename emoji only, not a folder path.
 function getWorkstreams(domain) {
   const root = PLAN_ROOTS[domain]
   if (!root) return []
   const prefix = root + '/'
-  return DataStore.folders
+  const discovered = DataStore.folders
     .filter(f => f.startsWith(prefix) && !f.slice(prefix.length).includes('/'))
     .map(f => f.slice(prefix.length))
     .sort()
+  return discovered.length ? discovered : (STATIC_WORKSTREAMS[domain] || [])
 }
 
 async function pick(options, placeholder) {
@@ -203,9 +216,11 @@ async function plan() {
 
   const wsEmoji = wsLabel ? wsLabel.split(' ')[0] : ''
 
-  // Project subfolder for 🧑🏻‍💻 Development
+  // Folder: only work/personal use workstream as a subfolder; coffee/earlbear do not
   let filenameEmoji = wsEmoji
-  let folder = PLAN_ROOTS[domain] + (wsLabel ? '/' + wsLabel : '')
+  let folder = WORKSTREAM_IS_FOLDER[domain] && wsLabel
+    ? PLAN_ROOTS[domain] + '/' + wsLabel
+    : PLAN_ROOTS[domain]
   if (wsEmoji === '🧑🏻‍💻') {
     const proj = await pick(DEV_PROJECT_OPTIONS, 'Project (optional)')
     if (proj && proj !== '— none —') {
@@ -313,7 +328,9 @@ async function createNote(jsonParams) {
 
   if (type === 'plan') {
     filename = `${domainEmoji}${date}${wsEmoji} ${title}`
-    folder = PLAN_ROOTS[domain] + (workstream ? '/' + workstream : '')
+    folder = WORKSTREAM_IS_FOLDER[domain] && workstream
+      ? PLAN_ROOTS[domain] + '/' + workstream
+      : PLAN_ROOTS[domain]
     if (domain === 'work') content = planBody(filename, workPlanFrontmatter(wsEmoji, statusEmoji, daysAgo), daysAgo)
     else if (domain === 'personal') content = planBody(filename, personalPlanFrontmatter(wsEmoji, statusEmoji, daysAgo), daysAgo)
     else content = planBody(filename, domainPlanFrontmatter(NAMESPACE[domain], wsEmoji, statusEmoji, daysAgo), daysAgo)

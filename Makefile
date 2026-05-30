@@ -167,8 +167,14 @@ install-noteplan-quicknote: ## Install oeid-noteplan-quicknote into NotePlan Plu
 	@echo "$(GREEN)✓ Installed to $(NOTEPLAN_PLUGINS_DIR)/oeid.noteplan-quicknote$(NC)"
 	@$(MAKE) --no-print-directory reload-noteplan
 
-test-noteplan-quicknote: ## Run oeid-noteplan-quicknote unit tests
+test-noteplan-quicknote: ## Run oeid-noteplan-quicknote unit tests (Jest, no NotePlan required)
 	@cd plugins/oeid-noteplan-quicknote && npm test
+
+e2e-noteplan-quicknote: ## E2E tests via real filesystem (no NotePlan app required)
+	@node plugins/oeid-noteplan-quicknote/scripts/e2e.js
+
+e2e-noteplan-quicknote-keep: ## E2E tests — keep created files for manual inspection
+	@node plugins/oeid-noteplan-quicknote/scripts/e2e.js --keep
 
 reload-noteplan: ## Restart NotePlan so it picks up plugin changes (quit + relaunch)
 	@if pgrep -x NotePlan > /dev/null 2>&1; then \

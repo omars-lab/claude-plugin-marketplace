@@ -129,7 +129,7 @@ describe('noteBody', () => {
 })
 
 describe('getWorkstreams with mocked DataStore', () => {
-  const { getWorkstreams, PLAN_ROOTS } = require('../script.js')
+  const { getWorkstreams } = require('../script.js')
 
   test('returns immediate subdirs of plan root only', () => {
     global.DataStore = {
@@ -161,8 +161,19 @@ describe('getWorkstreams with mocked DataStore', () => {
     expect(acts).not.toContain('🎯 Impact')
   })
 
-  test('returns empty array when no folders match', () => {
+  test('falls back to static list for coffee when no subdirs exist', () => {
     global.DataStore = { folders: [] }
-    expect(getWorkstreams('coffee')).toEqual([])
+    const ws = getWorkstreams('coffee')
+    expect(ws).toContain('🎨 Design')
+    expect(ws).toContain('🏪 Site')
+    expect(ws).toContain('👨🏻‍💼 Strategy')
+    expect(ws).toContain('🖼️ Vision')
+  })
+
+  test('falls back to static list for earlbear when no subdirs exist', () => {
+    global.DataStore = { folders: [] }
+    const ws = getWorkstreams('earlbear')
+    expect(ws).toContain('🧑🏻‍💻 Development')
+    expect(ws).toContain('👨🏻‍💼 Strategy')
   })
 })
