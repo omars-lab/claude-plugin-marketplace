@@ -1535,9 +1535,9 @@ def test_js28_absent_not_anywhere(playwright, http_server):
 # ---------------------------------------------------------------------------
 
 def test_js29_py_move_confirmed_fallback(playwright, http_server):
-    """JS-29: When PRE_CLASSIFICATION says moved_count>0 but JS finds nothing at
-    the breadcrumb dest, the modal must show source lines with a sweep-engine
-    confirmation note — not 'No source lines matched' / '0 lines confirmed moved'."""
+    """JS-29: B-15 redirect row — Python-primary modal shows moved_lines from Python,
+    not 'No source lines matched'. JS can't follow the redirect but Python can.
+    The modal renders from PRE_CLASSIFICATION.moved_lines (Python-primary path)."""
     base_url, serve_dir = http_server
 
     task = "- [ ] Design a Bikar pattern plugin for Figma with palette generation"
@@ -1557,10 +1557,12 @@ def test_js29_py_move_confirmed_fallback(playwright, http_server):
         {"path": "Notes/Plans/New Bikar.md",
          "removed": [], "added": [task]},
     ])
-    # Python PRE_CLASSIFICATION says this is a move (Python followed the B-15 redirect)
+    # Python PRE_CLASSIFICATION: followed the B-15 redirect and confirmed the move.
+    # Includes moved_lines so the Python-primary modal path is triggered (#91).
     pre_class = [{"idx": 0, "type": "move", "moved_count": 1, "lost_count": 0,
-                  "truly_lost_lines": [], "misrouted_count": 0, "went_to_files": [],
-                  "issues": ["b15_redirect"]}]
+                  "truly_lost_lines": [], "moved_lines": [task], "dest_lines": [task],
+                  "went_to_details": {}, "line_statuses": {task.strip().lower(): "move"},
+                  "misrouted_count": 0, "went_to_files": [], "issues": ["b15_redirect"]}]
     page_name = _write_page(serve_dir, "js29.html", diff, narrative, pre_classification=pre_class)
 
     browser = playwright.chromium.launch()
@@ -1583,10 +1585,15 @@ def test_js29_py_move_confirmed_fallback(playwright, http_server):
     page.wait_for_selector("#modal-overlay.open")
 
     modal_text = page.eval_on_selector("#modal-body", "el => el.textContent")
+    # Python-primary path: dest panel exists and shows the dest task (from pc.dest_lines).
+    # The old _pyMoveConfirmed fallback showed "0 lines confirmed moved" — no task in dest panel.
+    dest_panel = page.query_selector("#modal-dest-lines")
+    dest_text = dest_panel.text_content() if dest_panel else ""
     browser.close()
 
+    # Python-primary path: source line visible (from moved_lines), "confirmed moved" in count label
     assert "confirmed" in modal_text.lower(), (
-        f"Modal must show 'confirmed by sweep engine' note when Python says moved. Got: {modal_text!r}"
+        f"Modal must show 'confirmed moved' count label from Python-primary path. Got: {modal_text!r}"
     )
     assert "No source lines matched" not in modal_text, (
         f"Modal must NOT show 'No source lines matched' when Python confirmed the move"
@@ -1595,6 +1602,9 @@ def test_js29_py_move_confirmed_fallback(playwright, http_server):
     clean_task = "Design a Bikar pattern plugin for Figma with palette generation"
     assert clean_task.lower() in modal_text.lower(), (
         f"Source task line must be visible in modal. Got: {modal_text!r}"
+    )
+    assert clean_task.lower() in dest_text.lower(), (
+        f"Dest panel must show matched task from Python pc.dest_lines. Got: {dest_text!r}"
     )
 
 
@@ -1657,4 +1667,64 @@ def test_js30_pre_classification_has_line_content(playwright, http_server):
 
     assert clean.lower() in modal_text.lower(), (
         f"Source task must appear in modal body. Got: {modal_text!r}"
+    )
+
+
+# JS-31  Python-primary modal path: renders from PRE_CLASSIFICATION.moved_lines even
+#         when JS section extraction would fail (section name not in diff).
+# ---------------------------------------------------------------------------
+
+def test_js31_python_primary_modal_renders_moved_lines(playwright, http_server):
+    """JS-31: When PRE_CLASSIFICATION has moved_lines, the modal renders from Python data.
+    The task is removed under a section whose header is NOT in the diff, so JS would
+    find no removed lines — but the Python-primary path shows the task from moved_lines."""
+    base_url, serve_dir = http_server
+
+    task = "- [ ] Configure ESGenius scoring pipeline for batch processing workflows"
+    dest_task = "- [ ] Configure ESGenius scoring pipeline for batch processing workflows >2026-04-30"
+
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "ESGenius",   # section header NOT in diff → JS finds nothing
+                  "summary": "ESGenius config", "destination": "[[Notes/Plans/ESGenius]]"}]
+    diff = _make_diff([
+        # Source removes the task but with NO section header — JS extractSectionLines returns []
+        {"path": "Calendar/20260413.md", "removed": [task], "added": []},
+        {"path": "Notes/Plans/ESGenius.md", "removed": [], "added": [dest_task]},
+    ])
+    # Python PRE_CLASSIFICATION has moved_lines (Python uses disk content + section inference)
+    pre_class = [{"idx": 0, "type": "move", "moved_count": 1, "lost_count": 0,
+                  "truly_lost_lines": [], "moved_lines": [task], "dest_lines": [dest_task],
+                  "went_to_details": {}, "line_statuses": {task.strip().lower(): "move"},
+                  "misrouted_count": 0, "went_to_files": [], "issues": []}]
+    page_name = _write_page(serve_dir, "js31.html", diff, narrative, pre_classification=pre_class)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    page.click("tr[data-row-idx='0'] button.view-btn")
+    page.wait_for_selector("#modal-overlay.open")
+    modal_text = page.eval_on_selector("#modal-body", "el => el.textContent")
+    dest_panel = page.query_selector("#modal-dest-lines")
+    dest_text = dest_panel.text_content() if dest_panel else ""
+    browser.close()
+
+    clean = "Configure ESGenius scoring pipeline for batch processing workflows"
+    assert clean.lower() in modal_text.lower(), (
+        f"Source task must appear in modal from Python moved_lines, not JS extraction. Got: {modal_text!r}"
+    )
+    assert "No source lines matched" not in modal_text, (
+        "Python-primary path must not show 'No source lines matched'"
+    )
+    assert "confirmed" in modal_text.lower(), (
+        f"Count label must show 'confirmed moved' from Python-primary path. Got: {modal_text!r}"
+    )
+    # Dest panel must show the dest task from pc.dest_lines (includes due date suffix)
+    assert "2026-04-30" in dest_text, (
+        f"Dest panel must show dest_task (with due date) from Python pc.dest_lines. Got: {dest_text!r}"
     )

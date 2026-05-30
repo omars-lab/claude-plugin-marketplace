@@ -1613,16 +1613,161 @@ function switchDestTab(type, btn) {{
   document.getElementById('modal-dest-lines').innerHTML = renderDestGroups(_modalDestGroups, new Set(lines), cls);
 }}
 
+function _showSectionModalFromPython(idx, row, _pyc, focusLost) {{
+  // ── Python-primary modal rendering ─────────────────────────────────────────
+  // Renders entirely from PRE_CLASSIFICATION data — no JS re-classification.
+  // Called when _pyc has moved_lines/dest_lines/truly_lost_lines content.
+  const sectionName = row.section.replace(/^#+\\s*/, '').trim();
+  const destRaw     = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
+  const destShort   = destRaw.split('/').pop();
+  const srcShort    = row.source_file.split('/').pop();
+  const srcName     = `<span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(srcShort)}}</span>`;
+
+  const movedLines     = _pyc.moved_lines      || [];
+  const destLines      = _pyc.dest_lines       || [];
+  const trulyLostLines = _pyc.truly_lost_lines || [];
+  const wentToDetails  = _pyc.went_to_details  || {{}};
+  const rowType        = _pyc.type || 'empty';
+  const issues         = _pyc.issues || [];
+  const isFocusWentTo  = (rowType === 'went-to');
+  const isFocusLost    = focusLost || rowType === 'lost' || rowType === 'empty';
+  const isMixed        = movedLines.length > 0 && trulyLostLines.length > 0;
+
+  // Update shared modal state for badge and switchDestTab compatibility
+  _modalMovedLines = movedLines;
+  _modalDestGroups = [];
+  _modalMovedPairs = new Map();
+  _modalNewLines   = [];
+  _modalCrossLines = [];
+
+  // ── Source panel ──────────────────────────────────────────────────────────
+  let srcBody;
+  if (rowType === 'empty') {{
+    const reason = issues.join(', ') || 'no content found';
+    srcBody = `<div class="diff-lines"><div style="color:#e3b341;padding:12px 0">⚠ ${{esc(reason)}}<br><br>Cannot verify this row — open the source file to inspect manually.</div></div>`;
+  }} else {{
+    // ⇢ Went-to banner (from went_to_details)
+    let wentToHtml = '';
+    const wentToStems = Object.keys(wentToDetails);
+    if (wentToStems.length > 0) {{
+      const _items = wentToStems.map(stem => {{
+        const lines = wentToDetails[stem] || [];
+        const linesHtml = lines.map(l => `<div class="diff-line" style="font-family:monospace;font-size:10px;color:#8b949e;padding:1px 0 1px 8px">${{esc(l)}}</div>`).join('');
+        return `<details style="margin-top:4px"><summary style="color:#58a6ff;font-family:monospace;font-size:11px;cursor:pointer;list-style:none">${{esc(stem)}} — ${{lines.length}} line${{lines.length!==1?'s':''}} found ▸</summary>${{linesHtml}}</details>`;
+      }}).join('');
+      wentToHtml = `<div class="v-r6-banner" style="margin:4px 0 8px;padding:6px 8px;background:#001730;border-left:2px solid #58a6ff;border-radius:3px">` +
+        `<div style="color:#58a6ff;font-size:11px;font-weight:600">⇢ Content arrived at a different destination</div>` +
+        `<div style="color:#8b949e;font-size:10px;margin-top:2px">Source lines were found in a file other than <strong>${{esc(destShort)}}</strong>.</div>` +
+        _items + `</div>`;
+    }} else if (isFocusWentTo && (_pyc.went_to_files || []).length > 0) {{
+      const _items2 = (_pyc.went_to_files || []).map(stem =>
+        `<details style="margin-top:4px"><summary style="color:#58a6ff;font-family:monospace;font-size:11px;cursor:pointer;list-style:none">${{esc(stem)}} ▸</summary></details>`
+      ).join('');
+      wentToHtml = `<div class="v-r6-banner" style="margin:4px 0 8px;padding:6px 8px;background:#001730;border-left:2px solid #58a6ff;border-radius:3px">` +
+        `<div style="color:#58a6ff;font-size:11px;font-weight:600">⇢ Content arrived at a different destination</div>` +
+        `<div style="color:#8b949e;font-size:10px;margin-top:2px">Source lines found in a different file than the breadcrumb destination.</div>` +
+        _items2 + `</div>`;
+    }}
+    // Confirmed moved (green border)
+    const movedHtml = movedLines.map(l =>
+      `<div class="diff-line removed" style="border-left:2px solid #3fb950">${{esc(l)}}</div>`
+    ).join('');
+    // Absent (red)
+    const absentHtml = trulyLostLines.map(l => `<div class="diff-line removed">${{esc(l)}}</div>`).join('');
+    const absentSection = trulyLostLines.length > 0
+      ? `<div style="margin-top:8px;border-top:1px solid #30363d;padding-top:6px">` +
+        (isMixed
+          ? `<div style="color:#e3b341;font-size:11px;font-weight:600;padding:2px 0 6px">⚡ ✗ Absent (${{trulyLostLines.length}} line${{trulyLostLines.length>1?'s':''}}) — not found at destination — sweep should have split this section</div>`
+          : `<div style="color:#f85149;font-size:10px;padding:2px 0 4px">✗ ${{trulyLostLines.length}} line${{trulyLostLines.length>1?'s':''}} absent from diff additions</div>`) +
+        absentHtml + `</div>`
+      : '';
+
+    if (isFocusWentTo) {{
+      const allSrc = [...movedLines, ...trulyLostLines, ...Object.values(wentToDetails).flat()];
+      const allSrcHtml = allSrc.map(l => `<div class="diff-line removed">${{esc(l)}}</div>`).join('')
+        || `<div class="modal-empty" style="color:#6e7681">Source lines not found in diff.</div>`;
+      srcBody = `<div class="diff-lines">${{wentToHtml}}${{allSrcHtml}}</div>`;
+    }} else if (isFocusLost) {{
+      const lostHtml = trulyLostLines.map(l => `<div class="diff-line removed">${{esc(l)}}</div>`).join('')
+        || `<div class="modal-empty" style="color:#6e7681">No unmatched lines found.</div>`;
+      srcBody = `<div class="diff-lines">${{wentToHtml}}${{lostHtml}}</div>`;
+    }} else {{
+      const movedHeader = isMixed
+        ? `<div style="color:#3fb950;font-size:11px;font-weight:600;padding:2px 0 6px">✓ Moved (${{movedLines.length}} line${{movedLines.length!==1?'s':''}}) — arrived at destination</div>`
+        : '';
+      srcBody = `<div class="diff-lines">${{movedHeader}}${{movedHtml}}${{absentSection}}</div>`;
+    }}
+  }}
+  const srcPanel = `<div><div class="modal-panel-hdr">Removed from source — ${{srcName}}</div>${{srcBody}}</div>`;
+
+  // ── Dest panel ─────────────────────────────────────────────────────────────
+  let destPanel = '';
+  if (!isFocusLost && !isFocusWentTo && rowType !== 'empty') {{
+    const destHdr   = `Added to destination — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(destShort)}}</span>`;
+    const destHtml  = destLines.map(l => `<div class="diff-line new-content">${{esc(l)}}</div>`).join('')
+      || `<div class="modal-empty" style="color:#6e7681">No matching additions in destination.</div>`;
+    const movedCount = _pyc.moved_count || 0;
+    const countLabel = movedCount > 0
+      ? `<div class="modal-panel-tabs"><span style="color:#3fb950;font-size:10px">✓ ${{movedCount}} line${{movedCount!==1?'s':''}} confirmed moved</span></div>`
+      : `<div class="modal-panel-tabs"><span style="color:#f85149;font-size:10px">✗ 0 lines confirmed moved</span></div>`;
+    destPanel = `<div><div class="modal-panel-hdr">${{destHdr}}</div>${{countLabel}}<div class="diff-lines" id="modal-dest-lines">${{destHtml}}</div></div>`;
+  }}
+
+  // ── Render + badge ─────────────────────────────────────────────────────────
+  const titleSuffix = isFocusLost  ? ' — ✗ Absent lines'
+    : isFocusWentTo ? ' ⇢ Arrived elsewhere'
+    : ' → ' + normDest(row.destination);
+  document.getElementById('modal-title').textContent = sectionName + titleSuffix;
+  const scopeEl = document.getElementById('modal-scope');
+  if (scopeEl) scopeEl.style.display = 'none';
+  const modalBodyEl = document.getElementById('modal-body');
+  modalBodyEl.style.gridTemplateColumns = (isFocusLost || isFocusWentTo) ? '1fr' : '1fr 1fr';
+  modalBodyEl.innerHTML = srcPanel + destPanel;
+  document.getElementById('modal-overlay').classList.add('open');
+
+  const classification = {{
+    type:           rowType,
+    movedCount:     _pyc.moved_count     || 0,
+    lostCount:      _pyc.lost_count      || 0,
+    newCount:       0,
+    misroutedCount: _pyc.misrouted_count || 0,
+    wentToFiles:    _pyc.went_to_files   || [],
+    trulyLostLines: trulyLostLines,
+    movedLines:     movedLines,
+    destLines:      destLines,
+    wentToDetails:  wentToDetails,
+    lineStatuses:   _pyc.line_statuses   || {{}},
+    emptyReason:    issues.join(', '),
+    blocks:         [],
+    _fromPython:    true,
+  }};
+  if (classification.movedCount > 0) classification.blocks.push({{type: 'move', count: classification.movedCount}});
+  if (classification.lostCount  > 0) classification.blocks.push({{type: 'lost',  count: classification.lostCount, lines: trulyLostLines}});
+  _rowClassifications.set(idx, classification);
+  updateRowBadge(idx, classification);
+}}
+
 function showSectionModal(idx, focusLost = false) {{
   const row = MODAL_ROWS[idx];
   if (!row) return;
+
+  // Python-primary path: when PRE_CLASSIFICATION has line content, render from Python data.
+  // Avoids JS re-classification which can't follow B-15 redirects or infer section headers.
+  const _pyc = PRE_CLASSIFICATION ? PRE_CLASSIFICATION.find(pc => pc.idx === idx) : null;
+  const _usePython = !!(_pyc && (
+    (_pyc.moved_lines      || []).length > 0 ||
+    (_pyc.dest_lines       || []).length > 0 ||
+    (_pyc.truly_lost_lines || []).length > 0 ||
+    _pyc.type === 'went-to' || _pyc.type === 'empty'
+  ));
+  if (_usePython) {{ _showSectionModalFromPython(idx, row, _pyc, focusLost); return; }}
+
+  // JS fallback — used when PRE_CLASSIFICATION is absent (test pages, legacy snapshots).
   // Auto-mode flags: lost → focusLost single panel; anomaly → focusAnomaly single panel
   let focusAnomaly = false;
   let focusWentTo  = false;
-  let _pyc = null; // PRE_CLASSIFICATION entry for this row
   if (!focusLost) {{
     const cached = _rowClassifications.get(idx);
-    _pyc = PRE_CLASSIFICATION ? PRE_CLASSIFICATION.find(pc => pc.idx === idx) : null;
     const jsType = cached?.type;
     const pyType = _pyc?.type;
     // went-to takes priority over empty/lost — Python section extraction is more reliable.
@@ -1798,8 +1943,6 @@ function showSectionModal(idx, focusLost = false) {{
 
   // Pair ID maps hoisted to function scope so renderDestGroups (called after this block) can use them
   let destPairIds = null, srcPairIds = null;
-  // Hoisted: set inside removedLines block, used in countLabel and type determination below
-  let _pyMoveConfirmed = false;
 
   if (removedLines.length > 0) {{
     // Build srcLine → lineNo map; use allSrc result in the inferred case (srcResult had no match)
@@ -1822,10 +1965,6 @@ function showSectionModal(idx, focusLost = false) {{
     const matchedSrcSet = new Set(_validMovedForLost.map(dl => movedPairs.get(dl)).filter(Boolean));
     const lostLines = removedLines.filter(l => !matchedSrcSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l));
     const isMixed = lostLines.length > 0 && moved.length > 0;
-    // PRE_CLASSIFICATION fallback: Python confirmed lines moved but JS re-classification found nothing.
-    // Common cause: B-15 redirect where JS can't match the linked file stem (emoji normalization),
-    // or inferred section where Python used disk content but JS only has the diff.
-    _pyMoveConfirmed = !!((_pyc && _pyc.moved_count > 0 && moved.length === 0 && !focusWentTo));
     // V-R6 modal banner: uses same prefix/body matching as classifyRow so enriched lines are found.
     // Reuses _allAddedEntries if already built by classifyRow (lazy-shared cache).
     let misrouteHtml = '';
@@ -1918,21 +2057,7 @@ function showSectionModal(idx, focusLost = false) {{
     const movedHeader = isMixed && !focusLost
       ? `<div style="color:#3fb950;font-size:11px;font-weight:600;padding:2px 0 6px">✓ Moved (${{moved.length}} line${{moved.length!==1?'s':''}}) — arrived at destination</div>`
       : '';
-    if (_pyMoveConfirmed) {{
-      // Python confirmed moved but JS re-classification failed — show source lines with a
-      // sweep-engine confirmation note. The right panel will also show a confirmation label.
-      const _pyConfHtml = removedLines.map(l => {{
-        const lno = srcLineNos?.get(l);
-        const lnoHtml = lno ? `<span class="line-no">${{lno}}</span>` : '';
-        return `<div class="diff-line removed" style="border-left:2px solid #3fb950">${{lnoHtml}}${{esc(l)}}</div>`;
-      }}).join('') || '<div class="modal-empty" style="color:#6e7681">No source lines in diff for this section.</div>';
-      const _redirectNote = _b15ModalTarget
-        ? ` — via redirect → <span style="font-family:monospace">${{esc(_b15ModalTarget)}}</span>`
-        : '';
-      const _pyBanner = `<div style="color:#3fb950;font-size:10px;padding:2px 0 6px;border-bottom:1px solid #1a3a28;margin-bottom:6px">` +
-        `✓ Confirmed by sweep engine — ${{_pyc.moved_count}} line${{_pyc.moved_count!==1?'s':''}} moved${{_redirectNote}}</div>`;
-      srcBody = `${{srcTabBar}}<div class="diff-lines">${{_pyBanner}}${{_pyConfHtml}}</div>`;
-    }} else if (focusWentTo) {{
+    if (focusWentTo) {{
       // Went-to mode: show source lines directly + ⇢ banner. srcGrouped is empty here because
       // no lines moved to the breadcrumb dest, so renderSrcGrouped finds no groups to display.
       // Fall back to Python PRE_CLASSIFICATION went_to_files if V-R6 banner is empty
@@ -2058,9 +2183,6 @@ function showSectionModal(idx, focusLost = false) {{
           ? `<span style="color:#f85149;font-size:10px">⚠ destination file was created empty — content was never written</span>`
           : `<span style="color:#8b949e;font-size:10px">— no content lines found in source section</span>`;
     countLabel = `<div class="modal-panel-tabs">${{why}}</div>`;
-  }} else if (validMoved.length === 0 && _pyc?.moved_count > 0) {{
-    const _redirectNote = _b15ModalTarget ? ` (via redirect)` : '';
-    countLabel = `<div class="modal-panel-tabs"><span style="color:#3fb950;font-size:10px">✓ ${{_pyc.moved_count}} line${{_pyc.moved_count!==1?'s':''}} confirmed moved${{esc(_redirectNote)}} — sweep engine</span></div>`;
   }} else if (validMoved.length === 0) {{
     countLabel = `<div class="modal-panel-tabs"><span style="color:#f85149;font-size:10px">✗ 0 lines confirmed moved</span>${{validationWarning}}</div>`;
   }} else {{
@@ -2110,8 +2232,7 @@ function showSectionModal(idx, focusLost = false) {{
   const countableRemovedM = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l));
   const srcTotal = srcResult.matched ? countableRemovedM.length : movedCount;
   let type;
-  if (_pyMoveConfirmed) type = 'move';  // trust Python when JS re-classification failed
-  else if (destNotInDiff || srcNotInDiff) type = 'empty';
+  if (destNotInDiff || srcNotInDiff) type = 'empty';
   else if (srcTotal === 0 && trueNewCount === 0) type = 'empty';
   else if (srcTotal === 0 && trueNewCount > 0) type = 'anomaly';
   else if (movedCount === srcTotal) type = 'move';  // all arrived at breadcrumb dest
