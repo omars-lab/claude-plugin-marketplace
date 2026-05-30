@@ -2704,6 +2704,215 @@ def cmd_sweep_review_audit(args):
     else:
         print(report)
 
+    # Auto-append to quality log so sweep-review-quality can track trends over time
+    _append_quality_log(root, run_id, counts, problems)
+
+
+def _quality_log_path(root: Path) -> Path:
+    return root / "sweeps" / "quality-log.jsonl"
+
+
+def _resolution_cache_path(root: Path) -> Path:
+    return root / "sweeps" / "resolutions.jsonl"
+
+
+def _append_quality_log(root: Path, run_id: str, counts: dict, problems: list) -> None:
+    """Append one structured entry per audit run to quality-log.jsonl."""
+    from datetime import datetime as _dt
+    entry = {
+        "run_id": run_id,
+        "generated_at": _dt.now().isoformat(timespec='seconds'),
+        "by_type": counts,
+        "total": sum(counts.values()),
+        "issues": [
+            {
+                "source": row.get("source_file", ""),
+                "section": row.get("section", ""),
+                "dest": row.get("destination", ""),
+                "type": result["type"],
+                "issue_tags": result.get("issues", []),
+                "lost_count": len(result.get("lost", [])),
+                "new_count": len(result.get("new", [])),
+                "already_present_count": len(result.get("already_present", [])),
+                "lost_lines": result.get("lost", [])[:3],
+                "new_lines": result.get("new", [])[:3],
+            }
+            for row, result in problems
+        ],
+    }
+    log_path = _quality_log_path(root)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+
+
+def _load_resolutions(root: Path) -> set:
+    """Load the set of (source_file, section, dest) tuples marked as resolved."""
+    path = _resolution_cache_path(root)
+    resolved = set()
+    if not path.exists():
+        return resolved
+    for line in path.read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+            resolved.add((e.get('source', ''), e.get('section', ''), e.get('dest', '')))
+        except Exception:
+            pass
+    return resolved
+
+
+# sweep-review-quality
+def cmd_sweep_review_quality(args) -> None:
+    """Read quality-log.jsonl across all runs and surface patterns + suggested fixes."""
+    root = _np_root()
+    log_path = _quality_log_path(root)
+
+    if not log_path.exists():
+        utils.err("No quality log found. Run sweep-review-audit first.")
+        sys.exit(utils.EXIT_NOT_FOUND)
+
+    entries = []
+    for line in log_path.read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if line:
+            try:
+                entries.append(json.loads(line))
+            except Exception:
+                pass
+
+    if not entries:
+        print("Quality log is empty.")
+        return
+
+    resolutions = _load_resolutions(root)
+
+    # Aggregate across all runs
+    total_runs = len(entries)
+    all_issues = [i for e in entries for i in e.get('issues', [])]
+    # Filter out resolved rows
+    open_issues = [
+        i for i in all_issues
+        if (i['source'], i['section'], i['dest']) not in resolutions
+    ]
+
+    # Count by type and tag
+    from collections import Counter, defaultdict
+    type_counts = Counter(i['type'] for i in open_issues)
+    tag_counts  = Counter(t for i in open_issues for t in i.get('issue_tags', []))
+
+    # Top recurring anomaly destinations
+    anomaly_dests  = Counter(i['dest'] for i in open_issues if i['type'] == 'anomaly')
+    # Top recurring lost sections
+    lost_sections  = Counter(i['section'] for i in open_issues if i['type'] in ('lost', 'mixed'))
+    # Sections where dest_not_in_diff — likely sectionHeaderMatches false match
+    fp_sections    = Counter(
+        i['section'] for i in open_issues if 'dest_not_in_diff' in i.get('issue_tags', [])
+    )
+
+    sep = '─' * 64
+    print(f"Sweep quality report — {total_runs} run(s) in log")
+    print(sep)
+
+    # Summary
+    print(f"  Open issues across all runs: {len(open_issues)}")
+    print(f"  Resolved (suppressed):       {len(all_issues) - len(open_issues)}")
+    print(f"  By type:  " + "  ".join(f"{t}: {n}" for t, n in type_counts.most_common()))
+    if tag_counts:
+        print(f"  By tag:   " + "  ".join(f"{t}: {n}" for t, n in tag_counts.most_common(5)))
+    print(sep)
+
+    # Anomaly hotspots — destinations that repeatedly receive untraced additions
+    if anomaly_dests:
+        print("\n  Anomaly hotspots (recurring + destinations with no source trace):")
+        for dest, n in anomaly_dests.most_common(5):
+            dest_clean = re.sub(r'\[\[([^\]]+)\]\]', r'\1', dest).strip()
+            print(f"    + {dest_clean}  ({n}×)")
+        print(f"\n  → These destinations may need their own breadcrumb rows, or the")
+        print(f"    anomaly lines are from a different source file not yet covered.")
+
+    # Lost section hotspots
+    if lost_sections:
+        print("\n  Lost section hotspots (sections that repeatedly lose lines):")
+        for sect, n in lost_sections.most_common(5):
+            print(f"    ✗ {sect}  ({n}×)")
+        print(f"\n  → Check if these sections are being split during sweep.")
+        print(f"    If the lines are truly lost, run /noteplan-manager:sweep-remediate.")
+
+    # False positive patterns (dest_not_in_diff → portal showed row but dest wasn't modified)
+    if fp_sections:
+        print("\n  Likely false positives (dest not in diff — breadcrumb but no dest change):")
+        for sect, n in fp_sections.most_common(5):
+            print(f"    ⚠ {sect}  ({n}×)")
+        print(f"\n  → These rows may be from stale breadcrumbs or mismatched section names.")
+        print(f"    Code location: sectionHeaderMatches() in sweep_review.py")
+        print(f"    Check: does the section name in the breadcrumb match any ## header in the diff?")
+
+    # Per-run trend
+    print(f"\n{sep}")
+    print("  Trend (newest first):")
+    for e in reversed(entries[-5:]):
+        t = e.get('by_type', {})
+        run_open = [i for i in e.get('issues', [])
+                    if (i['source'], i['section'], i['dest']) not in resolutions]
+        print(f"    {e['run_id']}  total={e['total']}  "
+              f"✓{t.get('move',0)} ✗{t.get('lost',0)} ⚡{t.get('mixed',0)} +{t.get('anomaly',0)} "
+              f"open_issues={len(run_open)}")
+
+    print(f"\n  To mark a row as resolved/intentional, run:")
+    print(f"    noteplan-sweep sweep-review-resolve <run_id> <section>")
+    print(f"  To remediate open issues:")
+    print(f"    /noteplan-manager:sweep-remediate")
+
+
+# sweep-review-resolve
+def cmd_sweep_review_resolve(args) -> None:
+    """Mark a (source × section × dest) tuple as resolved so it won't re-appear in quality reports."""
+    root = _np_root()
+    log_path = _quality_log_path(root)
+
+    if not log_path.exists():
+        utils.err("No quality log found. Run sweep-review-audit first.")
+        sys.exit(utils.EXIT_NOT_FOUND)
+
+    # Find matching issues in the log
+    run_id = args.run_id
+    section_query = args.section.lower().strip()
+
+    matches = []
+    for line in log_path.read_text(encoding='utf-8').splitlines():
+        try:
+            e = json.loads(line)
+            if e.get('run_id') != run_id:
+                continue
+            for i in e.get('issues', []):
+                if section_query in i.get('section', '').lower():
+                    matches.append(i)
+        except Exception:
+            pass
+
+    if not matches:
+        utils.err(f"No issues found matching run={run_id!r} section={section_query!r}")
+        sys.exit(utils.EXIT_NOT_FOUND)
+
+    from datetime import datetime as _dt
+    res_path = _resolution_cache_path(root)
+    res_path.parent.mkdir(parents=True, exist_ok=True)
+    written = 0
+    with res_path.open('a', encoding='utf-8') as f:
+        for i in matches:
+            entry = {
+                "source": i['source'], "section": i['section'], "dest": i['dest'],
+                "resolved_at": _dt.now().isoformat(timespec='seconds'),
+                "run_id": run_id, "reason": args.reason or "intentional",
+            }
+            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+            written += 1
+
+    utils.log(f"sweep-review-resolve: marked {written} issue(s) as resolved in {res_path}")
+
 
 # ---------------------------------------------------------------------------
 # scan_sweep_runs — used by dashboard.py to populate the Sweep Reviews tab

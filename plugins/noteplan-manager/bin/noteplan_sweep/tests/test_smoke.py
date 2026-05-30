@@ -77,7 +77,7 @@ def test_commands_count():
     """Sanity-check: dispatcher should have exactly 65 commands."""
     content = DISPATCHER.read_text()
     cmds = _parse_commands_list(content)
-    assert len(cmds) == 65, f"Expected 65 commands, got {len(cmds)}: {cmds}"
+    assert len(cmds) == 67, f"Expected 67 commands, got {len(cmds)}: {cmds}"
 
 
 # ---------------------------------------------------------------------------
