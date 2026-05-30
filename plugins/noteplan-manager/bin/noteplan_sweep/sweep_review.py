@@ -313,10 +313,12 @@ def cmd_sweep_review_generate(args):
         utils.log(f"[dry-run] Would write {sweeps / (run_id + '.snapshot.html')}")
         return
 
-    html = _build_snapshot_html(run_id, date_str, sweep_sha, stat_text, diff_text, seed_comments, narrative, changed_calendar_files)
+    html = _build_snapshot_html(run_id, date_str, sweep_sha, stat_text, diff_text,
+                                seed_comments, narrative, changed_calendar_files,
+                                base_commit=base_commit)
     out_path = sweeps / f"{run_id}.snapshot.html"
     out_path.write_text(html, encoding="utf-8")
-    utils.log(f"sweep-review-generate: wrote {out_path}")
+    utils.log(f"sweep-review-generate: wrote {out_path}  (range: {base_commit[:7]}..HEAD)")
 
 
 def _decode_git_quoted_paths(text: str) -> str:
@@ -428,6 +430,7 @@ def _build_snapshot_html(
     seed_comments: list,
     narrative: list | None = None,
     changed_calendar_files: list | None = None,
+    base_commit: str | None = None,
 ) -> str:
     seed_json = json.dumps(seed_comments, indent=2)
     narrative_json = json.dumps(narrative or [], indent=2)
@@ -448,7 +451,9 @@ def _build_snapshot_html(
                 lines = [_norm_line(l) for l in p.read_text(errors='replace').splitlines()]
                 dest_file_lines[stem.lower()] = [l for l in lines if len(l) > 4]
     dest_file_lines_json = json.dumps(dest_file_lines)
+    base_commit_comment = f"<!-- base_commit: {base_commit} -->" if base_commit else ""
     return f"""<!DOCTYPE html>
+{base_commit_comment}
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -3220,6 +3225,361 @@ def cmd_sweep_review_resolve(args) -> None:
             written += 1
 
     utils.log(f"sweep-review-resolve: marked {written} issue(s) as resolved in {res_path}")
+
+
+# ---------------------------------------------------------------------------
+# sweep-diff-coverage  (#70)
+# ---------------------------------------------------------------------------
+
+def cmd_sweep_diff_coverage(args) -> None:
+    """Per-source-file coverage report: breadcrumb count vs removed lines in diff.
+    Files with ratio < 0.5 are flagged as thin-coverage (B-16 retroactive sweep risk)."""
+    root = _np_root()
+    sweeps = _sweeps_dir(root)
+
+    date_str = args.date or date.today().strftime("%Y-%m-%d")
+    run_n = args.run
+    if run_n is None:
+        d, n = _latest_run(sweeps, date_str)
+        if d is None:
+            utils.err(f"No snapshot found for {date_str}.")
+            sys.exit(utils.EXIT_NOT_FOUND)
+        date_str, run_n = d, n
+
+    run_id = f"{date_str}-{run_n:02d}"
+    snap_path = sweeps / f"{run_id}.snapshot.html"
+    if not snap_path.exists():
+        utils.err(f"Snapshot not found: {snap_path}")
+        sys.exit(utils.EXIT_NOT_FOUND)
+
+    html = snap_path.read_text(encoding="utf-8")
+    diff_text = _extract_js_str(html, "DIFF_TEXT")
+    narrative = _extract_js_val(html, "NARRATIVE")
+
+    if not narrative:
+        print("No narrative rows found.")
+        return
+
+    from collections import Counter, defaultdict
+
+    breadcrumb_count: Counter = Counter()
+    for row in narrative:
+        src = row.get("source_file", "").split("/")[-1]
+        if src:
+            breadcrumb_count[src] += 1
+
+    removed_per_file: defaultdict = defaultdict(int)
+    cur_file = None
+    for raw in diff_text.splitlines():
+        if raw.startswith("diff --git "):
+            cur_file = raw.split("/")[-1].split()[0] if raw.split("/") else None
+        elif cur_file and raw and raw[0] == "-" and not raw.startswith("---"):
+            removed_per_file[cur_file] += 1
+
+    base_m = re.search(r"<!-- base_commit: ([0-9a-f]{7,40}) -->", html)
+    sha_m = re.search(r"sha:\s*([0-9a-f]{7,40})", html)
+    diff_range = ""
+    if base_m and sha_m:
+        diff_range = f"{base_m.group(1)[:7]}..{sha_m.group(1)[:7]}"
+
+    print(f"\nSweep diff coverage — {run_id}{(' (' + diff_range + ')') if diff_range else ''}")
+    print(f"{'File':<30} {'Breadcrumbs':>12} {'Removed':>8} {'Ratio':>6}  Status")
+    print("-" * 65)
+
+    total_thin = 0
+    for src_file in sorted(breadcrumb_count.keys()):
+        count = breadcrumb_count[src_file]
+        removed = removed_per_file.get(src_file, 0)
+        ratio = removed / count if count else 0.0
+        thin = ratio < 0.5
+        if thin:
+            total_thin += 1
+        status = "⚠  THIN (B-16 risk)" if thin else "✓"
+        print(f"{src_file:<30} {count:>12} {removed:>8} {ratio:>6.2f}  {status}")
+
+    print("-" * 65)
+    total_rows = sum(breadcrumb_count.values())
+    total_removed = sum(removed_per_file.get(f, 0) for f in breadcrumb_count)
+    overall = total_removed / total_rows if total_rows else 0.0
+    print(f"{'TOTAL':<30} {total_rows:>12} {total_removed:>8} {overall:>6.2f}  "
+          f"{'⚠  ' + str(total_thin) + ' file(s) thin' if total_thin else '✓ all OK'}")
+    if total_thin:
+        print("\nThin files: source section removals not captured in diff.")
+        print("Root cause: sweep committed sections in a prior run (retroactive breadcrumbing).")
+        print("Impact: portal audit uses disk-confirmation (B-16) to classify these as empty.")
+
+
+# ---------------------------------------------------------------------------
+# sweep-review-diagnose  (#70)
+# ---------------------------------------------------------------------------
+
+def cmd_sweep_review_diagnose(args) -> None:
+    """Per-row diagnostic: source diff coverage, section match, anomaly root cause.
+    Prints a breakdown for every row (or just --section NAME) in a snapshot."""
+    root = _np_root()
+    sweeps = _sweeps_dir(root)
+
+    date_str = args.date or date.today().strftime("%Y-%m-%d")
+    run_n = args.run
+    if run_n is None:
+        d, n = _latest_run(sweeps, date_str)
+        if d is None:
+            utils.err(f"No snapshot found for {date_str}.")
+            sys.exit(utils.EXIT_NOT_FOUND)
+        date_str, run_n = d, n
+
+    run_id = f"{date_str}-{run_n:02d}"
+    snap_path = sweeps / f"{run_id}.snapshot.html"
+    if not snap_path.exists():
+        utils.err(f"Snapshot not found: {snap_path}")
+        sys.exit(utils.EXIT_NOT_FOUND)
+
+    html = snap_path.read_text(encoding="utf-8")
+    diff_text = _extract_js_str(html, "DIFF_TEXT")
+    narrative = _extract_js_val(html, "NARRATIVE")
+
+    if not narrative:
+        print("No narrative rows found.")
+        return
+
+    section_filter = (args.section or "").lower().strip()
+    show_only = args.show or "all"  # "all" | "anomaly" | "empty" | "move" | "lost"
+
+    # Build global removed norms (B-13 layer 2)
+    _global_removed_norms: set = set()
+    for raw in diff_text.splitlines():
+        if raw.startswith("-") and len(raw) > 1 and not raw.startswith("---"):
+            n = _norm_line(raw[1:])
+            if len(n) > 5:
+                _global_removed_norms.add(n)
+
+    # Build sibling norms (B-13 layer 1) per dest stem
+    _sibling_norms: dict = {}
+    for row in narrative:
+        dest_raw = re.sub(r"\[\[([^\]]+)\]\]", r"\1", row.get("destination", "")).strip()
+        dest_raw = re.sub(r"\.md$", "", dest_raw).strip()
+        sec = re.sub(r"^#+\s*", "", row.get("section", "")).strip()
+        src = row.get("source_file", "").split("/")[-1]
+        lines = _extract_section_lines(diff_text, src, sec, "-")
+        norms = {_norm_line(l) for l in lines if not _is_noise(l) and len(_norm_line(l)) > 2}
+        _sibling_norms.setdefault(dest_raw, set()).update(norms)
+
+    print(f"\nSweep diagnose — {run_id}  ({len(narrative)} rows)")
+    print("=" * 70)
+    shown = 0
+
+    for idx, row in enumerate(narrative):
+        section = re.sub(r"^#+\s*", "", row.get("section", "")).strip()
+        if section_filter and section_filter not in section.lower():
+            continue
+
+        src_file = row.get("source_file", "").split("/")[-1]
+        dest_raw = re.sub(r"\[\[([^\]]+)\]\]", r"\1", row.get("destination", "")).strip()
+        dest_raw = re.sub(r"\.md$", "", dest_raw).strip()
+
+        # Source diff analysis
+        src_all_removed = _extract_section_lines(diff_text, src_file, None, "-")
+        src_sec_removed = _extract_section_lines(diff_text, src_file, section, "-")
+
+        # Check if section header appears anywhere in the source file's diff block
+        base = src_file.lower()
+        hdr_in_diff = False
+        in_src = False
+        for raw in diff_text.splitlines():
+            if raw.startswith("diff --git "):
+                in_src = base in raw.lower()
+                continue
+            if not in_src:
+                continue
+            if raw and raw[0] in ("+", "-", " "):
+                content = raw[1:]
+                hm = re.match(r"^(#+)\s", content)
+                if hm and section.lower() in re.sub(r"^#+\s*", "", content).strip().lower():
+                    hdr_in_diff = True
+                    break
+
+        # Dest scoping (V-47a)
+        dest_scoped, dest_section_found = _extract_section_lines_scoped(
+            diff_text, dest_raw + ".md", section, "+"
+        )
+        if dest_section_found:
+            dest_added = dest_scoped
+            scope_method = "fuzzy" if len(dest_scoped) < len(
+                _extract_section_lines(diff_text, dest_raw + ".md", None, "+")
+            ) else "exact"
+        else:
+            dest_added = _extract_section_lines(diff_text, dest_raw + ".md", None, "+")
+            scope_method = "full-file"
+
+        # B-13 filtering
+        sibling_norms = _sibling_norms.get(dest_raw, set())
+        unclaimed = [
+            l for l in dest_added
+            if not _is_noise(l) and len(_norm_line(l)) > 2
+            and _norm_line(l) not in sibling_norms
+            and _norm_line(l) not in _global_removed_norms
+        ]
+
+        # B-14: dest is a new file — all additions are boilerplate/sweep content, not anomalous
+        dest_stem_lower = (dest_raw.split("/")[-1] + ".md").lower()
+        dest_is_new = any(
+            "new file mode" in blk
+            for blk in re.split(r"(?=diff --git )", diff_text)
+            if dest_stem_lower in blk.lower()
+        )
+
+        # Disk confirmation (B-16) — also try Calendar directory for calendar-dest rows
+        disk_confirmed = None
+        dest_file_path = _find_dest_on_disk(root, dest_raw)
+        if dest_file_path is None:
+            cal_path = root / "Calendar" / f"{dest_raw}.md"
+            if cal_path.exists():
+                dest_file_path = cal_path
+        if unclaimed and dest_file_path:
+            dest_text = dest_file_path.read_text(errors="replace")
+            dest_file_norms = {_norm_line(l) for l in dest_text.splitlines()
+                               if len(_norm_line(l)) > 4}
+            unconfirmed = [
+                l for l in unclaimed
+                if not any(_fuzzy_match(_norm_line(l), dn) for dn in dest_file_norms)
+            ]
+            disk_confirmed = not bool(unconfirmed)
+        elif not unclaimed:
+            disk_confirmed = True  # nothing to confirm
+
+        # Classify + root cause
+        removed_countable = [l for l in src_sec_removed
+                             if not _is_noise(l) and len(_norm_line(l)) > 2]
+        if not removed_countable:
+            if dest_is_new:
+                classification = "empty [new_file]"
+                root_cause = "B-14 — dest was newly created in this sweep; additions are boilerplate"
+            elif not dest_added:
+                classification = "empty"
+                root_cause = "source and dest both empty in diff"
+            elif not unclaimed:
+                classification = "empty"
+                root_cause = "B-13 (all dest additions claimed by siblings/global removed)"
+            elif disk_confirmed:
+                classification = "empty [disk_confirmed]"
+                root_cause = "B-16 retroactive sweep — sections moved in prior run"
+            else:
+                classification = "anomaly"
+                if not hdr_in_diff and len(src_all_removed) < 3:
+                    root_cause = "B-16? (section header absent from diff, very thin source diff)"
+                elif not hdr_in_diff:
+                    root_cause = "V-47 scope miss (section header not in diff hunk context)"
+                else:
+                    root_cause = "genuine anomaly — dest has additions with no traceable source"
+        else:
+            classification = "move/lost (see audit)"
+            root_cause = "source removals found — classified by classifyDestLines"
+
+        if show_only != "all":
+            if show_only == "anomaly" and "anomaly" not in classification:
+                continue
+            elif show_only in ("empty", "move", "lost") and show_only not in classification:
+                continue
+
+        shown += 1
+        src_coverage = f"{len(src_sec_removed)}/{len(src_all_removed)} lines" if src_all_removed else "0 lines"
+        print(f"\n[{idx:02d}] {section}")
+        print(f"      src={src_file}  dest={dest_raw}")
+        print(f"      source:  hdr_in_diff={hdr_in_diff}  sec_removed={len(src_sec_removed)}  total_removed={len(src_all_removed)}")
+        print(f"      dest:    scope={scope_method}  added={len(dest_added)}  unclaimed={len(unclaimed)}")
+        print(f"      confirm: disk_confirmed={disk_confirmed}")
+        print(f"      ▶ {classification}  —  {root_cause}")
+
+    print(f"\n{'-'*70}")
+    print(f"Showed {shown}/{len(narrative)} rows"
+          + (f" matching section={section_filter!r}" if section_filter else "")
+          + (f" filter={show_only}" if show_only != "all" else ""))
+
+
+# ---------------------------------------------------------------------------
+# sweep-review-diff-range  (#71)
+# ---------------------------------------------------------------------------
+
+def cmd_sweep_review_diff_range(args) -> None:
+    """Show the git diff range stored in a snapshot and the commits it covers."""
+    root = _np_root()
+    sweeps = _sweeps_dir(root)
+
+    date_str = args.date or date.today().strftime("%Y-%m-%d")
+    run_n = args.run
+    if run_n is None:
+        d, n = _latest_run(sweeps, date_str)
+        if d is None:
+            utils.err(f"No snapshot found for {date_str}.")
+            sys.exit(utils.EXIT_NOT_FOUND)
+        date_str, run_n = d, n
+
+    run_id = f"{date_str}-{run_n:02d}"
+    snap_path = sweeps / f"{run_id}.snapshot.html"
+    if not snap_path.exists():
+        utils.err(f"Snapshot not found: {snap_path}")
+        sys.exit(utils.EXIT_NOT_FOUND)
+
+    html = snap_path.read_text(encoding="utf-8")
+    base_m = re.search(r"<!-- base_commit: ([0-9a-f]{7,40}) -->", html)
+    sha_m = re.search(r"sha:\s*([0-9a-f]{7,40})", html)
+
+    print(f"\nSnapshot: {run_id}")
+    if not base_m:
+        print("  base_commit: not stored (snapshot generated before v3.100.7)")
+        print("  Upgrade: re-run sweep-review-generate to embed base_commit.")
+        return
+
+    base = base_m.group(1)
+    head = sha_m.group(1) if sha_m else "unknown"
+    print(f"  diff range: {base[:7]}..{head[:7]}")
+    print(f"  base_commit (full): {base}")
+    print(f"  head_sha:           {head}")
+
+    log_r = _git(["log", "--oneline", f"{base}..{head}"], cwd=root)
+    if log_r.returncode == 0 and log_r.stdout.strip():
+        commits = log_r.stdout.strip().splitlines()
+        print(f"\n  Commits in range ({len(commits)}):")
+        for c in commits:
+            print(f"    {c}")
+    else:
+        print("\n  No commits found in range (range may be stale or already squashed).")
+
+    # Show which calendar files changed in range
+    cal_r = _git(["diff", "--name-only", f"{base}..{head}", "--", "Calendar/*.md"], cwd=root)
+    if cal_r.returncode == 0 and cal_r.stdout.strip():
+        cal_files = cal_r.stdout.strip().splitlines()
+        print(f"\n  Calendar files in range ({len(cal_files)}):")
+        for f in cal_files:
+            print(f"    {f}")
+
+    # Warn about thin-coverage files
+    diff_text = _extract_js_str(html, "DIFF_TEXT")
+    narrative = _extract_js_val(html, "NARRATIVE")
+    from collections import Counter
+    bc: Counter = Counter()
+    for row in narrative or []:
+        src = row.get("source_file", "").split("/")[-1]
+        if src:
+            bc[src] += 1
+    removed_per: dict = {}
+    cur = None
+    for raw in diff_text.splitlines():
+        if raw.startswith("diff --git "):
+            cur = raw.split("/")[-1].split()[0] if "/" in raw else None
+        elif cur and raw and raw[0] == "-" and not raw.startswith("---"):
+            removed_per[cur] = removed_per.get(cur, 0) + 1
+    thin = [(f, bc[f], removed_per.get(f, 0)) for f in bc
+            if removed_per.get(f, 0) / bc[f] < 0.5]
+    if thin:
+        print(f"\n  ⚠  {len(thin)} thin-coverage source file(s) — retroactive sweep likely:")
+        print(f"     (sections were moved in a PRIOR run, not captured in {base[:7]}..{head[:7]})")
+        for f, cnt, rem in thin:
+            print(f"     {f}: {cnt} breadcrumbs, {rem} removed lines")
+        print(f"\n  Fix options:")
+        print(f"     1. Use audit disk-confirmation (B-16) — already active, 0 anomalies.")
+        print(f"     2. Re-generate with wider --base-commit to cover prior sweep commits.")
+        print(f"     3. Squash all sweep commits: git rebase -i {base[:7]} (loses granularity).")
 
 
 # ---------------------------------------------------------------------------

@@ -115,6 +115,9 @@ COMMANDS = [
     ("sweep-review-audit",      "Data quality audit: classify all rows, report lost lines and structural issues"),
     ("sweep-review-quality",    "Quality trend report: read quality-log.jsonl, surface recurring patterns and suggested fixes"),
     ("sweep-review-resolve",    "Mark a (source × section × dest) row as resolved so it won't re-appear in quality reports"),
+    ("sweep-diff-coverage",     "Per-source-file: breadcrumb count vs removed lines — flags thin-coverage (B-16 risk)"),
+    ("sweep-review-diagnose",   "Per-row diagnostic: source diff coverage, section match, anomaly root cause"),
+    ("sweep-review-diff-range", "Show the git diff range stored in a snapshot + commits and calendar files in range"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -430,6 +433,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("section", help="Section name to resolve (substring match)")
     p.add_argument("--reason", default="intentional", help="Resolution reason (default: intentional)")
 
+    p = sub.add_parser("sweep-diff-coverage", help=COMMANDS[67][1])
+    p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
+    p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
+
+    p = sub.add_parser("sweep-review-diagnose", help=COMMANDS[68][1])
+    p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
+    p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
+    p.add_argument("--section", metavar="NAME", help="Filter to rows matching this section name (substring)")
+    p.add_argument("--show", default="all",
+                   choices=["all", "anomaly", "empty", "move", "lost"],
+                   help="Filter rows by classification (default: all)")
+
+    p = sub.add_parser("sweep-review-diff-range", help=COMMANDS[69][1])
+    p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
+    p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
+
     return parser
 
 # ---------------------------------------------------------------------------
@@ -503,6 +522,9 @@ DISPATCH = {
     "sweep-review-audit":       sweep_review.cmd_sweep_review_audit,
     "sweep-review-quality":     sweep_review.cmd_sweep_review_quality,
     "sweep-review-resolve":     sweep_review.cmd_sweep_review_resolve,
+    "sweep-diff-coverage":      sweep_review.cmd_sweep_diff_coverage,
+    "sweep-review-diagnose":    sweep_review.cmd_sweep_review_diagnose,
+    "sweep-review-diff-range":  sweep_review.cmd_sweep_review_diff_range,
 }
 
 def cmd_list_commands(_args=None):
