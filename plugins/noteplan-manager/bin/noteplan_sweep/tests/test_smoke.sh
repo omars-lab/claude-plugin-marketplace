@@ -231,6 +231,99 @@ run_check_date_tags() {
 }
 
 # ---------------------------------------------------------------------------
+# 10. fix-links — explicit stem rename in dry-run mode
+# ---------------------------------------------------------------------------
+run_fix_links_explicit() {
+    local tmp_dir
+    tmp_dir=$(mktemp -d /tmp/noteplan_fixlinks_XXXXXX)
+
+    # File containing a wikilink to OldStem
+    cat > "$tmp_dir/Note With Link.md" <<'MDEOF'
+# Note With Link
+
+See [[OldStem]] for details.
+Also [[OldStem#Some Heading|alias]] should match.
+MDEOF
+
+    # File that is the renamed target
+    cat > "$tmp_dir/NewStem.md" <<'MDEOF'
+# OldStem
+
+This file was renamed.
+MDEOF
+
+    output=$($NOTEPLAN_SWEEP --dry-run fix-links OldStem NewStem "$tmp_dir" 2>&1)
+    local exit_code=$?
+    rm -rf "$tmp_dir"
+
+    assert_exit     "fix-links: exit 0 (explicit rename, dry-run)"    0  "$exit_code"
+    assert_contains "fix-links: reports files that would change"       "file(s)" "$output"
+}
+
+# ---------------------------------------------------------------------------
+# 11. fix-links — no notes_root provided, no renames, exits 0 cleanly
+# ---------------------------------------------------------------------------
+run_fix_links_no_op() {
+    local tmp_dir
+    tmp_dir=$(mktemp -d /tmp/noteplan_fixlinks_noop_XXXXXX)
+    cat > "$tmp_dir/Clean.md" <<'MDEOF'
+# Clean
+
+No wikilinks here.
+MDEOF
+
+    output=$($NOTEPLAN_SWEEP --dry-run fix-links NoSuchOld NoSuchNew "$tmp_dir" 2>&1)
+    local exit_code=$?
+    rm -rf "$tmp_dir"
+
+    assert_exit "fix-links (no-op): exit 0"  0  "$exit_code"
+}
+
+# ---------------------------------------------------------------------------
+# 12. enrich-links — file with no bare URLs exits 0 without modifications
+# ---------------------------------------------------------------------------
+run_enrich_links_no_bare_urls() {
+    local tmp
+    tmp=$(mktemp /tmp/enrich_links_XXXXXX.md)
+    cat > "$tmp" <<'MDEOF'
+# Already Enriched
+
+All links are already formatted: [Google](https://google.com)
+No bare URLs here.
+MDEOF
+
+    output=$($NOTEPLAN_SWEEP enrich-links "$tmp" --dry-run-preview 2>&1)
+    local exit_code=$?
+    rm -f "$tmp"
+
+    assert_exit     "enrich-links (no bare URLs): exit 0"    0  "$exit_code"
+    assert_contains "enrich-links (no bare URLs): 0 enriched" "0 URL" "$output"
+}
+
+# ---------------------------------------------------------------------------
+# 13. enrich-links --use-chrome without Playwright exits 1 with install hint
+#     (only meaningful when Playwright is NOT installed; skip if venv present)
+# ---------------------------------------------------------------------------
+run_enrich_links_no_playwright() {
+    VENV_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")/.venv"
+    if [ -d "$VENV_DIR" ]; then
+        echo "  SKIP  enrich-links (no-playwright): venv exists, Playwright may be installed"
+        return
+    fi
+
+    local tmp
+    tmp=$(mktemp /tmp/enrich_links_np_XXXXXX.md)
+    echo "https://example.com" > "$tmp"
+
+    output=$($NOTEPLAN_SWEEP enrich-links "$tmp" --use-chrome 2>&1)
+    local exit_code=$?
+    rm -f "$tmp"
+
+    assert_exit     "enrich-links (no playwright): exit 1"          1  "$exit_code"
+    assert_contains "enrich-links (no playwright): install hint"    "playwright" "$output"
+}
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 echo ""
@@ -249,6 +342,10 @@ run_fix_frontmatter_delimiters
 run_append_section
 run_add_breadcrumb
 run_check_date_tags
+run_fix_links_explicit
+run_fix_links_no_op
+run_enrich_links_no_bare_urls
+run_enrich_links_no_playwright
 
 echo ""
 echo "=================================="
