@@ -407,8 +407,8 @@ def _extract_sweep_narrative(root: "Path", base_commit: str) -> list:
             section  = m.group("section").strip()
             summary  = m.group("summary").strip()
             dest     = m.group("dest").strip()
-            # Skip header rows
-            if date_val.lower() in ("swept", "date", "---"):
+            # Only accept rows with a valid YYYY-MM-DD date (skips headers + separator rows)
+            if not _re.match(r'^\d{4}-\d{2}-\d{2}$', date_val):
                 continue
             rows.append({
                 "date":        date_val,
