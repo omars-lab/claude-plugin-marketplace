@@ -267,32 +267,46 @@ function buildFormHTML(initialType, allWorkstreams, existingNotes = {}) {
     background: var(--surface); border: 1.5px solid var(--border);
     border-radius: 8px; color: var(--text); font-size: 14px;
     font-family: inherit; appearance: none; -webkit-appearance: none; outline: none; }
-  .cal-trigger { height: 48px; padding: 0 14px; display: flex; align-items: center;
-    background: var(--surface); border: 1.5px solid var(--border); border-radius: 10px;
-    cursor: pointer; font-size: 17px; color: var(--text); user-select: none; }
+  .cal-trigger { height: 34px; padding: 0 10px; display: flex; align-items: center;
+    background: var(--surface); border: 1.5px solid var(--border); border-radius: 8px;
+    cursor: pointer; font-size: 14px; color: var(--text); user-select: none; }
   .cal-trigger:hover { border-color: var(--accent); color: var(--accent); }
   .cal-wrap { position: relative; }
-  .cal { position: absolute; top: calc(48px + 6px); left: 0; right: 0;
-    background: var(--bg); border: 1.5px solid var(--border); border-radius: 12px;
-    padding: 12px; z-index: 20; box-shadow: 0 4px 24px rgba(0,0,0,.18); }
+  .cal { position: absolute; top: calc(34px + 6px); left: 0; right: 0;
+    background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px;
+    padding: 8px; z-index: 20; box-shadow: 0 4px 24px rgba(0,0,0,.18); }
   .cal.hidden { display: none; }
   .cal-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-  .cal-hdr span { font-size: 15px; font-weight: 600; }
-  .cal-hdr button { width: 30px; height: 30px; border-radius: 7px;
+  .cal-hdr span { font-size: 13px; font-weight: 600; }
+  .cal-hdr button { width: 24px; height: 24px; border-radius: 6px;
     border: 1.5px solid var(--border); background: var(--surface);
-    cursor: pointer; font-size: 16px; color: var(--text); line-height: 1; }
+    cursor: pointer; font-size: 13px; color: var(--text); line-height: 1; }
   .cal-hdr button:hover { border-color: var(--accent); color: var(--accent); }
   .cal-dow { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; margin-bottom: 4px; }
-  .cal-dow span { text-align: center; font-size: 11px; font-weight: 600; color: var(--text2); padding: 3px 0; }
+  .cal-dow span { text-align: center; font-size: 10px; font-weight: 600; color: var(--text2); padding: 2px 0; }
   .cal-days { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; }
-  .cd { height: 36px; border-radius: 7px; border: none; background: none;
-    cursor: pointer; font-size: 13px; color: var(--text);
+  .cd { height: 28px; border-radius: 5px; border: none; background: none;
+    cursor: pointer; font-size: 11px; color: var(--text);
     display: flex; align-items: center; justify-content: center; }
   .cd:hover:not(.cd-future):not(.cd-empty) { background: var(--accent-dim); color: var(--accent); }
   .cd.cd-today { font-weight: 700; color: var(--accent); }
   .cd.cd-sel { background: var(--accent) !important; color: #fff !important; border-radius: 7px; }
   .cd.cd-future { color: var(--text2); opacity: .3; cursor: not-allowed; }
   .cd.cd-empty { cursor: default; }
+  .cal-quick { display: flex; gap: 3px; margin: 6px 0 2px; }
+  .cal-quick-day { flex: 1; display: flex; flex-direction: column; align-items: center;
+    padding: 4px 0; border-radius: 6px; cursor: pointer;
+    border: 1.5px solid var(--border); background: var(--surface); }
+  .cal-quick-day:hover:not(.cq-future) { border-color: var(--accent); }
+  .cal-quick-day:hover:not(.cq-future) .cq-label,
+  .cal-quick-day:hover:not(.cq-future) .cq-num { color: var(--accent); }
+  .cal-quick-day.cq-sel { background: var(--accent); border-color: var(--accent); }
+  .cal-quick-day.cq-sel .cq-label, .cal-quick-day.cq-sel .cq-num { color: #fff; }
+  .cal-quick-day.cq-future { opacity: .3; cursor: not-allowed; }
+  .cq-label { font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .3px; color: var(--text2); }
+  .cq-num { font-size: 11px; font-weight: 500; color: var(--text); margin-top: 1px; }
+  .cal-quick-day.cq-today .cq-num { font-weight: 700; color: var(--accent); }
   select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238e8e93' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
             background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
   input[type=text]:focus, select:focus, input[type=date]:focus { border-color: var(--accent); }
@@ -316,9 +330,17 @@ function buildFormHTML(initialType, allWorkstreams, existingNotes = {}) {
   .sug { position: absolute; top: calc(34px + 3px); left: 0; right: 0; z-index: 30;
          background: var(--bg); border: 1.5px solid var(--border); border-radius: 8px;
          box-shadow: 0 4px 16px rgba(0,0,0,.14); }
-  .sug-item { padding: 9px 12px; font-size: 13px; cursor: pointer; color: var(--text);
-              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sug-item { padding: 7px 12px; font-size: 13px; cursor: pointer; color: var(--text); overflow: hidden; }
   .sug-item:hover, .sug-item:active { background: var(--accent-dim); color: var(--accent); }
+  .sug-item:hover .sug-desc, .sug-item:active .sug-desc { color: var(--accent); }
+  .sug-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sug-desc { font-size: 11px; font-style: italic; color: var(--text2); margin-top: 2px;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sug-new { display: flex; align-items: center; justify-content: space-between; font-weight: 500; }
+  .sug-new .sug-title { flex: 1; min-width: 0; }
+  .sug-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px;
+               background: var(--accent); color: #fff; letter-spacing: .4px;
+               text-transform: uppercase; flex-shrink: 0; margin-left: 8px; }
 </style>
 </head>
 <body>
@@ -363,6 +385,7 @@ function buildFormHTML(initialType, allWorkstreams, existingNotes = {}) {
     <input type="date" id="meeting-date" style="display:none">
     <div class="cal-wrap">
       <div class="cal-trigger" id="cal-trigger" onclick="toggleCal()">—</div>
+      <div class="cal-quick" id="cal-quick"></div>
       <div class="cal hidden" id="cal">
         <div class="cal-hdr">
           <button type="button" onclick="calNav(-1)">&#8249;</button>
@@ -396,7 +419,7 @@ function buildFormHTML(initialType, allWorkstreams, existingNotes = {}) {
 
 <script>
 const C = ${data};
-let type = 'plan', domain = 'work';
+let type = 'plan', domain = 'work'; var selectedExisting = null;
 const $ = id => document.getElementById(id);
 
 function setOptions(sel, opts, defaultIdx) {
@@ -476,6 +499,8 @@ function updateProjField() {
 }
 
 function refresh() {
+  selectedExisting = null;
+  $('create-btn').textContent = 'Create';
   $('status-field').classList.toggle('hidden', type !== 'plan');
   $('date-field').classList.toggle('hidden', type !== 'meeting');
   updateWsField();
@@ -500,12 +525,13 @@ pillGroup('domain-pills', v => { domain = v; });
 $('ws-select').addEventListener('change', () => { updateProjField(); updatePreview(); });
 $('proj-select').addEventListener('change', updatePreview);
 $('title').addEventListener('input', function() {
+  if (selectedExisting) { selectedExisting = null; $('create-btn').textContent = 'Create'; }
   updatePreview();
   var q = this.value.trim().toLowerCase();
   if (!q) { sugHide(); return; }
   var key = type + '-' + domain;
   var pool = (C.existingNotes && C.existingNotes[key]) || [];
-  var matches = pool.filter(function(n) { return (n.t||n.f).toLowerCase().includes(q); }).slice(0,8);
+  var matches = pool.filter(function(n) { return (n.t||n.f).toLowerCase().includes(q); }).slice(0,7);
   sugShow(matches);
 });
 $('title').addEventListener('blur', function() { setTimeout(sugHide, 100); });
@@ -547,9 +573,29 @@ function calNav(dir) {
   calRender();
 }
 
+function calBuildQuick() {
+  var today = calISOToDate(C.todayISO);
+  var sel = $('meeting-date').value ? calISOToDate($('meeting-date').value) : today;
+  var ws = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay());
+  var labs = ['S','M','T','W','T','F','S'];
+  var html = '';
+  for (var i = 0; i < 7; i++) {
+    var d = new Date(ws.getFullYear(), ws.getMonth(), ws.getDate() + i);
+    var iso = calDateToISO(d);
+    var isFuture = d > today;
+    var cls = 'cal-quick-day' + (isFuture?' cq-future':'') + (calSameDay(d,today)?' cq-today':'') + (calSameDay(d,sel)?' cq-sel':'');
+    var inner = '<span class="cq-label">'+labs[i]+'</span><span class="cq-num">'+d.getDate()+'</span>';
+    html += isFuture
+      ? '<div class="'+cls+'">'+inner+'</div>'
+      : '<div class="'+cls+'" data-iso="'+iso+'" onmousedown="calPick(this.dataset.iso)">'+inner+'</div>';
+  }
+  $('cal-quick').innerHTML = html;
+}
+
 function calPick(iso) {
   $('meeting-date').value = iso;
   calUpdateTrigger();
+  calBuildQuick();
   $('cal').classList.add('hidden');
   updatePreview();
 }
@@ -567,6 +613,8 @@ function toggleCal() {
     var d = calISOToDate(iso);
     calY = d.getFullYear(); calM = d.getMonth();
     calRender();
+    var q = $('cal-quick');
+    cal.style.top = (q.offsetTop + q.offsetHeight + 4) + 'px';
     cal.classList.remove('hidden');
   } else {
     cal.classList.add('hidden');
@@ -585,23 +633,26 @@ function sugHide() { var s=$('sug'); s.classList.add('hidden'); s.innerHTML=''; 
 
 function sugShow(items) {
   var s=$('sug');
-  if (!items.length) { sugHide(); return; }
-  s.innerHTML = items.map(function(n) {
-    return '<div class="sug-item" data-f="'+n.f.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'" onmousedown="sugPick(this.dataset.f)">'+esc(n.t||n.f.split('/').pop().replace(/\\.md$/,''))+'</div>';
+  var q=$('title').value.trim();
+  if (!q) { sugHide(); return; }
+  var newRow='<div class="sug-item sug-new" onmousedown="sugPickNew()"><span class="sug-title">'+esc(computePrefix()+q)+'</span><span class="sug-badge">New</span></div>';
+  var rows=items.map(function(n){
+    var title=esc(n.t||n.f.split('/').pop().replace(/\\.md$/,''));
+    var desc=n.d?'<div class="sug-desc">'+esc(n.d)+'</div>':'';
+    return '<div class="sug-item" data-f="'+n.f.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'" onmousedown="sugPickExisting(this.dataset.f)"><div class="sug-title">'+title+'</div>'+desc+'</div>';
   }).join('');
+  s.innerHTML=newRow+rows;
   s.classList.remove('hidden');
 }
 
-function sugPick(filename) {
+function sugPickNew() {
   sugHide();
-  document.removeEventListener('keydown', handleKeyDown);
-  clearTimeout(focusTimer);
-  document.body.innerHTML = '<div style="font-family:-apple-system,sans-serif;padding:40px 24px;text-align:center">' +
-    '<div style="font-size:32px;margin-bottom:12px">&#8599;</div>' +
-    '<div style="font-size:15px;font-weight:600;color:#007AFF">Opening note…</div>' +
-    '</div>';
-  var code = '(function(){ Editor.openNoteByFilename('+JSON.stringify(filename)+'); DataStore.invokePluginCommandByName("Close Quick Note","oeid.noteplan-quicknote",[]); })()';
-  window.webkit.messageHandlers.jsBridge.postMessage({ code: code, onHandle: '', id: 'open-existing' });
+}
+
+function sugPickExisting(filename) {
+  sugHide();
+  selectedExisting = { f: filename };
+  $('create-btn').textContent = 'Modify';
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
@@ -609,6 +660,7 @@ function sugPick(filename) {
 setOptions($('status-select'), C.statusOptions, 2);
 $('meeting-date').value = C.todayISO;
 calUpdateTrigger();
+calBuildQuick();
 
 type = '${initialType}';
 domain = 'work';
@@ -629,6 +681,17 @@ document.addEventListener('keydown', handleKeyDown);
 // ── Submit ────────────────────────────────────────────────────────────────────
 
 function submit() {
+  if (selectedExisting) {
+    document.removeEventListener('keydown', handleKeyDown);
+    clearTimeout(focusTimer);
+    document.body.innerHTML = '<div style="font-family:-apple-system,sans-serif;padding:40px 24px;text-align:center">' +
+      '<div style="font-size:32px;margin-bottom:12px">&#8599;</div>' +
+      '<div style="font-size:15px;font-weight:600;color:#007AFF">Opening note…</div>' +
+      '</div>';
+    var code = '(function(){ Editor.openNoteByFilename('+JSON.stringify(selectedExisting.f)+'); DataStore.invokePluginCommandByName("Close Quick Note","oeid.noteplan-quicknote",[]); })()';
+    window.webkit.messageHandlers.jsBridge.postMessage({ code: code, onHandle: '', id: 'open-existing' });
+    return;
+  }
   const title = $('title').value.trim();
   if (!title) { $('title').focus(); return; }
   const wsVal = $('ws-select').value || '';
@@ -670,6 +733,21 @@ function cancel() {
 </html>`
 }
 
+function extractDesc(content) {
+  if (!content) return ''
+  const lines = content.split('\n')
+  let inFM = false, fmDone = false
+  for (const raw of lines) {
+    const t = raw.trim()
+    if (!fmDone && t === '---') { inFM = !inFM; if (!inFM) fmDone = true; continue }
+    if (inFM || !t || t.startsWith('#')) continue
+    const clean = t.replace(/^\*\s*\[.\]\s*/, '').replace(/^[-*>]+\s*/, '').trim()
+    if (!clean) continue
+    return clean.length > 72 ? clean.slice(0, 72) + '…' : clean
+  }
+  return ''
+}
+
 async function showCreateForm(initialType = 'plan') {
   const allWorkstreams = {
     work:     getWorkstreams('work'),
@@ -687,7 +765,7 @@ async function showCreateForm(initialType = 'plan') {
         const prefix = root + '/'
         existingNotes[t + '-' + d] = DataStore.projectNotes
           .filter(n => n.filename && n.filename.startsWith(prefix))
-          .map(n => ({ t: n.title || '', f: n.filename }))
+          .map(n => ({ t: n.title || '', f: n.filename, d: extractDesc(n.content || '') }))
           .sort((a, b) => b.f.localeCompare(a.f))
           .slice(0, 50)
       }
