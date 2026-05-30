@@ -26,7 +26,7 @@ if os.path.isfile(_VENV_PYTHON) and not sys.executable.startswith(_SCRIPT_DIR):
 sys.path.insert(0, os.path.dirname(__file__))
 
 import noteplan_sweep.utils as utils
-from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair, sweep_review, dashboard, conversation_mine
+from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair, sweep_review, dashboard, conversation_mine, work_board, ai_usage
 
 VERSION = "0.1.0"
 
@@ -82,7 +82,21 @@ COMMANDS = [
     ("dashboard-open",          "Open dashboard/ideas.html in browser"),
     # Group 9: Conversation Mining
     ("conversation-mine",       "Parse Claude transcripts, cross-map with plans, write dashboard/sessions.json + ideas.json"),
-    # Group 10: Sweep Review
+    # Group 10: Work Board
+    ("work-board-generate",     "Extract living artifacts + plans → write dashboard/work-board.html"),
+    ("work-board-open",         "Open dashboard/work-board.html in browser"),
+    # Group 11: AI Usage
+    ("ai-usage-mine",           "Index all Claude transcripts across projects → dashboard/ai-usage.json"),
+    ("ai-usage-generate",       "Read ai-usage.json → write dashboard/ai-usage.html (Anthropic theme)"),
+    ("ai-usage-open",           "Open dashboard/ai-usage.html in browser"),
+    # Group 10: Work Board
+    ("work-board-generate",     "Extract living artifacts + plans → write dashboard/work-board.html"),
+    ("work-board-open",         "Open dashboard/work-board.html in browser"),
+    # Group 11: AI Usage
+    ("ai-usage-mine",           "Index all Claude transcripts across projects → dashboard/ai-usage.json"),
+    ("ai-usage-generate",       "Read ai-usage.json → write dashboard/ai-usage.html (Anthropic theme)"),
+    ("ai-usage-open",           "Open dashboard/ai-usage.html in browser"),
+    # Group 12: Sweep Review
     ("sweep-commit",            "Stage modified .md files and create a structured sweep(YYYY-MM-DD) commit"),
     ("sweep-review-generate",   "Generate immutable snapshot HTML from the sweep commit diff"),
     ("sweep-review-compile",    "Merge snapshot + all rN.comments.jsonl rounds → review.html"),
@@ -292,27 +306,40 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Comma-separated project CWDs to mine (default: NotePlan root)")
     p.add_argument("--no-writeback", action="store_true", help="Skip Phase G write-back (read-only mode)")
 
-    # ── Group 10: Sweep Review ────────────────────────────────────────────
-    p = sub.add_parser("sweep-commit", help=COMMANDS[39][1])
+    # ── Group 10: Work Board ──────────────────────────────────────────────
+    sub.add_parser("work-board-generate", help=COMMANDS[42][1])
+    sub.add_parser("work-board-open",     help=COMMANDS[43][1])
+
+    # ── Group 11: AI Usage ────────────────────────────────────────────────
+    p = sub.add_parser("ai-usage-mine", help=COMMANDS[44][1])
+    p.add_argument("--since", metavar="YYYY-MM-DD")
+    p.add_argument("--full", action="store_true", help="Reindex all sessions")
+    p.add_argument("--repos-root", metavar="PATH", help="Workspace root (default: ~/workspace)")
+
+    sub.add_parser("ai-usage-generate", help=COMMANDS[45][1])
+    sub.add_parser("ai-usage-open",     help=COMMANDS[46][1])
+
+    # ── Group 12: Sweep Review ────────────────────────────────────────────
+    p = sub.add_parser("sweep-commit", help=COMMANDS[47][1])
     p.add_argument("--dry-run", action="store_true", help="Print what would be committed without writing")
 
-    p = sub.add_parser("sweep-review-generate", help=COMMANDS[40][1])
+    p = sub.add_parser("sweep-review-generate", help=COMMANDS[48][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--no-carry-comments", action="store_true",
                    help="Start fresh — do not inject existing comments into new snapshot")
 
-    p = sub.add_parser("sweep-review-compile", help=COMMANDS[41][1])
+    p = sub.add_parser("sweep-review-compile", help=COMMANDS[49][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-squash", help=COMMANDS[42][1])
+    p = sub.add_parser("sweep-review-squash", help=COMMANDS[50][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-list", help=COMMANDS[43][1])
+    p = sub.add_parser("sweep-review-list", help=COMMANDS[51][1])
     p.add_argument("--date", help="Filter to a specific YYYY-MM-DD")
 
-    p = sub.add_parser("sweep-review-open", help=COMMANDS[44][1])
+    p = sub.add_parser("sweep-review-open", help=COMMANDS[52][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
     p.add_argument("--snapshot", action="store_true", help="Open raw snapshot instead of compiled review")
@@ -362,6 +389,11 @@ DISPATCH = {
     "dashboard-generate":       dashboard.cmd_dashboard_generate,
     "dashboard-open":           dashboard.cmd_dashboard_open,
     "conversation-mine":        conversation_mine.cmd_conversation_mine,
+    "work-board-generate":      work_board.cmd_work_board_generate,
+    "work-board-open":          work_board.cmd_work_board_open,
+    "ai-usage-mine":            ai_usage.cmd_ai_usage_mine,
+    "ai-usage-generate":        ai_usage.cmd_ai_usage_generate,
+    "ai-usage-open":            ai_usage.cmd_ai_usage_open,
     "sweep-commit":             sweep_review.cmd_sweep_commit,
     "sweep-review-generate":    sweep_review.cmd_sweep_review_generate,
     "sweep-review-compile":     sweep_review.cmd_sweep_review_compile,
