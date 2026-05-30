@@ -515,6 +515,11 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .nav-tbl .section-col{{color:#e6edf3;font-weight:500}}
 .nav-tbl .summary-col{{color:#8b949e}}
 .day-sep-row td{{background:#0d1117;padding:14px 10px 5px;font-size:13px;font-weight:600;color:#58a6ff;border-bottom:1px solid #30363d;white-space:normal;overflow:visible}}
+.item-row td{{background:#0a0d12;padding:3px 10px;border-bottom:1px solid #161b22;font-size:11px}}
+.item-row:hover td{{background:#0d1117}}
+.item-row .item-text{{color:#c9d1d9;font-family:'SF Mono','Fira Code',monospace;padding-left:20px}}
+.sec-toggle{{padding:0 5px 0 0;background:none;border:none;color:#484f58;cursor:pointer;font-size:9px;vertical-align:middle}}
+.sec-toggle:hover{{color:#8b949e}}
 .empty{{color:#484f58;padding:24px;text-align:center}}
 </style>
 </head>
@@ -567,6 +572,35 @@ function xcallbackUrl(dest) {{
 }}
 
 // ── Section diff modal ─────────────────────────────────────────────────────
+// ── Expandable section rows ────────────────────────────────────────────────
+function toggleSectionItems(rowIdx, btn) {{
+  const existing = document.querySelectorAll(`tr.item-row[data-parent="${{rowIdx}}"]`);
+  if (existing.length) {{
+    existing.forEach(r => r.remove());
+    btn.textContent = '▶';
+    return;
+  }}
+  const row = MODAL_ROWS[rowIdx];
+  if (!row) return;
+  const result = extractSectionLines(row.source_file, row.section, '-');
+  const lines = result.lines.filter(l => l.trim());
+  if (!lines.length) {{ btn.textContent = '○'; return; }}
+  btn.textContent = '▼';
+  const parentRow = document.querySelector(`tr[data-row-idx="${{rowIdx}}"]`);
+  if (!parentRow) return;
+  let insertAfter = parentRow;
+  for (const line of lines) {{
+    const tr = document.createElement('tr');
+    tr.className = 'item-row';
+    tr.dataset.parent = rowIdx;
+    const clean = line.replace(/^-\\s*\\[[x ]\\]\\s*/i, '').replace(/^-\\s+/, '').trim();
+    if (!clean) continue;
+    tr.innerHTML = `<td class="sec-toggle" style="color:#30363d;text-align:right">↳</td><td class="item-text" colspan="2">${{esc(clean)}}</td><td></td>`;
+    insertAfter.insertAdjacentElement('afterend', tr);
+    insertAfter = tr;
+  }}
+}}
+
 function closeModal() {{
   document.getElementById('modal-overlay').classList.remove('open');
 }}
@@ -599,12 +633,14 @@ function extractSectionLines(filename, sectionName, lineType) {{
   const nameLower = sectionName ? normSectionStr(sectionName) : null;
   let inFile = false;
   let inSection = sectionName === null;
+  let sectionLevel = 0;
   const result = [];
 
   for (const line of rawLines) {{
     if (line.startsWith('diff --git ')) {{
       inFile = line.toLowerCase().includes(baseName);
       inSection = sectionName === null;
+      sectionLevel = 0;
       continue;
     }}
     if (!inFile || line.startsWith('+++') || line.startsWith('---') || line.startsWith('index') || line.startsWith('@@')) continue;
@@ -613,28 +649,18 @@ function extractSectionLines(filename, sectionName, lineType) {{
     const content = line.slice(1);
 
     if (sectionName !== null) {{
-      if (sectionHeaderMatches(content, nameLower)) {{
+      const headerDepth = (content.match(/^(#+)\\s/) || [])[1]?.length ?? 0;
+      if (headerDepth > 0 && sectionHeaderMatches(content, nameLower)) {{
         inSection = true;
-      }} else if (inSection && /^#+\\s/.test(content) && type !== '+') {{
+        sectionLevel = headerDepth;
+      }} else if (inSection && headerDepth > 0 && headerDepth <= sectionLevel && type !== '+') {{
         inSection = false;
       }}
     }}
 
     if (inSection && type === lineType) result.push(content);
   }}
-
-  // Fallback: section not found — show ALL changed lines from this file so the modal is never empty
-  if (sectionName !== null && !result.length) {{
-    let inF = false;
-    for (const line of rawLines) {{
-      if (line.startsWith('diff --git ')) {{ inF = line.toLowerCase().includes(baseName); continue; }}
-      if (!inF || line.startsWith('+++') || line.startsWith('---') || line.startsWith('index') || line.startsWith('@@')) continue;
-      const type = line.length ? line[0] : ' ';
-      if (type === lineType) result.push(line.slice(1));
-    }}
-    return {{ lines: result, fallback: true }};
-  }}
-  return {{ lines: result, fallback: false }};
+  return {{ lines: result, matched: result.length > 0 }};
 }}
 
 // Classify destination added lines as "moved" (matches source) or "new" (no match)
@@ -680,20 +706,31 @@ function showSectionModal(idx) {{
     const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '');
     return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
   }});
-  const destResult  = destFile ? extractSectionLines(destFile.filename, null, '+') : {{ lines: [], fallback: false }};
+  const destResult  = destFile ? extractSectionLines(destFile.filename, null, '+') : {{ lines: [], matched: true }};
   const addedLines  = destResult.lines;
 
   const {{ moved, newContent }} = classifyDestLines(removedLines, addedLines);
   _modalMovedLines = moved;
   _modalNewLines   = newContent;
 
-  // Source panel
-  const srcFallbackNote = srcResult.fallback ? ' <span style="color:#d29922;font-size:10px">(section not matched — showing all)</span>' : '';
-  const srcHdr = `Removed from source — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(row.source_file.split('/').pop())}}</span>${{srcFallbackNote}}`;
-  const srcBody = removedLines.length
-    ? removedLines.map(l => `<div class="diff-line removed">${{esc(l)}}</div>`).join('')
-    : '<div class="modal-empty">No removed lines found in this file</div>';
-  const srcPanel = `<div><div class="modal-panel-hdr">${{srcHdr}}</div><div class="diff-lines">${{srcBody}}</div></div>`;
+  // Source panel — when section header not matched, show a collapsed "show all" rather than polluting with unrelated lines
+  const srcName = `<span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(row.source_file.split('/').pop())}}</span>`;
+  let srcBody;
+  if (srcResult.matched) {{
+    srcBody = removedLines.map(l => `<div class="diff-line removed">${{esc(l)}}</div>`).join('');
+  }} else {{
+    // Get all removed lines from the file for the collapsed fallback
+    const allRemoved = extractSectionLines(row.source_file, null, '-').lines;
+    const allHtml = allRemoved.map(l => `<div class="diff-line removed">${{esc(l)}}</div>`).join('') || '<div class="modal-empty">No removed lines in file</div>';
+    srcBody = `<div class="modal-empty" style="color:#d29922;margin-bottom:8px">
+      ⚠️ Section header "<strong>${{esc(sectionName)}}</strong>" not found as a literal <code>#</code> header — this was a synthesized grouping name.
+    </div>
+    <details>
+      <summary style="cursor:pointer;color:#58a6ff;font-size:12px;padding:4px 0">Show all ${{allRemoved.length}} removed lines from this file</summary>
+      <div class="diff-lines" style="margin-top:6px">${{allHtml}}</div>
+    </details>`;
+  }}
+  const srcPanel = `<div><div class="modal-panel-hdr">Removed from source — ${{srcName}}</div>${{srcBody}}</div>`;
 
   // Destination panel with Moved / New tabs
   const destName = destFile ? destFile.filename.split('/').pop() : destRaw;
@@ -791,8 +828,8 @@ function renderNarrative() {{
 
     tbody += dayRows.map(r => {{
       const idx = MODAL_ROWS.push(r) - 1;
-      return `<tr>
-        <td class="section-col">${{esc(r.section)}}</td>
+      return `<tr data-row-idx="${{idx}}">
+        <td class="section-col"><button class="sec-toggle" onclick="toggleSectionItems(${{idx}},this)" title="Expand items">▶</button>${{esc(r.section)}}</td>
         <td class="summary-col">${{esc(r.summary)}}</td>
         <td class="dest-col" title="${{esc(r.destination)}}"><a class="dest-link" href="${{xcallbackUrl(r.destination)}}">${{esc(normDest(r.destination))}}</a></td>
         <td style="padding:3px 6px;text-align:center"><button class="view-btn" onclick="showSectionModal(${{idx}})">⌕</button></td>
