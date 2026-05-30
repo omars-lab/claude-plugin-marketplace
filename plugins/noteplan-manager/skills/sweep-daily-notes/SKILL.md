@@ -211,6 +211,76 @@ Build a compact plan index (metadata only, no content):
 ]
 ```
 
+### People Index (persisted in `References[People].md` per namespace)
+
+**Storage:** The People Index is persisted across sessions in dedicated reference files — one per namespace:
+- Work: `$NOTES_ROOT/🏢 ServiceNow/📋 Lists/🏢📋 References[People].md`
+- EarlBear: `$NOTES_ROOT/👥 EarlBear/📋 Lists/👥📋 References[People].md` *(create dir if absent)*
+- Personal: omitted for now (personal contacts don't typically have plan associations)
+
+**At Phase 3 start:** Read the existing file(s) to pre-load the People Index. Then enrich it by scanning `contributors:` frontmatter across all plans (inverting the map). Merge both sources — the file is authoritative for domain (work/EarlBear/personal), plan frontmatter is authoritative for which plans a person is on.
+
+**At Phase 8 (final commit):** Write the merged, updated People Index back to the file(s) and include in the final commit. Format:
+```markdown
+---
+doctype: 📋
+namespace: 🏢
+description: People I collaborate with and the initiatives they're associated with
+---
+# 🏢📋 References[People]
+
+## Arish
+- Domain: 🏢 ServiceNow
+- Plans: [[🏢260302🤖 POC Establishing A2A Poc]], [[🏢260129💡 Assisting esgenius]]
+
+## Dennis
+- Domain: 🏢 ServiceNow
+- Plans: [[🏢260220⚗️ Building an ATF Creation POC]]
+```
+
+**Use this information when organizing:** When restructuring sections in daily notes or plan files (e.g. deciding sub-headers, grouping tasks), consult the People Index to understand which initiative a collaborator's name implies. A task mentioning "Arish" near A2A content is more likely about the A2A POC than esgenius.
+
+After building the plan index, construct a **People Index** by inverting every `contributors` list:
+
+```python
+people_index = {}  # person_name (lowercase) → list of plan entries
+
+for plan in plan_index:
+    for name in plan.get("contributors", []):
+        key = name.lower()
+        if key not in people_index:
+            people_index[key] = []
+        people_index[key].append({
+            "name": name,
+            "plan": plan["filename_stem"],
+            "workstream": plan["workstream_or_plantype"],
+            "namespace": plan.get("namespace", "🏢"),
+            "description": plan.get("description", "")
+        })
+```
+
+Report the result: `"People index built: {N} people across {M} plans."` List each person with their associated plan(s) so the user can see the full map at a glance.
+
+**New person detection (during Phase 6 routing):** When a section mentions a person's name (via `I owe {Name}`, `{Name} /`, `Sync with {Name}`, `- [ ] {Name}`, or a section header containing a name) and that name is NOT in the People Index, ask before routing:
+
+```javascript
+AskUserQuestion({
+  questions: [{
+    question: `"{Name}" is a new person — what domain do they work with you on?`,
+    header: `New person: ${name}`,
+    options: [
+      { label: "ServiceNow (work)", description: "Route content to a work plan" },
+      { label: "EarlBear (side business)", description: "Route content to EarlBear plans" },
+      { label: "Personal friend / family", description: "Route to personal staging note" },
+      { label: "Other / skip", description: "Leave unrouted for now" }
+    ],
+    multiSelect: false
+  }]
+})
+```
+
+After the user answers, add the person to the appropriate plan's `contributors:` frontmatter (if they select a specific plan during routing) and **update the People Index in-memory** for the rest of the session. This prevents asking about the same person twice in one session.
+
 ### Lists Index (extend the plan index with reference list files)
 
 Also index recently-modified **list files** from the Lists directories alongside plans:
@@ -329,7 +399,7 @@ EarlBear index entry shape:
 - `👥` emoji in section header or content
 - Section mentions "Saad" (EarlBear co-founder) without matching a work meeting
 
-Report: "Found N recently-touched plans + M list files + K meeting files + J thought files + R research docs + E EarlBear plans." List all with descriptions.
+Report: "Found N recently-touched plans + M list files + K meeting files + J thought files + R research docs + E EarlBear plans — People index: P people across Q plans." List all with descriptions, then list the People Index grouped by person.
 
 ---
 
@@ -480,8 +550,10 @@ For each sweepable section, determine the best destination using the plan index 
 1. Section content contains `[[PlanName]]` wikilink matching a plan in the index → `✅ Confident`
 2. Section header text closely matches a plan name → `✅ Confident`
 3. Section's workstream emoji matches a single plan's workstream → `✅ Confident`
-4. Section mentions a person's name that appears in a plan's `contributors` field → `✅ Confident` (e.g. "Dennis 1-1" content matching a plan with `contributors: ["Dennis"]`)
-5. Section header contains meeting keywords ("Meeting Notes", "1-1", "Sync", "Catch Up", "Chat with", "Workshop") OR a person's name matching a meeting file in the index → `👤 Meeting candidate` — present meeting routing UI
+4. Section mentions a person's name found in the **People Index** — this is a **scoring hint, not a direct route**. Use it to boost the score of every plan that person is associated with. If the person maps to exactly one plan and no other signals conflict → `✅ Confident`. If the person maps to 2+ plans, add their plans to the top-5 candidate list weighted by the person's presence, then let other signals (wikilinks, emoji, content keywords) break the tie → `❓ Uncertain` with their plans surfaced first. **Never route solely by person name if they appear in multiple plans.**
+   - Example: "Arish" → boosts both `POC Establishing A2A Poc` and `Assisting esgenius`; wikilink or workstream emoji resolves which one.
+   - Example: "Dennis" → boosts `Building an ATF Creation POC` (only plan he's on) → `✅ Confident` if no conflicts.
+5. Section header contains meeting keywords ("Meeting Notes", "1-1", "Sync", "Catch Up", "Chat with", "Workshop") OR a person's name matching a meeting file in the index → `👤 Meeting candidate` — present meeting routing UI. When presenting, also show that person's plans from the People Index as context ("Dennis works on: ATF Creation POC").
 6. Section header contains "References" or "References:" → `📋 Reference candidate` — present list/reference routing UI
 7. Section header or content contains EarlBear signals ("EarlBear", "Earl Bear", `👥` emoji, `[[👥...]]` wikilink, "Saad" without a work meeting match) → route to EarlBear plan index; if no match, `❓ Uncertain` with EarlBear plans surfaced first
 8. Section matches **2+ research signals** (see below) → `🔬 Research candidate` — present research routing UI instead of plan routing
@@ -1327,6 +1399,14 @@ After all individual block routing is complete, **restructure the remaining Unso
 
 ## Phase 8: Final Commit + Push
 
+**Before committing: write back the updated People Index.**
+
+If any new people were identified during Phase 6 (new person domain question was answered, or new plan `contributors:` were added), rewrite the relevant `References[People].md` file(s):
+- Work: `$NOTES_ROOT/🏢 ServiceNow/📋 Lists/🏢📋 References[People].md`
+- EarlBear: `$NOTES_ROOT/👥 EarlBear/📋 Lists/👥📋 References[People].md`
+
+Format: one `## {Name}` section per person with `Domain:`, `Role:`, and `Plans:` fields (wikilinks). Merge new entries with existing — never overwrite existing entries without confirmation.
+
 ```bash
 cd "$NOTEPLAN_ROOT"
 git add -A
@@ -1531,6 +1611,11 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | EarlBear plan naming | Uses work-like convention: `👥YYMMDD{workstream} Title.md`, `namespace: 👥`, workstream subdirs under `📆 Plans/`. Same frontmatter as work plans but with `namespace: 👥`. |
 | EarlBear meetings indexed | `👥 EarlBear/👥👤 Meetings/` is indexed alongside work meetings. EarlBear meeting files use `👥 YYMMDD Title.md` naming with `namespace: 👥`. Route EarlBear meeting content here, not to `📆 Plans/`. |
 | EarlBear future expansion | When EarlBear volume grows, consider adding `👥📋 Lists/`, `👥🔬 Research/`, and potentially its own sweep mode with a dedicated target day. Revisit each sweep. |
+| People Index — storage | Persisted in `🏢📋 References[People].md` (work) and `👥📋 References[People].md` (EarlBear). Read at Phase 3 start; written back at Phase 8. Each entry: person name, domain (🏢/👥/personal), role, and a list of associated plan wikilinks. |
+| People Index — building | Phase 3: invert `contributors:` from all plan frontmatter into a `{person → [plans]}` map. Merge with the stored file. Display the full map to the user after Phase 3. |
+| People Index — routing | Person name in a section is a **scoring hint**, not a hard route. Boosts associated plans in scoring. If person maps to exactly one plan → `✅ Confident`. If 2+ plans → `❓ Uncertain` with their plans surfaced first; other signals (wikilinks, emoji, content) break the tie. |
+| People Index — new person | When a person appears in a section who is NOT in the People Index, ask: ServiceNow / EarlBear / personal friend / other. Answer determines which plan index to search for routing. After routing, add person to matched plan's `contributors:` frontmatter and update the index file. |
+| People Index — organize signal | When reorganizing a large note or plan file into sub-headers, consult the People Index: a person's presence in a task block is a signal for which initiative/sub-section it belongs to. |
 | Voice note detection | Lines >200 chars with <3 sentence boundaries, `￼` characters, phonetic misspellings, filler phrases, or run-on connectors are classified as `🎤 Voice note`. Requires 2+ signals. |
 | Voice note processing | Voice notes are cleaned before routing: break into sentences, fix phonetic→technical errors (JSON, byte, base64, Claude), strip filler, structure into tasks/bullets. Present before/after via AskUserQuestion. User confirms cleaned or raw version. |
 | Voice note is the one content edit exception | Voice note cleaning is the only case where content is modified during sweep. The raw transcription is preserved in the breadcrumb table Summary column for traceability. User must explicitly confirm the transformation. |
