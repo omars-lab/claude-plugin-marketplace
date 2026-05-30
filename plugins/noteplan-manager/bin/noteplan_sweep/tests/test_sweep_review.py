@@ -574,6 +574,131 @@ def test_sr21_py_cross_row_issues_v_c2():
 #        (different stems with same line content do NOT collide)
 # ---------------------------------------------------------------------------
 
+def test_sr25_outcomes_pure_move():
+    """SR-25: pure-move breadcrumb produces outcomes=[{kind:'move', dest:<breadcrumb dest>}]."""
+    task = "- [ ] Implement Bikar pattern system in Figma"
+    diff = _py_make_diff([
+        {"path": "Calendar/20260413.md", "removed": [task], "added": []},
+        {"path": "Plans/Bikar.md",       "removed": [],     "added": [task]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Design",
+                  "destination": "[[Plans/Bikar]]", "date": "2026-04-13", "summary": ""}]
+    results = _run_classify(diff, narrative)
+    r = results[0]
+    outcomes = r["outcomes"]
+    assert len(outcomes) == 1, f"pure-move should have 1 outcome, got: {outcomes}"
+    assert outcomes[0]["kind"] == "move"
+    assert outcomes[0]["dest"] == "Plans/Bikar"
+    assert task in outcomes[0]["lines"]
+    assert outcomes[0]["dest_stem"] == "bikar"
+
+
+def test_sr26_outcomes_pure_lost_has_no_destination():
+    """SR-26: a row with truly-lost lines emits a 'lost' outcome with dest=None.
+    Lost lines are destinationless by definition — the outcomes shape must reflect that.
+    """
+    lost_task = "- [ ] task that went nowhere at all in this diff"
+    # Section header present, line removed from source, no matching dest add anywhere.
+    diff = _py_make_diff([
+        {"path": "Calendar/20260413.md", "removed": ["## Goals", lost_task], "added": []},
+        {"path": "Plans/Bikar.md",       "removed": [],                      "added": ["## Goals", "- [ ] something else entirely"]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Goals",
+                  "destination": "[[Plans/Bikar]]", "date": "2026-04-13", "summary": ""}]
+    results = _run_classify(diff, narrative)
+    r = results[0]
+    lost_outcomes = [o for o in r["outcomes"] if o["kind"] == "lost"]
+    assert len(lost_outcomes) == 1, \
+        f"row with truly-lost lines should emit a 'lost' outcome: {r['outcomes']}"
+    lost_o = lost_outcomes[0]
+    assert lost_o["dest"] is None, \
+        f"lost outcome must have dest=None — lines have no destination: {lost_o}"
+    assert lost_o["dest_stem"] is None, \
+        f"lost outcome must have dest_stem=None: {lost_o}"
+    assert lost_task in lost_o["lines"]
+
+
+def test_sr27_outcomes_went_to_uses_actual_stem_not_breadcrumb():
+    """SR-27: went-to outcome's `dest` is the file the line ACTUALLY went to,
+    not the breadcrumb's claimed destination. Otherwise the row would lie about
+    where content ended up.
+    """
+    task = "- [ ] Setup Figma design system workspace for NaqshCoffee branding"
+    diff = _py_make_diff([
+        {"path": "Calendar/20260413.md", "removed": ["## Design", task], "added": []},
+        {"path": "Plans/Breadcrumb.md",  "removed": [],                  "added": ["status: done"]},
+        {"path": "Plans/DesignSystem.md","removed": [],                  "added": [task]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Design",
+                  "destination": "[[Plans/Breadcrumb]]", "date": "2026-04-13", "summary": ""}]
+    results = _run_classify(diff, narrative)
+    r = results[0]
+    went_to_outcomes = [o for o in r["outcomes"] if o["kind"] == "went-to"]
+    assert len(went_to_outcomes) == 1, \
+        f"row with went-to lines should emit a 'went-to' outcome: {r['outcomes']}"
+    o = went_to_outcomes[0]
+    assert "DesignSystem" in (o["dest"] or ""), \
+        f"went-to outcome dest must be the actual file (DesignSystem), not the breadcrumb's claim (Breadcrumb): {o}"
+    assert o["dest_stem"] == "designsystem"
+
+
+def test_sr28_breadcrumb_idx_matches_idx_in_one_to_one_world():
+    """SR-28: in the staged shape (1 result row per narrative breadcrumb), every result has
+    breadcrumb_idx == idx. This guarantees existing JS lookups via idx still work and gives
+    us a forward-compatible field for future per-outcome row emission.
+    """
+    diff = _py_make_diff([
+        {"path": "Calendar/20260413.md", "removed": ["- [ ] alpha"], "added": []},
+        {"path": "Calendar/20260414.md", "removed": ["- [ ] beta"],  "added": []},
+        {"path": "Plans/Bikar.md",       "removed": [],              "added": ["- [ ] alpha", "- [ ] beta"]},
+    ])
+    narrative = [
+        {"source_file": "Calendar/20260413.md", "section": "Design",
+         "destination": "[[Plans/Bikar]]", "date": "2026-04-13", "summary": ""},
+        {"source_file": "Calendar/20260414.md", "section": "Design",
+         "destination": "[[Plans/Bikar]]", "date": "2026-04-14", "summary": ""},
+    ]
+    results = _run_classify(diff, narrative)
+    assert len(results) == 2
+    for r in results:
+        assert r["breadcrumb_idx"] == r["idx"], \
+            f"breadcrumb_idx must equal idx in the staged 1:1 shape: {r}"
+
+
+def test_sr29_outcomes_for_mixed_breadcrumb():
+    """SR-29: a breadcrumb with both moved AND went-to content emits multiple outcomes
+    in a single result dict (one per kind). Foundation for splitting them into separate
+    visual rows in the table later.
+    """
+    moved_task   = "- [ ] task that moves to breadcrumb dest properly here"
+    went_to_task = "- [ ] task that ends up at a different destination here"
+    diff = _py_make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": ["## Mixed", moved_task, went_to_task], "added": []},
+        {"path": "Plans/Breadcrumb.md",
+         "removed": [],                                     "added": [moved_task]},
+        {"path": "Plans/Elsewhere.md",
+         "removed": [],                                     "added": [went_to_task]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Mixed",
+                  "destination": "[[Plans/Breadcrumb]]", "date": "2026-04-13", "summary": ""}]
+    results = _run_classify(diff, narrative)
+    r = results[0]
+    kinds = sorted(o["kind"] for o in r["outcomes"])
+    assert "move" in kinds, f"mixed row must have a move outcome: {r['outcomes']}"
+    assert "went-to" in kinds, f"mixed row must have a went-to outcome: {r['outcomes']}"
+    move_o = next(o for o in r["outcomes"] if o["kind"] == "move")
+    wt_o   = next(o for o in r["outcomes"] if o["kind"] == "went-to")
+    assert moved_task in move_o["lines"]
+    assert went_to_task in wt_o["lines"]
+    # Critical mental-model assertion: the went-to outcome's dest must NOT be the
+    # breadcrumb's claimed destination.
+    assert "Elsewhere" in (wt_o["dest"] or ""), \
+        f"went-to outcome dest is the actual file, not the breadcrumb's claim: {wt_o}"
+    assert wt_o["dest"] != move_o["dest"], \
+        f"different outcomes for the same breadcrumb must have different destinations: {r['outcomes']}"
+
+
 def test_sr24_v_c2_scoped_to_dest_stem():
     """SR-24: identical content under different destinations no longer cross-fires V-C2.
     Pre-#95 V-C2 keyed on normLine alone, flagging shared frontmatter across files as

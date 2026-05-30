@@ -813,15 +813,25 @@ function updateValidationBanner() {{
   if (!banner) return;
   const rowWarnCount = _rowValidation.size;
   const crossCount = CROSS_ROW_ISSUES.length;
+
+  // Outcome summary across all rows (derived from PRE_CLASSIFICATION outcomes).
+  const outcomeCounts = {{move: 0, 'went-to': 0, lost: 0, anomaly: 0, empty: 0}};
+  for (const pc of (PRE_CLASSIFICATION || [])) {{
+    for (const o of (pc.outcomes || [])) {{
+      if (o.kind in outcomeCounts) outcomeCounts[o.kind]++;
+    }}
+  }}
+  const summary = `→${{outcomeCounts.move}} ⇢${{outcomeCounts['went-to']}} ⌀${{outcomeCounts.lost}} ?${{outcomeCounts.anomaly}}`;
+
   if (rowWarnCount === 0 && crossCount === 0) {{
     banner.className = 'ok';
-    banner.textContent = '✓ All rows validated — no integrity issues found';
+    banner.textContent = `✓ All rows validated — no integrity issues found  ·  ${{summary}}`;
   }} else {{
     const parts = [];
     if (rowWarnCount) parts.push(`${{rowWarnCount}} row${{rowWarnCount !== 1 ? 's' : ''}} with integrity warnings (V-R)`);
     if (crossCount)   parts.push(`${{crossCount}} cross-row consistency issue${{crossCount !== 1 ? 's' : ''}} (V-C) — some destination lines may be double-claimed`);
     banner.className = 'warn';
-    banner.textContent = '⚠ ' + parts.join(' · ');
+    banner.textContent = `⚠ ${{parts.join(' · ')}}  ·  ${{summary}}`;
   }}
 }}
 
@@ -892,8 +902,8 @@ function _showSectionModalFromPython(idx, row, _pyc, focusLost) {{
     const absentSection = trulyLostLines.length > 0
       ? `<div style="margin-top:8px;border-top:1px solid #30363d;padding-top:6px">` +
         (isMixed
-          ? `<div style="color:#e3b341;font-size:11px;font-weight:600;padding:2px 0 6px">⚡ ✗ Absent (${{trulyLostLines.length}} line${{trulyLostLines.length>1?'s':''}}) — not found at destination — sweep should have split this section</div>`
-          : `<div style="color:#f85149;font-size:10px;padding:2px 0 4px">✗ ${{trulyLostLines.length}} line${{trulyLostLines.length>1?'s':''}} absent from diff additions</div>`) +
+          ? `<div style="color:#e3b341;font-size:11px;font-weight:600;padding:2px 0 6px">⚡ ✗ Absent (${{trulyLostLines.length}} line${{trulyLostLines.length>1?'s':''}}) — ⌀ no destination — these lines were not added anywhere in the diff</div>`
+          : `<div style="color:#f85149;font-size:10px;padding:2px 0 4px">✗ ${{trulyLostLines.length}} line${{trulyLostLines.length>1?'s':''}} — ⌀ no destination (absent from diff additions)</div>`) +
         absentHtml + `</div>`
       : '';
 
@@ -933,7 +943,7 @@ function _showSectionModalFromPython(idx, row, _pyc, focusLost) {{
 
   // ── Render + badge ─────────────────────────────────────────────────────────
   const titleSuffix = isFocusAnomaly ? ' — ? Untraced additions'
-    : isFocusLost   ? ' — ✗ Absent lines'
+    : isFocusLost   ? ' — ✗ Absent (⌀ no destination)'
     : isFocusWentTo ? ' ⇢ Arrived elsewhere'
     : ' → ' + normDest(row.destination);
   document.getElementById('modal-title').textContent = sectionName + titleSuffix;
@@ -1127,13 +1137,36 @@ function renderNarrative() {{
         }}
         lastSrcStem = srcStem;
       }}
+      // Per-outcome dest display: lost rows show "⌀ no destination", went-to rows
+      // show the actual stem they reached, mixed rows show all destinations.
+      const _pyc = (PRE_CLASSIFICATION || []).find(pc => pc.idx === idx);
+      const _outcomes = (_pyc && _pyc.outcomes) || [];
+      let destCellHtml;
+      if (_outcomes.length === 0) {{
+        destCellHtml = `<a class="dest-link" href="${{xcallbackUrl(r.destination)}}">${{esc(normDest(r.destination))}}</a>`;
+      }} else if (_outcomes.length === 1 && _outcomes[0].kind === 'lost') {{
+        destCellHtml = `<span style="color:#f85149" title="Lost lines have no destination — they were not added anywhere in the diff">⌀ no destination</span>`;
+      }} else if (_outcomes.length === 1 && _outcomes[0].kind === 'went-to') {{
+        const stem = _outcomes[0].dest || normDest(r.destination);
+        destCellHtml = `<a class="dest-link" href="${{xcallbackUrl('[[' + stem + ']]')}}" style="color:#58a6ff" title="Lines arrived at ${{esc(stem)}} — not the breadcrumb's claimed destination ${{esc(normDest(r.destination))}}">⇢ ${{esc(stem)}}</a>`;
+      }} else {{
+        // Move (or anomaly/empty) — show breadcrumb dest. If multiple outcomes (e.g.
+        // move + lost or move + went-to), append small chips for the others.
+        const primary = `<a class="dest-link" href="${{xcallbackUrl(r.destination)}}">${{esc(normDest(r.destination))}}</a>`;
+        const sideChips = _outcomes.filter(o => o.kind !== 'move' && o.kind !== 'anomaly' && o.kind !== 'empty').map(o => {{
+          if (o.kind === 'lost')   return `<span style="color:#f85149;font-size:9px;margin-left:4px" title="${{o.lines.length}} line(s) absent">⌀ ${{o.lines.length}}</span>`;
+          if (o.kind === 'went-to') return `<span style="color:#58a6ff;font-size:9px;margin-left:4px" title="${{o.lines.length}} line(s) at ${{esc(o.dest)}}">⇢ ${{esc(o.dest)}}</span>`;
+          return '';
+        }}).join('');
+        destCellHtml = primary + sideChips;
+      }}
       return sepRow + `<tr data-row-idx="${{idx}}">
         <td style="padding:3px 6px;text-align:center"><span class="row-badge rb-pending" title="Not yet classified">·</span></td>
         <td class="count-col" style="width:48px;text-align:center;font-size:10px;color:#484f58;font-family:monospace">—</td>
         <td class="section-col"><button class="sec-toggle" onclick="toggleSectionItems(${{idx}},this)" title="Expand items">▶</button>${{esc(r.section)}}</td>
         <td class="summary-col">${{esc(r.summary)}}</td>
         <td class="src-col"><a class="dest-link" href="${{srcUrl}}" title="${{esc(r.source_file)}}">${{srcStem}}</a></td>
-        <td class="dest-col" title="${{esc(r.destination)}}"><a class="dest-link" href="${{xcallbackUrl(r.destination)}}">${{esc(normDest(r.destination))}}</a></td>
+        <td class="dest-col" title="${{esc(r.destination)}}">${{destCellHtml}}</td>
         <td style="padding:3px 6px;text-align:center"><button class="view-btn" onclick="showSectionModal(${{idx}})">⌕</button></td>
       </tr>`;
     }}).join('');
