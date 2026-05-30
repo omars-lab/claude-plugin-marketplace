@@ -476,6 +476,7 @@ Found {n} section(s) with incomplete content:
 For each sweepable section, determine the best destination using the plan index and classify it:
 
 **Match signals (try in order):**
+0. Section contains one or more **"I owe [person]"** lines (e.g. `- [ ] I owe Anna the ARB doc`, `- [ ] i Owe Jeff goals`) → `🔴 High-priority IOU` — route to the **next business day note** (not a plan file, not the weekly target). These are interpersonal commitments that need immediate visibility. Detect with case-insensitive pattern: `i owe [name]`. Each IOU section gets its own breadcrumb row with destination `[[{NEXT_BUSINESS_DAY}]] Unsorted`. Next business day is today if it's Mon–Fri before end of day, otherwise the next Monday (or next working day skipping weekends).
 1. Section content contains `[[PlanName]]` wikilink matching a plan in the index → `✅ Confident`
 2. Section header text closely matches a plan name → `✅ Confident`
 3. Section's workstream emoji matches a single plan's workstream → `✅ Confident`
@@ -738,7 +739,9 @@ If **"👤 New Meeting note"** is selected → go to **Step 6d: Create New Plan/
 If **"📋 New List/Reference file"** is selected → ask for qualifier, create the list file, then return to routing.
 If **"🔬 New Research note"** or **"🤿 New Deep Dive plan"** is selected → go to **Step 6d: Create New Plan/Research Doc** (research path), then return to routing.
 
-After all uncertain sections are routed, **present the complete day plan** (confident + newly routed):
+After all uncertain sections are routed, **present the complete day plan** (confident + newly routed).
+
+**CRITICAL — one row per section, one destination per row.** Each section must appear on its own line with exactly one destination. Never group multiple sections into a single entry, and never list multiple destinations for one section. If 10 sections are being swept, the table must have 10 rows.
 
 ```
 📋 Final sweep plan for {fileDate}:
@@ -982,7 +985,14 @@ Add the new research doc to the research index so it's available for the rest of
 
 After the user confirms the day's routing plan:
 
-**Use `noteplan-sweep` CLI for all file operations.** Do not write ad-hoc Python.
+**Use `noteplan-sweep` CLI for ALL file operations from the very first command.** Do not write ad-hoc Python or bash scripts for operations the CLI can handle. The CLI is the canonical tool for this skill — use it from the start, not as a fallback.
+
+If you encounter an operation the CLI cannot perform (a **CLI gap**):
+1. Use a minimal custom script to fill the gap — document what you did and why
+2. Add an item to the Phase 8.5 task to implement that operation in the CLI before the next sweep
+3. Record it in the Gaps section of `🪞 Reflections/🏡💭💻 GenAI Thoughts/Gaps.md`
+
+**CLI gap example from 2026-04-12**: After `move-section` appended content to plan files under `## Unsorted`, it introduced `## From YYYY-MM-DD` provenance sub-headers. A Python script was needed to strip them. This is now a tracked CLI gap — the CLI should support `--no-from-header` or strip them natively.
 
 ```bash
 # Classify content into a semantic section, then append (no date subheader)
@@ -1029,12 +1039,14 @@ For each section confirmed for moving:
   ---
   | Swept | Section | Summary | Destination |
   |-------|---------|---------|-------------|
-  | {YYYY-MM-DD} | PlanName | {section1 name}, {section2 name} | [[PlanName1]] |
-  | {YYYY-MM-DD} | Errands | {count} errand tasks | [[{TARGET_DATE_ISO}]] Errands |
-  | {YYYY-MM-DD} | Unsorted | {section name} | [[{TARGET_DATE_ISO}]] Unsorted |
-  | {YYYY-MM-DD} | 1-1 Notes | meeting notes | [[{MEETING_DATE_ISO}]] |
+  | {YYYY-MM-DD} | PlanName | brief description of what moved | [[PlanName]] |
+  | {YYYY-MM-DD} | Errands | {count} errand tasks | [[{TARGET_DATE_ISO}]] |
+  | {YYYY-MM-DD} | Unsorted | brief description | [[{TARGET_DATE_ISO}]] |
+  | {YYYY-MM-DD} | 1-1 Notes | meeting notes | [[MeetingFile]] |
   ```
   Where `{TARGET_DATE_ISO}` is `YYYY-MM-DD` (e.g. `[[2026-03-15]]`). Only list destinations where content was actually moved. Skip skipped sections. The breadcrumb is the one exception to "no new content in source" — it is allowed because it is a reference to swept content, not content itself.
+
+  **CRITICAL — one row per section, one destination per row.** Every row must map exactly one section to exactly one destination. Never group multiple sections into a single row (e.g. `Section A + Section B + Section C → [[dest1]] [[dest2]] [[dest3]]`). If 10 sections are swept, write 10 rows. This rule applies equally to the pre-execution routing proposal table shown to the user for confirmation. Grouping obscures the sweep audit trail and makes it impossible to trace individual sections.
 
   **When the source note is swept again on a later date**: check if a breadcrumb table already exists. If so, **append new rows** to the existing table rather than creating a second table. This ensures the full sweep history for a note is visible in one table.
 
@@ -1053,6 +1065,8 @@ For each section confirmed for moving:
 - The research doc frontmatter + H1 when creating a new research note or deep dive
 
 **Do NOT introduce `## From YYYY-MM-DD` subheaders.** The date origin is already on every task via its `>YYYY-MM-DD` scheduling tag — duplicating it as a section header adds noise. Use semantic sections instead.
+
+**Do NOT remove pre-existing semantic headers.** When cleaning plan files or staging notes, only strip `## From YYYY-MM-DD` provenance headers. All other pre-existing headers carry semantic meaning and must be preserved — even if they don't match the naming conventions above. Examples of headers to KEEP: `## Hifz Planner`, `# Watson Cowork Plugins`, `# AI Consultant`, `## For Evals`, `## Repairs`. If a better header name is known (e.g. you can match it to an existing plan), you may *promote* the header to a wikilink (`# [[PlanName]]`), but never silently delete a semantic header without replacing it.
 
 **Permitted task annotations (the only allowed content additions to moved lines):**
 
