@@ -125,6 +125,36 @@ git push
 
 ---
 
+## URL Type Playbook
+
+When you encounter a bare URL, use this table to decide how to handle it. Apply the **first matching row** from top to bottom.
+
+| URL type | Detection | Action | Example output |
+|---|---|---|---|
+| Already linked | Preceded by `](` | Skip — already `[text](url)` | — |
+| Image / binary | Ends in `.jpg .png .gif .webp .svg .ico .pdf .zip .mp4 .mov` | **Skip silently** — nothing to enrich | — |
+| UUID path | Path contains `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | **Skip silently** — order ID / download token | — |
+| OAuth callback | URL has `?code=` `?state=` `?auth_callback=` `?access_token=` | **Skip silently** — session-specific | — |
+| Local / private IP | `192.168.x`, `10.x`, `172.16-31.x`, `localhost` | **Skip silently** — local network only | — |
+| Local hostname | `*.local`, `*.attlocal.net` | **Skip silently** — LAN hostname | — |
+| Internal tool | `servicenow.com`, `sharepoint.com`, `okta.com` | **Skip silently** (or use Chrome path) | — |
+| Very long URL | `len > 300` | **Skip silently** — likely token/state blob | — |
+| **Search engine** | `google.com/search?q=`, `bing.com/search?q=`, `duckduckgo.com/?q=` | **Auto-format** from `q=` param — no network call | `[Google: ha cli install nginx](url)` |
+| **YouTube video** | `youtube.com/watch?v=` | **Use page title** — YouTube titles are descriptive | `[How OKRs Work - Google's Goal System](url)` |
+| **GitHub repo/file** | `github.com/<owner>/<repo>` | **Use page title** (H1 from README) — descriptive | `[sn-dt-devx/ceg-deck-builder: Deck builder CLI](url)` |
+| **Docs page** | `*.readthedocs.io`, `docs.*.com`, developer docs | **Haiku summary** — page title often generic | `[Installing AWS CLI on macOS with shell verification](url)` |
+| **Blog / article** | Any article URL | **Haiku summary** — focus on concept + question | `[Tailscale remote access for Home Assistant without port forwarding](url)` |
+| **Product homepage** | `emeraldlawns.com`, `withodyssey.com` | **Use page title** — homepage titles are accurate | `[Emerald Lawns — Austin Lawn Care](url)` |
+| **LinkedIn job** | `linkedin.com/jobs/view/` | **Use page title** (job title + company) | `[Staff Software Engineer — ServiceNow](url)` |
+| **Map / address query** | `maps.google.com`, `wrm.capitol.texas.gov/map?address=` | **Auto-format** from address param or use title | `[Map: 600 C-Bar Ranch Trail, Cedar Park TX](url)` |
+
+**Rule of thumb:**
+- If the URL type gives you enough info without a network call → auto-format
+- If the page title is reliable and descriptive → use it directly  
+- If the page title is generic or the content needs context → Haiku summary
+
+---
+
 ## Search Engine URLs — Auto-Format from Query Param
 
 Search engine query URLs (`google.com/search?q=...`, `bing.com/search?q=...`, `duckduckgo.com/?q=...`) do NOT need Haiku summarization or a network call. Extract the `q=` parameter and format directly:
