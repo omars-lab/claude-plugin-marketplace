@@ -1932,17 +1932,20 @@ noteplan-sweep conversation-mine
 ### 9.3 — Dashboard refresh
 
 ```bash
-# Regenerate Work Board HTML (brag, observations, gaps, impact, AI usage tile)
+# Regenerate Insights Hub (brag, observations, gaps, impact, AI tile, hub nav tiles)
 noteplan-sweep work-board-generate
+
+# Regenerate Contributions dashboard (commit heatmap, work logs, shipped plans)
+noteplan-sweep contributions-generate
 
 # Regenerate AI Usage dashboard (includes repo scan data if available)
 noteplan-sweep ai-usage-generate
 
-# Regenerate Idea Dashboard (uses discovered_ideas.json from step 9.2, --skip-mine)
+# Regenerate Plans Dashboard (uses discovered_ideas.json from step 9.2, --skip-mine)
 noteplan-sweep dashboard-generate --skip-mine
 
-# Open Idea Dashboard in browser
-noteplan-sweep dashboard-open
+# Open Insights Hub in browser (central gallery)
+noteplan-sweep work-board-open
 ```
 
 ### 9.4 — Repo scan (weekly, not every sweep)
@@ -1952,6 +1955,7 @@ Run once per week or after adding a new AI-assisted project:
 ```bash
 noteplan-sweep repo-scan
 noteplan-sweep ai-usage-generate   # re-generate to include new repo data
+noteplan-sweep contributions-generate   # re-generate to include updated AI commit data
 ```
 
 ### Phase 9 checklist
@@ -1961,10 +1965,11 @@ noteplan-sweep ai-usage-generate   # re-generate to include new repo data
 - [ ] `sweep-review-compile` — compiled review HTML ready
 - [ ] `sweep-review-open` — review opened in browser
 - [ ] `conversation-mine` — transcripts mined, discovered_ideas.json updated
-- [ ] `work-board-generate` — Work Board HTML refreshed
+- [ ] `work-board-generate` — Insights Hub HTML refreshed
+- [ ] `contributions-generate` — Contributions HTML refreshed
 - [ ] `ai-usage-generate` — AI Usage HTML refreshed
-- [ ] `dashboard-generate --skip-mine` — Idea Dashboard HTML refreshed
-- [ ] `dashboard-open` — dashboard visible
+- [ ] `dashboard-generate --skip-mine` — Plans Dashboard HTML refreshed
+- [ ] `work-board-open` — Insights Hub visible in browser
 
 ---
 

@@ -26,7 +26,7 @@ if os.path.isfile(_VENV_PYTHON) and not sys.executable.startswith(_SCRIPT_DIR):
 sys.path.insert(0, os.path.dirname(__file__))
 
 import noteplan_sweep.utils as utils
-from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair, sweep_review, dashboard, conversation_mine, work_board, ai_usage, server, contributions
+from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair, sweep_review, dashboard, conversation_mine, work_board, ai_usage, server, contributions, graph
 
 VERSION = "0.1.0"
 
@@ -95,7 +95,11 @@ COMMANDS = [
     ("ai-usage-generate",       "Read ai-usage.json → write dashboard/ai-usage.html (Anthropic theme)"),
     ("ai-usage-open",           "Open dashboard/ai-usage.html in browser"),
     ("repo-scan",               "Scan workspace repos for AI artifacts (SKILL.md, CLAUDE.md, Co-Authored-By commits) → dashboard/repo-audit.json"),
-    # Group 12: Sweep Review
+    # Group 12: Conversation Graph
+    ("graph-extract",           "Build graph.json from sessions/plans/repos/skills — nodes + edges"),
+    ("graph-stats",             "Print node/edge counts, top plans by session touches, use case distribution"),
+    ("graph-query",             "Search graph by text or Cypher subset (MATCH/WHERE/RETURN/ORDER BY/LIMIT)"),
+    # Group 13: Sweep Review
     ("sweep-commit",            "Stage modified .md files and create a structured sweep(YYYY-MM-DD) commit"),
     ("sweep-review-generate",   "Generate immutable snapshot HTML from the sweep commit diff"),
     ("sweep-review-compile",    "Merge snapshot + all rN.comments.jsonl rounds → review.html"),
@@ -335,27 +339,36 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("repo-scan", help=COMMANDS[48][1])
     p.add_argument("--repos-root", metavar="PATH", help="Workspace root override (default: ~/workspace)")
 
-    # ── Group 12: Sweep Review ────────────────────────────────────────────
-    p = sub.add_parser("sweep-commit", help=COMMANDS[49][1])
+    # ── Group 12: Conversation Graph ─────────────────────────────────────
+    sub.add_parser("graph-extract", help=COMMANDS[49][1])
+    sub.add_parser("graph-stats",   help=COMMANDS[50][1])
+
+    p = sub.add_parser("graph-query", help=COMMANDS[51][1])
+    p.add_argument("text", nargs="?", help="Text to search across all node labels and attributes")
+    p.add_argument("--cypher", metavar="QUERY", help="Cypher subset: MATCH (n[:Type]) [WHERE n.attr op val] RETURN n.field [ORDER BY ...] [LIMIT N]")
+    p.add_argument("--limit", type=int, default=10, help="Max results (default: 10)")
+
+    # ── Group 13: Sweep Review ────────────────────────────────────────────
+    p = sub.add_parser("sweep-commit", help=COMMANDS[52][1])
     p.add_argument("--dry-run", action="store_true", help="Print what would be committed without writing")
 
-    p = sub.add_parser("sweep-review-generate", help=COMMANDS[50][1])
+    p = sub.add_parser("sweep-review-generate", help=COMMANDS[53][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--no-carry-comments", action="store_true",
                    help="Start fresh — do not inject existing comments into new snapshot")
 
-    p = sub.add_parser("sweep-review-compile", help=COMMANDS[51][1])
+    p = sub.add_parser("sweep-review-compile", help=COMMANDS[54][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-squash", help=COMMANDS[52][1])
+    p = sub.add_parser("sweep-review-squash", help=COMMANDS[55][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-list", help=COMMANDS[53][1])
+    p = sub.add_parser("sweep-review-list", help=COMMANDS[56][1])
     p.add_argument("--date", help="Filter to a specific YYYY-MM-DD")
 
-    p = sub.add_parser("sweep-review-open", help=COMMANDS[54][1])
+    p = sub.add_parser("sweep-review-open", help=COMMANDS[57][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
     p.add_argument("--snapshot", action="store_true", help="Open raw snapshot instead of compiled review")
@@ -415,6 +428,9 @@ DISPATCH = {
     "ai-usage-generate":        ai_usage.cmd_ai_usage_generate,
     "ai-usage-open":            ai_usage.cmd_ai_usage_open,
     "repo-scan":                ai_usage.cmd_repo_scan,
+    "graph-extract":            graph.cmd_graph_extract,
+    "graph-stats":              graph.cmd_graph_stats,
+    "graph-query":              graph.cmd_graph_query,
     "sweep-commit":             sweep_review.cmd_sweep_commit,
     "sweep-review-generate":    sweep_review.cmd_sweep_review_generate,
     "sweep-review-compile":     sweep_review.cmd_sweep_review_compile,
