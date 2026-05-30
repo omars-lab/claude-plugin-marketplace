@@ -280,6 +280,13 @@ def cmd_sweep_review_generate(args):
         utils.err(f"Could not get diff for range {base_commit[:7]}..HEAD")
         sys.exit(utils.EXIT_VALIDATION_FAILURE)
 
+    # Decode git-quoted octal paths so emoji filenames are readable
+    diff_text = _decode_git_quoted_paths(diff_text)
+    stat_text = _decode_git_quoted_paths(stat_text)
+
+    # Extract sweep narrative from breadcrumb tables in swept Calendar files
+    narrative = _extract_sweep_narrative(root, base_commit)
+
     # Check for existing comments file to carry forward
     existing_comments: list = []
     comments_files = sorted(sweeps.glob(f"{run_id}-r*.comments.jsonl"))
@@ -304,333 +311,402 @@ def cmd_sweep_review_generate(args):
         utils.log(f"[dry-run] Would write {sweeps / (run_id + '.snapshot.html')}")
         return
 
-    html = _build_snapshot_html(run_id, date_str, sweep_sha, stat_text, diff_text, seed_comments)
+    html = _build_snapshot_html(run_id, date_str, sweep_sha, stat_text, diff_text, seed_comments, narrative)
     out_path = sweeps / f"{run_id}.snapshot.html"
     out_path.write_text(html, encoding="utf-8")
     utils.log(f"sweep-review-generate: wrote {out_path}")
 
 
+def _decode_git_quoted_paths(text: str) -> str:
+    """Replace git-quoted octal paths with decoded UTF-8 filenames.
+
+    Git wraps paths containing non-ASCII chars in double quotes and encodes
+    each byte as \\NNN (octal). This function decodes them so emoji filenames
+    are human-readable in the HTML diff view.
+
+    Examples:
+      +++ "b/Notes/\\360\\237\\217\\242 ServiceNow/..."
+      → +++ b/Notes/🏢 ServiceNow/...
+    """
+    import re as _re
+
+    def _unescape(m: "_re.Match") -> str:
+        quoted = m.group(1)  # content between the outer quotes
+        # Decode C-style octal escapes (\NNN) to bytes, then UTF-8
+        byte_parts = []
+        i = 0
+        while i < len(quoted):
+            if quoted[i] == '\\' and i + 1 < len(quoted):
+                # Could be \NNN (octal) or other escape
+                if quoted[i+1].isdigit():
+                    byte_parts.append(int(quoted[i+1:i+4], 8))
+                    i += 4
+                else:
+                    # Other escape: keep as-is
+                    byte_parts.append(ord(quoted[i+1]))
+                    i += 2
+            else:
+                byte_parts.append(ord(quoted[i]))
+                i += 1
+        try:
+            decoded = bytes(byte_parts).decode("utf-8", errors="replace")
+        except Exception:
+            decoded = quoted
+        return decoded  # Return without surrounding quotes
+
+    # Match lines like `+++ "b/..."` or `--- "a/..."` or `diff --git "a/..." "b/..."`
+    # Also handles rename lines and stat lines with quoted paths.
+    # Pattern: a double-quoted string that starts with a/ or b/
+    pattern = _re.compile(r'"((?:[ab])/(?:[^"\\]|\\.)*)\"')
+
+    def _replace(m: "_re.Match") -> str:
+        inner = m.group(1)  # e.g. "b/Notes/\360..."
+        prefix = inner[:2]  # "b/" or "a/"
+        rest = inner[2:]
+        decoded = _unescape(_re.match(r'(.*)', rest))
+        return prefix + decoded
+
+    # Replace all quoted path instances
+    result = pattern.sub(lambda m: _replace(m), text)
+    return result
+
+
+def _extract_sweep_narrative(root: "Path", base_commit: str) -> list:
+    """Parse breadcrumb tables from swept Calendar files and return narrative rows.
+
+    Returns a list of dicts:
+      { date, source_file, section, summary, destination }
+    """
+    import re as _re
+
+    # Find Calendar/*.md files that changed since base_commit
+    diff_r = _git(
+        ["diff", "--name-only", f"{base_commit}..HEAD", "--", "Calendar/*.md"],
+        cwd=root
+    )
+    changed_files: list[str] = []
+    if diff_r.returncode == 0:
+        changed_files = [l.strip() for l in diff_r.stdout.strip().splitlines() if l.strip()]
+
+    rows = []
+    table_re = _re.compile(
+        r'^\|\s*(?P<date>[\d-]+)\s*\|\s*(?P<section>[^|]+)\s*\|\s*(?P<summary>[^|]+)\s*\|\s*(?P<dest>[^|]+)\s*\|',
+        _re.MULTILINE
+    )
+
+    for rel in changed_files:
+        abs_path = root / rel
+        try:
+            content = abs_path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        for m in table_re.finditer(content):
+            date_val = m.group("date").strip()
+            section  = m.group("section").strip()
+            summary  = m.group("summary").strip()
+            dest     = m.group("dest").strip()
+            # Skip header rows
+            if date_val.lower() in ("swept", "date", "---"):
+                continue
+            rows.append({
+                "date":        date_val,
+                "source_file": rel,
+                "section":     section,
+                "summary":     summary,
+                "destination": dest,
+            })
+
+    # Sort by date then source file
+    rows.sort(key=lambda r: (r["date"], r["source_file"]))
+    return rows
+
+
 def _build_snapshot_html(
     run_id: str, date_str: str, sha: str,
     stat_text: str, diff_text: str,
-    seed_comments: list
+    seed_comments: list,
+    narrative: list | None = None,
 ) -> str:
     seed_json = json.dumps(seed_comments, indent=2)
 
     # Inline diff2html + Prism.js from CDN URLs would require internet.
     # For full offline support we embed a minimal self-contained diff renderer.
     # The HTML uses vanilla JS to parse the unified diff and render side-by-side.
+    narrative_json = json.dumps(narrative or [], indent=2)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Sweep Review — {run_id}</title>
 <style>
-  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace; font-size: 13px; background: #0d1117; color: #e6edf3; }}
-  #header {{ background: #161b22; border-bottom: 1px solid #30363d; padding: 12px 20px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }}
-  #header h1 {{ font-size: 15px; font-weight: 600; color: #58a6ff; }}
-  .stat {{ font-size: 12px; color: #8b949e; }}
-  #layout {{ display: flex; height: calc(100vh - 48px); }}
-  #sidebar {{ width: 260px; min-width: 180px; background: #161b22; border-right: 1px solid #30363d; overflow-y: auto; flex-shrink: 0; padding: 8px 0; }}
-  #sidebar .file-item {{ padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; border-left: 3px solid transparent; }}
-  #sidebar .file-item:hover {{ background: #21262d; }}
-  #sidebar .file-item.active {{ background: #21262d; border-left-color: #58a6ff; }}
-  #sidebar .badge {{ font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px; }}
-  .badge-add {{ background: #1f4a2a; color: #3fb950; }}
-  .badge-del {{ background: #4a1f2a; color: #f85149; }}
-  .badge-mod {{ background: #1f2d4a; color: #79c0ff; }}
-  #main {{ flex: 1; overflow-y: auto; padding: 16px; }}
-  .file-diff {{ margin-bottom: 24px; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }}
-  .file-diff-header {{ background: #161b22; padding: 8px 14px; font-size: 12px; color: #8b949e; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; }}
-  .file-diff-header .filename {{ color: #e6edf3; font-weight: 600; }}
-  .diff-table {{ width: 100%; border-collapse: collapse; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }}
-  .diff-table td {{ padding: 2px 8px; white-space: pre; vertical-align: top; line-height: 1.5; }}
-  .diff-table .line-num {{ width: 40px; text-align: right; color: #484f58; user-select: none; border-right: 1px solid #30363d; padding-right: 6px; }}
-  .diff-table .line-add {{ background: #0e4429; }}
-  .diff-table .line-add .line-num {{ background: #0a3320; color: #3fb950; }}
-  .diff-table .line-del {{ background: #4a0f1a; }}
-  .diff-table .line-del .line-num {{ background: #38080f; color: #f85149; }}
-  .diff-table .line-ctx {{ background: #0d1117; }}
-  .diff-table .line-hdr {{ background: #1c2128; color: #8b949e; }}
-  .diff-table .line-content {{ color: #e6edf3; }}
-  .diff-table .line-add .line-content {{ color: #aff5b4; }}
-  .diff-table .line-del .line-content {{ color: #ffdcd7; }}
-  .comment-btn {{ font-size: 10px; opacity: 0; cursor: pointer; background: #1f6feb; color: white; border: none; border-radius: 3px; padding: 1px 6px; margin-left: 6px; }}
-  tr:hover .comment-btn {{ opacity: 1; }}
-  .comment-block {{ background: #161b22; border-left: 3px solid #58a6ff; padding: 8px 12px; margin: 2px 0; font-family: -apple-system, sans-serif; }}
-  .comment-block .comment-meta {{ font-size: 11px; color: #8b949e; margin-bottom: 4px; }}
-  .comment-block .comment-text {{ color: #e6edf3; white-space: pre-wrap; }}
-  .comment-block.resolved {{ opacity: 0.5; border-left-color: #3fb950; }}
-  #comment-modal {{ display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 200; align-items: center; justify-content: center; }}
-  #comment-modal.open {{ display: flex; }}
-  #comment-box {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; width: 480px; }}
-  #comment-box h3 {{ font-size: 14px; margin-bottom: 12px; color: #58a6ff; }}
-  #comment-box textarea {{ width: 100%; height: 100px; background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 13px; resize: vertical; }}
-  #comment-box .btn-row {{ display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }}
-  #comment-box button {{ padding: 6px 14px; border-radius: 4px; border: none; cursor: pointer; font-size: 13px; }}
-  .btn-save {{ background: #238636; color: white; }}
-  .btn-cancel {{ background: #21262d; color: #e6edf3; }}
-  #save-bar {{ position: fixed; bottom: 20px; right: 20px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; z-index: 150; }}
-  #save-bar .comment-count {{ font-size: 13px; color: #8b949e; }}
-  #save-bar .btn-dl {{ background: #1f6feb; color: white; padding: 6px 14px; border-radius: 4px; border: none; cursor: pointer; font-size: 13px; }}
-  #orphaned {{ margin-top: 24px; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }}
-  #orphaned summary {{ padding: 10px 14px; background: #161b22; cursor: pointer; font-size: 13px; color: #8b949e; }}
-  #orphaned .orphan-list {{ padding: 12px; }}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;background:#0d1117;color:#e6edf3}}
+#hdr{{background:#161b22;border-bottom:1px solid #30363d;padding:10px 20px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}}
+#hdr h1{{font-size:15px;font-weight:600;color:#58a6ff}}
+.stat{{font-size:12px;color:#8b949e}}
+.tabs{{display:flex;gap:4px;margin-left:auto}}
+.tab{{padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;background:transparent;color:#8b949e;border:1px solid transparent}}
+.tab.active{{background:#21262d;color:#e6edf3;border-color:#30363d}}
+#layout{{display:flex;height:calc(100vh - 44px)}}
+#sidebar{{width:260px;min-width:160px;background:#161b22;border-right:1px solid #30363d;overflow-y:auto;flex-shrink:0;padding:8px 0}}
+.fi{{padding:5px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;border-left:3px solid transparent;font-size:12px}}
+.fi:hover{{background:#21262d}}
+.fi.active{{background:#21262d;border-left-color:#58a6ff}}
+.fi .name{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}}
+.badge{{font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;flex-shrink:0}}
+.ba{{background:#1f4a2a;color:#3fb950}}.bd{{background:#4a1f2a;color:#f85149}}.bm{{background:#1f2d4a;color:#79c0ff}}
+#main{{flex:1;overflow-y:auto;padding:16px}}
+/* ── Diff panel ── */
+.fd{{margin-bottom:20px;border:1px solid #30363d;border-radius:8px;overflow:hidden}}
+.fdh{{background:#161b22;padding:7px 14px;font-size:12px;color:#8b949e;border-bottom:1px solid #30363d;display:flex;justify-content:space-between}}
+.fdh .fn{{color:#e6edf3;font-weight:600;font-family:'SF Mono','Fira Code',monospace}}
+.sbs{{display:grid;grid-template-columns:1fr 1fr;font-family:'SF Mono','Fira Code',monospace;font-size:11.5px}}
+.sbs-col{{overflow:hidden;border-right:1px solid #30363d}}
+.sbs-col:last-child{{border-right:none}}
+.sbs-col .col-hdr{{background:#1c2128;padding:3px 8px;font-size:11px;color:#8b949e;border-bottom:1px solid #30363d}}
+.row{{display:flex;min-height:18px}}
+.ln{{width:36px;text-align:right;padding:0 6px;color:#484f58;user-select:none;border-right:1px solid #30363d;flex-shrink:0;line-height:18px}}
+.lc{{flex:1;padding:0 6px;white-space:pre;overflow:hidden;line-height:18px}}
+.row.add{{background:#0e4429}}.row.add .ln{{background:#0a3320;color:#3fb950}}
+.row.del{{background:#4a0f1a}}.row.del .ln{{background:#38080f;color:#f85149}}
+.row.ctx{{background:#0d1117}}
+.row.hdr{{background:#1c2128}}.row.hdr .lc{{color:#8b949e}}
+.row.add .lc{{color:#aff5b4}}.row.del .lc{{color:#ffdcd7}}
+/* ── Narrative panel ── */
+#narrative{{padding:16px}}
+.day-block{{margin-bottom:24px}}
+.day-hdr{{font-size:14px;font-weight:600;color:#58a6ff;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #30363d}}
+.nav-tbl{{width:100%;border-collapse:collapse;font-size:12px}}
+.nav-tbl th{{background:#161b22;padding:6px 10px;text-align:left;color:#8b949e;font-weight:500;border-bottom:1px solid #30363d}}
+.nav-tbl td{{padding:6px 10px;border-bottom:1px solid #21262d;vertical-align:top}}
+.nav-tbl tr:hover td{{background:#161b22}}
+.nav-tbl .section-col{{color:#e6edf3;font-weight:500;max-width:180px}}
+.nav-tbl .summary-col{{color:#8b949e;max-width:240px}}
+.nav-tbl .dest-col{{color:#79c0ff;font-family:'SF Mono','Fira Code',monospace;font-size:11px}}
+.empty{{color:#484f58;padding:24px;text-align:center}}
 </style>
 </head>
 <body>
-<div id="header">
+<div id="hdr">
   <h1>Sweep Review — {run_id}</h1>
   <span class="stat" id="stat-line"></span>
-  <span class="stat" style="color:#484f58">sha: {sha}</span>
+  <span class="stat" style="color:#484f58">base→HEAD: {sha}</span>
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('narrative')">📋 Narrative</button>
+    <button class="tab" onclick="showTab('diff')">🔀 Diff</button>
+  </div>
 </div>
 <div id="layout">
   <nav id="sidebar"></nav>
-  <main id="main"></main>
-</div>
-<div id="save-bar">
-  <span class="comment-count" id="save-count">0 comments</span>
-  <button class="btn-dl" onclick="saveComments()">Save Comments</button>
-</div>
-<div id="comment-modal">
-  <div id="comment-box">
-    <h3>Add Comment</h3>
-    <textarea id="comment-text" placeholder="Leave a comment..."></textarea>
-    <div class="btn-row">
-      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-      <button class="btn-save" onclick="submitComment()">Save</button>
-    </div>
-  </div>
+  <main id="main">
+    <div id="narrative"></div>
+    <div id="diff" style="display:none"></div>
+  </main>
 </div>
 
 <script>
-// ── Data ──────────────────────────────────────────────────────────────────
 const RUN_ID = {json.dumps(run_id)};
 const DIFF_TEXT = {json.dumps(diff_text)};
 const STAT_TEXT = {json.dumps(stat_text)};
 const SEED_COMMENTS = {seed_json};
+const NARRATIVE = {narrative_json};
 
-// ── State ─────────────────────────────────────────────────────────────────
-const comments = {{}};  // anchor -> [{{ts, anchor, author, text, resolved}}]
-let pendingAnchor = null;
+// ── Tab switching ──────────────────────────────────────────────────────────
+function showTab(name) {{
+  document.getElementById('narrative').style.display = name === 'narrative' ? '' : 'none';
+  document.getElementById('diff').style.display      = name === 'diff'      ? '' : 'none';
+  document.getElementById('sidebar').style.display   = name === 'diff'      ? '' : 'none';
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.includes(name === 'narrative' ? 'Narrative' : 'Diff')));
+}}
 
-// Load seed comments
-SEED_COMMENTS.forEach(c => {{
-  if (!comments[c.anchor]) comments[c.anchor] = [];
-  comments[c.anchor].push(c);
-}});
+// ── Narrative renderer ─────────────────────────────────────────────────────
+function renderNarrative() {{
+  const el = document.getElementById('narrative');
+  if (!NARRATIVE.length) {{
+    el.innerHTML = '<div class="empty">No sweep breadcrumb data found.<br>Breadcrumb tables are written to each swept Calendar note.</div>';
+    return;
+  }}
 
-// ── Diff parser ───────────────────────────────────────────────────────────
+  // Group by date
+  const byDate = {{}};
+  NARRATIVE.forEach(r => {{
+    const d = r.date || 'Unknown';
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push(r);
+  }});
+
+  const dayNames = {{ '1':'Mon','2':'Tue','3':'Wed','4':'Thu','5':'Fri','6':'Sat','7':'Sun' }};
+
+  let html = '';
+  for (const [d, rows] of Object.entries(byDate).sort()) {{
+    // Convert YYYY-MM-DD to readable date + day
+    let label = d;
+    try {{
+      const dt = new Date(d + 'T12:00:00');
+      const dow = dayNames[String(((dt.getDay() + 6) % 7) + 1)] || '';
+      label = `${{d}} (${{dow}})`;
+    }} catch(e) {{}}
+
+    const rowsHtml = rows.map(r => `
+      <tr>
+        <td class="section-col">${{esc(r.section)}}</td>
+        <td class="summary-col">${{esc(r.summary)}}</td>
+        <td class="dest-col">${{esc(r.destination)}}</td>
+      </tr>`).join('');
+
+    html += `
+      <div class="day-block">
+        <div class="day-hdr">📅 ${{esc(label)}} — ${{rows.length}} section${{rows.length !== 1 ? 's' : ''}} swept</div>
+        <table class="nav-tbl">
+          <thead><tr><th>Section</th><th>Summary</th><th>Destination</th></tr></thead>
+          <tbody>${{rowsHtml}}</tbody>
+        </table>
+      </div>`;
+  }}
+  el.innerHTML = html;
+}}
+
+// ── Unified diff parser ────────────────────────────────────────────────────
 function parseDiff(text) {{
   const files = [];
   let cur = null;
   let leftN = 0, rightN = 0;
-  const lines = text.split('\\n');
-
+  const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) {{
     const l = lines[i];
     if (l.startsWith('diff --git ')) {{
       if (cur) files.push(cur);
-      cur = {{ header: l, filename: '', hunks: [], stat: '' }};
+      cur = {{ filename: '', hunks: [] }};
       continue;
     }}
     if (!cur) continue;
-    if (l.startsWith('+++ b/')) {{ cur.filename = l.slice(6); continue; }}
-    if (l.startsWith('--- ') || l.startsWith('+++ ')) continue;
+    if (l.startsWith('+++ ')) {{
+      // Handle both: `+++ b/path` and `+++ "b/path"` (already decoded by Python)
+      let p = l.slice(4).trim();
+      if (p.startsWith('"') && p.endsWith('"')) p = p.slice(1, -1);
+      if (p.startsWith('b/')) cur.filename = p.slice(2);
+      continue;
+    }}
+    if (l.startsWith('--- ') || l.startsWith('index ') || l.startsWith('new file') || l.startsWith('deleted file') || l.startsWith('old mode') || l.startsWith('new mode')) continue;
     if (l.startsWith('@@')) {{
-      const m = l.match(/@@ -(\\d+)(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/);
+      const m = l.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
       if (m) {{ leftN = parseInt(m[1]); rightN = parseInt(m[2]); }}
-      cur.hunks.push({{ hdr: l, rows: [] }});
+      cur.hunks.push({{ hdr: l, left: [], right: [] }});
       continue;
     }}
     if (!cur.hunks.length) continue;
     const hunk = cur.hunks[cur.hunks.length - 1];
     if (l.startsWith('+')) {{
-      hunk.rows.push({{ type: 'add', left: null, right: rightN++, content: l.slice(1) }});
+      hunk.right.push({{ n: rightN++, c: l.slice(1) }});
     }} else if (l.startsWith('-')) {{
-      hunk.rows.push({{ type: 'del', left: leftN++, right: null, content: l.slice(1) }});
+      hunk.left.push({{ n: leftN++, c: l.slice(1) }});
     }} else {{
-      hunk.rows.push({{ type: 'ctx', left: leftN++, right: rightN++, content: l.slice(1) }});
+      // context: flush paired sides, then add to both
+      const ctx = {{ n: null, c: l.slice(1) }};
+      hunk.left.push({{ n: leftN++, c: l.slice(1) }});
+      hunk.right.push({{ n: rightN++, c: l.slice(1) }});
     }}
   }}
   if (cur) files.push(cur);
   return files;
 }}
 
-// ── Render ────────────────────────────────────────────────────────────────
+// ── Side-by-side renderer ──────────────────────────────────────────────────
 function esc(s) {{
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }}
 
-function anchorKey(filename, hunkIdx, rowIdx) {{
-  return btoa(encodeURIComponent(filename + ':' + hunkIdx + ':' + rowIdx)).slice(0, 32);
-}}
+function renderHunk(hunk) {{
+  // Pair deletion/addition rows for side-by-side
+  const maxLen = Math.max(hunk.left.length, hunk.right.length);
+  let leftRows = '', rightRows = '';
 
-function renderComments(anchor) {{
-  const cs = comments[anchor] || [];
-  if (!cs.length) return '';
-  return cs.map(c => `
-    <tr><td colspan="3" style="padding:0">
-      <div class="comment-block${{c.resolved ? ' resolved' : ''}}">
-        <div class="comment-meta">${{c.author || 'Omar'}} &bull; ${{new Date(c.ts * 1000).toLocaleString()}}</div>
-        <div class="comment-text">${{esc(c.text)}}</div>
+  // Context lines — they appear in both sides at the same position
+  // We need to interleave: track alignment
+
+  // Simple approach: emit all left rows, all right rows aligned by index
+  const llen = hunk.left.length, rlen = hunk.right.length;
+  const total = Math.max(llen, rlen);
+
+  for (let i = 0; i < total; i++) {{
+    const l = i < llen ? hunk.left[i] : null;
+    const r = i < rlen ? hunk.right[i] : null;
+
+    // If both sides have same content at this index → context
+    const isCtx = l && r && l.c === r.c;
+    const lCls = isCtx ? 'ctx' : (l ? 'del' : 'ctx');
+    const rCls = isCtx ? 'ctx' : (r ? 'add' : 'ctx');
+
+    leftRows  += `<div class="row ${{lCls}}"><span class="ln">${{l ? l.n : ''}}</span><span class="lc">${{l ? esc(l.c) : ''}}</span></div>`;
+    rightRows += `<div class="row ${{rCls}}"><span class="ln">${{r ? r.n : ''}}</span><span class="lc">${{r ? esc(r.c) : ''}}</span></div>`;
+  }}
+
+  return `
+    <div class="sbs">
+      <div class="sbs-col">
+        <div class="col-hdr">Before</div>
+        <div class="row hdr"><span class="ln"></span><span class="lc">${{esc(hunk.hdr)}}</span></div>
+        ${{leftRows}}
       </div>
-    </td></tr>`).join('');
+      <div class="sbs-col">
+        <div class="col-hdr">After</div>
+        <div class="row hdr"><span class="ln"></span><span class="lc">${{esc(hunk.hdr)}}</span></div>
+        ${{rightRows}}
+      </div>
+    </div>`;
 }}
 
-function buildSidebar(files) {{
-  const nav = document.getElementById('sidebar');
-  nav.innerHTML = files.map((f, fi) => {{
-    const adds = f.hunks.flatMap(h => h.rows).filter(r => r.type === 'add').length;
-    const dels = f.hunks.flatMap(h => h.rows).filter(r => r.type === 'del').length;
-    const badge = adds && dels ? `<span class="badge badge-mod">~</span>` :
-                  adds ? `<span class="badge badge-add">+${{adds}}</span>` :
-                  `<span class="badge badge-del">-${{dels}}</span>`;
-    const name = f.filename.split('/').pop() || f.filename;
-    return `<div class="file-item" id="nav-${{fi}}" onclick="scrollTo('file-${{fi}}'); setActive(${{fi}})">${{badge}}<span title="${{esc(f.filename)}}">${{esc(name)}}</span></div>`;
+function renderDiffFiles(files) {{
+  const sidebar = document.getElementById('sidebar');
+  const diff = document.getElementById('diff');
+
+  sidebar.innerHTML = files.map((f, fi) => {{
+    const adds = f.hunks.reduce((s, h) => s + h.right.length, 0);
+    const dels = f.hunks.reduce((s, h) => s + h.left.length, 0);
+    const isAdd = adds > 0 && dels === 0;
+    const isDel = dels > 0 && adds === 0;
+    const badge = isAdd ? `<span class="badge ba">+${{adds}}</span>` :
+                  isDel ? `<span class="badge bd">-${{dels}}</span>` :
+                          `<span class="badge bm">~</span>`;
+    const name = (f.filename || '(unknown)').split('/').pop() || f.filename || '(unknown)';
+    return `<div class="fi" id="nav-${{fi}}" onclick="scrollToFile(${{fi}});setActive(${{fi}})">${{badge}}<span class="name" title="${{esc(f.filename || '')}}">${{esc(name)}}</span></div>`;
+  }}).join('');
+
+  diff.innerHTML = files.map((f, fi) => {{
+    const adds = f.hunks.reduce((s, h) => s + h.right.length, 0);
+    const dels = f.hunks.reduce((s, h) => s + h.left.length, 0);
+    const hunksHtml = f.hunks.map(renderHunk).join('');
+    const displayName = f.filename || '(unknown file — emoji path encoding issue)';
+    return `<div class="fd" id="file-${{fi}}">
+      <div class="fdh">
+        <span class="fn">${{esc(displayName)}}</span>
+        <span><span style="color:#3fb950">+${{adds}}</span> <span style="color:#f85149">-${{dels}}</span></span>
+      </div>
+      ${{hunksHtml}}
+    </div>`;
   }}).join('');
 }}
 
+function scrollToFile(fi) {{
+  const el = document.getElementById('file-' + fi);
+  if (el) el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+}}
 function setActive(fi) {{
-  document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.fi').forEach(e => e.classList.remove('active'));
   const el = document.getElementById('nav-' + fi);
   if (el) el.classList.add('active');
 }}
 
-function scrollTo(id) {{
-  const el = document.getElementById(id);
-  if (el) el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-}}
-
-function renderFiles(files) {{
-  const main = document.getElementById('main');
-  main.innerHTML = files.map((f, fi) => {{
-    const rows = f.hunks.map((h, hi) => {{
-      const hdrRow = `<tr class="line-hdr"><td class="line-num"></td><td class="line-num"></td><td class="line-content">${{esc(h.hdr)}}</td></tr>`;
-      const dataRows = h.rows.map((r, ri) => {{
-        const anc = anchorKey(f.filename, hi, ri);
-        const sign = r.type === 'add' ? '+' : r.type === 'del' ? '-' : ' ';
-        const cls = 'line-' + r.type;
-        const lNum = r.left || '';
-        const rNum = r.right || '';
-        const commentRows = renderComments(anc);
-        return `<tr class="${{cls}}" data-anchor="${{anc}}">
-          <td class="line-num">${{lNum}}</td>
-          <td class="line-num">${{rNum}}</td>
-          <td class="line-content">${{sign}}${{esc(r.content)}}<button class="comment-btn" onclick="openModal('${{anc}}')">+</button></td>
-        </tr>${{commentRows}}`;
-      }}).join('');
-      return hdrRow + dataRows;
-    }}).join('');
-
-    const adds = f.hunks.flatMap(h => h.rows).filter(r => r.type === 'add').length;
-    const dels = f.hunks.flatMap(h => h.rows).filter(r => r.type === 'del').length;
-
-    return `<div class="file-diff" id="file-${{fi}}">
-      <div class="file-diff-header">
-        <span class="filename">${{esc(f.filename)}}</span>
-        <span><span style="color:#3fb950">+${{adds}}</span> <span style="color:#f85149">-${{dels}}</span></span>
-      </div>
-      <table class="diff-table"><tbody>${{rows}}</tbody></table>
-    </div>`;
-  }}).join('');
-
-  // Orphaned comments (anchors not in current diff)
-  const allAnchors = new Set(
-    files.flatMap((f, fi) =>
-      f.hunks.flatMap((h, hi) => h.rows.map((r, ri) => anchorKey(f.filename, hi, ri)))
-    )
-  );
-  const orphaned = Object.entries(comments).filter(([k]) => !allAnchors.has(k));
-  if (orphaned.length) {{
-    main.innerHTML += `<details id="orphaned"><summary>Orphaned Comments (${{orphaned.length}})</summary>
-      <div class="orphan-list">${{orphaned.flatMap(([k, cs]) => cs.map(c => `
-        <div class="comment-block">
-          <div class="comment-meta">${{c.author || 'Omar'}} &bull; anchor: ${{k}}</div>
-          <div class="comment-text">${{esc(c.text)}}</div>
-        </div>`)).join('')}}</div></details>`;
-  }}
-}}
-
-function updateSaveBar() {{
-  const total = Object.values(comments).flat().length;
-  document.getElementById('save-count').textContent = total + ' comment' + (total !== 1 ? 's' : '');
-}}
-
-// ── Comment modal ─────────────────────────────────────────────────────────
-function openModal(anchor) {{
-  pendingAnchor = anchor;
-  document.getElementById('comment-text').value = '';
-  document.getElementById('comment-modal').classList.add('open');
-  setTimeout(() => document.getElementById('comment-text').focus(), 50);
-}}
-
-function closeModal() {{
-  document.getElementById('comment-modal').classList.remove('open');
-  pendingAnchor = null;
-}}
-
-function submitComment() {{
-  const text = document.getElementById('comment-text').value.trim();
-  if (!text || !pendingAnchor) {{ closeModal(); return; }}
-  const entry = {{
-    ts: Math.floor(Date.now() / 1000),
-    anchor: pendingAnchor,
-    author: 'Omar',
-    text: text,
-    resolved: false
-  }};
-  if (!comments[pendingAnchor]) comments[pendingAnchor] = [];
-  comments[pendingAnchor].push(entry);
-  closeModal();
-
-  // Re-render the affected row's comments inline
-  const rows = document.querySelectorAll(`[data-anchor="${{pendingAnchor}}"]`);
-  rows.forEach(row => {{
-    // Remove old comment rows that follow this row
-    let next = row.nextElementSibling;
-    while (next && next.querySelector('.comment-block')) {{
-      const tmp = next.nextElementSibling;
-      next.remove();
-      next = tmp;
-    }}
-    // Insert new comment rows after
-    const tmp = document.createElement('tbody');
-    tmp.innerHTML = renderComments(pendingAnchor);
-    Array.from(tmp.children).forEach(child => row.after(child));
-  }});
-
-  updateSaveBar();
-}}
-
-// ── Save / download ───────────────────────────────────────────────────────
-function saveComments() {{
-  const all = Object.values(comments).flat();
-  if (!all.length) {{ alert('No comments to save.'); return; }}
-  const jsonl = all.map(c => JSON.stringify(c)).join('\\n') + '\\n';
-  const blob = new Blob([jsonl], {{ type: 'application/x-ndjson' }});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  // Figure out next round number from existing comments keys
-  const existingRounds = Object.keys(sessionStorage).filter(k => k.startsWith('round-')).length;
-  a.download = RUN_ID + '-r1.comments.jsonl';
-  a.href = url;
-  a.click();
-  URL.revokeObjectURL(url);
-}}
-
 // ── Init ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {{
-  const files = parseDiff(DIFF_TEXT);
-  buildSidebar(files);
-  renderFiles(files);
-  updateSaveBar();
+  // Parse stat summary
+  const statLines = STAT_TEXT.trim().split('\n');
+  document.getElementById('stat-line').textContent = statLines[statLines.length - 1] || '';
 
-  // Parse stat for header
-  const statLines = STAT_TEXT.trim().split('\\n');
-  const summary = statLines[statLines.length - 1] || '';
-  document.getElementById('stat-line').textContent = summary;
+  renderNarrative();
+
+  const files = parseDiff(DIFF_TEXT);
+  renderDiffFiles(files);
 }});
 </script>
 </body>
