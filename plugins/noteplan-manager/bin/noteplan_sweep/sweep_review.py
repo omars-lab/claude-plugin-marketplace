@@ -574,43 +574,67 @@ function closeModal() {{
 document.addEventListener('keydown', e => {{ if (e.key === 'Escape') closeModal(); }});
 
 // Extract only the + or - lines for a section from DIFF_TEXT.
-// lineType: '-' for removed from source, '+' for added to destination.
-// For destination, pass lineType='+' and sectionName=null to get ALL added lines.
-function extractSectionLines(filename, sectionName, lineType) {{
-  const lines = DIFF_TEXT.split('\\n');
-  const baseName = filename.split('/').pop().toLowerCase();
-  let inFile = false;
-  let inSection = sectionName === null; // null means accept all
-  const result = [];
-  const nameLower = sectionName ? sectionName.replace(/^#+\\s*/, '').trim().toLowerCase() : null;
+// Normalize for fuzzy section matching: strip leading #s, collapse special chars to spaces
+function normSectionStr(s) {{
+  return s.replace(/^#+\\s*/, '').replace(/[/\\-+()|]/g, ' ').replace(/\\s+/g, ' ').trim().toLowerCase();
+}}
 
-  for (const line of lines) {{
+function sectionHeaderMatches(content, nameLower) {{
+  const stripped = normSectionStr(content);
+  if (!stripped) return false;
+  if (stripped === nameLower || stripped.startsWith(nameLower + ' ') || stripped.startsWith(nameLower + ':')) return true;
+  // Word-overlap fallback: 60%+ of significant words (len>3) must appear
+  const words = nameLower.split(' ').filter(w => w.length > 3);
+  if (!words.length) return stripped.includes(nameLower);
+  const hits = words.filter(w => stripped.includes(w)).length;
+  return hits >= Math.max(1, Math.ceil(words.length * 0.6));
+}}
+
+// Extract + or - lines for a section from DIFF_TEXT.
+// sectionName=null → accept all lines (destination "all added" mode).
+// Returns {{ lines, fallback }} — fallback=true when section not found; all file lines returned instead.
+function extractSectionLines(filename, sectionName, lineType) {{
+  const rawLines = DIFF_TEXT.split('\\n');
+  const baseName = filename.split('/').pop().toLowerCase();
+  const nameLower = sectionName ? normSectionStr(sectionName) : null;
+  let inFile = false;
+  let inSection = sectionName === null;
+  const result = [];
+
+  for (const line of rawLines) {{
     if (line.startsWith('diff --git ')) {{
       inFile = line.toLowerCase().includes(baseName);
       inSection = sectionName === null;
       continue;
     }}
     if (!inFile || line.startsWith('+++') || line.startsWith('---') || line.startsWith('index') || line.startsWith('@@')) continue;
-
     const type = line.length ? line[0] : ' ';
     if (type !== '+' && type !== '-' && type !== ' ') continue;
     const content = line.slice(1);
 
     if (sectionName !== null) {{
-      // Detect section start: line contains the section name (stripping leading #s)
-      const stripped = content.replace(/^#+\\s*/, '').toLowerCase();
-      if (stripped === nameLower || stripped.startsWith(nameLower + ' ') || stripped.startsWith(nameLower + ':')) {{
+      if (sectionHeaderMatches(content, nameLower)) {{
         inSection = true;
       }} else if (inSection && /^#+\\s/.test(content) && type !== '+') {{
-        inSection = false; // next section header — stop
+        inSection = false;
       }}
     }}
 
-    if (inSection && type === lineType) {{
-      result.push(content);
-    }}
+    if (inSection && type === lineType) result.push(content);
   }}
-  return result;
+
+  // Fallback: section not found — show ALL changed lines from this file so the modal is never empty
+  if (sectionName !== null && !result.length) {{
+    let inF = false;
+    for (const line of rawLines) {{
+      if (line.startsWith('diff --git ')) {{ inF = line.toLowerCase().includes(baseName); continue; }}
+      if (!inF || line.startsWith('+++') || line.startsWith('---') || line.startsWith('index') || line.startsWith('@@')) continue;
+      const type = line.length ? line[0] : ' ';
+      if (type === lineType) result.push(line.slice(1));
+    }}
+    return {{ lines: result, fallback: true }};
+  }}
+  return {{ lines: result, fallback: false }};
 }}
 
 // Classify destination added lines as "moved" (matches source) or "new" (no match)
@@ -649,23 +673,26 @@ function showSectionModal(idx) {{
   const sectionName = row.section.replace(/^#+\\s*/, '').trim();
   let destRaw = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
 
-  const removedLines = extractSectionLines(row.source_file, sectionName, '-');
+  const srcResult  = extractSectionLines(row.source_file, sectionName, '-');
+  const removedLines = srcResult.lines;
 
   const destFile = allParsedFiles.find(f => {{
     const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '');
     return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
   }});
-  const addedLines = destFile ? extractSectionLines(destFile.filename, null, '+') : [];
+  const destResult  = destFile ? extractSectionLines(destFile.filename, null, '+') : {{ lines: [], fallback: false }};
+  const addedLines  = destResult.lines;
 
   const {{ moved, newContent }} = classifyDestLines(removedLines, addedLines);
   _modalMovedLines = moved;
   _modalNewLines   = newContent;
 
   // Source panel
-  const srcHdr = `Removed from source — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(row.source_file.split('/').pop())}}</span>`;
+  const srcFallbackNote = srcResult.fallback ? ' <span style="color:#d29922;font-size:10px">(section not matched — showing all)</span>' : '';
+  const srcHdr = `Removed from source — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(row.source_file.split('/').pop())}}</span>${{srcFallbackNote}}`;
   const srcBody = removedLines.length
     ? removedLines.map(l => `<div class="diff-line removed">${{esc(l)}}</div>`).join('')
-    : '<div class="modal-empty">No matching lines found</div>';
+    : '<div class="modal-empty">No removed lines found in this file</div>';
   const srcPanel = `<div><div class="modal-panel-hdr">${{srcHdr}}</div><div class="diff-lines">${{srcBody}}</div></div>`;
 
   // Destination panel with Moved / New tabs
