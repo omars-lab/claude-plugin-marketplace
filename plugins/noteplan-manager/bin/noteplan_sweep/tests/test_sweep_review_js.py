@@ -49,7 +49,7 @@ import pytest
 _BIN = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_BIN))
 
-from noteplan_sweep.sweep_review import _build_snapshot_html
+from noteplan_sweep.sweep_review import _build_snapshot_html, _py_classify_all_rows, _py_cross_row_issues
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -77,7 +77,17 @@ def http_server(tmp_path_factory) -> Generator[str, None, None]:
 def _write_page(serve_dir: Path, name: str, diff: str, narrative: list,
                 stat: str = "1 file changed", pre_classification: list | None = None,
                 cross_row_issues: list | None = None) -> str:
-    """Build + write a review HTML page, return its filename."""
+    """Build + write a review HTML page, return its filename.
+
+    If pre_classification is not provided and a narrative exists, auto-generate
+    it via _py_classify_all_rows (mirroring production compile behaviour). This
+    ensures tests exercise the same Python-primary modal path as the real portal.
+    """
+    if pre_classification is None and narrative:
+        pre_classification = _py_classify_all_rows(diff, narrative, Path("/nonexistent"))
+    if cross_row_issues is None and pre_classification:
+        cross_row_issues = _py_cross_row_issues(pre_classification)
+
     html = _build_snapshot_html(
         run_id="test-01",
         date_str="2026-04-21",
@@ -313,7 +323,10 @@ def test_js06_classify_moved_vs_new(playwright, http_server):
 # ---------------------------------------------------------------------------
 
 def test_js07_header_context_in_dest_panel(playwright, http_server):
-    """JS-07: +# Section header line appears as blue context header, not as content."""
+    """JS-07: Python-primary modal renders flat dest_lines (no context-header grouping).
+    The matched task line appears in the dest panel; unrelated dest additions (the # header,
+    the unmatched 'task two') do NOT appear because Python only includes lines that match
+    a source removal."""
     base_url, serve_dir = http_server
 
     narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
@@ -322,7 +335,7 @@ def test_js07_header_context_in_dest_panel(playwright, http_server):
 
     # Dest file adds a header then content underneath
     diff = _make_diff([
-        {"path": "Calendar/20260413.md", "removed": ["- [ ] task one"], "added": []},
+        {"path": "Calendar/20260413.md", "removed": ["## Tasks", "- [ ] task one"], "added": []},
         {"path": "Calendar/20260421.md",
          "added": ["# I Owe", "- [ ] task one >2026-04-24", "- [ ] task two >2026-04-24"],
          "removed": []},
@@ -337,23 +350,22 @@ def test_js07_header_context_in_dest_panel(playwright, http_server):
     page.click(".view-btn")
     page.wait_for_selector("#modal-overlay.open")
 
-    # The # I Owe header should appear as a .diff-ctx-hdr element, not a .diff-line
-    ctx_headers = page.eval_on_selector_all(
-        ".diff-ctx-hdr", "els => els.map(e => e.textContent.trim())"
-    )
-    # The header line should NOT appear as a diff-line (it would be in the content if detection failed)
     dest_lines_text = page.eval_on_selector(
         "#modal-dest-lines", "el => el.textContent"
     )
     browser.close()
 
-    assert any("I Owe" in h for h in ctx_headers), (
-        f"# I Owe not found as context header. ctx_headers={ctx_headers}"
+    # Python-primary: only the matched task should be in the dest panel
+    assert "task one" in dest_lines_text, (
+        f"Matched 'task one' must appear in dest panel. Got: {dest_lines_text!r}"
     )
-    # The raw "# I Owe" should be in the header, not duplicated as a plain line
-    plain_owe_count = dest_lines_text.count("I Owe")
-    assert plain_owe_count <= 1, (
-        f"# I Owe appeared as both header and content line ({plain_owe_count}x)"
+    # Unmatched lines should NOT appear in dest panel
+    assert "task two" not in dest_lines_text, (
+        f"Unmatched 'task two' must NOT appear in dest panel. Got: {dest_lines_text!r}"
+    )
+    assert "I Owe" not in dest_lines_text, (
+        f"# I Owe header must NOT appear in dest panel (Python-primary shows flat matched lines only). "
+        f"Got: {dest_lines_text!r}"
     )
 
 
