@@ -17,6 +17,7 @@ Single entry point for all note creation, organization, analysis, and improvemen
 | Create quickly with minimal friction | "quick", "fast note", "capture idea" | [quick-note/SKILL.md](quick-note/SKILL.md) |
 | Organize reference links | "reference", "links", "citations", "organize references" | [fix-reference/SKILL.md](fix-reference/SKILL.md) |
 | Sort iPhone links to reference files | "iphone", "iphone.md", "triage links", "sort links" | [sort-iphone-links/SKILL.md](sort-iphone-links/SKILL.md) |
+| Add sub-headers to large sections | "organize note", "sub-headers", "large section", "section refinement", "too long" | [organize-note/SKILL.md](organize-note/SKILL.md) |
 | Generate the vault Note Map | "discover structure", "note map", "scan notes", "first time setup" | [discover-structure/SKILL.md](discover-structure/SKILL.md) |
 | Analyze organization patterns | "analyze", "structure", "patterns", "organization" | [analyze-structure/SKILL.md](analyze-structure/SKILL.md) |
 | Suggest organization improvements | "suggest", "improve", "recommendations", "optimize" | [suggest-improvements/SKILL.md](suggest-improvements/SKILL.md) |
@@ -44,6 +45,7 @@ Check if the user's message clearly signals an operation from the table above. C
 - "analyze structure" / "how are my notes organized" → analyze-structure
 - "suggest improvements" / "optimize my system" → suggest-improvements
 - "review notes" / "health check" / "broken links" / "scan tasks" → review-noteplan
+- "organize note" / "sub-headers" / "this section is too long" / "add headers" → organize-note
 
 If the intent is **clear** from the message, proceed directly to Phase 2 without asking.
 
@@ -86,6 +88,8 @@ Read the appropriate sub-skill SKILL.md and follow its workflow as if it had bee
 **For suggest-improvements:** Read [suggest-improvements/SKILL.md](suggest-improvements/SKILL.md) and follow its workflow.
 
 **For review-noteplan:** Read [review-noteplan/SKILL.md](review-noteplan/SKILL.md) and follow its workflow.
+
+**For organize-note:** Read [organize-note/SKILL.md](organize-note/SKILL.md) and follow its workflow.
 
 ## What This Skill Does NOT Do
 
