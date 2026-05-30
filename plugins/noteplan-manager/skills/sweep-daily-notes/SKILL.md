@@ -127,7 +127,7 @@ If the commit fails, **stop and report**. Confirm the tree is clean before conti
 
 ---
 
-## Phase 3: Build Plan Index
+## Phase 3: Build Plan Index + Lists Index
 
 ### Context window hygiene — CRITICAL
 
@@ -152,6 +152,7 @@ For each plan file:
 3. Extract `workstream` (work) or `plantype` (personal) — the emoji category
 4. Extract `description` if present (may be absent → `description_missing: true`)
 5. Extract display name from `# H1`; preserve exact filename stem for wikilinks
+6. Extract `contributors` if present in frontmatter — used as a routing signal (see Step 6b)
 
 Build a compact plan index (metadata only, no content):
 
@@ -163,12 +164,28 @@ Build a compact plan index (metadata only, no content):
     "workstream_or_plantype": "🧑🏻‍💻",
     "status": "🟢",
     "description": "...",
-    "description_missing": true/false
+    "description_missing": true/false,
+    "contributors": ["Dennis", "Arish"]   // optional
   }
 ]
 ```
 
-Report: "Found N recently-touched plans." List with workstream and description.
+### Lists Index (extend the plan index with reference list files)
+
+Also index recently-modified **list files** from the Lists directories alongside plans:
+- Work: `$NOTES_ROOT/🏢 ServiceNow/📋 Lists/`
+- Personal: `$NOTES_ROOT/🏡 Personal/🏡📋 Lists/`
+
+```bash
+LIST_ROOT_WORK="$NOTES_ROOT/🏢 ServiceNow/📋 Lists"
+LIST_ROOT_PERSONAL="$NOTES_ROOT/🏡 Personal/🏡📋 Lists"
+
+find "$LIST_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} | sort
+```
+
+For each list file, infer a one-sentence description from the H1 + first 3–5 non-empty body lines. Add to the index with `"type": "list"` (vs `"type": "plan"` for plans). Lists are presented as routing options in Step 6c alongside plans — useful for reference URLs, research notes, and backlog items.
+
+Report: "Found N recently-touched plans + M list files." List both with their descriptions.
 
 ---
 
@@ -185,6 +202,23 @@ While processing plans for missing descriptions, also check for H1/filename mism
 5. **Commit all fixes** together with the description enrichment in a single `chore(plans): add description frontmatter …; fix N H1 titles and M filenames` commit
 
 **Never silently drop `?` from a filename H1 without noting it.** Report ambiguous cases to the user after the commit so they can run `/noteplan-manager:manage-filenames` for a deeper pass.
+
+### Contributors Enrichment (run alongside descriptions)
+
+While reading plan bodies for description inference, also scan for contributor names:
+
+1. Look for **people's names** appearing as:
+   - `- [ ] Sync with {Name}`, `- [ ] Meet with {Name}`, `- [ ] Ask {Name}`
+   - `{Name} / ` prefix at the start of a bullet
+   - `@mention` style references
+2. Collect distinct first names or handles found across the first 20 lines
+3. If any contributors found and the plan's frontmatter has no `contributors:` field, add it:
+   ```yaml
+   contributors: ["Dennis", "Arish"]
+   ```
+4. Contributors are a strong routing signal in Step 6b — if a daily note section mentions a name that appears as a contributor in a plan, that's a `✅ Confident` match signal.
+
+Include contributor additions in the same bulk commit as descriptions. Do not prompt separately unless the user asks.
 
 ---
 
@@ -278,9 +312,17 @@ For each sweepable section, determine the best destination using the plan index 
 1. Section content contains `[[PlanName]]` wikilink matching a plan in the index → `✅ Confident`
 2. Section header text closely matches a plan name → `✅ Confident`
 3. Section's workstream emoji matches a single plan's workstream → `✅ Confident`
-4. Clearly personal content (shopping, errands, `[[🏡...]]` wikilinks in work mode) → `⏭️ Skip`
-5. Completed-task-only block → `⏭️ Skip`
-6. Anything else → `❓ Uncertain`
+4. Section mentions a person's name that appears in a plan's `contributors` field → `✅ Confident` (e.g. "Dennis 1-1" content matching a plan with `contributors: ["Dennis"]`)
+5. Clearly personal content (shopping, errands, `[[🏡...]]` wikilinks in work mode) → `⏭️ Skip` (but see **Personal in Both mode** below)
+6. Completed-task-only block → `⏭️ Skip` by default, but see **Completed task routing** below
+7. Anything else → `❓ Uncertain`
+
+**Completed task routing:** Completed `[x]` blocks are historical record and normally stay in source. However, when an entire section is `[x]`-only AND there is a confident plan match, offer to move them to a `## Done` or `## Completed` section in the matched plan file. Present this as an optional action at the end of the day's routing plan — never auto-move completed tasks without confirmation.
+
+**Personal in Both mode:** When processing work-day notes (Mon–Fri) in **Both** mode, sections that are clearly personal side projects (apps, personal repos, personal names unrelated to work) should not be silently skipped. Instead:
+- Flag them as `⏭️ personal side project (work note)`
+- At the end of day classification, present a single bulk question: "These sections appear to be personal content in a work-day note — route to personal target (20XXXXXX.md), Unsorted in work target, or skip?"
+- Apply the user's bulk answer to all personal-in-work sections for that day
 
 **For sections that seem substantial** (more than 3 lines, contain tasks, describe a distinct topic), also flag as "could be new plan."
 
@@ -342,6 +384,8 @@ AskUserQuestion({
 ```
 
 > **Note:** If none of the top-5 match the user's intent, the user can choose "🆕 Create a new plan/file" or "📥 Unsorted". The full plan index is available in the description enrichment step if needed, but is never dumped into the routing UI.
+
+**User notes in AskUserQuestion answers are authoritative context.** When the user provides a free-text note alongside their answer (e.g. "this is billing for Lana's daycare" or "this is part of me understanding servicenow"), treat it as a clarification that should immediately inform your interpretation of the content. If the note suggests a different category or plan than you had scored, re-score the plan index against the user's description and present better-matched options in the next follow-up question. Never ignore user notes.
 
 Show a **progress counter** in the header (`1/3`, `2/3`, etc.) so the user knows how many uncertain sections remain.
 
@@ -598,31 +642,49 @@ added = set()
 for line in lines:
     if line.startswith('--- ') or line.startswith('+++ ') or line.startswith('@@'):
         continue
+    # Skip JSON/backup files — they track system state, not user content
+    if current_file.endswith('.json') or 'Backup' in current_file:
+        continue
+    # Skip today's note (it may have new content added post-sweep)
+    if today_date and today_date in current_file:
+        continue
+
+    content = line[1:].rstrip()  # strip trailing whitespace for comparison
     if line.startswith('-'):
-        removed.add(line[1:].rstrip('\n'))
+        removed.add(content)
     elif line.startswith('+'):
-        added.add(line[1:].rstrip('\n'))
+        added.add(content)
+
+# today_date = current date as YYYYMMDD string, exclude from diff
+today_date = __import__('datetime').date.today().strftime('%Y%m%d')
 
 lost = removed - added
 new = added - removed
 
-# Only allowed new lines
-allowed_new = [l for l in new if (
-    re.match(r'^# \[\[', l) or          # wikilink headers
-    l.strip() == '# Unsorted' or
-    l.strip() == '' or                   # blank lines
-    re.match(r'^\* \[ \] Is \[\[', l) or # plan boilerplate
-    re.match(r'^---$', l) or             # frontmatter delimiters
-    re.match(r'^doctype:|^status:|^started:|^namespace:|^workstream:|^plantype:', l)
-)]
-disallowed_new = [l for l in new if l not in allowed_new]
+# Section headers removed from source are expected — sweep removes them intentionally
+lost = {l for l in lost if not re.match(r'^#', l.strip())}
+
+# Only allowed new lines (non-content additions)
+def is_allowed_new(l):
+    return (
+        re.match(r'^# \[\[', l) or          # wikilink section headers
+        l.strip() == '# Unsorted' or
+        l.strip() == '' or                   # blank lines
+        re.match(r'^\* \[ \] Is \[\[', l) or # plan boilerplate
+        re.match(r'^---$', l) or             # frontmatter delimiters
+        re.match(r'^(doctype|status|started|namespace|workstream|plantype|contributors):', l) or
+        re.match(r'^# [🏡🏢🔁]', l) or      # H1 for new plan files
+        re.match(r'^#', l.strip())           # any section header in Unsorted context
+    )
+
+disallowed_new = [l for l in new if l.strip() and not is_allowed_new(l)]
 
 if lost:
-    print("FAIL: Lines removed but not found in additions (content loss):")
+    print("FAIL: Content lines removed but not found in additions:")
     for l in sorted(lost): print(f"  - {repr(l)}")
 if disallowed_new:
-    print("FAIL: New lines added that are not section headers or boilerplate:")
-    for l in sorted(disallowed_new): print(f"  + {repr(l)}")
+    print("FAIL: New content lines added that are not section headers or boilerplate:")
+    for l in sorted(disallowed_new)[:20]: print(f"  + {repr(l)}")
 if not lost and not disallowed_new:
     print("PASS: All line-level integrity checks passed.")
 PYEOF
@@ -664,15 +726,20 @@ git commit -m "sweep(daily): complete ${MODE} sweep → ${TARGET_DATE}
 | Context window hygiene | Read only frontmatter + H1 from plans (first 15 lines). One daily note in context at a time. |
 | No content changes | Copy every line verbatim. Zero edits to wording, tasks, or formatting. |
 | Indentation is immutable | Leading whitespace on every moved line must be preserved exactly. |
-| Completed tasks never move | `[x]` tasks are historical record. Skip unconditionally. |
+| Completed tasks never move (default) | `[x]` tasks are historical record. Skip unconditionally unless the user asks to move a completed block to an existing plan's Done section. |
+| Completed block routing (optional) | When a section is `[x]`-only AND there is a confident plan match, offer to append it to `## Done` / `## Completed` in the plan file. Never auto-move without confirmation. |
 | Wikilink todos are content | `- [ ] [[PlanName]]` tasks are ordinary content — move verbatim, use the wikilink as routing signal. |
 | Target sections use wikilinks | Always `# [[filename_stem]]` (exact), never a raw string. |
 | Section headers are NOT moved | Remove original `# SectionName` from source; the target gets `# [[PlanName]]` instead. |
 | Split sections allowed | When one section has items for different plans, split by line and route individually. |
 | Same-plan entries merge | Multiple source sections routing to the same plan merge under one target header. |
 | Bulk description enrichment | When N > 5 plans missing descriptions, use bulk path: batch-infer all, present grouped, single approve. |
+| Contributors enrichment | During Phase 4, also extract contributor names from plan bodies and write them as `contributors:` frontmatter. Use contributors as a routing signal in Step 6b. |
+| Lists files indexed | Index recently-modified list files from `📋 Lists/` alongside plans. Show them as routing options for reference URLs and research notes. |
 | Filename/title consistency | During Phase 4, check H1 vs filename for every plan. Rename plain-text filenames to match proper-convention H1s; fix H1s to match proper-convention filenames. Flag ambiguous cases and report them post-commit. |
-| Personal content skipped silently | In work mode, sections with personal signals (`🏡` wikilinks, "Shopping", etc.) are flagged skip without asking. |
+| Personal in Both mode — ask | In Both mode, personal side projects in work-day notes should not be silently skipped. Batch-ask once per day: route to personal target, work Unsorted, or skip. |
+| Meeting notes routing | 1-1 meeting notes in daily notes should be routed to the actual meeting notes file in `👤 Meetings/1-1s/`, not to Unsorted. Search for an existing meeting file by person's name before routing to Unsorted. |
+| User notes are authoritative | Free-text notes in AskUserQuestion answers override scoring. Re-score the plan index against the user's clarification before presenting the next question. |
 | New plans follow the template | Use the computed filename convention and frontmatter structure exactly. |
 | New plan subdirs are discovered | `ls $PLAN_ROOT` to find the right workstream/plantype subdir. Never hardcode. |
 | Checkpoint commits per day | Commit after each day's sweep for granular recoverability. |
