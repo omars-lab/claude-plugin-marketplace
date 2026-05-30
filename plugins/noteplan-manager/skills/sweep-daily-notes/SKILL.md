@@ -297,11 +297,13 @@ Also index **EarlBear plan files** from the EarlBear plans directory:
 
 ```bash
 EARLBEAR_PLAN_ROOT="$NOTES_ROOT/👥 EarlBear/📆 Plans"
+EARLBEAR_MEETINGS_ROOT="$NOTES_ROOT/👥 EarlBear/👥👤 Meetings"
 
 find "$EARLBEAR_PLAN_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} 2>/dev/null | sort
+find "$EARLBEAR_MEETINGS_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} 2>/dev/null | sort
 ```
 
-For each EarlBear plan file, extract frontmatter + H1 (same as work plans). Add to the index with `"namespace": "👥"`. EarlBear plans use the same workstream subdir pattern as work plans — discover subdirs dynamically.
+For each EarlBear plan file, extract frontmatter + H1 (same as work plans). Add to the index with `"namespace": "👥"`. EarlBear plans use the same workstream subdir pattern as work plans — discover subdirs dynamically. EarlBear meeting files use `"type": "meeting"` with `"namespace": "👥"` — route EarlBear meeting content to `👥👤 Meetings/`, not `📆 Plans/`.
 
 EarlBear index entry shape:
 ```json
@@ -904,6 +906,7 @@ namespace: 🏢
 - Work plan: `$PLAN_ROOT/{workstream_dir}/` (match the existing subdir for that workstream emoji)
 - Personal plan: `$PLAN_ROOT/Present/{plantype_dir}/` (match the existing subdir for that plantype emoji)
 - EarlBear plan: `$NOTES_ROOT/👥 EarlBear/📆 Plans/{workstream_dir}/` (create subdir if needed)
+- EarlBear meeting: `$NOTES_ROOT/👥 EarlBear/👥👤 Meetings/`
 - Work meeting: `$NOTES_ROOT/🏢 ServiceNow/👤 Meetings/` (root or `1-1s/` subdir as appropriate)
 
 Discover the correct subdir by listing the directory — never hardcode.
@@ -1453,7 +1456,8 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | List/reference file creation first-class | The routing UI includes `📋 New List/Reference file` as a distinct option. Creates `🏢📋 References[{Qualifier}].md` or `🏡📋 References[{Qualifier}].md` with minimal frontmatter. |
 | EarlBear indexed | `👥 EarlBear/📆 Plans/` is always indexed alongside work + personal plans. EarlBear content detected by `👥` emoji, "EarlBear" keyword, `[[👥...]]` wikilinks, or "Saad" name. Routes to personal target (next Sunday). |
 | EarlBear plan naming | Uses work-like convention: `👥YYMMDD{workstream} Title.md`, `namespace: 👥`, workstream subdirs under `📆 Plans/`. Same frontmatter as work plans but with `namespace: 👥`. |
-| EarlBear future expansion | When EarlBear volume grows, consider adding `👥📋 Lists/`, `👥👤 Meetings/`, `👥🔬 Research/`, and potentially its own sweep mode with a dedicated target day. Revisit each sweep. |
+| EarlBear meetings indexed | `👥 EarlBear/👥👤 Meetings/` is indexed alongside work meetings. EarlBear meeting files use `👥 YYMMDD Title.md` naming with `namespace: 👥`. Route EarlBear meeting content here, not to `📆 Plans/`. |
+| EarlBear future expansion | When EarlBear volume grows, consider adding `👥📋 Lists/`, `👥🔬 Research/`, and potentially its own sweep mode with a dedicated target day. Revisit each sweep. |
 | Voice note detection | Lines >200 chars with <3 sentence boundaries, `￼` characters, phonetic misspellings, filler phrases, or run-on connectors are classified as `🎤 Voice note`. Requires 2+ signals. |
 | Voice note processing | Voice notes are cleaned before routing: break into sentences, fix phonetic→technical errors (JSON, byte, base64, Claude), strip filler, structure into tasks/bullets. Present before/after via AskUserQuestion. User confirms cleaned or raw version. |
 | Voice note is the one content edit exception | Voice note cleaning is the only case where content is modified during sweep. The raw transcription is preserved in the breadcrumb table Summary column for traceability. User must explicitly confirm the transformation. |
