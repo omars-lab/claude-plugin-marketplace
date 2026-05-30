@@ -1,11 +1,13 @@
 ---
 name: generate-impact-narrative
-description: Read brag sheet + impact timeline and generate a performance review narrative, next-level case, or impact summary for a given time period.
+description: Surface the Impact Timeline for a given period — what was worked on, what signals next-level, and optionally produce a narrative summary. Primary job is timeline consolidation and review, not AI synthesis.
 ---
 
 # Generate Impact Narrative
 
-You are a career impact synthesizer for NotePlan. Given the brag sheet and impact timeline, you produce a structured narrative suitable for performance reviews, promotion cases, or quarterly summaries.
+You are a career timeline reviewer for NotePlan. Your primary job is to **surface and consolidate the existing Impact Timeline** for a requested period — not to synthesize or invent. The timeline is built incrementally each sweep (Phase 8.5). This skill reads it and presents it cleanly.
+
+Generate a narrative only when the user explicitly asks for one.
 
 ---
 
@@ -20,13 +22,13 @@ If no time period is provided, ask:
 ```javascript
 AskUserQuestion({
   questions: [{
-    question: "What time period and output do you need?",
-    header: "Impact scope",
+    question: "What period do you want to review?",
+    header: "Time period",
     options: [
-      { label: "This quarter", description: "Current quarter — brag sheet + impact timeline entries for Q{N} {YYYY}" },
+      { label: "This quarter", description: "Current quarter entries from Impact Timeline" },
       { label: "Year to date", description: "All entries since Jan 1 of the current year" },
-      { label: "Custom range", description: "I'll specify a date range" },
-      { label: "Next-level case only", description: "Pull only [SCOPE+], [LEADERSHIP], [INNOVATION] entries — best evidence for a promotion case" }
+      { label: "Next-level signals only", description: "Only [SCOPE+], [LEADERSHIP], [INNOVATION] entries — promotion evidence" },
+      { label: "Full timeline", description: "Everything in the Impact Timeline" }
     ],
     multiSelect: false
   }]
@@ -47,168 +49,104 @@ IMPACT_TIMELINE="$NOTES_ROOT/🏢 ServiceNow/📋 Lists/🏢📋 Impact Timeline
 
 ---
 
-## Phase 1: Load Source Material
+## Phase 1: Load and Filter Timeline
 
-**Task**: `TaskCreate({ subject: "Load brag sheet + impact timeline" })`
+**Task**: `TaskCreate({ subject: "Load Impact Timeline for {period}" })`
 
-1. Read `$BRAG_SHEET` — extract all entries within the target time period
-2. Read `$IMPACT_TIMELINE` — extract all rows within the target time period
-3. Filter by signal type if "Next-level case only" was selected:
-   - Keep: `[SCOPE+]`, `[LEADERSHIP]`, `[INNOVATION]`, `[VISIBILITY]`, `[IMPACT]`
-   - Omit: entries with no signal tags
-4. Report: "Found N brag sheet entries and M impact timeline rows for {period}."
-
-**Mark task completed.**
-
----
-
-## Phase 2: Cluster by Theme
-
-**Task**: `TaskCreate({ subject: "Cluster entries by initiative / theme" })`
-
-Group entries by recurring theme — do NOT organize by date. Themes emerge from content:
-
-| Signal | Likely theme |
-|---|---|
-| Same plan name recurs | Group under that initiative |
-| Same collaborator recurs | Group under relationship/team impact |
-| `[INNOVATION]` entries | "Technical Innovation" cluster |
-| `[SCOPE+]` / `[LEADERSHIP]` | "Leadership & Ownership" cluster |
-| `[VISIBILITY]` | "Organizational Impact" cluster |
-
-Each cluster = one section in the narrative.
-
-Report clusters to user before proceeding:
-
-```
-Identified 4 themes:
-  1. AXIS Config Agent / ARB (5 entries, signals: SCOPE+ LEADERSHIP INNOVATION)
-  2. A2A POC Hardening + Fred Pilot (4 entries, signals: IMPACT VISIBILITY)
-  3. Eval Harness Design (2 entries, signals: INNOVATION)
-  4. Cross-team Collaboration (3 entries, signals: LEADERSHIP IMPACT)
-
-Proceed with these clusters?
-```
+1. Read `$IMPACT_TIMELINE`
+2. Filter to the requested period (by quarter header or date range)
+3. If "next-level signals only": keep only rows where the Signal column contains `[SCOPE+]`, `[LEADERSHIP]`, or `[INNOVATION]`
+4. Count: N entries found
+5. Report summary: "Impact Timeline — {period}: {N} entries ({X} next-level signals)"
 
 **Mark task completed.**
 
 ---
 
-## Phase 3: Choose Output Format
+## Phase 2: Present Timeline
 
-**Task**: `TaskCreate({ subject: "Choose output format" })`
+Display the filtered timeline cleanly:
+
+```
+📊 Impact Timeline — Q2 2026
+
+Initiative                    | Delivered                        | Signals          | Evidence
+------------------------------|----------------------------------|------------------|----------
+AXIS Config Agent ARB         | Owned arch review end-to-end     | SCOPE+ LEADERSHIP| PRD, diagrams, ARB responses
+A2A POC → Fred Pilot          | Advanced to 100-project milestone| IMPACT VISIBILITY| Pilot framing, Anthropic collab
+Eval Harness Design           | Stress test mode + session IDs   | INNOVATION       | Eval harness doc
+Cross-team (Chandran, Arish)  | Unblocked deployment + A2A card  | IMPACT           | Meeting notes, plan updates
+
+4 entries — 3 next-level signals
+```
+
+Then ask:
 
 ```javascript
 AskUserQuestion({
   questions: [{
-    question: "What format do you need?",
-    header: "Output format",
+    question: "What do you want to do with this?",
+    header: "Next step",
     options: [
-      { label: "Performance review narrative", description: "Prose paragraphs per theme — copy-paste into review tool" },
-      { label: "Promotion case memo", description: "Next-level evidence only, structured as: What I did / Why it matters / Evidence / What this shows about scope" },
-      { label: "Bullet summary", description: "Condensed bullets per theme — good for a slide or 1:1 prep" },
-      { label: "All three", description: "Generate all formats, present in order" }
+      { label: "Just the timeline", description: "Done — I have what I need" },
+      { label: "Write a narrative summary", description: "Generate a prose paragraph per initiative — good for perf review docs" },
+      { label: "Promotion case bullets", description: "Distill next-level signals into crisp bullets for a promo doc" },
+      { label: "Add missing entries", description: "I want to manually add entries the sweep may have missed" }
     ],
     multiSelect: false
   }]
 })
 ```
 
-**Mark task completed.**
+---
+
+## Phase 3 (Optional): Narrative or Promo Bullets
+
+Only proceed here if the user requested it. Generate lightly — the timeline entries already have the content, just reformat.
+
+### Narrative summary
+
+One short paragraph per initiative:
+
+```
+**AXIS Config Agent ARB** — Owned the architecture review process end-to-end: PRD, diagrams, security model, and all institutional review responses. This represented a step up in cross-org accountability beyond individual contributor scope.
+
+**A2A POC → Fred Pilot** — Advanced the A2A proof-of-concept from initial exploration to a structured pilot with a 100-project scale target. Direct collaboration with Anthropic and external pilot customer.
+```
+
+**Rules:** Lead with outcome. "Owned", "Delivered", "Drove" — not "Helped", "Worked on". One paragraph = one initiative. No fabrication — only expand on what's in the timeline entry.
+
+### Promotion case bullets
+
+Only for entries with `[SCOPE+]`, `[LEADERSHIP]`, or `[INNOVATION]`:
+
+```
+• **AXIS Config Agent ARB** [SCOPE+/LEADERSHIP] — Accountable for architecture governance at a scope above individual contributor: authored PRD, produced arch diagrams, drove ARB responses. Evidence: {artifacts}.
+
+• **Eval Harness Design** [INNOVATION] — Designed stress test mode for parallel agent load testing with session ID logging for post-run debugging — frontier-adjacent technical work. Evidence: {eval harness doc}.
+```
 
 ---
 
-## Phase 4: Generate Narrative
+## Phase 4 (Optional): Add Missing Entries
 
-**Task**: `TaskCreate({ subject: "Generate narrative" })`
-
-### Performance Review Narrative format
-
-```markdown
-## {Quarter/Period} Impact Summary
-
-### {Theme 1: Initiative Name}
-
-{2-3 sentence prose describing what was done, why it mattered, and what it demonstrates.}
-
-Key contributions:
-- {bullet from brag sheet, paraphrased to be concrete and outcome-oriented}
-- {next bullet}
-
-### {Theme 2}
-...
-```
-
-**Prose writing rules:**
-- Lead with outcome, not activity: "Drove AXIS Config Agent through full ARB governance cycle" not "Worked on ARB"
-- Include collaborators when relevant: "Coordinated with Anna (manager), Arish (A2A), and Chandran (deployment)"
-- Quantify when possible: "100-project scale target", "15+ documentation sources consolidated"
-- Never hedge: "delivered", "owned", "drove" not "helped with", "was involved in"
-
-### Promotion Case Memo format
-
-For each `[SCOPE+]` or `[LEADERSHIP]` entry:
-
-```markdown
-## Evidence for {Next Level}
-
-### {Initiative}: {What I Owned}
-
-**What I did:** {1-2 sentences of action}
-
-**Why it matters:** {1-2 sentences of business/org impact}
-
-**Evidence:** {list of artifacts — PRD, diagrams, meeting files, plans}
-
-**What this shows:** {1 sentence connecting to next-level criteria — scope expansion, leadership accountability, technical influence}
-
----
-```
-
-### Bullet Summary format
-
-```markdown
-## {Period} Highlights
-
-**{Theme}**
-- {outcome-oriented bullet}
-- {outcome-oriented bullet}
-
-**{Theme}**
-- ...
-```
-
-**Mark task completed.**
-
----
-
-## Phase 5: Present + Save (Optional)
-
-Present the generated narrative to the user.
-
-Ask:
+If the user wants to manually add entries the sweep missed:
 
 ```javascript
 AskUserQuestion({
   questions: [{
-    question: "Save narrative to a file?",
-    header: "Save output",
-    options: [
-      { label: "Save to 🏢📋 Impact Narratives/", description: "Create a dated file in Notes/🏢 ServiceNow/📋 Lists/🏢📋 Impact Narratives/{period}.md" },
-      { label: "Just show it", description: "Output to conversation only — I'll copy what I need" }
-    ],
-    multiSelect: false
+    question: "What entry do you want to add? Describe it and I'll format it for the timeline.",
+    header: "New entry",
+    freeText: true
   }]
 })
 ```
 
-If saving: write the file, commit with:
+Format the entry as a table row with the correct signal tags and append to the current quarter in `$IMPACT_TIMELINE`. Commit:
+
 ```bash
-git add "{file}"
-git commit -m "feat(impact): generate {period} impact narrative
-
-Generated by /noteplan-manager:generate-impact-narrative.
-Source: 🏢📋 Brag Sheet.md + 🏢📋 Impact Timeline.md ({N} entries, {M} timeline rows).
+git add "$IMPACT_TIMELINE"
+git commit -m "feat(impact): add manual entry to Q{N} {YYYY} impact timeline
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 git push
@@ -220,17 +158,16 @@ git push
 
 | Rule | Detail |
 |---|---|
-| Source of truth | Brag Sheet + Impact Timeline only — never invent achievements |
-| Outcome language | Lead with results, not activities |
-| Never hedge | "Owned" / "Drove" / "Delivered" — not "Helped" / "Assisted" / "Worked on" |
-| Quantify | Pull numbers from the source entries when present |
-| Attribution | Mention collaborators when they amplify the scope (cross-team work reads stronger) |
-| Next-level only for promo memo | Only `[SCOPE+]`, `[LEADERSHIP]`, `[INNOVATION]` entries qualify — routine items don't belong in a promotion case |
-| Save is optional | Output to conversation is enough — saving is for reuse |
+| Timeline first | Primary job is to surface the existing timeline — not to generate content from scratch |
+| Narrative is optional | Only generate prose if the user explicitly requests it in Phase 2 |
+| Source of truth | Impact Timeline + Brag Sheet only — never invent entries |
+| Outcome language | When reformatting, lead with results: "Drove", "Owned", "Delivered" |
+| Signal fidelity | Preserve the signal tags from the timeline — don't reassign or upgrade them |
+| Manual entries are additive | When adding missing entries, commit them so future sweeps see them |
 
 ---
 
 ## Related Skills
 
-- **sweep-daily-notes** — Phase 8.5 writes the brag sheet entries and impact timeline rows that this skill reads
-- **manage-plans** — Plan files are the primary evidence artifacts referenced in impact entries
+- **sweep-daily-notes Phase 8.5** — accumulates timeline entries each sweep; this skill reads what was accumulated
+- **manage-plans** — plan files are the evidence artifacts referenced in timeline entries
