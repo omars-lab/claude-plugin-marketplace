@@ -634,3 +634,223 @@ def cmd_clone_plan(args):
     utils.log(str(output_path))
 
     sys.exit(utils.EXIT_OK)
+
+
+# ---------------------------------------------------------------------------
+# 7. cmd_switch_plan_org
+# ---------------------------------------------------------------------------
+
+_NAMESPACE_TO_DOMAIN = {"🏢": "work", "🏡": "personal", "👥": "earlbear"}
+_DOMAIN_TO_NAMESPACE = {"work": "🏢", "personal": "🏡", "earlbear": "👥"}
+
+# Default workstream emoji to use when moving into a domain and the original
+# workstream doesn't exist there.
+_DOMAIN_DEFAULT_WORKSTREAM = {
+    "work":     "🧑🏻‍💻",   # Development
+    "personal": "👨🏻‍💻",   # Development (Personal)
+    "earlbear": "📆",    # Plans (fallback)
+}
+
+_WIKILINK_RE = re.compile(r'\[\[([^\]]+)\]\]')
+
+
+def _find_plan_by_stem(stem: str) -> Path | None:
+    """Locate a plan .md file anywhere under Notes/ by its filename stem."""
+    notes = utils.notes_root()
+    for p in notes.rglob("*.md"):
+        if p.stem == stem and "@Trash" not in str(p) and "@Archive" not in str(p):
+            return p
+    return None
+
+
+def _rewrite_frontmatter_key(content: str, key: str, new_val: str) -> str:
+    """Replace the value of a frontmatter key (between --- delimiters)."""
+    fm_match = re.match(r'^---\n(.*?)\n---\n', content, re.DOTALL)
+    if not fm_match:
+        return content
+    fm_block = fm_match.group(1)
+    key_re = re.compile(rf'^({re.escape(key)}:\s*)(.*)$', re.MULTILINE)
+    if key_re.search(fm_block):
+        new_fm = key_re.sub(rf'\g<1>{new_val}', fm_block)
+    else:
+        new_fm = fm_block + f"\n{key}: {new_val}"
+    return content[:fm_match.start(1)] + new_fm + content[fm_match.end(1):]
+
+
+def _remove_frontmatter_key(content: str, key: str) -> str:
+    """Remove a frontmatter key entirely."""
+    fm_match = re.match(r'^---\n(.*?)\n---\n', content, re.DOTALL)
+    if not fm_match:
+        return content
+    fm_block = fm_match.group(1)
+    new_fm = re.sub(rf'^{re.escape(key)}:.*\n?', '', fm_block, flags=re.MULTILINE)
+    return content[:fm_match.start(1)] + new_fm + content[fm_match.end(1):]
+
+
+def cmd_switch_plan_org(args):
+    """
+    Move a plan from one domain to another with full cascade:
+      1. Find plan file by stem
+      2. Determine target namespace (🏡/🏢/👥) and plans dir
+      3. Find or select target workstream subdir
+      4. Build new filename: {new_namespace}{date}{workstream} {title}
+      5. Update frontmatter: namespace/project fields, plantype if supplied
+      6. Update H1 heading: swap leading namespace emoji
+      7. Move file to new location
+      8. Update [[old-stem]] wikilinks across all .md files
+
+    If --workstream is not specified, tries to find the same workstream emoji
+    in the target domain; falls back to the domain default if not found.
+    If --dry-run is set, prints all changes without writing.
+    """
+    stem = args.stem.strip()
+    to_domain = args.to.strip().lower()
+
+    if to_domain not in _DOMAIN_TO_NAMESPACE:
+        utils.err(f"Unknown domain {to_domain!r}. Use: work | personal | earlbear")
+        sys.exit(1)
+
+    # 1. Find the plan
+    plan_path = _find_plan_by_stem(stem)
+    if plan_path is None:
+        utils.err(f"Plan not found: {stem!r}")
+        sys.exit(utils.EXIT_NOT_FOUND)
+
+    utils.log(f"Switching {plan_path.name}")
+    utils.log(f"  Domain: → {to_domain}")
+
+    content = plan_path.read_text(encoding="utf-8")
+
+    # Parse current namespace from stem prefix
+    from noteplan_sweep.backlinks import _extract_emoji as _leading_emoji
+    old_namespace = _leading_emoji(stem)
+    old_domain = _NAMESPACE_TO_DOMAIN.get(old_namespace, "work")
+
+    if old_domain == to_domain:
+        utils.log("  Already in that domain — nothing to do.")
+        sys.exit(utils.EXIT_OK)
+
+    new_namespace = _DOMAIN_TO_NAMESPACE[to_domain]
+
+    # Parse date + workstream + title from stem
+    # Stem format: {namespace}{YYMMDD}{workstream} {title}
+    # e.g. "🏢260421🧑🏻‍💻 My Plan" or "🏡260421👨🏻‍💻 My Plan"
+    stem_after_ns = stem[len(old_namespace):]  # "260421🧑🏻‍💻 My Plan"
+    date_match = re.match(r'^(\d{6})', stem_after_ns)
+    date_str = date_match.group(1) if date_match else _today_yymmdd()
+    after_date = stem_after_ns[len(date_str):]  # "🧑🏻‍💻 My Plan"
+    old_workstream_emoji = _leading_emoji(after_date)
+    title_part = after_date[len(old_workstream_emoji):].strip()  # "My Plan"
+
+    # 2. Determine target workstream
+    target_workstream = getattr(args, "workstream", None) or old_workstream_emoji
+    target_plans_root = {
+        "work":     utils.notes_root() / "🏢 ServiceNow" / "📆 Plans",
+        "personal": utils.notes_root() / "🏡 Personal"   / "🏡📆 Plans" / "Present",
+        "earlbear": utils.notes_root() / "👥 EarlBear"   / "📆 Plans",
+    }[to_domain]
+
+    # Try to find workstream subdir in target domain
+    target_ws_dir = _find_workstream_subdir(target_plans_root, target_workstream)
+    if target_ws_dir is None:
+        # Try default workstream for target domain
+        fallback_ws = _DOMAIN_DEFAULT_WORKSTREAM[to_domain]
+        target_ws_dir = _find_workstream_subdir(target_plans_root, fallback_ws)
+        if target_ws_dir is None:
+            # Just use the plans root
+            target_ws_dir = target_plans_root
+        target_workstream = fallback_ws
+        utils.log(f"  Workstream {old_workstream_emoji!r} not in {to_domain}; "
+                  f"using {target_workstream!r} ({target_ws_dir.name})")
+
+    # 3. Build new stem and path
+    new_stem = f"{new_namespace}{date_str}{target_workstream} {title_part}"
+    new_path = target_ws_dir / f"{new_stem}.md"
+
+    if new_path.exists() and not getattr(args, "overwrite", False):
+        utils.err(f"Target already exists: {new_path}")
+        utils.err("Use --overwrite to replace it.")
+        sys.exit(utils.EXIT_CONFLICT)
+
+    utils.log(f"  Old file: {plan_path}")
+    utils.log(f"  New file: {new_path}")
+
+    # 4+5. Update content
+    # Update frontmatter namespace/project fields
+    new_content = content
+    new_content = _rewrite_frontmatter_key(new_content, "namespace", new_namespace)
+    # Remove old project field if present (will be re-derived from path)
+    if to_domain == "personal":
+        new_content = _remove_frontmatter_key(new_content, "project")
+        # Update plantype if explicitly provided
+        if getattr(args, "plantype", None):
+            new_content = _rewrite_frontmatter_key(new_content, "plantype", args.plantype)
+        elif old_namespace == "🏢":
+            new_content = _rewrite_frontmatter_key(new_content, "plantype", target_workstream)
+    elif to_domain == "work":
+        if old_namespace == "🏡":
+            new_content = _remove_frontmatter_key(new_content, "plantype")
+
+    # 6. Update H1 heading: swap namespace emoji
+    def _replace_h1(text: str) -> str:
+        def _sub(m: re.Match) -> str:
+            heading_body = m.group(1)
+            old_ns_in_h1 = _leading_emoji(heading_body)
+            if old_ns_in_h1:
+                return f"# {new_namespace}{heading_body[len(old_ns_in_h1):]}"
+            return m.group(0)  # no emoji prefix — leave as-is
+        return re.sub(r'^# (.+)$', _sub, text, count=1, flags=re.MULTILINE)
+
+    new_content = _replace_h1(new_content)
+
+    # Also update the title in frontmatter if it matches the old stem
+    fm_title_re = re.compile(r'^(title:\s*)(.+)$', re.MULTILINE)
+    def _fix_title(m: re.Match) -> str:
+        if m.group(2).strip() == stem:
+            return m.group(1) + new_stem
+        return m.group(0)
+    new_content = fm_title_re.sub(_fix_title, new_content)
+
+    if utils.DRY_RUN:
+        utils.log("[dry-run] Would write:")
+        utils.log(f"  {new_path}")
+        utils.log(f"  H1: # {new_namespace}{date_str}{target_workstream} {title_part}")
+        utils.log(f"  Wikilink update: [[{stem}]] → [[{new_stem}]]")
+        return
+
+    # Write new file
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    new_path.write_text(new_content, encoding="utf-8")
+    utils.log(f"  Written: {new_path.name}")
+
+    # Delete old file
+    plan_path.unlink()
+    utils.log(f"  Deleted: {plan_path.name}")
+
+    # 7. Update [[wikilinks]] across all .md files
+    notes = utils.notes_root()
+    updated_files = 0
+    for md in notes.rglob("*.md"):
+        if "@Trash" in str(md) or "@Archive" in str(md):
+            continue
+        try:
+            text = md.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        if f"[[{stem}]]" not in text and f"[[{stem}|" not in text:
+            continue
+        new_text = text.replace(f"[[{stem}]]", f"[[{new_stem}]]")
+        new_text = re.sub(
+            rf'\[\[{re.escape(stem)}\|',
+            f"[[{new_stem}|",
+            new_text,
+        )
+        if new_text != text:
+            md.write_text(new_text, encoding="utf-8")
+            updated_files += 1
+            utils.verbose(f"  Updated wikilinks in: {md.name}")
+
+    utils.log(f"  Wikilinks updated in {updated_files} file(s): "
+              f"[[{stem}]] → [[{new_stem}]]")
+    utils.log(f"switch-plan-org: done  {stem!r} → {new_stem!r}")
+    sys.exit(utils.EXIT_OK)

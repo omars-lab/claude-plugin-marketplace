@@ -66,6 +66,7 @@ COMMANDS = [
     ("extract-domains",         "Scan all URLs in file; extract unique hostnames as YAML list"),
     ("clone-template",          "Copy template from @Templates/, fill vars, write to output-path"),
     ("clone-plan",              "Full plan creation: derive filename, clone template, write frontmatter"),
+    ("switch-plan-org",         "Move a plan to a different domain: rename file, update frontmatter, H1, wikilinks"),
     # Group 6: URL Enrichment
     ("fetch-title",             "Fetch page title from URL"),
     ("to-markdown-link",        "Convert single URL to [Title](url) markdown link"),
@@ -246,6 +247,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--var", action="append", metavar="KEY=VALUE", dest="vars",
                    help="Template variable substitution (repeatable)")
 
+    p = sub.add_parser("switch-plan-org", help=COMMANDS[27][1])
+    p.add_argument("stem", help="Plan filename stem (without .md)")
+    p.add_argument("--to", required=True, choices=["work","personal","earlbear"],
+                   help="Target domain")
+    p.add_argument("--workstream", metavar="EMOJI",
+                   help="Workstream emoji in the target domain (auto-detected if omitted)")
+    p.add_argument("--plantype", metavar="EMOJI",
+                   help="plantype emoji for frontmatter (personal plans only)")
+    p.add_argument("--overwrite", action="store_true",
+                   help="Overwrite if target file already exists")
+
     p = sub.add_parser("clone-plan", help=COMMANDS[26][1])
     p.add_argument("title", help="Plan title")
     p.add_argument("--workstream", required=True, help="Workstream emoji (e.g. 🧑🏻‍💻)")
@@ -424,6 +436,7 @@ DISPATCH = {
     "extract-domains":          discovery.cmd_extract_domains,
     "clone-template":           discovery.cmd_clone_template,
     "clone-plan":               discovery.cmd_clone_plan,
+    "switch-plan-org":          discovery.cmd_switch_plan_org,
     "fetch-title":              url_enrichment.cmd_fetch_title,
     "to-markdown-link":         url_enrichment.cmd_to_markdown_link,
     "fetch-metadata":           url_enrichment.cmd_fetch_metadata,
