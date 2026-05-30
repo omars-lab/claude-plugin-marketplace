@@ -577,7 +577,7 @@ AskUserQuestion({
 - Personal plan: `🏡📆 Personal Plan.md`
 - Work meeting notes: `🏢📝 Work Meeting Notes.md`
 
-Read the appropriate template before writing any new file — always match its frontmatter structure and H1 format exactly. Templates use `--` as YAML frontmatter delimiters (two dashes).
+Read the appropriate template before writing any new file — use the template's H1 format and frontmatter fields as reference. **Templates use `--` (two dashes) as their own delimiters**, but **all plan/meeting files you create must use `---` (three dashes)**. Do not copy the `--` delimiter from the template into the new file.
 
 **Compute the filename** following the template naming convention:
 
@@ -599,17 +599,17 @@ YEAR=$(date +%Y)
 # e.g. "🏢 260313 Dennis 1-1"
 ```
 
-**Write the new plan file** following the template output format exactly (read template first to verify current format):
+**Write the new plan file** using the structure below — always `---` (three dashes) for frontmatter delimiters:
 
 *Work plan:*
 ```markdown
---
+---
 doctype: 📆
 status: {status_emoji}
 started: {YYYY-MM-DD}
 namespace: 🏢
 workstream: {workstream_emoji}
---
+---
 # 🏢{YYMMDD}{workstream_emoji} {title}
 * [ ] Is [[🏢{YYMMDD}{workstream_emoji} {title}]] done? >{YEAR}-W{WW}
 * [ ]
@@ -617,13 +617,13 @@ workstream: {workstream_emoji}
 
 *Personal plan:*
 ```markdown
---
+---
 doctype: 📆
 status: {status_emoji}
 started: {YYMMDD}
 namespace: 🏡
 plantype: {plantype_emoji}
---
+---
 # 🏡{YYMMDD}{plantype_emoji} {title}
 * [ ] Is [[🏡{YYMMDD}{plantype_emoji} {title}]] done? >{YEAR}-W{WW}
 * [ ]
@@ -631,11 +631,11 @@ plantype: {plantype_emoji}
 
 *Work meeting notes:*
 ```markdown
---
+---
 doctype: 🗒️
 started: {YYMMDD}
 namespace: 🏢
---
+---
 # 🏢 {YYMMDD} {title}
 * [ ] Are Action Items for [[🏢 {YYMMDD} {title}]] done? >{YEAR}-W{WW}
 ```
@@ -885,37 +885,43 @@ git reset --hard <pre-sweep-commit-hash>   # only if user confirms
 
 ## Phase 7b: Post-Sweep Unsorted Review
 
-After the integrity check passes, review the accumulated `# Unsorted` content in the target notes. New plans and lists created during the sweep may now be good homes for content that couldn't be routed earlier.
+After the integrity check passes, review ALL accumulated `# Unsorted` content in the target notes — section by section, one at a time. Do this for every Unsorted block regardless of whether new plans were created.
 
 **Steps:**
 
 1. Read the `# Unsorted` section of each target note (Friday and/or Sunday)
-2. For each block in Unsorted, re-score against the **full current index** (plans + lists + meetings — including newly created ones from this sweep)
-3. Present re-routing suggestions:
-   ```
-   📋 Unsorted review: {N} blocks, {K} have potential matches now:
+2. Split into individual blocks — each contiguous group of lines separated by blank lines, or each top-level task and its sub-tasks, counts as one block
+3. For each block, re-score against the **full current index** (plans + lists + meetings — including newly created ones from this sweep)
+4. **Ask about every block individually** — one `AskUserQuestion` per block, with a progress counter:
 
-     Block 1: "- [ ] Make a hifz plan..." → [[🏡260304👨🏻‍💻 Claude Artifacts Planner]] (new plan from today)
-     Block 2: "- [ ] Share recruiter saad" → no new match, stays Unsorted
-   ```
-4. Ask once per target note:
    ```javascript
    AskUserQuestion({
      questions: [{
-       question: "Re-route matched Unsorted items, or leave them all?",
-       header: "Unsorted review",
+       question: `Unsorted block (${currentIndex}/${totalBlocks}) from ${targetNote}:\n\n${blockPreview}\n\nSuggested: ${topMatch?.filename_stem ?? "no match found"}`,
+       header: `Unsorted review: ${targetNote} (${currentIndex}/${totalBlocks})`,
        options: [
-         { label: "Route all suggested matches", description: "Move the K matched blocks out of Unsorted" },
-         { label: "Review individually", description: "Ask about each match one at a time" },
-         { label: "Leave Unsorted as-is", description: "Skip this step" }
-       ]
+         // Show top-3 plan matches (scored) if any:
+         ...top3.map(p => ({ label: `[[${p.filename_stem}]]`, description: p.description ?? `(${p.workstream_or_plantype})` })),
+         { label: "📥 Keep in Unsorted", description: "Leave this block where it is" },
+         { label: "🗑️ Delete", description: "This content is no longer relevant" }
+       ],
+       multiSelect: false
      }]
    })
    ```
-5. If "Route all" or individual review: move matched blocks out of Unsorted, append them under the appropriate `# [[PlanName]]` header in the same target note
-6. **Commit** the Unsorted re-routing: `git commit -m "sweep(daily): re-route Unsorted → ${N} blocks moved to plans"`
 
-This phase only runs if there are Unsorted items AND the full index grew during the sweep (new plans/lists created).
+5. For each block the user routes: move it out of Unsorted and append it under the appropriate `# [[PlanName]]` header in the same target note (with a `## From Unsorted` sub-header)
+6. For "Keep in Unsorted": leave untouched
+7. For "Delete": remove from the target note entirely
+8. After processing all blocks for all target notes:
+   ```bash
+   git add -A
+   git commit -m "sweep(daily): Unsorted review → ${N} blocks routed, ${K} kept, ${D} deleted"
+   git pull --rebase
+   git push
+   ```
+
+This phase runs whenever there are any Unsorted items in either target note — not only when new plans were created.
 
 ---
 
@@ -1071,9 +1077,9 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Meetings indexed | Index recently-modified meeting files alongside plans and lists. Show them in routing UI with highest priority when section content matches a person's name or meeting keyword. |
 | Date annotation on moved blocks | When appending to an existing plan or target daily note, prefix each moved block with `## From {fileDate}` so content origin is traceable. Omit for new plan files (the `started:` field serves this purpose). |
 | User notes are authoritative | Free-text notes in AskUserQuestion answers override scoring. Re-score the plan index against the user's clarification before presenting the next question. |
-| Post-sweep Unsorted review | After integrity check, re-score Unsorted blocks against the full updated index (including new plans). Offer to re-route matched blocks. Only runs if Unsorted content exists and new plans were created. |
-| Templates must be read first | Before creating any new plan, meeting, or list file, read the corresponding template from `@Templates/` to ensure correct frontmatter structure and H1 format. |
-| New plans follow the template | Use the computed filename convention and frontmatter structure exactly. |
+| Post-sweep Unsorted review | After integrity check, review EVERY Unsorted block individually — one AskUserQuestion per block with top-3 plan suggestions. Ask "keep or move?" for each. Runs whenever any Unsorted content exists. |
+| Templates must be read first | Before creating any new plan, meeting, or list file, read the corresponding template from `@Templates/` to verify the H1 format and frontmatter fields. |
+| New plans use `---` delimiters | Created plan/meeting files MUST use `---` (three dashes) for frontmatter. Templates themselves use `--` (two dashes) — do not copy that into the created file. |
 | New plan subdirs are discovered | `ls $PLAN_ROOT` to find the right workstream/plantype subdir. Never hardcode. |
 | Checkpoint commits per day | Commit after each day's sweep for granular recoverability. |
 | Line-level integrity check | Run the Python diff validation script before the final commit. |
