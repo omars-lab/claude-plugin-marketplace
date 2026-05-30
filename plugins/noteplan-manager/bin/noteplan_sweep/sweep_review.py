@@ -2260,10 +2260,13 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             issues.append('self_migration')
 
         if not src_in_diff or not dest_in_diff:
-            results.append({'idx': modal_idx, 'type': 'empty', 'moved_count': 0,
+            results.append({'idx': modal_idx, 'breadcrumb_idx': modal_idx,
+                            'type': 'empty', 'moved_count': 0,
                             'lost_count': 0, 'truly_lost_lines': [], 'moved_lines': [],
                             'dest_lines': [], 'went_to_details': {}, 'line_statuses': {},
                             'inferred': False, 'dest_stem': _dest_stem(dest_raw),
+                            'outcomes': [{'kind': 'empty', 'dest': dest_raw,
+                                          'dest_stem': _dest_stem(dest_raw), 'lines': []}],
                             'issues': issues})
             modal_idx += 1
             continue
@@ -2301,12 +2304,21 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             _anom_dest = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
             _anom_lines = [l for l in _anom_dest if not _is_noise(l) and len(_norm_line(l)) > 4]
             _anom_type = 'anomaly' if _anom_lines else 'empty'
-            results.append({'idx': modal_idx, 'type': _anom_type, 'moved_count': 0,
+            _ds = _dest_stem(dest_raw)
+            _outcomes = [{
+                'kind': _anom_type,
+                'dest': dest_raw,
+                'dest_stem': _ds,
+                'lines': _anom_lines[:20] if _anom_type == 'anomaly' else [],
+            }]
+            results.append({'idx': modal_idx, 'breadcrumb_idx': modal_idx,
+                            'type': _anom_type, 'moved_count': 0,
                             'lost_count': 0, 'truly_lost_lines': [], 'moved_lines': [],
                             'dest_lines': _anom_lines[:20] if _anom_type == 'anomaly' else [],
                             'went_to_details': {}, 'line_statuses': {},
                             'misrouted_count': 0, 'went_to_files': [],
-                            'inferred': inferred, 'dest_stem': _dest_stem(dest_raw),
+                            'inferred': inferred, 'dest_stem': _ds,
+                            'outcomes': _outcomes,
                             'issues': issues})
             modal_idx += 1
             continue
@@ -2417,8 +2429,45 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
         for _ll in truly_lost:
             line_statuses[_norm_line(_ll)] = 'absent'
 
+        # Per-outcome buckets — each entry is one (kind, dest) pair with its own lines.
+        # Move: lines confirmed at the breadcrumb's claimed destination.
+        # Went-to: lines actually at a different file (one outcome per other-file stem).
+        # Lost: lines absent from the diff (no destination — semantic null).
+        # Empty: row produced no lines at all (placeholder for completeness).
+        outcomes: list[dict] = []
+        if moved_lines:
+            outcomes.append({
+                'kind':      'move',
+                'dest':      dest_raw,
+                'dest_stem': dest_stem_key,
+                'lines':     moved_lines[:20],
+            })
+        for stem, lines in went_to_details.items():
+            if lines:
+                outcomes.append({
+                    'kind':      'went-to',
+                    'dest':      stem,
+                    'dest_stem': stem.lower(),
+                    'lines':     lines[:10],
+                })
+        if truly_lost:
+            outcomes.append({
+                'kind':      'lost',
+                'dest':      None,
+                'dest_stem': None,
+                'lines':     truly_lost[:20],
+            })
+        if not outcomes:
+            outcomes.append({
+                'kind':      'empty',
+                'dest':      dest_raw,
+                'dest_stem': dest_stem_key,
+                'lines':     [],
+            })
+
         results.append({
             'idx':              modal_idx,
+            'breadcrumb_idx':   modal_idx,
             'type':             row_type,
             'moved_count':      len(moved_lines),
             'lost_count':       len(truly_lost),
@@ -2431,6 +2480,7 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             'went_to_files':    sorted(went_to_files_set),
             'inferred':         inferred,
             'dest_stem':        dest_stem_key,
+            'outcomes':         outcomes,
             'issues':           issues,
         })
         modal_idx += 1
@@ -2494,41 +2544,108 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             elif loser.get('moved_count', 0) == 0:
                 loser['type'] = 'lost' if loser.get('lost_count', 0) > 0 else 'empty'
 
+    # Rebuild `outcomes` for any row touched by dedupe so the per-outcome view
+    # stays in sync with the legacy fields after demotion.
+    for r in results:
+        if 'dedupe_demoted' not in r.get('issues', []):
+            continue
+        new_outcomes: list[dict] = []
+        if r.get('moved_lines'):
+            new_outcomes.append({
+                'kind':      'move',
+                'dest':      None,  # filled below
+                'dest_stem': r.get('dest_stem'),
+                'lines':     r['moved_lines'][:20],
+            })
+        for stem, lines in (r.get('went_to_details') or {}).items():
+            if lines:
+                new_outcomes.append({
+                    'kind':      'went-to',
+                    'dest':      stem,
+                    'dest_stem': stem.lower(),
+                    'lines':     lines[:10],
+                })
+        if r.get('truly_lost_lines'):
+            new_outcomes.append({
+                'kind':      'lost',
+                'dest':      None,
+                'dest_stem': None,
+                'lines':     r['truly_lost_lines'][:20],
+            })
+        if r.get('type') == 'anomaly' and r.get('dest_lines'):
+            new_outcomes.append({
+                'kind':      'anomaly',
+                'dest':      None,
+                'dest_stem': r.get('dest_stem'),
+                'lines':     r['dest_lines'][:20],
+            })
+        # Fill the `dest` field for non-lost outcomes by reading the original
+        # outcomes' dest (preserves the human-readable destination string)
+        old_dest_for_kind: dict[str, str | None] = {}
+        for o in r.get('outcomes', []):
+            old_dest_for_kind.setdefault(o.get('kind'), o.get('dest'))
+        for o in new_outcomes:
+            if o['dest'] is None and o['kind'] != 'lost':
+                o['dest'] = old_dest_for_kind.get(o['kind'])
+        if not new_outcomes:
+            new_outcomes.append({
+                'kind':      'empty',
+                'dest':      old_dest_for_kind.get('move') or old_dest_for_kind.get('empty'),
+                'dest_stem': r.get('dest_stem'),
+                'lines':     [],
+            })
+        r['outcomes'] = new_outcomes
+
     return results
 
 
 def _py_cross_row_issues(pre_classification: list[dict]) -> list[str]:
     """Detect cross-row consistency issues from PRE_CLASSIFICATION at compile time.
     Replaces JS validateCrossRowConsistency. Returns list of human-readable issue strings.
-    V-C2: dest line claimed by two or more rows (double-move).
-    V-C3: src line appears in moved_lines of two or more rows (duplicated source).
+    V-C2: same dest line claimed as moved by two move-rows targeting the same dest stem.
+    V-C3: same source line moved by two rows targeting the same dest stem (duplicated source).
+    Both checks now scope on (dest_stem, normLine) — different destinations no longer
+    collide on identical content (e.g. shared frontmatter is no longer flagged).
     """
     issues: list[str] = []
-    dest_line_owners: dict[str, list[int]] = {}  # normLine → [idx, ...]
-    src_line_owners:  dict[str, list[int]] = {}  # normLine → [idx, ...]
+    # (dest_stem, normLine) → [idx, ...] — only move-outcome rows participate.
+    dest_line_owners: dict[tuple[str, str], list[int]] = {}
+    src_line_owners:  dict[tuple[str, str], list[int]] = {}
 
     for pc in pre_classification:
         idx = pc.get('idx')
         if idx is None:
             continue
+        # Walk per-outcome data. Only move-outcomes can collide cross-row.
+        for o in (pc.get('outcomes') or []):
+            if o.get('kind') != 'move':
+                continue
+            stem = o.get('dest_stem') or pc.get('dest_stem') or ''
+            if not stem:
+                continue
+            for sl in o.get('lines', []):
+                n = _norm_line(sl)
+                if len(n) > 4:
+                    src_line_owners.setdefault((stem, n), []).append(idx)
+        # Dest_lines collisions are about the destination side (what's at dest).
+        # Read from legacy dest_lines for now — it tracks move-outcome dest content.
+        stem = pc.get('dest_stem', '')
+        if not stem:
+            continue
         for dl in pc.get('dest_lines', []):
             n = _norm_line(dl)
             if len(n) > 4:
-                dest_line_owners.setdefault(n, []).append(idx)
-        for sl in pc.get('moved_lines', []):
-            n = _norm_line(sl)
-            if len(n) > 4:
-                src_line_owners.setdefault(n, []).append(idx)
+                dest_line_owners.setdefault((stem, n), []).append(idx)
 
-    for n, idxs in dest_line_owners.items():
+    for (stem, n), idxs in dest_line_owners.items():
         unique = sorted(set(idxs))
         if len(unique) > 1:
-            issues.append(f'V-C2: dest line claimed by rows {unique}: {n[:60]}')
+            issues.append(f'V-C2: dest line claimed by rows {unique} at {stem[:30]}: {n[:60]}')
 
-    for n, idxs in src_line_owners.items():
+    for (stem, n), idxs in src_line_owners.items():
         unique = sorted(set(idxs))
         if len(unique) > 1:
-            issues.append(f'V-C3: src line moved by multiple rows {unique}: {n[:60]}')
+            issues.append(f'V-C3: src line moved by rows {unique} to {stem[:30]}: {n[:60]}')
 
     return issues
 

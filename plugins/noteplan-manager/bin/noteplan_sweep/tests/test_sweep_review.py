@@ -547,19 +547,56 @@ def test_sr20_py_classify_self_migration():
 # ---------------------------------------------------------------------------
 
 def test_sr21_py_cross_row_issues_v_c2():
-    """SR-21: _py_cross_row_issues returns V-C2 when same dest line appears in two rows."""
+    """SR-21: _py_cross_row_issues returns V-C2 when same dest line is claimed by two
+    move-rows targeting the same dest stem.
+    """
     shared_line = "- [ ] Shared task moved to destination"
+    common_stem = "plans/design"
+    common_outcomes = [{"kind": "move", "dest": "Plans/Design",
+                        "dest_stem": common_stem, "lines": [shared_line]}]
     pre_class = [
         {"idx": 0, "type": "move", "moved_lines": [shared_line],
-         "dest_lines": [shared_line], "truly_lost_lines": [], "issues": []},
+         "dest_lines": [shared_line], "truly_lost_lines": [], "issues": [],
+         "dest_stem": common_stem, "outcomes": common_outcomes},
         {"idx": 1, "type": "move", "moved_lines": [shared_line],
-         "dest_lines": [shared_line], "truly_lost_lines": [], "issues": []},
+         "dest_lines": [shared_line], "truly_lost_lines": [], "issues": [],
+         "dest_stem": common_stem, "outcomes": common_outcomes},
     ]
     issues = _py_cross_row_issues(pre_class)
     vc2 = [i for i in issues if i.startswith("V-C2")]
     assert len(vc2) >= 1, f"Expected at least one V-C2 issue, got: {issues}"
     assert "0" in vc2[0] and "1" in vc2[0], \
         f"V-C2 issue must reference both row indices: {vc2[0]}"
+
+
+# ---------------------------------------------------------------------------
+# SR-24  V-C2 only fires when two MOVE-rows share the same dest stem
+#        (different stems with same line content do NOT collide)
+# ---------------------------------------------------------------------------
+
+def test_sr24_v_c2_scoped_to_dest_stem():
+    """SR-24: identical content under different destinations no longer cross-fires V-C2.
+    Pre-#95 V-C2 keyed on normLine alone, flagging shared frontmatter across files as
+    a 'collision'. Now scoped on (dest_stem, normLine) — different stems are independent.
+    """
+    shared_line = "doctype: 📆"  # frontmatter line common to many plan files
+    pre_class = [
+        {"idx": 0, "type": "anomaly", "moved_lines": [], "dest_lines": [shared_line],
+         "truly_lost_lines": [], "issues": [],
+         "dest_stem": "plan_a",
+         "outcomes": [{"kind": "anomaly", "dest": "Plan A",
+                       "dest_stem": "plan_a", "lines": [shared_line]}]},
+        {"idx": 1, "type": "anomaly", "moved_lines": [], "dest_lines": [shared_line],
+         "truly_lost_lines": [], "issues": [],
+         "dest_stem": "plan_b",
+         "outcomes": [{"kind": "anomaly", "dest": "Plan B",
+                       "dest_stem": "plan_b", "lines": [shared_line]}]},
+    ]
+    issues = _py_cross_row_issues(pre_class)
+    vc2 = [i for i in issues if i.startswith("V-C2")]
+    assert len(vc2) == 0, \
+        f"V-C2 must NOT fire when stems differ — different files can have identical " \
+        f"content (e.g. frontmatter) without it being a collision: {issues}"
 
 
 # ---------------------------------------------------------------------------
