@@ -3207,11 +3207,15 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
     results: list[dict] = []
     isSep = lambda r: re.match(r'^-+$', (r.get('section') or '').strip())
 
-    for idx, row in enumerate(narrative):
+    # CRITICAL: Use MODAL_ROWS indices (non-separator rows only) not NARRATIVE indices.
+    # JS renderNarrative() pushes only non-separator rows to MODAL_ROWS, so MODAL_ROWS[k]
+    # corresponds to the k-th non-separator NARRATIVE entry. PRE_CLASSIFICATION idx values
+    # are seeded into _rowClassifications.set(idx,...) which MODAL_ROWS[idx] is then read
+    # from. If separator rows inflate the idx, every badge gets data from the wrong row.
+    modal_idx = 0
+    for row in narrative:
         if isSep(row):
-            results.append({'idx': idx, 'type': 'empty', 'moved_count': 0,
-                            'lost_count': 0, 'truly_lost_lines': [], 'issues': ['separator']})
-            continue
+            continue  # separator rows are not in MODAL_ROWS — skip entirely
 
         src_file = (row.get('source_file') or '').split('/')[-1]
         dest_raw = re.sub(r'\[\[([^\]]+)\]\]', r'\1', row.get('destination', '')).strip()
@@ -3225,8 +3229,9 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
         if not dest_in_diff: issues.append('dest_not_in_diff')
 
         if not src_in_diff or not dest_in_diff:
-            results.append({'idx': idx, 'type': 'empty', 'moved_count': 0,
+            results.append({'idx': modal_idx, 'type': 'empty', 'moved_count': 0,
                             'lost_count': 0, 'truly_lost_lines': [], 'issues': issues})
+            modal_idx += 1
             continue
 
         # Extract removed lines for this section
@@ -3253,8 +3258,9 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
 
         removed = [l for l in raw_removed if not _is_noise(l) and len(_norm_line(l)) > 2]
         if not removed:
-            results.append({'idx': idx, 'type': 'empty', 'moved_count': 0,
+            results.append({'idx': modal_idx, 'type': 'empty', 'moved_count': 0,
                             'lost_count': 0, 'truly_lost_lines': [], 'issues': issues})
+            modal_idx += 1
             continue
 
         # Full-file dest additions (no V-47a scoping — deliberate; matches intended behaviour of #82)
@@ -3288,8 +3294,9 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
         truly_lost = []
         for ll in lost_lines:
             nll = _norm_line(ll)
+            dest_stem_key = _dest_stem(dest_raw)
             found_elsewhere = len(nll) >= 6 and any(
-                _fuzzy_match(nll, en) and efname.lower() != (dest_raw.split('/')[-1] + '.md').lower()
+                _fuzzy_match(nll, en) and _dest_stem(efname) != dest_stem_key
                 for en, efname in all_added_entries
             )
             if not found_elsewhere:
@@ -3308,7 +3315,7 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
         row_type = 'move' if not truly_lost else ('lost' if not moved_lines else 'lost')
 
         results.append({
-            'idx':              idx,
+            'idx':              modal_idx,
             'type':             row_type,
             'moved_count':      len(moved_lines),
             'lost_count':       len(truly_lost),
@@ -3316,6 +3323,7 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             'misrouted_count':  len(lost_lines) - len(truly_lost),
             'issues':           issues,
         })
+        modal_idx += 1
 
     return results
 
