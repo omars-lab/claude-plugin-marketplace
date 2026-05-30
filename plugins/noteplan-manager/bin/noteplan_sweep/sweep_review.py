@@ -642,7 +642,7 @@ function copyNarrative() {{
     lines.push('', `## ${{d}}`, '', '| Section | Summary | Destination |', '|---|---|---|');
     dayRows.forEach(r => {{ lines.push(`| ${{r.section}} | ${{r.summary}} | ${{normDest(r.destination)}} |`); }});
   }}
-  const md = lines.join('\n');
+  const md = lines.join('\\n');
   navigator.clipboard.writeText(md).then(() => {{
     const btn = document.getElementById('copy-btn');
     const orig = btn.textContent;
@@ -659,7 +659,7 @@ function parseDiff(text) {{
   const files = [];
   let cur = null;
   let leftN = 0, rightN = 0;
-  const lines = text.split('\n');
+  const lines = text.split('\\n');
   for (let i = 0; i < lines.length; i++) {{
     const l = lines[i];
     if (l.startsWith('diff --git ')) {{
@@ -775,7 +775,7 @@ function setActive(fi) {{
 
 // ── Init ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {{
-  const statLines = STAT_TEXT.trim().split('\n');
+  const statLines = STAT_TEXT.trim().split('\\n');
   document.getElementById('stat-line').textContent = statLines[statLines.length - 1] || '';
 
   // Date range from swept Calendar filenames (YYYYMMDD.md)
