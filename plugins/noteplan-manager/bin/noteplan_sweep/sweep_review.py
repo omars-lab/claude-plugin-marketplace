@@ -525,6 +525,9 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .nav-tbl th:nth-child(1){{width:28px}}.nav-tbl th:nth-child(2){{width:18%}}.nav-tbl th:nth-child(3){{width:37%}}.nav-tbl th:nth-child(4){{width:38%}}.nav-tbl th:nth-child(5){{width:44px}}
 .row-badge{{display:inline-block;font-size:11px;min-width:16px;text-align:center;border-radius:3px;padding:1px 4px;font-weight:600}}
 .rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-anomaly{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}.rb-mixed{{background:#2d1f00;color:#e3b341;border:1px solid #e3b341}}
+.mixed-lost-sub-row td{{background:#1a0a0a;border-left:2px solid #f85149;padding-left:10px!important;color:#8b949e;font-size:11px;cursor:pointer}}
+.mixed-lost-sub-row:hover td{{background:#251010}}
+.mixed-lost-sub-row .row-badge{{vertical-align:middle}}
 .nav-tbl td{{padding:5px 10px;border-bottom:1px solid #21262d;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .nav-tbl tr:hover td{{background:#161b22}}
 .nav-tbl .section-col{{color:#e6edf3;font-weight:500}}
@@ -851,6 +854,30 @@ const _badgeTitles   = {{
   mixed:   'Mixed — some lines moved, some lost. This section should have been split into separate rows during sweep.',
 }};
 
+function injectMixedLostSubRow(idx, lostCount) {{
+  const tr = document.querySelector(`tr[data-row-idx="${{idx}}"]`);
+  if (!tr) return;
+  // Don't inject twice
+  if (tr.nextSibling?.dataset?.mixedLostFor === String(idx)) return;
+  const row = MODAL_ROWS[idx];
+  const subTr = document.createElement('tr');
+  subTr.className = 'mixed-lost-sub-row';
+  subTr.dataset.mixedLostFor = String(idx);
+  subTr.dataset.rowType = 'lost';  // participates in type filter as Lost
+  subTr.title = 'Click to open modal — scroll to Lost section';
+  subTr.onclick = () => {{ showSectionModal(idx); }};
+  subTr.innerHTML = `
+    <td style="padding:3px 6px;text-align:center"><span class="row-badge rb-lost">✗</span></td>
+    <td class="section-col" style="color:#f85149">↳ Lost (${{lostCount}} line${{lostCount!==1?'s':''}}) — not found at destination</td>
+    <td class="summary-col" style="color:#6e7681">Needs separate row — split this section during sweep</td>
+    <td class="dest-col" style="color:#6e7681">?? unknown</td>
+    <td style="padding:3px 6px;text-align:center"><button class="view-btn" onclick="event.stopPropagation();showSectionModal(${{idx}})">⌕</button></td>
+  `;
+  tr.after(subTr);
+  // Apply current type filter
+  if (activeType !== 'all' && activeType !== 'lost') subTr.style.display = 'none';
+}}
+
 function updateRowBadge(idx, classification) {{
   const tr = document.querySelector(`tr[data-row-idx="${{idx}}"]`);
   if (!tr) return;
@@ -868,6 +895,8 @@ function updateRowBadge(idx, classification) {{
   badge.title = (_badgeTitles[displayType] || displayType) + counts;
   tr.dataset.rowType = displayType;
   if (activeType !== 'all' && displayType !== activeType) tr.style.display = 'none';
+  // Inject a synthetic Lost sub-row below the mixed row so it appears as two table entries
+  if (mixed) injectMixedLostSubRow(idx, lostCount);
 }}
 
 let _modalMovedLines = [], _modalNewLines = [], _modalCrossLines = [];
@@ -1280,7 +1309,7 @@ function setType(t) {{
   document.querySelectorAll('.type-chip').forEach(c =>
     c.classList.toggle('active', c.dataset.type === t));
   // Show/hide rows by their current classified type (no re-render needed)
-  document.querySelectorAll('tr[data-row-idx]').forEach(tr => {{
+  document.querySelectorAll('tr[data-row-idx], tr[data-mixed-lost-for]').forEach(tr => {{
     const rowType = tr.dataset.rowType || 'pending';
     tr.style.display = (t === 'all' || rowType === t) ? '' : 'none';
   }});
@@ -1289,7 +1318,7 @@ function setType(t) {{
     let next = sep.nextElementSibling;
     let anyVisible = false;
     while (next && !next.classList.contains('day-sep-row')) {{
-      if (next.style.display !== 'none') anyVisible = true;
+      if (next.style.display !== 'none' && !next.classList.contains('mixed-lost-sub-row')) anyVisible = true;
       next = next.nextElementSibling;
     }}
     sep.style.display = anyVisible ? '' : 'none';
