@@ -960,9 +960,11 @@ function classifyRow(idx) {{
   let removedLines = srcResult.lines;
 
   const destRaw = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
+  // Use case-insensitive + NFC-normalized comparison for emoji filename safety
+  const _destRawN = destRaw.normalize('NFC').toLowerCase();
   const destFile = allParsedFiles.find(f => {{
-    const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '');
-    return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
+    const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '').normalize('NFC').toLowerCase();
+    return stem === _destRawN || (f.filename || '').normalize('NFC').toLowerCase().endsWith((_destRawN + '.md'));
   }});
   const destGroups = destFile ? extractDestWithContext(destFile.filename) : [];
   // V-47a removed (#82): always use full-file added lines — section scoping caused false positives
@@ -1128,13 +1130,13 @@ function classifyRow(idx) {{
         }}
       }}
     }}
-    const _destNorm = normDest(destRaw);
+    const _destNorm = normDest(destRaw).normalize('NFC').toLowerCase();
     trulyLostLines = lostLines.filter(ll => {{
       const nll = normLine(ll);
       const bll = bodyText(nll);
       if (nll.length < 6) return true; // too short to match reliably — keep as lost
       for (const e of _allAddedEntries) {{
-        if (normDest(e.filename) === _destNorm) continue; // skip same dest
+        if (normDest(e.filename).normalize('NFC').toLowerCase() === _destNorm) continue; // skip same dest
         // Same three-tier match as classifyDestLines
         if (nll === e.n) {{ misroutedCount++; return false; }}
         const pLen = Math.min(50, Math.min(nll.length, e.n.length));
@@ -1580,9 +1582,11 @@ function showSectionModal(idx, focusLost = false) {{
   const srcResult  = extractSectionLines(row.source_file, sectionName, '-');
   let removedLines = srcResult.lines;
 
+  // Use case-insensitive + NFC-normalized comparison for emoji filename safety (#84 Bug H)
+  const _destRawNM = destRaw.normalize('NFC').toLowerCase();
   const destFile = allParsedFiles.find(f => {{
-    const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '');
-    return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
+    const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '').normalize('NFC').toLowerCase();
+    return stem === _destRawNM || (f.filename || '').normalize('NFC').toLowerCase().endsWith((_destRawNM + '.md'));
   }});
   _modalDestGroups = destFile ? extractDestWithContext(destFile.filename) : [];
   // V-47a removed (#82): always use full-file added lines — same as classifyRow
@@ -1734,14 +1738,14 @@ function showSectionModal(idx, focusLost = false) {{
           }}
         }}
       }}
-      const _destNorm = normDest(destRaw);
+      const _destNorm = normDest(destRaw).normalize('NFC').toLowerCase();
       const _misrouted = new Map(); // filename → count
       for (const ll of lostLines) {{
         const nll = normLine(ll);
         const bll = bodyText(nll);
         if (nll.length < 6) continue;
         for (const e of _allAddedEntries) {{
-          if (normDest(e.filename) === _destNorm) continue;
+          if (normDest(e.filename).normalize('NFC').toLowerCase() === _destNorm) continue;
           let found = (nll === e.n);
           if (!found) {{ const pLen = Math.min(50, Math.min(nll.length, e.n.length)); found = pLen >= 10 && (nll.startsWith(e.n.slice(0, pLen)) || e.n.startsWith(nll.slice(0, pLen))); }}
           if (!found && bll.length >= 8 && e.b.length >= 8) {{ const bLen = Math.min(40, Math.min(bll.length, e.b.length)); found = bLen >= 8 && (bll.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(bll.slice(0, bLen))); }}
@@ -1936,18 +1940,8 @@ function showSectionModal(idx, focusLost = false) {{
     if (lostLinesM.length > 0) blocksM.push({{ type: 'lost', lines: lostLinesM, count: lostLinesM.length }});
   }}
   const classification = {{ type, movedCount, lostCount: lostCountM, newCount: trueNewCount, blocks: blocksM }};
-  // Safety: don't let JS modal computation downgrade a trusted Python classification.
-  // Python (PRE_CLASSIFICATION) uses disk checks + V-R6 misroute detection and is more
-  // accurate. Only overwrite if the existing result isn't _fromPython, or if JS computed
-  // the same or better type.
-  const _existing = _rowClassifications.get(idx);
-  const _typeOrder = {{ move: 3, empty: 2, anomaly: 1, lost: 1, untraced: 1 }};
-  const _isDowngrade = _existing && _existing._fromPython &&
-    (_typeOrder[type] || 0) < (_typeOrder[_existing.type] || 0);
-  if (!_isDowngrade) {{
-    _rowClassifications.set(idx, classification);
-    updateRowBadge(idx, classification);
-  }}
+  _rowClassifications.set(idx, classification);
+  updateRowBadge(idx, classification);
 }}
 
 // ── Tab switching ──────────────────────────────────────────────────────────
@@ -3179,16 +3173,32 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             if len(n) > 2 and not _is_noise(line):
                 all_added_entries.append((n, fname))
 
+    # Build global removed map: normLine → source filename (for inference cross-source filter)
+    # Allows us to exclude dest additions that came from other source files.
+    global_removed_srcs: dict[str, str] = {}
+    for fname, fdata in diff_index.items():
+        for line in fdata.get('removed', []):
+            n = _norm_line(line)
+            if len(n) > 2 and not _is_noise(line) and n not in global_removed_srcs:
+                global_removed_srcs[n] = fname
+
+    def _dest_stem(efname: str) -> str:
+        """Extract bare filename stem (no path, no .md) from a diff filename."""
+        stem = efname.split('/')[-1]
+        if stem.lower().endswith('.md'):
+            stem = stem[:-3]
+        return stem.lower()
+
     def _misroute_count(lost_lines: list[str], dest_raw: str) -> int:
-        dest_norm_key = dest_raw.lower()
+        dest_stem_key = _dest_stem(dest_raw)
         count = 0
         for ll in lost_lines:
             nll = _norm_line(ll)
             if len(nll) < 6:
                 continue
             for en, efname in all_added_entries:
-                if efname.lower().rstrip('.md') == dest_norm_key:
-                    continue
+                if _dest_stem(efname) == dest_stem_key:
+                    continue  # skip same dest — use stem comparison, not rstrip
                 if _fuzzy_match(nll, en):
                     count += 1
                     break
@@ -3222,10 +3232,21 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
         # Extract removed lines for this section
         raw_removed = _extract_section_lines(diff_text, src_file, section, '-')
         if not raw_removed:
-            # Infer from full file if section not found
+            # Infer from full file if section not found.
+            # Cross-source filter: only use dest additions that came from THIS source file
+            # (or have no known source) — prevents matching lines swept on other dates.
             all_rem = _extract_section_lines(diff_text, src_file, None, '-')
             dest_add_all = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
-            dest_norms_all = {_norm_line(l) for l in dest_add_all if len(_norm_line(l)) > 5}
+            src_file_lower = src_file.lower()
+            infer_dest = []
+            for _l in dest_add_all:
+                _n = _norm_line(_l)
+                if len(_n) <= 5:
+                    continue
+                _src = global_removed_srcs.get(_n)
+                if _src is None or _src.lower().endswith(src_file_lower):
+                    infer_dest.append(_l)
+            dest_norms_all = {_norm_line(l) for l in infer_dest}
             raw_removed = [l for l in all_rem
                            if not _is_noise(l) and len(_norm_line(l)) > 4
                            and any(_fuzzy_match(_norm_line(l), dn) for dn in dest_norms_all)]
