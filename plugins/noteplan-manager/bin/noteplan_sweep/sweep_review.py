@@ -431,10 +431,12 @@ def _build_snapshot_html(
     narrative: list | None = None,
     changed_calendar_files: list | None = None,
     base_commit: str | None = None,
+    pre_classification: list | None = None,
 ) -> str:
     seed_json = json.dumps(seed_comments, indent=2)
     narrative_json = json.dumps(narrative or [], indent=2)
     changed_cal_json = json.dumps(changed_calendar_files or [], indent=2)
+    pre_classification_json = json.dumps(pre_classification or [], indent=2)
     # Build dest-file grep map: destStem → [normLine, ...] from actual files on disk
     # Used by JS classifyRow to confirm "lost" lines are truly absent (not already in dest)
     dest_file_lines: dict[str, list[str]] = {}
@@ -549,7 +551,6 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .src-col{{color:#58a6ff;font-family:monospace;font-size:11px;white-space:nowrap}}
 .row-badge{{display:inline-block;font-size:11px;min-width:16px;text-align:center;border-radius:3px;padding:1px 4px;font-weight:600}}
 .rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-untraced{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}
-.row-badge[data-scoped="false"]{{box-shadow:0 0 0 2px #e3b341;cursor:help}}
 .nav-tbl td{{padding:5px 10px;border-bottom:1px solid #21262d;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .nav-tbl tr:hover td{{background:#161b22}}
 .nav-tbl .section-col{{color:#e6edf3;font-weight:500}}
@@ -613,6 +614,7 @@ const STAT_TEXT = {json.dumps(stat_text)};
 const SEED_COMMENTS = {seed_json};
 const NARRATIVE = {narrative_json};
 const CHANGED_CALENDAR_FILES = {changed_cal_json};
+const PRE_CLASSIFICATION = {pre_classification_json};
 // destStem.lower() → [normLine, ...] — full file content at generate time, for lost-line verification
 const DEST_FILE_LINES = {dest_file_lines_json};
 
@@ -644,13 +646,9 @@ function toggleSectionItems(rowIdx, btn) {{
   const lines = result.lines.filter(l => l.trim() && !isNoiseLine(l));
   if (!lines.length) {{ btn.textContent = '○'; return; }}
   btn.textContent = '▼';
-  // Classify each line as moved or lost using dest diff + dest file on disk
+  // Classify each line as moved or lost using full-file dest additions (#82: no section scoping)
   const destRawE = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
-  const sectionNameE = row.section.replace(/^#+\\s*/, '').trim();
-  const _destSecE = extractSectionLines(destRawE + '.md', sectionNameE, '+');
-  const addedLines = _destSecE.lines.length > 0
-    ? _destSecE.lines
-    : extractSectionLines(destRawE + '.md', null, '+').lines;
+  const addedLines = extractSectionLines(destRawE + '.md', null, '+').lines;
   const {{ moved: movedSet, movedPairs }} = classifyDestLines(lines, addedLines);
   const movedSrcSet = new Set([...movedPairs.values()]);
   const parentRow = document.querySelector(`tr[data-row-idx="${{rowIdx}}"]`);
@@ -954,14 +952,10 @@ function classifyRow(idx) {{
     return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
   }});
   const destGroups = destFile ? extractDestWithContext(destFile.filename) : [];
-  // V-47: scope added lines to the matching section in dest first; fall back to full file.
-  // V-47a: sectionFound=true when the section was located (exact or fuzzy) — don't fall back
-  //        even if the section was empty; an empty scoped result is correct (not anomalous).
+  // V-47a removed (#82): always use full-file added lines — section scoping caused false positives
+  // when fuzzy header matching latched onto the wrong section in the destination.
   const destFilenameC = destFile ? destFile.filename : (destRaw + '.md');
-  const destSectionResult = extractSectionLines(destFilenameC, sectionName, '+');
-  let addedLines = (destSectionResult.lines.length > 0 || destSectionResult.sectionFound)
-    ? destSectionResult.lines
-    : destGroups.flatMap(g => g.lines);
+  let addedLines = destGroups.flatMap(g => g.lines);
 
   if (!srcResult.matched && addedLines.length > 0) {{
     const allSrc = extractSectionLines(row.source_file, null, '-').lines;
@@ -1012,10 +1006,7 @@ function classifyRow(idx) {{
         return stem.toLowerCase() === b15Lower;
       }});
       if (linkedFile) {{
-        const lkSec = extractSectionLines(linkedFile.filename, sectionName, '+');
-        const lkAdded = (lkSec.lines.length > 0 || lkSec.sectionFound)
-          ? lkSec.lines
-          : extractSectionLines(linkedFile.filename, null, '+').lines;
+        const lkAdded = extractSectionLines(linkedFile.filename, null, '+').lines;
         if (lkAdded.length > 0) {{
           addedLines = lkAdded;
           b15Applied = true;
@@ -1163,8 +1154,7 @@ function classifyRow(idx) {{
     if (misroutedCount > 0) blocks.push({{ type: 'misrouted', count: misroutedCount }});
   }}
   const result = {{ type, movedCount, lostCount: adjustedLostCount, newCount: trueNewCount,
-                   misroutedCount, emptyReason,
-                   v47Fallback: destSectionResult.v47Fallback && !b15Applied, blocks }};
+                   misroutedCount, emptyReason, blocks }};
   _rowClassifications.set(idx, result);
   return result;
 }}
@@ -1196,10 +1186,6 @@ function updateRowBadge(idx, classification) {{
     const moveBlock = blocks.find(b => b.type === 'move');
     const lostBlock = blocks.find(b => b.type === 'lost');
     badge.title = `Lost — ${{moveBlock?.count ?? 0}} moved, ${{lostBlock?.count ?? 0}} did not arrive`;
-    if (classification.v47Fallback) {{
-      badge.dataset.scoped = 'false';
-      badge.title += ' ⚠ Section not matched — showing full file';
-    }} else {{ delete badge.dataset.scoped; }}
     badge.style.cursor = 'pointer';
     badge.onclick = (e) => {{ e.stopPropagation(); showSectionModal(idx); }};
     const mbCountCell = tr.querySelector('.count-col');
@@ -1229,13 +1215,6 @@ function updateRowBadge(idx, classification) {{
   const emptyDetail = (displayType === 'empty' && classification.emptyReason)
     ? ` — ${{classification.emptyReason}}` : '';
   badge.title = (_badgeTitles[displayType] || displayType) + counts + emptyDetail;
-  // V-47b: amber ring when V-47 fell back to full-file view (section not matched in diff)
-  if (classification.v47Fallback) {{
-    badge.dataset.scoped = 'false';
-    badge.title += ' ⚠ Section not matched — showing full file';
-  }} else {{
-    delete badge.dataset.scoped;
-  }}
   // Mark destination cell for lost/empty rows — "intended but not confirmed"
   const destCell = tr.querySelector('.dest-col');
   if (destCell) {{
@@ -1593,21 +1572,26 @@ function showSectionModal(idx, focusLost = false) {{
     return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
   }});
   _modalDestGroups = destFile ? extractDestWithContext(destFile.filename) : [];
-  // V-47: scope added lines to the matching section in dest first; fall back to full file.
-  // V-47a: sectionFound=true when section was located (exact or fuzzy) — empty scoped result is correct.
-  const _destFilenameM = destFile ? destFile.filename : (destRaw + '.md');
-  const _destSectionM = extractSectionLines(_destFilenameM, sectionName, '+');
-  const addedLines = (_destSectionM.lines.length > 0 || _destSectionM.sectionFound)
-    ? _destSectionM.lines
-    : _modalDestGroups.flatMap(g => g.lines);
+  // V-47a removed (#82): always use full-file added lines — same as classifyRow
+  const addedLines = _modalDestGroups.flatMap(g => g.lines);
+
+  // Hoist globalMap/srcStem early so inference block can filter cross-content
+  const globalMap = getGlobalRemovedMap();
+  const srcStem = row.source_file.split('/').pop().replace(/\\.md$/, '');
 
   // Section header not found (synthetic section name) — infer removed lines by
   // content-matching ALL source removed lines against what landed in the destination.
+  // Filter destNorms to non-cross content to avoid inflating removedLines with
+  // lines that belong to other sweep rows.
   let _allSrcResult = null;
   if (!srcResult.matched && addedLines.length > 0) {{
     _allSrcResult = extractSectionLines(row.source_file, null, '-');
     const allSrcLines = _allSrcResult.lines;
-    const destNorms = new Set(addedLines.map(normLine).filter(s => s.length > 5));
+    const _inferLines = addedLines.filter(l => {{
+      const n = normLine(l); const fromStem = globalMap.get(n);
+      return !fromStem || fromStem === srcStem;
+    }});
+    const destNorms = new Set(_inferLines.map(normLine).filter(s => s.length > 5));
     removedLines = allSrcLines.filter(l => {{
       const n = normLine(l);
       if (n.length < 5) return false;
@@ -1671,8 +1655,7 @@ function showSectionModal(idx, focusLost = false) {{
 
   // Separate New from Cross; drop noise from both.
   // Cross lines are retained internally for future anomaly detection but not displayed.
-  const globalMap = getGlobalRemovedMap();
-  const srcStem = row.source_file.split('/').pop().replace(/\\.md$/, '');
+  // (globalMap and srcStem already hoisted above for inference block)
 
   _modalCrossLines = [];
   _modalNewLines = [];
@@ -1902,16 +1885,9 @@ function showSectionModal(idx, focusLost = false) {{
 
   const titleSuffix = focusLost ? ' — ✗ Lost lines' : ' → ' + normDest(row.destination);
   document.getElementById('modal-title').textContent = sectionName + titleSuffix;
-  // V-47c: show scoped-to header when fuzzy match succeeded
+  // V-47c removed with V-47a (#82): no longer scoping to section, so no header to show
   const scopeEl = document.getElementById('modal-scope');
-  if (scopeEl) {{
-    if (_destSectionM.fuzzyHeader) {{
-      scopeEl.textContent = 'Scoped to: ' + _destSectionM.fuzzyHeader;
-      scopeEl.style.display = 'inline';
-    }} else {{
-      scopeEl.style.display = 'none';
-    }}
-  }}
+  if (scopeEl) scopeEl.style.display = 'none';
   const modalBodyEl = document.getElementById('modal-body');
   // Lost mode: single-column full-width; normal: two-column side-by-side
   modalBodyEl.style.gridTemplateColumns = focusLost ? '1fr' : '1fr 1fr';
@@ -1932,8 +1908,8 @@ function showSectionModal(idx, focusLost = false) {{
   const srcTotal = srcResult.matched ? countableRemovedM.length : movedCount;
   let type;
   if (destNotInDiff || srcNotInDiff) type = 'empty';
-  else if (srcTotal === 0 && addedLines.length === 0) type = 'empty';
-  else if (srcTotal === 0 && addedLines.length > 0) type = 'anomaly';
+  else if (srcTotal === 0 && trueNewCount === 0) type = 'empty';
+  else if (srcTotal === 0 && trueNewCount > 0) type = 'anomaly';
   else if (movedCount === srcTotal) type = 'move';  // all arrived
   else type = 'lost';                               // any missing → lost
   const lostCountM = srcTotal - movedCount;
@@ -1947,9 +1923,18 @@ function showSectionModal(idx, focusLost = false) {{
     if (lostLinesM.length > 0) blocksM.push({{ type: 'lost', lines: lostLinesM, count: lostLinesM.length }});
   }}
   const classification = {{ type, movedCount, lostCount: lostCountM, newCount: trueNewCount, blocks: blocksM }};
-  _rowClassifications.set(idx, classification);
-  updateRowBadge(idx, classification);
-}}
+  // Safety: don't let JS modal computation downgrade a trusted Python classification.
+  // Python (PRE_CLASSIFICATION) uses disk checks + V-R6 misroute detection and is more
+  // accurate. Only overwrite if the existing result isn't _fromPython, or if JS computed
+  // the same or better type.
+  const _existing = _rowClassifications.get(idx);
+  const _typeOrder = {{ move: 3, empty: 2, anomaly: 1, lost: 1, untraced: 1 }};
+  const _isDowngrade = _existing && _existing._fromPython &&
+    (_typeOrder[type] || 0) < (_typeOrder[_existing.type] || 0);
+  if (!_isDowngrade) {{
+    _rowClassifications.set(idx, classification);
+    updateRowBadge(idx, classification);
+  }}
 
 // ── Tab switching ──────────────────────────────────────────────────────────
 function showTab(name) {{
@@ -2346,6 +2331,32 @@ window.addEventListener('DOMContentLoaded', () => {{
 
   renderNarrative();
 
+  // Phase E: pre-seed badge cache from Python compile-time classification.
+  // Gives instant badges + truly_lost_lines data without waiting for the JS scan.
+  // JS scan still runs afterwards and overwrites with its own result (serves as validation).
+  if (PRE_CLASSIFICATION && PRE_CLASSIFICATION.length > 0) {{
+    for (const pc of PRE_CLASSIFICATION) {{
+      const idx = pc.idx;
+      if (idx == null || _rowClassifications.has(idx)) continue;
+      // Map Python field names to JS classification shape
+      const c = {{
+        type:            pc.type,
+        movedCount:      pc.moved_count || 0,
+        lostCount:       pc.lost_count  || 0,
+        newCount:        0,
+        misroutedCount:  pc.misrouted_count || 0,
+        trulyLostLines:  pc.truly_lost_lines || [],
+        emptyReason:     (pc.issues || []).join(', '),
+        blocks:          [],
+        _fromPython:     true,
+      }};
+      if (c.movedCount > 0) c.blocks.push({{ type: 'move', count: c.movedCount }});
+      if (c.lostCount  > 0) c.blocks.push({{ type: 'lost',  count: c.lostCount, lines: c.trulyLostLines }});
+      _rowClassifications.set(idx, c);
+      updateRowBadge(idx, c);
+    }}
+  }}
+
   allParsedFiles = parseDiff(DIFF_TEXT);
   _allAddedEntries = null; // reset lazy cache whenever diff is (re)parsed
   renderDiffFiles(allParsedFiles);
@@ -2519,7 +2530,12 @@ def cmd_sweep_review_compile(args):
     for w in _validate_diff_integrity(diff_text, narrative or []):
         utils.err(f"[V-D] {w}")
 
-    new_html = _build_snapshot_html(run_id, date_str, sha, stat_text, diff_text, merged_comments, narrative, changed_cal)
+    # Phase E: pre-compute row classification in Python at compile time.
+    # Embedded as PRE_CLASSIFICATION so the portal has instant badges and inspectable data.
+    pre_classification = _py_classify_all_rows(diff_text, narrative or [], _np_root())
+
+    new_html = _build_snapshot_html(run_id, date_str, sha, stat_text, diff_text, merged_comments, narrative, changed_cal,
+                                    pre_classification=pre_classification)
     review_path.write_text(new_html, encoding="utf-8")
     cmt_note = f"{len(merged_comments)} comment(s) from {len(comment_rounds)} round(s)" if merged_comments else "no comments"
     utils.log(f"sweep-review-compile: wrote {review_path} ({cmt_note})")
@@ -2867,130 +2883,6 @@ def _extract_section_lines(diff_text: str, filename: str, section_name: str, lin
     return result
 
 
-def _v47a_score(hdr: str, name_lower: str) -> float:
-    """Python mirror of JS v47aScore: score a candidate diff header for fuzzy section matching.
-    Returns 999 for exact/existing sectionHeaderMatches-style hit, or a token-overlap score.
-    Caller accepts if score >= 0.5.
-    """
-    hdr_norm = re.sub(r'^#+\s*', '', hdr).strip().lower()
-    n, h = name_lower.strip(), hdr_norm
-    # Mirror of header_matches (existing sectionHeaderMatches logic)
-    if h == n: return 999.0
-    if h.startswith(n + ' ') or h.startswith(n + ':'): return 999.0
-    if n.startswith(h + ' ') or n.startswith(h + ':'): return 0.0  # parent — reject
-    q_toks_exact = [w for w in n.split() if len(w) >= 3]
-    if q_toks_exact:
-        last = re.escape(q_toks_exact[-1])
-        if re.search(rf'\b{last}\b', h): return 999.0
-    # Token-level de-plural prefix overlap
-    q_toks = [w for w in re.split(r'[\s/\-,\.]+', n) if len(w) >= 3]
-    h_toks = [w for w in re.split(r'[\s/\-,\.]+', h) if len(w) >= 3]
-    if not q_toks or not h_toks:
-        return 0.0
-    score = 0.0
-    for qt in q_toks:
-        qt_s = qt[:-1] if len(qt) > 3 and qt.endswith('s') else qt
-        best = 0.0
-        for ht in h_toks:
-            ht_s = ht[:-1] if len(ht) > 3 and ht.endswith('s') else ht
-            s = 0.0
-            if qt == ht or qt_s == ht_s:
-                s = 1.0
-            elif len(qt_s) >= 3 and ht.startswith(qt_s):
-                s = 0.7
-            elif len(ht_s) >= 3 and qt.startswith(ht_s):
-                s = 0.7
-            if s > best:
-                best = s
-        score += best
-    return score
-
-
-def _extract_section_lines_scoped(diff_text: str, filename: str, section_name: str,
-                                   line_type: str) -> tuple[list[str], bool]:
-    """Python mirror of JS extractSectionLines with V-47a fuzzy fallback.
-    Returns (lines, section_found) where section_found=True if the section was located
-    (exact or fuzzy) — callers should NOT fall back to full-file when section_found=True
-    even if lines is empty (empty section is a correct, non-anomalous result).
-    """
-    if not section_name:
-        return _extract_section_lines(diff_text, filename, None, line_type), True
-
-    base = filename.split('/')[-1].lower()
-    name_lower = section_name.lower().strip()
-    seen_headers: list[str] = []
-
-    def header_matches_py(content: str, active_name: str) -> bool:
-        h = re.sub(r'^#+\s*', '', content).strip().lower()
-        n = active_name
-        if h == n: return True
-        if h.startswith(n + ' ') or h.startswith(n + ':'): return True
-        if n.startswith(h + ' ') or n.startswith(h + ':'): return False
-        q_toks = [w for w in n.split() if len(w) >= 3]
-        if q_toks:
-            last = re.escape(q_toks[-1])
-            if re.search(rf'\b{last}\b', h): return True
-        return False
-
-    def do_extract(active_name: str, strict_boundary: bool) -> tuple[list[str], bool]:
-        nonlocal seen_headers
-        in_file = False
-        in_section = False
-        section_level = 0
-        section_entered = False
-        res: list[str] = []
-        for raw in diff_text.splitlines():
-            if raw.startswith('diff --git '):
-                in_file = base in raw.lower()
-                in_section = False
-                section_level = 0
-                continue
-            if not in_file:
-                continue
-            if raw.startswith('+++') or raw.startswith('---') or raw.startswith('index') or raw.startswith('@@'):
-                continue
-            if not raw:
-                continue
-            t = raw[0]
-            if t not in ('+', '-', ' '):
-                continue
-            content = raw[1:]
-            hm = re.match(r'^(#+)\s', content)
-            depth = len(hm.group(1)) if hm else 0
-            # Collect headers for V-47a on first pass (active_name == name_lower), skip removed
-            if active_name == name_lower and in_file and depth >= 2 and t != '-':
-                seen_headers.append(content)
-            if depth > 0 and header_matches_py(content, active_name):
-                in_section = True
-                section_level = depth
-                section_entered = True
-            elif in_section and depth > 0 and depth <= section_level and (strict_boundary or t != '+'):
-                in_section = False
-            if in_section and t == line_type:
-                res.append(content)
-        return res, section_entered
-
-    result, section_entered = do_extract(name_lower, False)
-    if result or section_entered:
-        return result, section_entered or bool(result)
-
-    # V-47a: fuzzy matching — only when exact match found nothing and section was never entered
-    unique_headers = list(dict.fromkeys(seen_headers))
-    if not unique_headers:
-        return [], False  # flat file — no ## headers in diff block
-
-    best_score, best_hdr = 0.0, None
-    for hdr in unique_headers:
-        sc = _v47a_score(hdr, name_lower)
-        if sc > best_score:
-            best_score, best_hdr = sc, hdr
-
-    if best_hdr is not None and best_score >= 0.5:
-        fuzzy_name = re.sub(r'^#+\s*', '', best_hdr).strip().lower()
-        result, section_entered = do_extract(fuzzy_name, True)  # strict: any header closes section
-        return result, True
-
-    return [], False
 
 def cmd_sweep_review_audit(args):
     """Data quality audit: classify all rows, report lost lines, mixed rows, and structural issues."""
@@ -3100,13 +2992,7 @@ def cmd_sweep_review_audit(args):
             if _dest_is_new:
                 return {'type': 'empty', 'issues': issues + ['new_file'],
                         'moved': [], 'lost': [], 'new': []}
-            # V-47a: try section-scoped dest extraction (fuzzy match if needed).
-            # If the section was located (even if empty), don't fall back to full-file.
-            dest_added, dest_section_found = _extract_section_lines_scoped(
-                diff_text, dest_raw + '.md', section, '+'
-            )
-            if not dest_section_found:
-                dest_added = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
+            dest_added = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
             # B-13: subtract additions claimed by sibling rows (layer 1) OR any diff source (layer 2)
             sibling_norms = _sibling_norms.get(dest_raw, set())
             dest_content = [
@@ -3259,6 +3145,144 @@ def cmd_sweep_review_audit(args):
 
     # Auto-append to quality log so sweep-review-quality can track trends over time
     _append_quality_log(root, run_id, counts, problems)
+
+
+def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[dict]:
+    """Pre-compute row classifications at compile time.
+    Returns a list of dicts (one per NARRATIVE row, same index) with:
+      {idx, type, moved_count, lost_count, truly_lost_lines, issues}
+    Used to embed const PRE_CLASSIFICATION in the review HTML so the portal has
+    instant badges and inspectable data without waiting for the JS background scan.
+    """
+    diff_index = _parse_diff_sections(diff_text)
+    diff_lower = {k.lower(): v for k, v in diff_index.items()}
+
+    # Build global added map: normLine → [filename] — for V-R6 misroute detection
+    all_added_entries: list[tuple[str, str]] = []  # (normLine, filename)
+    for fname, fdata in diff_index.items():
+        for line in fdata.get('added', []):
+            n = _norm_line(line)
+            if len(n) > 2 and not _is_noise(line):
+                all_added_entries.append((n, fname))
+
+    def _misroute_count(lost_lines: list[str], dest_raw: str) -> int:
+        dest_norm_key = dest_raw.lower()
+        count = 0
+        for ll in lost_lines:
+            nll = _norm_line(ll)
+            if len(nll) < 6:
+                continue
+            for en, efname in all_added_entries:
+                if efname.lower().rstrip('.md') == dest_norm_key:
+                    continue
+                if _fuzzy_match(nll, en):
+                    count += 1
+                    break
+        return count
+
+    results: list[dict] = []
+    isSep = lambda r: re.match(r'^-+$', (r.get('section') or '').strip())
+
+    for idx, row in enumerate(narrative):
+        if isSep(row):
+            results.append({'idx': idx, 'type': 'empty', 'moved_count': 0,
+                            'lost_count': 0, 'truly_lost_lines': [], 'issues': ['separator']})
+            continue
+
+        src_file = (row.get('source_file') or '').split('/')[-1]
+        dest_raw = re.sub(r'\[\[([^\]]+)\]\]', r'\1', row.get('destination', '')).strip()
+        dest_raw = re.sub(r'\.md$', '', dest_raw).strip()
+        section  = re.sub(r'^#+\s*', '', row.get('section', '')).strip()
+        issues: list[str] = []
+
+        src_in_diff  = any(k.endswith(src_file.lower()) for k in diff_lower)
+        dest_in_diff = any(k.endswith((dest_raw.split('/')[-1] + '.md').lower()) for k in diff_lower)
+        if not src_in_diff:  issues.append('src_not_in_diff')
+        if not dest_in_diff: issues.append('dest_not_in_diff')
+
+        if not src_in_diff or not dest_in_diff:
+            results.append({'idx': idx, 'type': 'empty', 'moved_count': 0,
+                            'lost_count': 0, 'truly_lost_lines': [], 'issues': issues})
+            continue
+
+        # Extract removed lines for this section
+        raw_removed = _extract_section_lines(diff_text, src_file, section, '-')
+        if not raw_removed:
+            # Infer from full file if section not found
+            all_rem = _extract_section_lines(diff_text, src_file, None, '-')
+            dest_add_all = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
+            dest_norms_all = {_norm_line(l) for l in dest_add_all if len(_norm_line(l)) > 5}
+            raw_removed = [l for l in all_rem
+                           if not _is_noise(l) and len(_norm_line(l)) > 4
+                           and any(_fuzzy_match(_norm_line(l), dn) for dn in dest_norms_all)]
+
+        removed = [l for l in raw_removed if not _is_noise(l) and len(_norm_line(l)) > 2]
+        if not removed:
+            results.append({'idx': idx, 'type': 'empty', 'moved_count': 0,
+                            'lost_count': 0, 'truly_lost_lines': [], 'issues': issues})
+            continue
+
+        # Full-file dest additions (no V-47a scoping — deliberate; matches intended behaviour of #82)
+        dest_added = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
+
+        # B-15: redirect-stub — recheck against linked plan
+        dest_on_disk = _find_dest_on_disk(root, dest_raw)
+        if dest_on_disk:
+            try:
+                _redir = re.search(r'> Migrated: see \[\[([^\]]+)\]\]',
+                                   dest_on_disk.read_text(errors='replace'), re.IGNORECASE)
+                if _redir:
+                    linked = _extract_section_lines(diff_text, _redir.group(1).strip() + '.md', None, '+')
+                    if linked:
+                        dest_added = linked
+                        issues.append('b15_redirect')
+            except OSError:
+                pass
+
+        dest_norms = [_norm_line(l) for l in dest_added if not _is_noise(l) and len(_norm_line(l)) > 2]
+
+        moved_lines, lost_lines = [], []
+        for src_line in removed:
+            sn = _norm_line(src_line)
+            (moved_lines if any(_fuzzy_match(sn, dn) for dn in dest_norms) else lost_lines).append(src_line)
+
+        # V-R6: check if lost lines exist elsewhere in the diff
+        misrouted = _misroute_count(lost_lines, dest_raw)
+        truly_lost = lost_lines[misrouted:]  # approximate — good enough for reporting
+        # More precise: filter individually
+        truly_lost = []
+        for ll in lost_lines:
+            nll = _norm_line(ll)
+            found_elsewhere = len(nll) >= 6 and any(
+                _fuzzy_match(nll, en) and efname.lower() != (dest_raw.split('/')[-1] + '.md').lower()
+                for en, efname in all_added_entries
+            )
+            if not found_elsewhere:
+                truly_lost.append(ll)
+
+        # Secondary: check disk for already-present lines
+        if truly_lost and dest_on_disk:
+            try:
+                disk_norms = {_norm_line(l) for l in dest_on_disk.read_text(errors='replace').splitlines()
+                              if len(_norm_line(l)) > 4}
+                truly_lost = [l for l in truly_lost
+                              if not any(_fuzzy_match(_norm_line(l), dn) for dn in disk_norms)]
+            except OSError:
+                pass
+
+        row_type = 'move' if not truly_lost else ('lost' if not moved_lines else 'lost')
+
+        results.append({
+            'idx':              idx,
+            'type':             row_type,
+            'moved_count':      len(moved_lines),
+            'lost_count':       len(truly_lost),
+            'truly_lost_lines': truly_lost[:20],  # cap at 20 to keep HTML size reasonable
+            'misrouted_count':  len(lost_lines) - len(truly_lost),
+            'issues':           issues,
+        })
+
+    return results
 
 
 def _quality_log_path(root: Path) -> Path:
@@ -3694,18 +3718,8 @@ def cmd_sweep_review_diagnose(args) -> None:
                     hdr_in_diff = True
                     break
 
-        # Dest scoping (V-47a)
-        dest_scoped, dest_section_found = _extract_section_lines_scoped(
-            diff_text, dest_raw + ".md", section, "+"
-        )
-        if dest_section_found:
-            dest_added = dest_scoped
-            scope_method = "fuzzy" if len(dest_scoped) < len(
-                _extract_section_lines(diff_text, dest_raw + ".md", None, "+")
-            ) else "exact"
-        else:
-            dest_added = _extract_section_lines(diff_text, dest_raw + ".md", None, "+")
-            scope_method = "full-file"
+        dest_added = _extract_section_lines(diff_text, dest_raw + ".md", None, "+")
+        scope_method = "full-file"
 
         # B-13 filtering
         sibling_norms = _sibling_norms.get(dest_raw, set())
