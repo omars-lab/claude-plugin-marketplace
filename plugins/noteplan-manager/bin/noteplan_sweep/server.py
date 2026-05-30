@@ -165,6 +165,10 @@ class NoteplanHandler(BaseHTTPRequestHandler):
             self._api_get_plans()
             return
 
+        if path == "/api/summary":
+            self._api_get_summary()
+            return
+
         # Static files under dashboard/
         if path.startswith("/static/") or path.startswith("/dashboard/"):
             rel = path.lstrip("/").split("/", 1)[-1] if "/" in path[1:] else path[1:]
@@ -190,6 +194,27 @@ class NoteplanHandler(BaseHTTPRequestHandler):
             notes = self.noteplan_root / "Notes"
             plans = scan_plans(notes)
             self._json_ok({"plans": plans})
+        except Exception as e:
+            self._json_err(str(e), 500)
+
+    def _api_get_summary(self):
+        """GET /api/summary — merged summary data from all *-summary.json sidecars."""
+        try:
+            result = {}
+            sidecar_keys = {
+                "plans-summary.json":        "plans",
+                "contributions-summary.json": "contributions",
+                "ai-usage.json":              "ai_usage",
+            }
+            for filename, key in sidecar_keys.items():
+                p = self.dashboard_dir / filename
+                if p.exists():
+                    try:
+                        raw = json.loads(p.read_text(encoding="utf-8"))
+                        result[key] = raw.get("summary", raw)
+                    except Exception:
+                        pass
+            self._json_ok(result)
         except Exception as e:
             self._json_err(str(e), 500)
 

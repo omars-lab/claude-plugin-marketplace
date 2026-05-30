@@ -307,6 +307,13 @@ def cmd_contributions_generate(args):
     json_out.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
     utils.log(f"contributions-generate: wrote {json_out}")
 
+    # Write summary sidecar for insights.html live tiles
+    summary_out = dash_dir / "contributions-summary.json"
+    summary_out.write_text(json.dumps({
+        "generated_at": data["generated_at"],
+        **data["summary"],
+    }, indent=2, ensure_ascii=False), encoding="utf-8")
+
     html = build_contributions_html(data)
     html_out = dash_dir / "contributions.html"
     html_out.write_text(html, encoding="utf-8")

@@ -784,6 +784,29 @@ function rerender() {{
   renderPlans(); renderBrag(); renderObs(); renderGaps(); renderImpact(); renderTasks(); renderAI();
 }}
 
+function _refreshHubTiles(summary) {{
+  // Update hub tile nums from /api/summary response
+  const map = {{}};
+  if (summary.plans) {{
+    map['Active Plans'] = summary.plans.active_plans;
+    map['Open Tasks']   = summary.plans.tasks_open;
+  }}
+  if (summary.contributions) {{
+    map['commits / yr'] = summary.contributions.total_commits;
+    map['AI / 30d']     = summary.contributions.total_ai_commits;
+  }}
+  if (summary.ai_usage) {{
+    map['AI / 30d'] = map['AI / 30d'] ?? summary.ai_usage.last_30_days_interactive;
+  }}
+  document.querySelectorAll('.hub-tile').forEach(tile => {{
+    const lbl = tile.querySelector('.hub-tile-lbl');
+    const num = tile.querySelector('.hub-tile-num');
+    if (lbl && num && map[lbl.textContent] !== undefined) {{
+      num.textContent = map[lbl.textContent].toLocaleString();
+    }}
+  }});
+}}
+
 window.addEventListener('DOMContentLoaded', () => {{
   const SERVER_MODE = window.location.protocol === 'http:' && window.location.hostname === 'localhost';
   if (!SERVER_MODE) {{
@@ -793,6 +816,8 @@ window.addEventListener('DOMContentLoaded', () => {{
       el.style.opacity = '0.45';
       el.style.cursor = 'default';
     }});
+  }} else {{
+    fetch('/api/summary').then(r => r.json()).then(_refreshHubTiles).catch(() => {{}});
   }}
   _applyOrg();
   rerender();

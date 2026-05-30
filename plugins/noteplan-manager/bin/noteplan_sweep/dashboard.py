@@ -1110,6 +1110,21 @@ def cmd_dashboard_generate(args):
         "generated_at": generated_at,
     }, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    # Write summary sidecar for insights.html live tiles
+    status_counts = {}
+    for p in plans:
+        s = p.get("status", "other")
+        status_counts[s] = status_counts.get(s, 0) + 1
+    summary_out = dash_dir / "plans-summary.json"
+    summary_out.write_text(json.dumps({
+        "generated_at": generated_at,
+        "total_plans": len(plans),
+        "active_plans": status_counts.get("active", 0),
+        "paused_plans": status_counts.get("paused", 0),
+        "tasks_open": len(tasks),
+        "ideas_count": len(ideas),
+    }, indent=2, ensure_ascii=False), encoding="utf-8")
+
 
 def cmd_dashboard_open(args):
     root = utils.noteplan_root()
