@@ -463,12 +463,15 @@ activatePill('type-pills', type);
 activatePill('domain-pills', domain);
 refresh();
 
-setTimeout(() => $('title').focus(), 60);
+var focusTimer = setTimeout(() => $('title').focus(), 60);
 
-document.addEventListener('keydown', e => {
+// Named handler so submit() and cancel() can remove it, letting native Esc close the window.
+// (win.close() from plugin code quits the entire app — NotePlan bug — so we rely on native close.)
+function handleKeyDown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
   if (e.key === 'Escape') cancel();
-});
+}
+document.addEventListener('keydown', handleKeyDown);
 
 // ── Submit ────────────────────────────────────────────────────────────────────
 
@@ -478,30 +481,36 @@ function submit() {
   const wsVal = $('ws-select').value || '';
   const projVal = $('proj-select').value || '';
   const workstream = (projVal && projVal !== '— no project —') ? projVal : wsVal;
-  // Compute daysAgo from calendar date for meetings
   let daysAgo = 0;
   if (type === 'meeting') {
     const sel = $('meeting-date').value || C.todayISO;
-    const selDate = dateFromISO(sel);
-    const today = dateFromISO(C.todayISO);
-    daysAgo = Math.max(0, Math.round((today - selDate) / 86400000));
+    daysAgo = Math.max(0, Math.round(
+      (dateFromISO(C.todayISO) - dateFromISO(sel)) / 86400000
+    ));
   }
   const params = { domain, type, title, workstream,
     status: $('status-select').value || C.statusOptions[2], daysAgo };
   $('create-btn').disabled = true;
-  $('err').textContent = '';
-  const code = JSON.stringify(
-    '(async function(){try{await createNote(' + JSON.stringify(params) + ');return "ok";}catch(e){return "err:"+e.message;}})()'
-  );
-  window.webkit.messageHandlers.jsBridge.postMessage({ code, onHandle: 'onCreated', id: '1' });
+
+  var paramsJSON = JSON.stringify(params);
+  var safeParams2 = JSON.stringify(paramsJSON);
+  var code = '(function(){ DataStore.invokePluginCommandByName("Create Note (API)","oeid.noteplan-quicknote",[' + safeParams2 + ']); })()';
+  window.webkit.messageHandlers.jsBridge.postMessage({ code: code, onHandle: '', id: 'create' });
+
+  document.removeEventListener('keydown', handleKeyDown);
+  clearTimeout(focusTimer);
+  document.body.innerHTML = '<div style="font-family:-apple-system,sans-serif;padding:40px 24px;text-align:center">' +
+    '<div style="font-size:32px;margin-bottom:12px">✓</div>' +
+    '<div style="font-size:15px;font-weight:600;color:#007AFF">Note created</div>' +
+    '</div>';
 }
 
-function onCreated(result) {
-  if (result === 'ok') { window.close(); }
-  else { $('err').textContent = result || 'Unknown error'; $('create-btn').disabled = false; }
+function cancel() {
+  document.removeEventListener('keydown', handleKeyDown);
+  clearTimeout(focusTimer);
+  var code = '(function(){ DataStore.invokePluginCommandByName("Close Quick Note","oeid.noteplan-quicknote",[]); })()';
+  window.webkit.messageHandlers.jsBridge.postMessage({ code: code, onHandle: '', id: 'cancel' });
 }
-
-function cancel() { window.close(); }
 </script>
 </body>
 </html>`
@@ -516,9 +525,21 @@ async function showCreateForm(initialType = 'plan') {
   }
   const html = buildFormHTML(initialType, allWorkstreams)
   await HTMLView.showWindowWithOptions(html, 'New Note', {
-    width: 460, height: 480, shouldFocus: true, customId: 'oeid-quicknote-form',
+    width: 460, height: 520, shouldFocus: true, customId: 'oeid-quicknote-form',
   })
 }
+
+// ─── closeQuickNote / createAndClose ─────────────────────────────────────────
+
+async function closeQuickNote() {
+  for (const win of NotePlan.htmlWindows) {
+    if (win.customId === 'oeid-quicknote-form') {
+      win.close()
+      return
+    }
+  }
+}
+
 
 // ─── /plan ────────────────────────────────────────────────────────────────────
 
@@ -584,6 +605,7 @@ async function createNote(jsonParams) {
   }
 
   if (!filename || !folder || !content) return
+  await closeQuickNote()
   await createAndOpen(filename, folder, content)
 }
 
@@ -606,5 +628,6 @@ if (typeof module !== 'undefined') {
     DOMAIN_EMOJIS,
     NAMESPACE,
     createNote,
+    buildFormHTML,
   }
 }

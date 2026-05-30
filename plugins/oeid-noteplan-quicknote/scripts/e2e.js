@@ -66,6 +66,8 @@ global.CommandBar = {
   textPrompt: async () => null,
 }
 
+global.NotePlan = { htmlWindows: [] }
+
 // ─── Load plugin ─────────────────────────────────────────────────────────────
 
 const { createNote } = require('../script.js')

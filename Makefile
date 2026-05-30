@@ -16,6 +16,10 @@ help: ## Show this help message
 	@echo "$(YELLOW)Available targets:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
 
+setup-hooks: ## Point git at .githooks/ so checked-in hooks are active (run once per clone)
+	@git config core.hooksPath .githooks
+	@echo "$(GREEN)✓ git core.hooksPath → .githooks$(NC)"
+
 validate: ## Validate marketplace.json structure
 	@./scripts/cli validate $(MARKETPLACE_NAME)
 
@@ -167,7 +171,7 @@ install-noteplan-quicknote: ## Install oeid-noteplan-quicknote into NotePlan Plu
 	@echo "$(GREEN)✓ Installed to $(NOTEPLAN_PLUGINS_DIR)/oeid.noteplan-quicknote$(NC)"
 	@$(MAKE) --no-print-directory reload-noteplan
 
-test-noteplan-quicknote: ## Run oeid-noteplan-quicknote unit tests (Jest, no NotePlan required)
+test-noteplan-quicknote: ## Run oeid-noteplan-quicknote unit + form tests (Jest, no NotePlan required)
 	@cd plugins/oeid-noteplan-quicknote && npm test
 
 e2e-noteplan-quicknote: ## E2E tests via real filesystem (no NotePlan app required)
@@ -175,6 +179,19 @@ e2e-noteplan-quicknote: ## E2E tests via real filesystem (no NotePlan app requir
 
 e2e-noteplan-quicknote-keep: ## E2E tests — keep created files for manual inspection
 	@node plugins/oeid-noteplan-quicknote/scripts/e2e.js --keep
+
+test-noteplan-quicknote-all: ## Run all tests: unit + form (Jest) + e2e filesystem
+	@echo "$(BLUE)▶ Unit + form tests$(NC)"
+	@cd plugins/oeid-noteplan-quicknote && npm test --silent
+	@echo "$(BLUE)▶ E2E filesystem tests$(NC)"
+	@node plugins/oeid-noteplan-quicknote/scripts/e2e.js
+	@echo "$(GREEN)✓ All noteplan-quicknote tests passed$(NC)"
+
+live-test-noteplan-quicknote: ## Live integration tests — triggers createNote via x-callback-url (NotePlan must be running)
+	@node plugins/oeid-noteplan-quicknote/scripts/live-test.js
+
+live-test-noteplan-quicknote-keep: ## Live integration tests — keep created files for inspection
+	@node plugins/oeid-noteplan-quicknote/scripts/live-test.js --keep
 
 reload-noteplan: ## Restart NotePlan so it picks up plugin changes (quit + relaunch)
 	@if pgrep -x NotePlan > /dev/null 2>&1; then \
@@ -187,6 +204,42 @@ reload-noteplan: ## Restart NotePlan so it picks up plugin changes (quit + relau
 uninstall-noteplan-quicknote: ## Remove oeid-noteplan-quicknote from NotePlan Plugins dir
 	@rm -rf "$(NOTEPLAN_PLUGINS_DIR)/oeid.noteplan-quicknote"
 	@echo "$(GREEN)✓ Removed oeid.noteplan-quicknote$(NC)"
+
+noteplan-crash-log: ## Show latest NotePlan crash report (.crash or .ips)
+	@latest=$$(ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i noteplan | head -1); \
+	[ -n "$$latest" ] && cat ~/Library/Logs/DiagnosticReports/"$$latest" || echo "$(YELLOW)No NotePlan crash reports in DiagnosticReports$(NC)"
+
+noteplan-crash-summary: ## Show recent NotePlan log entries (requires Full Disk Access for Terminal)
+	@echo "$(BLUE)Checking for log access...$(NC)"; \
+	if ! /usr/bin/log show --last 1m >/dev/null 2>&1; then \
+		echo "$(RED)✗ Terminal lacks Full Disk Access — grant it in System Settings → Privacy & Security → Full Disk Access$(NC)"; \
+		echo "$(YELLOW)Fallback: open Console.app and filter by 'NotePlan'$(NC)"; \
+	else \
+		echo "$(BLUE)NotePlan errors/faults (last 30 min):$(NC)"; \
+		/usr/bin/log show --predicate 'process == "NotePlan3" OR subsystem BEGINSWITH "co.noteplan"' --style syslog --last 30m 2>/dev/null \
+			| grep -i "error\|fault\|crash\|exception\|JSC\|EXC_BAD\|WebView\|quicknote" \
+			| tail -40 || echo "$(YELLOW)No entries$(NC)"; \
+	fi
+
+noteplan-log-live: ## Stream NotePlan log in real time — requires Full Disk Access for Terminal
+	@if ! /usr/bin/log show --last 1m >/dev/null 2>&1; then \
+		echo "$(RED)✗ Terminal lacks Full Disk Access$(NC)"; \
+		echo "Grant it in: System Settings → Privacy & Security → Full Disk Access → add Terminal.app"; \
+	else \
+		/usr/bin/log stream --predicate 'process == "NotePlan3" OR subsystem BEGINSWITH "co.noteplan"' --style syslog 2>/dev/null \
+			| grep -i "error\|fault\|crash\|JSC\|quicknote\|EXC"; \
+	fi
+
+noteplan-plugins-grep: ## Search NotePlan/plugins repo for a pattern (PATTERN=... required)
+	@[ -n "$(PATTERN)" ] || { echo "Usage: make noteplan-plugins-grep PATTERN='onHandle'"; exit 1; }
+	@gh api "repos/NotePlan/plugins/git/trees/main?recursive=1" --jq '.tree[] | select(.path | test("\\.(js|jsx|ts|tsx)$$")) | .path' \
+		| while read f; do \
+			content=$$(gh api "repos/NotePlan/plugins/contents/$$f" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null); \
+			if echo "$$content" | grep -q "$(PATTERN)"; then \
+				echo "$(BLUE)$$f$(NC)"; \
+				echo "$$content" | grep -n "$(PATTERN)" | head -5; \
+			fi; \
+		done
 
 noteplan-info: ## Show NotePlan directory information
 	@echo "$(BLUE)NotePlan Directories:$(NC)"

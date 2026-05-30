@@ -4,7 +4,7 @@
   "plugin.name": "Omar's System",
   "plugin.description": "Create correctly-named, correctly-placed notes across all domains with /plan, /meeting, /note",
   "plugin.author": "Omar Eid",
-  "plugin.version": "2.0.0",
+  "plugin.version": "2.2.0",
   "plugin.script": "script.js",
   "plugin.url": "https://github.com/omars-lab/claude-plugin-marketplace",
   "plugin.commands": [
@@ -28,9 +28,17 @@
     },
     {
       "name": "Create Note (API)",
+      "alias": ["createNote"],
       "description": "Programmatic note creation for other plugins — pass JSON params",
       "jsFunction": "createNote",
       "hidden": true
-    }
+    },
+    {
+      "name": "Close Quick Note",
+      "alias": ["closeQuickNote"],
+      "description": "Closes the Quick Note HTML form window",
+      "jsFunction": "closeQuickNote",
+      "hidden": true
+    },
   ]
 }

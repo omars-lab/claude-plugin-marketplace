@@ -18,6 +18,9 @@ global.Editor = {
 global.CommandBar = {
   prompt: jest.fn().mockResolvedValue(0),
 }
+global.NotePlan = {
+  htmlWindows: [],
+}
 
 const { createNote } = require('../script.js')
 
