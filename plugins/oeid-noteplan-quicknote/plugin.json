@@ -1,10 +1,10 @@
 {
   "noteplan.minAppVersion": "3.4.0",
   "plugin.id": "oeid.noteplan-quicknote",
-  "plugin.name": "Quick Note",
+  "plugin.name": "Omar's System",
   "plugin.description": "Create correctly-named, correctly-placed notes across all domains with /plan, /meeting, /note",
   "plugin.author": "Omar Eid",
-  "plugin.version": "1.0.0",
+  "plugin.version": "1.2.0",
   "plugin.script": "script.js",
   "plugin.url": "https://github.com/omars-lab/claude-plugin-marketplace",
   "plugin.commands": [

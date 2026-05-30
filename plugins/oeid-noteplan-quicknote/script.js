@@ -45,6 +45,22 @@ const DAYS_AGO_OPTIONS = ['0', '1', '3', '7', '14', '30']
 // Project subfolders under 🧑🏻‍💻 Development (Work or EarlBear)
 const DEV_PROJECT_OPTIONS = ['— none —', '🤖 Config Agent', '💡 esgenius', '⚗️ Experiments', '🔧 Setup']
 
+// Pre-fill suggestions for the title text prompt.
+// Meeting: pre-fills based on domain convention (user edits from there).
+// Plan: pre-fills based on workstream — leaves a useful starting point.
+const MEETING_TITLE_PREFILL = {
+  work:     '1-1 ',
+  personal: '',
+  coffee:   '',
+  earlbear: '1-1 ',
+}
+
+const PLAN_TITLE_PREFILL = {
+  '🏁': 'Onboarding ',
+  '🎯': 'Impact ',
+  '✍🏻': 'Documenting ',
+}
+
 // Static workstream labels for domains that have no subfolder structure.
 // Used for filename emoji only — these never become folder paths.
 const STATIC_WORKSTREAMS = {
@@ -101,8 +117,8 @@ async function pick(options, placeholder) {
   return result ? result.value : null
 }
 
-async function getText(placeholder) {
-  const result = await CommandBar.textPrompt('', placeholder, '')
+async function getText(placeholder, defaultValue = '') {
+  const result = await CommandBar.textPrompt('', placeholder, defaultValue)
   return (result && result.trim()) ? result.trim() : null
 }
 
@@ -229,7 +245,8 @@ async function plan() {
     }
   }
 
-  const title = await getText('Plan title')
+  const planPrefill = PLAN_TITLE_PREFILL[wsEmoji] || ''
+  const title = await getText('Plan title', planPrefill)
   if (!title) return
 
   const statusLabel = await pick(STATUS_OPTIONS, 'Status')
@@ -260,7 +277,8 @@ async function meeting() {
   if (!domainLabel) return
   const domain = domainKey(domainLabel)
 
-  const title = await getText('Meeting title')
+  const meetingPrefill = MEETING_TITLE_PREFILL[domain] || ''
+  const title = await getText('Meeting title', meetingPrefill)
   if (!title) return
 
   const daysAgoStr = await pick(DAYS_AGO_OPTIONS, 'Days ago')
