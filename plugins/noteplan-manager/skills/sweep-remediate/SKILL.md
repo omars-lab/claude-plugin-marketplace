@@ -355,6 +355,7 @@ For each `false_positive` row, diagnose WHY the portal misclassified it:
 | Moved lines classified as lost | `sectionHeaderMatches` matched wrong section | Section name matching logic |
 | Lines found in dest but marked lost | `normLine` mismatch between removed and added | Fuzzy match sensitivity |
 | Cross-row content flagged as anomaly | Another row accounts for these lines but portal doesn't see it | Cross-row classification |
+| Composite section name locks wrong dest section | Sweep skill synthesises `"Config Agent ARB"` from `# Config Agent > ## ARB & Governance`. V-47a raw score for `## Agent Development` is 1.0 (1 shared token) — passes old `>= 0.5` threshold, locking dest to wrong section. Real content landed under `## Next Steps` (score 0 against query). | Normalize threshold by token count: require `score >= qToks.length × 0.5`. Fixed in v3.104.1. |
 
 ### 4c. Propose portal improvements
 

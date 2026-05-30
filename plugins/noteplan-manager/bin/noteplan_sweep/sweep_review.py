@@ -810,12 +810,17 @@ function extractSectionLines(filename, sectionName, lineType) {{
         const sc = v47aScore(hdr, nameLower);
         if (sc > bestScore) {{ bestScore = sc; bestHdr = hdr; }}
       }}
-      if (bestHdr !== null && bestScore >= 0.5) {{
+      // Normalize threshold by query token count: a 3-token query like "Config Agent ARB"
+      // needs score >= 1.5, not 0.5, so a single shared token ("agent") can't lock the
+      // wrong destination section (e.g. "## Agent Development" scoring 1.0 wins over nothing).
+      const _qTokCnt = nameLower.split(/[\\s\\/\\-,\\.]+/).filter(w => w.length >= 3).length;
+      const _v47aThresh = Math.max(0.5, _qTokCnt * 0.5);
+      if (bestHdr !== null && bestScore >= _v47aThresh) {{
         fuzzyHeader = bestHdr;
         const fuzzyNameLower = normSectionStr(bestHdr);
         // strictBoundary=true: allow +/- headers to close sections in the fuzzy pass
         ({{ result, lineNos, sectionEntered }} = doExtract(fuzzyNameLower, true));
-        console.debug('V-47a: fuzzy match', {{ sectionName, matchedHeader: bestHdr, score: bestScore }});
+        console.debug('V-47a: fuzzy match', {{ sectionName, matchedHeader: bestHdr, score: bestScore, threshold: _v47aThresh }});
       }} else {{
         v47Fallback = true;
         console.warn('V-47a: no fuzzy match for section', sectionName, 'in', filename, '(headers:', uniqueHeaders, ')');

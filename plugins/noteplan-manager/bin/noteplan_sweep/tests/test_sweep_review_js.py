@@ -19,6 +19,9 @@ Bug index:
   JS-08  cross-move: line in global removed map from another file → Cross tab
   JS-09  lost/moved badges appear on Diff view deleted lines
   JS-21  filterValidPairs: noise-line (empty checkbox) match doesn't inflate movedCount → no negative lostCount
+  JS-22  V-47a: composite section name ("Config Agent ARB") doesn't lock dest to wrong section
+         ("## Agent Development" scores 1.0/3 tokens = 0.33 < 0.5 normalized → falls back to
+         full-file additions → ARB lines found → type=move, not lost)
 """
 
 import http.server
@@ -1099,3 +1102,62 @@ def test_js21_noise_line_match_no_negative_lostcount(playwright, http_server):
     )
     # Row must be move (real_task arrived) or at most lost with count >= 0
     assert 'rb-pending' not in badge_class, f"Badge not updated: {badge_class}"
+
+
+# JS-22  V-47a threshold normalisation: composite section name must not lock dest
+#        to a weakly-matching section and misclassify a clean move as Lost.
+# ---------------------------------------------------------------------------
+
+def test_js22_v47a_composite_section_name_fallback(playwright, http_server):
+    """JS-22: "Config Agent ARB" (3-token query) should not match "## Agent Development"
+    (1/3 tokens = 0.33 normalized, below 0.5 threshold) — must fall back to full-file
+    additions and find the ARB lines under ## Next Steps → type=move, badge rb-move."""
+    base_url, serve_dir = http_server
+
+    arb_task1 = "- [ ] Omar Eid I'm putting you in charge with ARB."
+    arb_task2 = "- [ ] What do I need to do for ARB"
+    arb_task3 = "- [ ] Make a detailed diagram of the security model"
+
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Config Agent ARB", "summary": "ARB governance tasks",
+                  "destination": "[[Hardening A2A POC]]"}]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": ["## Config Agent ARB", arb_task1, arb_task2, arb_task3],
+         "added": []},
+        {"path": "Hardening A2A POC.md",
+         "added": [
+             # ARB tasks land under ## Next Steps — not a section matching the query
+             "## Next Steps",
+             arb_task1 + " >2026-04-26",
+             arb_task2 + " >2026-04-26",
+             arb_task3 + " >2026-04-26",
+             # Unrelated section that shares "agent" token — the old bug would lock here
+             "## Agent Development",
+             "- [ ] Setup CLI tools",
+             "- [ ] Implement story tasks",
+         ],
+         "removed": []},
+    ])
+    page_name = _write_page(serve_dir, "js22.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    browser.close()
+
+    assert "rb-move" in badge_class, (
+        f"Expected rb-move (ARB lines in full-file dest additions) but got: {badge_class!r}. "
+        "V-47a likely locked destination to '## Agent Development' (1-token match) instead of "
+        "falling back to full-file additions."
+    )
