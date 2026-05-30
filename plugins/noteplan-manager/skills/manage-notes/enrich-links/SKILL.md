@@ -186,6 +186,8 @@ When you encounter a bare URL, use this table to decide how to handle it. Apply 
 | **GitHub pricing page** | `github.com/pricing` | **Label from domain knowledge** — title "Twitch" is garbage (CDN artifact); GitHub pricing is well-known: Free, Pro, Team, Enterprise | `[GitHub pricing plans: Free, Pro, Team, and Enterprise tiers](url)` |
 | **LinkedIn Developer Portal** | `linkedin.com/developers/apps/<id>/...` | **Label from URL path + domain knowledge** — requires LinkedIn developer login; title "Developers \| LinkedIn" is generic; app ID is numeric (not a UUID) | `[LinkedIn Developer Portal: app settings for OAuth integration](url)` |
 | **Car rental location page** | `go.avis.com/...`, `avis.com/en/locations/...`, `hertz.com/...` | **Use page title** — rental location pages have reliable titles including location name and rental company | `[Avis: car rental at Midtown Manhattan Penn Station location](url)` |
+| **Home Assistant integration docs** | `home-assistant.io/integrations/<name>/` | **Use description** — title format is just "Integration Name - Home Assistant" (too short); description is always a concise one-liner like "Instructions on integrating X" | `[Home Assistant Ring integration: connecting Ring.com alarm and camera devices](url)` |
+| **HACS docs** | `hacs.xyz/docs/...` | **Use page title + anchor context** — title format "Section - HACS" is reliable; for anchor URLs (`#section-name`), decode anchor to add specificity | `[HACS: restoring from a backup to recover repository data](url)` |
 
 **Rule of thumb:**
 - If the URL type gives you enough info without a network call → auto-format
