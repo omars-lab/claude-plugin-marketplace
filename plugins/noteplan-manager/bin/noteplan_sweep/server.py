@@ -169,6 +169,11 @@ class NoteplanHandler(BaseHTTPRequestHandler):
             self._api_get_summary()
             return
 
+        # Sweep review files (sweeps/ lives at noteplan root, not dashboard/)
+        if path.startswith("/sweeps/"):
+            self._serve_file(self.noteplan_root / path.lstrip("/"))
+            return
+
         # Static files under dashboard/
         if path.startswith("/static/") or path.startswith("/dashboard/"):
             rel = path.lstrip("/").split("/", 1)[-1] if "/" in path[1:] else path[1:]

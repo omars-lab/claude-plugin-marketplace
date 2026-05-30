@@ -310,13 +310,14 @@ def scan_tasks_and_ideas(notes_root: Path, calendar_root: Path) -> tuple[list[di
 # HTML builder (Phase A shell — Kanban/Gantt/Inbox UI added in Phases B/C/D)
 # ---------------------------------------------------------------------------
 
-def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
+def build_html(plans: list, tasks: list, ideas: list, generated_at: str, sweep_runs: list | None = None) -> str:
     data_json = json.dumps({
         "plans": plans,
         "tasks": tasks,
         "ideas": ideas,
         "generated_at": generated_at,
     }, indent=2, ensure_ascii=False)
+    sweep_runs_json = json.dumps(sweep_runs or [], ensure_ascii=False)
 
     # Derive unique projects and plantype emojis for filter chips
     projects = sorted({p["project"] for p in plans if p.get("project")})
@@ -502,6 +503,7 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
   <div class="tab"        onclick="showTab('ideas')">Ideas <span id="tab-ideas-n"></span></div>
   <div class="tab"        onclick="showTab('inbox')">Inbox <span id="tab-inbox-n"></span></div>
   <div class="tab"        onclick="showTab('initiatives')">Initiatives <span id="tab-init-n"></span></div>
+  <div class="tab"        onclick="showTab('sweeps')">Sweep Reviews <span id="tab-sweeps-n"></span></div>
 </div>
 
 <div id="content">
@@ -547,6 +549,18 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
     <div id="initiatives-list"></div>
   </div>
 
+  <div class="pane" id="pane-sweeps">
+    <div id="sweeps-run-bar" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-start"></div>
+    <div id="sweeps-viewer" style="height:calc(100vh - 290px);min-height:300px;background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center">
+      <div id="sweeps-placeholder" style="text-align:center;color:#484f58">
+        <div style="font-size:28px;margin-bottom:8px">🔍</div>
+        <div style="font-size:13px">Select a sweep run above to review</div>
+        <div style="font-size:11px;margin-top:4px">No sweep runs available — run <code style="color:#58a6ff">sweep-commit &amp;&amp; sweep-review-generate</code></div>
+      </div>
+      <iframe id="sweeps-iframe" style="width:100%;height:100%;border:none;display:none" title="Sweep Review"></iframe>
+    </div>
+  </div>
+
   <div class="pane" id="pane-inbox">
     <div class="filter-bar">
       <input type="text" id="inbox-search" placeholder="Filter inbox…" oninput="renderInbox()">
@@ -566,6 +580,7 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
 <script>
 const DATA = {data_json};
 const GANTT_DATA = {gantt_json};
+const SWEEP_RUNS = {sweep_runs_json};
 {ORG_JS}
 
 // ── Filter state ──────────────────────────────────────────────────────────
@@ -632,10 +647,11 @@ function matchesCard(item) {{
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 function showTab(tab) {{
-  const names = ['plans','gantt','tasks','ideas','inbox','initiatives'];
+  const names = ['plans','gantt','tasks','ideas','inbox','initiatives','sweeps'];
   document.querySelectorAll('.tab').forEach((el, i) => el.classList.toggle('active', names[i] === tab));
   document.querySelectorAll('.pane').forEach(el => el.classList.remove('active'));
   document.getElementById('pane-' + tab).classList.add('active');
+  if (tab === 'sweeps') renderSweepReviews();
 }}
 
 // ── Renderers ─────────────────────────────────────────────────────────────
@@ -865,6 +881,81 @@ function renderInitiatives() {{
       </div>
     </div>`;
   }}).join('');
+}}
+
+// ── Sweep Reviews ─────────────────────────────────────────────────────────
+let _sweepSelectedRun = null;
+
+function renderSweepReviews() {{
+  const bar = document.getElementById('sweeps-run-bar');
+  if (!bar) return;
+  const n = SWEEP_RUNS.length;
+  document.getElementById('tab-sweeps-n').textContent = n ? '(' + n + ')' : '';
+
+  if (!n) {{
+    bar.innerHTML = '<span style="color:#484f58;font-size:12px">No sweep runs yet. Run <code style="color:#58a6ff">noteplan-sweep sweep-commit &amp;&amp; noteplan-sweep sweep-review-generate</code> after a sweep.</span>';
+    document.getElementById('sweeps-placeholder').querySelector('div:last-child').style.display = '';
+    return;
+  }}
+
+  document.getElementById('sweeps-placeholder').querySelector('div:last-child').style.display = 'none';
+
+  bar.innerHTML = SWEEP_RUNS.map(r => {{
+    const isActive = _sweepSelectedRun === r.run_id;
+    const reviewBadge = r.has_review
+      ? '<span style="background:#1f4a2a;color:#3fb950;font-size:10px;padding:1px 6px;border-radius:3px;flex-shrink:0">✓ reviewed</span>'
+      : '<span style="background:#2d1f1f;color:#f85149;font-size:10px;padding:1px 6px;border-radius:3px;flex-shrink:0">snapshot</span>';
+    const commentsBadge = r.comment_rounds
+      ? `<span style="color:#58a6ff;font-size:10px">💬 ${{r.comment_rounds}}</span>`
+      : '';
+    return `<div class="sweep-run-card"
+        data-run-id="${{r.run_id}}"
+        onclick="openSweepRun('${{r.run_id}}', ${{r.has_review}})"
+        style="background:${{isActive ? '#1f2d4a' : '#161b22'}};border:1px solid ${{isActive ? '#58a6ff' : '#30363d'}};border-radius:6px;padding:8px 12px;cursor:pointer;min-width:170px;transition:border-color 0.12s,background 0.12s"
+        onmouseover="if(this.dataset.runId!=='${{_sweepSelectedRun}}'){{this.style.borderColor='#58a6ff'}}"
+        onmouseout="if(this.dataset.runId!=='${{_sweepSelectedRun}}'){{this.style.borderColor='#30363d'}}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:3px">
+        <span style="font-weight:600;color:#e6edf3;font-size:13px">${{r.date}}</span>
+        ${{reviewBadge}}
+      </div>
+      <div style="font-size:11px;color:#484f58;display:flex;gap:8px;align-items:center">
+        <span style="font-family:monospace">${{r.sha || '—'}}</span>
+        <span>run ${{r.run_n}}</span>
+        ${{commentsBadge}}
+      </div>
+      ${{r.stats ? `<div style="font-size:10px;color:#8b949e;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${{esc(r.stats)}}</div>` : ''}}
+    </div>`;
+  }}).join('');
+
+  // Auto-select newest run if none selected
+  if (!_sweepSelectedRun && SWEEP_RUNS.length) {{
+    openSweepRun(SWEEP_RUNS[0].run_id, SWEEP_RUNS[0].has_review);
+  }}
+}}
+
+function openSweepRun(runId, hasReview) {{
+  _sweepSelectedRun = runId;
+  const fname = `${{runId}}.${{hasReview ? 'review' : 'snapshot'}}.html`;
+  const iframe = document.getElementById('sweeps-iframe');
+  const placeholder = document.getElementById('sweeps-placeholder');
+
+  if (SERVER_MODE) {{
+    iframe.src = `/sweeps/${{fname}}`;
+    iframe.style.display = 'block';
+    placeholder.style.display = 'none';
+  }} else {{
+    window.open(`../sweeps/${{fname}}`, '_blank');
+  }}
+
+  // Re-render bar to update active card highlight
+  const bar = document.getElementById('sweeps-run-bar');
+  if (bar) {{
+    bar.querySelectorAll('.sweep-run-card').forEach(c => {{
+      const active = c.dataset.runId === runId;
+      c.style.background = active ? '#1f2d4a' : '#161b22';
+      c.style.borderColor = active ? '#58a6ff' : '#30363d';
+    }});
+  }}
 }}
 
 function rerender() {{
@@ -1106,16 +1197,20 @@ def cmd_dashboard_generate(args):
         _, ideas = scan_tasks_and_ideas(notes, calendar)
         utils.verbose(f"Found {len(tasks)} open tasks, {len(ideas)} ideas")
 
+    from noteplan_sweep.sweep_review import scan_sweep_runs
+    sweep_runs = scan_sweep_runs(root)
+    utils.verbose(f"Found {len(sweep_runs)} sweep runs")
+
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
-    html = build_html(plans, tasks, ideas, generated_at)
+    html = build_html(plans, tasks, ideas, generated_at, sweep_runs)
 
     out = dash_dir / "plans.html"
     if utils.DRY_RUN:
-        utils.log(f"[dry-run] Would write {out} ({len(plans)} plans, {len(tasks)} tasks, {len(ideas)} ideas)")
+        utils.log(f"[dry-run] Would write {out} ({len(plans)} plans, {len(tasks)} tasks, {len(ideas)} ideas, {len(sweep_runs)} sweep runs)")
         return
 
     out.write_text(html, encoding="utf-8")
-    utils.log(f"dashboard-generate: wrote {out} ({len(plans)} plans, {len(tasks)} tasks, {len(ideas)} ideas)")
+    utils.log(f"dashboard-generate: wrote {out} ({len(plans)} plans, {len(tasks)} tasks, {len(ideas)} ideas, {len(sweep_runs)} sweep runs)")
 
     # Write data sidecar for conversation-mine to consume
     data_path = dash_dir / "dashboard-data.json"

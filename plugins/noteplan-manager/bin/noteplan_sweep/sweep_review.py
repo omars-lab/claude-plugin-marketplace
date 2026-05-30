@@ -780,3 +780,46 @@ def cmd_sweep_review_open(args):
     import subprocess as sp
     sp.run(["open", str(path)])
     utils.log(f"sweep-review-open: opened {path}")
+
+
+# ---------------------------------------------------------------------------
+# scan_sweep_runs — used by dashboard.py to populate the Sweep Reviews tab
+# ---------------------------------------------------------------------------
+
+def scan_sweep_runs(root: Path) -> list[dict]:
+    """Return metadata for all sweep runs, newest first."""
+    sweeps = root / "sweeps"
+    if not sweeps.exists():
+        return []
+    runs = []
+    for snap in sorted(sweeps.glob("*.snapshot.html"), reverse=True):
+        m = re.match(r'(\d{4}-\d{2}-\d{2})-(\d+)\.snapshot', snap.stem)
+        if not m:
+            continue
+        date_str, run_n = m.group(1), int(m.group(2))
+        run_id = f"{date_str}-{run_n:02d}"
+        review_path = sweeps / f"{run_id}.review.html"
+        comment_files = sorted(sweeps.glob(f"{run_id}-r*.comments.jsonl"))
+        sha = ""
+        stats = ""
+        try:
+            content = snap.read_text(encoding="utf-8", errors="replace")
+            sha_m = re.search(r'sha:\s*([0-9a-f]{7,40})', content)
+            if sha_m:
+                sha = sha_m.group(1)[:7]
+            stat_m = re.search(r'const STAT_TEXT = "([^"]+)"', content)
+            if stat_m:
+                raw = stat_m.group(1).replace("\\n", "\n").replace("\\t", "\t")
+                stats = raw.split("\n")[0].strip()
+        except Exception:
+            pass
+        runs.append({
+            "run_id": run_id,
+            "date": date_str,
+            "run_n": run_n,
+            "sha": sha,
+            "stats": stats,
+            "has_review": review_path.exists(),
+            "comment_rounds": len(comment_files),
+        })
+    return runs
