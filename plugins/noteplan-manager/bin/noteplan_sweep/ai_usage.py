@@ -642,8 +642,8 @@ def cmd_ai_usage_generate(args):
 <meta charset="utf-8">
 <title>AI Usage Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
 <style>
   :root {{
     --bg: #0f0f0f; --surface: #1a1a1a; --border: #2a2a2a;
