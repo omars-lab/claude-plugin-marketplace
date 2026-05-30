@@ -627,19 +627,31 @@ function toggleSectionItems(rowIdx, btn) {{
   const row = MODAL_ROWS[rowIdx];
   if (!row) return;
   const result = extractSectionLines(row.source_file, row.section, '-');
-  const lines = result.lines.filter(l => l.trim());
+  const lines = result.lines.filter(l => l.trim() && !isNoiseLine(l));
   if (!lines.length) {{ btn.textContent = '○'; return; }}
   btn.textContent = '▼';
+  // Classify each line as moved or lost using dest diff + dest file on disk
+  const destRawE = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
+  const addedLines = extractSectionLines(destRawE + '.md', null, '+').lines;
+  const {{ moved: movedSet, movedPairs }} = classifyDestLines(lines, addedLines);
+  const movedSrcSet = new Set([...movedPairs.values()]);
   const parentRow = document.querySelector(`tr[data-row-idx="${{rowIdx}}"]`);
   if (!parentRow) return;
-  let insertAfter = parentRow;
+  // Insert after the mixed-lost sub-row if present, otherwise after parent
+  let insertAfter = parentRow.nextSibling?.dataset?.mixedLostFor === String(rowIdx)
+    ? parentRow.nextSibling : parentRow;
   for (const line of lines) {{
     const tr = document.createElement('tr');
     tr.className = 'item-row';
     tr.dataset.parent = rowIdx;
     const clean = line.replace(/^-\\s*\\[[x ]\\]\\s*/i, '').replace(/^-\\s+/, '').trim();
     if (!clean) continue;
-    tr.innerHTML = `<td class="sec-toggle" style="color:#30363d;text-align:right">↳</td><td class="item-text" colspan="2">${{esc(clean)}}</td><td></td>`;
+    const inDest = movedSrcSet.has(line) || isLineInDestFile(line, destRawE);
+    const badge = inDest
+      ? `<span style="color:#3fb950;font-size:9px;margin-right:4px">→</span>`
+      : `<span style="color:#f85149;font-size:9px;margin-right:4px">✗</span>`;
+    const color = inDest ? '' : 'color:#f85149;opacity:0.8;';
+    tr.innerHTML = `<td class="sec-toggle" style="color:#30363d;text-align:right">↳</td><td class="item-text" colspan="2" style="${{color}}">${{badge}}${{esc(clean)}}</td><td></td>`;
     insertAfter.insertAdjacentElement('afterend', tr);
     insertAfter = tr;
   }}
