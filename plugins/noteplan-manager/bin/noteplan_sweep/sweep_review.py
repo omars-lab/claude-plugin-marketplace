@@ -863,8 +863,7 @@ function classifyRow(idx) {{
   // by classifyDestLines so they must not inflate the denominator either.
   // For inferred rows the section boundary is unknown so use movedCount (only judge what matched).
   const destRawC = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
-  const countableRemoved = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l)
-    && !isLineInDestFile(l, destRawC));  // exclude lines already in dest file (prior sweep)
+  const countableRemoved = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l));
   const total = srcResult.matched ? countableRemoved.length : movedCount;
   const destMissing = !DIFF_TEXT.toLowerCase().includes((destRawC + '.md').toLowerCase());
   const srcMissing  = !DIFF_TEXT.toLowerCase().includes(row.source_file.split('/').pop().toLowerCase());
@@ -1289,7 +1288,7 @@ function showSectionModal(idx, focusLost = false) {{
   }} else if (validMoved.length === 0) {{
     countLabel = `<div class="modal-panel-tabs"><span style="color:#f85149;font-size:10px">✗ 0 lines confirmed moved</span>${{validationWarning}}</div>`;
   }} else {{
-    const countableForMixed = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l) && !isLineInDestFile(l, destRaw));
+    const countableForMixed = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l));
     const totalForMixed = srcResult.matched ? countableForMixed.length : validMoved.length;
     const lostForMixed = totalForMixed - validMoved.length;
     const mixedWarning = lostForMixed > 0
@@ -1325,7 +1324,7 @@ function showSectionModal(idx, focusLost = false) {{
   // New lines in destination are a separate anomaly, not part of migration score.
   const movedCount = validMoved.length;
   const trueNewCount = _modalNewLines.length;
-  const countableRemovedM = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l) && !isLineInDestFile(l, destRaw));
+  const countableRemovedM = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l));
   const srcTotal = srcResult.matched ? countableRemovedM.length : movedCount;
   let type;
   if (destNotInDiff || srcNotInDiff) type = 'empty';
