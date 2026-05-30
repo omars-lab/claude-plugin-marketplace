@@ -473,6 +473,11 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .diff-line{{padding:1px 8px;white-space:pre}}
 .diff-line.removed{{background:#4a0f1a;color:#ffdcd7}}
 .diff-line.added{{background:#0e4429;color:#aff5b4}}
+.diff-line.new-content{{background:#1f1200;color:#e3b341}}
+.modal-panel-tabs{{display:flex;gap:4px;margin-bottom:8px}}
+.mpanel-tab{{padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px;background:#21262d;color:#8b949e;border:1px solid #30363d}}
+.mpanel-tab.active{{background:#1a3a28;color:#3fb950;border-color:#3fb950}}
+.mpanel-tab.new-tab.active{{background:#2d1f00;color:#e3b341;border-color:#e3b341}}
 #layout{{display:flex;flex:1;min-height:0}}
 #sidebar{{width:260px;min-width:160px;background:#161b22;border-right:1px solid #30363d;overflow-y:auto;flex-shrink:0;padding:8px 0}}
 .fi{{padding:5px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;border-left:3px solid transparent;font-size:12px}}
@@ -608,6 +613,35 @@ function extractSectionLines(filename, sectionName, lineType) {{
   return result;
 }}
 
+// Classify destination added lines as "moved" (matches source) or "new" (no match)
+function classifyDestLines(removedLines, addedLines) {{
+  const norm = s => s.replace(/>\\d{{4}}-\\d{{2}}-\\d{{2}}/g, '').replace(/\\s+/g, ' ').trim().toLowerCase();
+  const removedNorms = removedLines.map(norm).filter(s => s.length > 3);
+  const moved = [], newContent = [];
+  for (const line of addedLines) {{
+    const n = norm(line);
+    if (!n || n.length <= 2) {{ moved.push(line); continue; }}
+    const isMatch = removedNorms.some(r => r && (n === r ||
+      n.includes(r.slice(0, Math.min(r.length, 28))) ||
+      r.includes(n.slice(0, Math.min(n.length, 28)))));
+    (isMatch ? moved : newContent).push(line);
+  }}
+  return {{ moved, newContent }};
+}}
+
+let _modalMovedLines = [], _modalNewLines = [];
+
+function switchDestTab(type, btn) {{
+  document.querySelectorAll('.mpanel-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  const lines = type === 'moved' ? _modalMovedLines : _modalNewLines;
+  const cls   = type === 'moved' ? 'added' : 'new-content';
+  document.getElementById('modal-dest-lines').innerHTML =
+    lines.length
+      ? lines.map(l => `<div class="diff-line ${{cls}}">${{esc(l)}}</div>`).join('')
+      : '<div class="modal-empty">No lines in this category</div>';
+}}
+
 function showSectionModal(idx) {{
   const row = MODAL_ROWS[idx];
   if (!row) return;
@@ -615,27 +649,42 @@ function showSectionModal(idx) {{
   const sectionName = row.section.replace(/^#+\\s*/, '').trim();
   let destRaw = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
 
-  // Source: removed lines belonging to this section
   const removedLines = extractSectionLines(row.source_file, sectionName, '-');
 
-  // Destination: all added lines (content arrived under a plan wikilink header, not original section name)
   const destFile = allParsedFiles.find(f => {{
     const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '');
     return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
   }});
   const addedLines = destFile ? extractSectionLines(destFile.filename, null, '+') : [];
 
-  const renderLines = (lines, cls, title, filename) => {{
-    const hdr = `${{esc(title)}} — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(filename)}}</span>`;
-    if (!lines.length) return `<div><div class="modal-panel-hdr">${{hdr}}</div><div class="modal-empty">No matching lines found</div></div>`;
-    const body = lines.map(l => `<div class="diff-line ${{cls}}">${{esc(l)}}</div>`).join('');
-    return `<div><div class="modal-panel-hdr">${{hdr}}</div><div class="diff-lines">${{body}}</div></div>`;
-  }};
+  const {{ moved, newContent }} = classifyDestLines(removedLines, addedLines);
+  _modalMovedLines = moved;
+  _modalNewLines   = newContent;
+
+  // Source panel
+  const srcHdr = `Removed from source — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(row.source_file.split('/').pop())}}</span>`;
+  const srcBody = removedLines.length
+    ? removedLines.map(l => `<div class="diff-line removed">${{esc(l)}}</div>`).join('')
+    : '<div class="modal-empty">No matching lines found</div>';
+  const srcPanel = `<div><div class="modal-panel-hdr">${{srcHdr}}</div><div class="diff-lines">${{srcBody}}</div></div>`;
+
+  // Destination panel with Moved / New tabs
+  const destName = destFile ? destFile.filename.split('/').pop() : destRaw;
+  const destHdr = `Added to destination — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(destName)}}</span>`;
+  const initLines = moved.length ? moved : newContent;
+  const initCls   = moved.length ? 'added' : 'new-content';
+  const destBody = initLines.map(l => `<div class="diff-line ${{initCls}}">${{esc(l)}}</div>`).join('') || '<div class="modal-empty">No lines</div>';
+  const destPanel = `<div>
+    <div class="modal-panel-hdr">${{destHdr}}</div>
+    <div class="modal-panel-tabs">
+      <button class="mpanel-tab${{moved.length ? ' active' : ''}}" onclick="switchDestTab('moved',this)">↔ Moved (${{moved.length}})</button>
+      <button class="mpanel-tab new-tab${{!moved.length ? ' active' : ''}}" onclick="switchDestTab('new',this)">✦ New (${{newContent.length}})</button>
+    </div>
+    <div class="diff-lines" id="modal-dest-lines">${{destBody}}</div>
+  </div>`;
 
   document.getElementById('modal-title').textContent = sectionName + ' → ' + normDest(row.destination);
-  document.getElementById('modal-body').innerHTML =
-    renderLines(removedLines, 'removed', 'Removed from source', row.source_file.split('/').pop()) +
-    renderLines(addedLines,  'added',   'Added to destination', destFile ? destFile.filename.split('/').pop() : destRaw);
+  document.getElementById('modal-body').innerHTML = srcPanel + destPanel;
   document.getElementById('modal-overlay').classList.add('open');
 }}
 
