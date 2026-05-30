@@ -547,6 +547,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .src-col{{color:#58a6ff;font-family:monospace;font-size:11px;white-space:nowrap}}
 .row-badge{{display:inline-block;font-size:11px;min-width:16px;text-align:center;border-radius:3px;padding:1px 4px;font-weight:600}}
 .rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-anomaly{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}.rb-mixed{{background:#2d1f00;color:#e3b341;border:1px solid #e3b341}}
+.row-badge[data-scoped="false"]{{box-shadow:0 0 0 2px #e3b341;cursor:help}}
 .mixed-lost-sub-row td{{background:#1a0a0a;border-left:2px solid #f85149;padding-left:10px!important;color:#8b949e;font-size:11px;cursor:pointer}}
 .mixed-lost-sub-row:hover td{{background:#251010}}
 .mixed-lost-sub-row .row-badge{{vertical-align:middle}}
@@ -676,6 +677,8 @@ function toggleSectionItems(rowIdx, btn) {{
 
 function closeModal() {{
   document.getElementById('modal-overlay').classList.remove('open');
+  const scopeEl = document.getElementById('modal-scope');
+  if (scopeEl) scopeEl.style.display = 'none';
 }}
 
 document.addEventListener('keydown', e => {{ if (e.key === 'Escape') closeModal(); }});
@@ -962,6 +965,7 @@ function classifyRow(idx) {{
   // "> Migrated: see [[LinkedPlan]]", recheck lost lines against the linked plan.
   // Source 1: DEST_FILE_LINES (normalized disk content — works in production).
   // Source 2: context lines in DIFF_TEXT (works in tests + when stub is in diff).
+  let b15Applied = false;
   {{
     let b15Target = null;
     const diskNorms = DEST_FILE_LINES[destRaw.toLowerCase()] || [];
@@ -998,6 +1002,7 @@ function classifyRow(idx) {{
           : extractSectionLines(linkedFile.filename, null, '+').lines;
         if (lkAdded.length > 0) {{
           addedLines = lkAdded;
+          b15Applied = true;
           console.debug('B-15: redirect stub → recheck via', linkedFile.filename.split('/').pop());
         }}
       }}
@@ -1079,7 +1084,8 @@ function classifyRow(idx) {{
   if (noisyExcluded.length > 0) console.debug('V-P3:', noisyExcluded.length, 'source lines normalized to empty (excluded from match)', idx);
   // Store movedPairs for cross-row pass (Layer 4)
   _rowMovedPairs.set(idx, movedPairs);
-  const result = {{ type, movedCount, lostCount, newCount: trueNewCount, mixed, emptyReason }};
+  const result = {{ type, movedCount, lostCount, newCount: trueNewCount, mixed, emptyReason,
+                   v47Fallback: destSectionResult.v47Fallback && !b15Applied }};
   _rowClassifications.set(idx, result);
   return result;
 }}
@@ -1146,6 +1152,13 @@ function updateRowBadge(idx, classification) {{
   const emptyDetail = (displayType === 'empty' && classification.emptyReason)
     ? ` — ${{classification.emptyReason}}` : '';
   badge.title = (_badgeTitles[displayType] || displayType) + counts + emptyDetail;
+  // V-47b: amber ring when V-47 fell back to full-file view (section not matched in diff)
+  if (classification.v47Fallback) {{
+    badge.dataset.scoped = 'false';
+    badge.title += ' ⚠ Section not matched — showing full file';
+  }} else {{
+    delete badge.dataset.scoped;
+  }}
   // Mark destination cell for lost rows — "intended but not confirmed"
   const destCell = tr.querySelector('.dest-col');
   if (destCell) {{
@@ -1770,6 +1783,16 @@ function showSectionModal(idx, focusLost = false) {{
 
   const titleSuffix = focusLost ? ' — ✗ Lost lines' : ' → ' + normDest(row.destination);
   document.getElementById('modal-title').textContent = sectionName + titleSuffix;
+  // V-47c: show scoped-to header when fuzzy match succeeded
+  const scopeEl = document.getElementById('modal-scope');
+  if (scopeEl) {{
+    if (_destSectionM.fuzzyHeader) {{
+      scopeEl.textContent = 'Scoped to: ' + _destSectionM.fuzzyHeader;
+      scopeEl.style.display = 'inline';
+    }} else {{
+      scopeEl.style.display = 'none';
+    }}
+  }}
   const modalBodyEl = document.getElementById('modal-body');
   // Lost mode: single-column full-width; normal: two-column side-by-side
   modalBodyEl.style.gridTemplateColumns = focusLost ? '1fr' : '';
@@ -2234,7 +2257,10 @@ window.addEventListener('DOMContentLoaded', () => {{
 <div id="modal-overlay" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <div class="modal-hdr">
-      <span class="modal-title" id="modal-title"></span>
+      <div style="flex:1;overflow:hidden">
+        <span class="modal-title" id="modal-title"></span>
+        <span id="modal-scope" style="display:none;margin-left:8px;font-size:10px;color:#8b949e;font-weight:normal"></span>
+      </div>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" id="modal-body"></div>
