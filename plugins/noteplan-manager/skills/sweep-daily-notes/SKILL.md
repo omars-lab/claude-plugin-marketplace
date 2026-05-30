@@ -67,6 +67,10 @@ AskUserQuestion({
       {
         label: "Personal notes",
         description: "Weekend daily notes from the past 3 months — sections forwarded to next Sunday, organized by recently-touched personal plans"
+      },
+      {
+        label: "Both",
+        description: "All daily notes from the past 3 months — weekday notes to next Friday (work plans), weekend notes to next Sunday (personal plans), sorted by date oldest-first"
       }
     ],
     multiSelect: false
@@ -80,6 +84,9 @@ Set based on answer:
 |---|---|---|---|---|---|---|
 | Work | Past 1 month | Mon–Fri | `🏢 ServiceNow/📆 Plans/` | 60 days | `{workstream}/` | Next Friday |
 | Personal | Past 3 months | Sat–Sun | `🏡 Personal/🏡📆 Plans/` | 90 days | `Present/{plantype}/` | Next Sunday |
+| Both | Past 3 months | Mon–Sun | Both of the above | 90 days | Per day-of-week | Fri for weekdays, Sun for weekends |
+
+**Both mode**: build both work and personal plan indexes in Phase 3. For each daily note in Phase 6, apply the correct index and target based on the note's day-of-week (Mon–Fri → work rules; Sat–Sun → personal rules).
 
 ### Calculating target date:
 
@@ -165,7 +172,21 @@ Report: "Found N recently-touched plans." List with workstream and description.
 
 ---
 
-## Phase 4: Enrich Plans Missing Descriptions
+## Phase 4: Enrich Plans Missing Descriptions + Filename/Title Consistency Check
+
+### Filename/Title Consistency Check (run alongside description enrichment)
+
+While processing plans for missing descriptions, also check for H1/filename mismatches and fix them:
+
+1. **For each plan**, compare `filename_stem` against the H1 heading
+2. **Rename file → match H1** when the filename is a plain/untitled string (no `🏢YYMMDD` or `🏡YYMMDD` prefix) but the H1 has a proper convention
+3. **Fix H1 → match filename** when the filename has proper convention but H1 differs (e.g. different emoji, extra " 2" suffix, or alternate wording) — this is safer because filenames are the canonical wikilink reference
+4. **Flag as ambiguous** (don't auto-fix) when: neither has proper convention, the mismatch is a trailing `?`, it's a date-format filename (`YYYY-MM-DD ...`), or the name difference is significant enough to need human judgment
+5. **Commit all fixes** together with the description enrichment in a single `chore(plans): add description frontmatter …; fix N H1 titles and M filenames` commit
+
+**Never silently drop `?` from a filename H1 without noting it.** Report ambiguous cases to the user after the commit so they can run `/noteplan-manager:manage-filenames` for a deeper pass.
+
+---
 
 ### Bulk path (preferred when N > 5 plans missing descriptions)
 
@@ -249,29 +270,87 @@ Found {n} section(s) with incomplete content:
   • ...
 ```
 
-### Step 6b — Build the day's proposed sweep plan
+### Step 6b — Classify sections for the day
 
-For each sweepable section, determine the best destination using the plan index.
+For each sweepable section, determine the best destination using the plan index and classify it:
 
 **Match signals (try in order):**
-1. Section content contains `[[PlanName]]` wikilink matching a plan in the index → confident match
-2. Section header text closely matches a plan name → confident match
-3. Section's workstream emoji matches a plan's workstream → suggested match
-4. No signal → present as "needs routing"
+1. Section content contains `[[PlanName]]` wikilink matching a plan in the index → `✅ Confident`
+2. Section header text closely matches a plan name → `✅ Confident`
+3. Section's workstream emoji matches a single plan's workstream → `✅ Confident`
+4. Clearly personal content (shopping, errands, `[[🏡...]]` wikilinks in work mode) → `⏭️ Skip`
+5. Completed-task-only block → `⏭️ Skip`
+6. Anything else → `❓ Uncertain`
 
-**For sections that seem substantial** (more than 3 lines, contain tasks, describe a distinct topic), also consider whether they warrant a **new plan file** — flag these as "could be new plan."
+**For sections that seem substantial** (more than 3 lines, contain tasks, describe a distinct topic), also flag as "could be new plan."
 
-Compose a proposed plan for the whole day. For each entry show:
-- The routing decision and reason
-- A code block with the **exact lines being moved** (verbatim from the source)
-- A note on where content is going: `→ 20XXXXXX.md (target note)` or `→ new plan file`
-
-**Sections may be split by line** when individual items within a section reference different plans (e.g. a `# POCs` block containing two different `[[PlanName]]` wikilinks). In that case, show each line as a separate routing entry.
+**Sections may be split by line** when individual items within a section reference different plans (e.g. a `# POCs` block with two different `[[PlanName]]` wikilinks). Split these and classify each line individually.
 
 **Same-plan entries are merged in the target** — multiple sections routing to the same plan get merged under one `# [[PlanName]]` header.
 
+Announce the classification before routing:
+
 ```
-📋 Proposed sweep plan for {fileDate}:
+📅 {fileDate} — {n} sweepable section(s):
+  ✅ {k} confident match(es) — will auto-route
+  ❓ {m} uncertain section(s) — will ask individually
+  ⏭️  {j} skip(s) — personal/completed
+```
+
+### Step 6c — Route uncertain sections one at a time
+
+**For every `❓ Uncertain` section, ask individually with AskUserQuestion — one question per section, no bulk prompts.**
+
+#### Scoring: top-5 plan suggestions
+
+Before presenting the routing question, score every plan in the index against the section's content and header. Use the following signals (additive):
+
+| Signal | Score |
+|---|---|
+| Section content contains `[[filename_stem]]` exact wikilink match | +10 |
+| Section header text contains a word from the plan's filename stem (case-insensitive) | +5 |
+| Section content contains a word from the plan's filename stem (case-insensitive, ≥ 4 chars) | +3 |
+| Plan's workstream/plantype emoji appears in section header or content | +2 |
+| Plan has `status: 🟢` (active) | +1 |
+
+Select the **top 5 plans** by score (break ties by recency — most-recently-modified first). These are the only plan options shown. Always append the fixed options below.
+
+For each uncertain section (in source order):
+
+```javascript
+// Compute top5 before calling AskUserQuestion
+const top5 = scoredPlanIndex
+  .sort((a, b) => b.score - a.score || b.mtime - a.mtime)
+  .slice(0, 5);
+
+AskUserQuestion({
+  questions: [{
+    question: `Section "${sectionHeader}" from ${fileDate}:\n\n${sectionPreview}\n\nTop suggested destinations (scored by content match):`,
+    header: `Route: "${sectionHeader}" (${currentIndex}/${totalUncertain})`,
+    options: [
+      ...top5.map((p, i) => ({
+        label: `[[${p.filename_stem}]]`,
+        description: `#${i+1} match · ${p.description || `(${p.workstream_or_plantype} — no description)`}`
+      })),
+      { label: "🆕 Create a new plan/file for this", description: "This section deserves its own plan file" },
+      { label: "📥 Unsorted", description: "Place under # Unsorted in the target note" },
+      { label: "⏭️ Skip — leave it here", description: "Don't move this section" }
+    ],
+    multiSelect: false
+  }]
+})
+```
+
+> **Note:** If none of the top-5 match the user's intent, the user can choose "🆕 Create a new plan/file" or "📥 Unsorted". The full plan index is available in the description enrichment step if needed, but is never dumped into the routing UI.
+
+Show a **progress counter** in the header (`1/3`, `2/3`, etc.) so the user knows how many uncertain sections remain.
+
+If **"🆕 Create a new plan"** is selected → go to **Step 6d: Create New Plan**, then return to routing.
+
+After all uncertain sections are routed, **present the complete day plan** (confident + newly routed):
+
+```
+📋 Final sweep plan for {fileDate}:
 
   ✅ "# Servicenow"  →  [[🏢260302🧑🏻‍💻 Understanding Servicenow Agentic AI Landscape]]
      Reason: content about AI features matches plan scope
@@ -288,25 +367,21 @@ Compose a proposed plan for the whole day. For each entry show:
      - [ ] [[🏢260302🧑🏻‍💻 POC: Experimenting with Servicenow MCP]]
      ```
 
-  ❓ "# Research"  →  ? (no matching plan found)
-     Suggestion: create new plan "XYZ" OR route to Unsorted
+  📥 "# Research"  →  Unsorted (user routed)
 
   ⏭️  "# Completed Items"  →  (skip — completed-only)
-  ⏭️  "# Shopping"  →  (skip — personal content / 🏡 namespace)
+  ⏭️  "# Shopping"  →  (skip — personal content)
 ```
 
-### Step 6c — Confirm the day's plan
-
-Present the proposed plan and ask for confirmation:
+Then ask to execute:
 
 ```javascript
 AskUserQuestion({
   questions: [{
-    question: `Here's the proposed sweep plan for ${fileDate}:\n\n${proposedPlanSummary}\n\nHow would you like to proceed?`,
-    header: `Confirm sweep: ${fileDate}`,
+    question: `Ready to execute the sweep for ${fileDate}?`,
+    header: `Execute: ${fileDate}`,
     options: [
-      { label: "Looks good — execute this plan", description: "Move all confirmed sections as proposed" },
-      { label: "Adjust routing for some sections", description: "I'll route the unclear ones individually" },
+      { label: "Execute", description: "Move all confirmed sections as shown" },
       { label: "Skip this day entirely", description: "Leave all sections in this note as-is" }
     ],
     multiSelect: false
@@ -314,34 +389,7 @@ AskUserQuestion({
 })
 ```
 
-If "Adjust routing": for each section marked ❓ or flagged "could be new plan", ask individually (see Step 6d below). Re-present the updated plan after all adjustments, then confirm before executing.
-
-### Step 6d — Route unclear and new-plan-candidate sections
-
-For each section that needs routing:
-
-```javascript
-AskUserQuestion({
-  questions: [{
-    question: `Section "${sectionHeader}" from ${fileDate}:\n\n${sectionPreview}\n\nWhere should this go?`,
-    header: `Route: "${sectionHeader}"`,
-    options: [
-      ...planIndex.map(p => ({
-        label: `[[${p.filename_stem}]]`,
-        description: p.description || `(${p.workstream_or_plantype} — no description)`
-      })),
-      { label: "🆕 Create a new plan for this", description: "This section deserves its own plan file" },
-      { label: "📥 Unsorted", description: "Place under # Unsorted in the target note" },
-      { label: "⏭️ Skip — leave it here", description: "Don't move this section" }
-    ],
-    multiSelect: false
-  }]
-})
-```
-
-If **"🆕 Create a new plan"** is selected → go to **Step 6e: Create New Plan**.
-
-### Step 6e — Create New Plan (optional sub-flow)
+### Step 6d — Create New Plan (optional sub-flow)
 
 When a section should become its own plan, gather the needed inputs:
 
@@ -445,7 +493,7 @@ Confirm creation to the user: "Created `[[{filename_stem}]]` at `{path}`."
 
 The section's content will be swept into this new plan file directly (not the target daily note) — place it after the `* [ ]` task line in the new plan. This is the one case where content goes to a plan file rather than the target daily note.
 
-### Step 6f — Execute the confirmed plan
+### Step 6e — Execute the confirmed plan
 
 After the user confirms the day's routing plan:
 
@@ -467,7 +515,7 @@ For each section confirmed for moving:
 - `# Unsorted` header (if needed)
 - The plan file boilerplate when creating a new plan
 
-### Step 6g — Checkpoint commit and advance to the next day
+### Step 6f — Checkpoint commit and advance to the next day
 
 After executing a day's sweep:
 
@@ -611,7 +659,7 @@ git commit -m "sweep(daily): complete ${MODE} sweep → ${TARGET_DATE}
 | Rule | Detail |
 |---|---|
 | Pre-commit is mandatory | Never skip Phase 2. Fail loudly if not clean after commit. |
-| Day-by-day execution | Announce the earliest day, propose a full plan, confirm, execute, checkpoint commit, then next day. |
+| Day-by-day execution | Announce the earliest day, classify sections, route uncertain ones individually, execute, checkpoint commit, then next day. |
 | Plans are discovered dynamically | Use `find -mtime` every run. Never hardcode plan names or paths. |
 | Context window hygiene | Read only frontmatter + H1 from plans (first 15 lines). One daily note in context at a time. |
 | No content changes | Copy every line verbatim. Zero edits to wording, tasks, or formatting. |
@@ -623,12 +671,16 @@ git commit -m "sweep(daily): complete ${MODE} sweep → ${TARGET_DATE}
 | Split sections allowed | When one section has items for different plans, split by line and route individually. |
 | Same-plan entries merge | Multiple source sections routing to the same plan merge under one target header. |
 | Bulk description enrichment | When N > 5 plans missing descriptions, use bulk path: batch-infer all, present grouped, single approve. |
+| Filename/title consistency | During Phase 4, check H1 vs filename for every plan. Rename plain-text filenames to match proper-convention H1s; fix H1s to match proper-convention filenames. Flag ambiguous cases and report them post-commit. |
 | Personal content skipped silently | In work mode, sections with personal signals (`🏡` wikilinks, "Shopping", etc.) are flagged skip without asking. |
 | New plans follow the template | Use the computed filename convention and frontmatter structure exactly. |
 | New plan subdirs are discovered | `ls $PLAN_ROOT` to find the right workstream/plantype subdir. Never hardcode. |
 | Checkpoint commits per day | Commit after each day's sweep for granular recoverability. |
 | Line-level integrity check | Run the Python diff validation script before the final commit. |
-| Proposal includes exact lines | Each routing entry in the proposal shows the exact lines being moved in a code block, plus destination note. |
+| Proposal includes exact lines | Each routing entry in the final plan shows the exact lines being moved in a code block, plus destination note. |
+| Uncertain sections are individual | Never bulk-ask about routing. Every uncertain/ambiguous block gets its own AskUserQuestion, one at a time, with a progress counter. |
+| Top-5 routing suggestions | Score every plan against the section header + content; show only the top 5 matches. Never dump the full plan list into the routing UI. |
+| Both mode supported | When mode = "Both", build both work + personal indexes. Each note's day-of-week determines which index and target to use. |
 
 ---
 
