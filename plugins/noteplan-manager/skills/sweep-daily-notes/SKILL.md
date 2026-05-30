@@ -37,22 +37,32 @@ Discover subdirectories with `find` — never hardcode subdir names.
 
 ## Task Management
 
-Use `TaskCreate` and `TaskUpdate` to track all phases with dependencies:
+**MANDATORY**: Use `TaskCreate` and `TaskUpdate` for every phase. Create ALL phase tasks at the start of the session (before Phase 2), with `blocked_by` dependencies set. This gives the user live visibility into sweep progress.
 
-1. Ask mode
-2. Pre-sweep git commit (blocked by 1) — **HARD MUST**
-3. Build plan index + lists + meetings + thoughts index (blocked by 2)
-4. Enrich missing descriptions + contributors (blocked by 3)
-5. Discover daily notes in scope (blocked by 4)
-6. Day-by-day guided sweep (blocked by 5) — **one sub-task per day** (see below)
-7. Validate via git diff (blocked by 6)
-7b. Post-sweep Unsorted review (blocked by 7) — only if Unsorted grew during sweep
-8. Final commit (blocked by 7b)
-8.5. Self-knowledge capture (blocked by 8)
+**Create all tasks upfront** (before doing anything else):
+
+```javascript
+// Example — create all in one shot at session start
+t1 = TaskCreate({ title: "Phase 1: Ask mode", status: "in_progress" })
+t2 = TaskCreate({ title: "Phase 2: Pre-sweep git pull + commit", status: "todo", blocked_by: [t1.id] })
+t3 = TaskCreate({ title: "Phase 3: Build plan + lists + meetings + thoughts index", status: "todo", blocked_by: [t2.id] })
+t4 = TaskCreate({ title: "Phase 4: Enrich missing descriptions + contributors", status: "todo", blocked_by: [t3.id] })
+t5 = TaskCreate({ title: "Phase 5: Discover daily notes in scope", status: "todo", blocked_by: [t4.id] })
+t6 = TaskCreate({ title: "Phase 6: Day-by-day guided sweep", status: "todo", blocked_by: [t5.id] })
+t7 = TaskCreate({ title: "Phase 7: Validate via git diff", status: "todo", blocked_by: [t6.id] })
+t7b = TaskCreate({ title: "Phase 7b: Post-sweep Unsorted review", status: "todo", blocked_by: [t7.id] })
+t8 = TaskCreate({ title: "Phase 8: Final commit + push", status: "todo", blocked_by: [t7b.id] })
+t85 = TaskCreate({ title: "Phase 8.5: Self-knowledge + brag sheet capture + push", status: "todo", blocked_by: [t8.id] })
+```
+
+**Before starting each phase**: `TaskUpdate(taskId, { status: "in_progress" })`
+**After completing each phase**: `TaskUpdate(taskId, { status: "completed" })`
+
+Never skip this. The task list is the user's primary window into sweep progress.
 
 ### Per-day task checklist
 
-When starting each day in Phase 6, create a sub-task (or list the checklist inline) with these required steps:
+When starting each day in Phase 6, create a sub-task with `blocked_by: [t6.id]` and these steps:
 
 - [ ] Read daily note
 - [ ] Classify all sections (confident / uncertain / skip / personal-in-work)
@@ -60,9 +70,9 @@ When starting each day in Phase 6, create a sub-task (or list the checklist inli
 - [ ] Present final routing plan and confirm
 - [ ] Execute: move all sections, create new plans/meetings if needed
 - [ ] Verify source note has only completed tasks + kept content remaining
-- [ ] Checkpoint commit
+- [ ] Checkpoint commit + push
 
-Mark each task `in_progress` before starting, `completed` when done.
+Mark each sub-task `in_progress` before starting, `completed` when done.
 
 ---
 
@@ -121,12 +131,22 @@ The target note is `$CALENDAR_ROOT/<TARGET_DATE>.md`. Create it if it doesn't ex
 
 ---
 
-## Phase 2: Pre-Sweep Git Commit — HARD MUST
+## Phase 2: Pre-Sweep Git Pull + Commit — HARD MUST
 
 **Non-negotiable. Do not proceed if this fails.**
 
+First, pull any remote changes:
+
 ```bash
 cd "$NOTEPLAN_ROOT"
+git pull
+```
+
+If the pull fails (conflicts, no remote, etc.), **stop and report** — do not proceed until resolved.
+
+Then commit any local uncommitted changes:
+
+```bash
 git status
 ```
 
@@ -135,6 +155,7 @@ If there are any uncommitted changes:
 ```bash
 git add -A
 git commit -m "Pre-sweep snapshot ($(date +%Y-%m-%d))"
+git push   # push snapshot so remote is up to date before sweep begins
 ```
 
 If the commit fails, **stop and report**. Confirm the tree is clean before continuing.
@@ -710,6 +731,9 @@ After repair:
 ```bash
 git add -A
 git commit -m "sweep(daily): process ${fileDate} → ${TARGET_DATE} (${n} sections moved)"
+git pull --rebase   # pull before push to handle concurrent edits (e.g. phone sync)
+# If rebase produces conflicts: resolve them, then git rebase --continue before pushing
+git push
 ```
 
 This creates a granular, recoverable history — each day is independently revertable.
@@ -895,7 +919,7 @@ This phase only runs if there are Unsorted items AND the full index grew during 
 
 ---
 
-## Phase 8: Final Commit
+## Phase 8: Final Commit + Push
 
 ```bash
 cd "$NOTEPLAN_ROOT"
@@ -909,6 +933,8 @@ git commit -m "sweep(daily): complete ${MODE} sweep → ${TARGET_DATE}
 - Unsorted sections: ${N_UNSORTED}
 - Skipped ${N_SKIPPED} section(s) (user choice or completed-only)
 - Line integrity check: PASSED"
+git pull --rebase   # resolve any conflicts before pushing
+git push
 ```
 
 ---
@@ -969,7 +995,53 @@ During the sweep you've read many daily notes and observed the user's ideas, col
    - **Habit reflections**: self-commentary about habits, scope overload signals, seasonal resets (Ramadan, New Year, etc.) → append to `## 💡 Habit Reflection Notes`
 3. Write the updated file back (preserve existing entries — only add new rows or update `Last Seen` / frequency on existing ones)
 
-- Commit after writing: `git commit -m "reflect(sweep): add {YYYY-MM-DD} self-knowledge observations + habits update"`
+**Also update the Brag Sheets** using TaskCreate to make the update visible:
+
+1. Create two tasks before updating:
+   ```javascript
+   TaskCreate({ title: "Update work brag sheet (sweep {YYYY-MM-DD})", status: "in_progress" })
+   TaskCreate({ title: "Update personal brag sheet (sweep {YYYY-MM-DD})", status: "in_progress" })
+   ```
+
+2. **Work brag sheet** — `$NOTES_ROOT/🏢 ServiceNow/📋 Lists/🏢📋 Brag Sheet.md`
+   - Create if it doesn't exist with header:
+     ```markdown
+     # 🏢📋 Brag Sheet
+
+     A running log of work achievements, impact, and value delivered.
+     Updated each sweep — use this at review time to justify your impact.
+     ```
+   - Append under a `## {YYYY} Q{Q}` quarter header (create if absent), then a `### {YYYY-MM-DD} Sweep` sub-header:
+     ```markdown
+     ### {YYYY-MM-DD} Sweep
+
+     - [concrete achievement bullet — what was built, shipped, or unblocked]
+     - [collaborator impact — e.g. "Supported Dennis in ATF eval design"]
+     - [metric or milestone if visible — e.g. "A2A POC moved to pilot framing"]
+     ```
+   - Write **only verifiable, concrete achievements** from the notes read — no speculation
+   - Focus on: shipped features/POCs, unblocked collaborators, delivered demos, architectural decisions made, external recognition
+
+3. **Personal brag sheet** — `$NOTES_ROOT/🏡 Personal/🏡📋 Lists/🏡📋 Brag Sheet.md`
+   - Create if it doesn't exist with header:
+     ```markdown
+     # 🏡📋 Brag Sheet
+
+     A running log of personal achievements, milestones, and skills developed.
+     Updated each sweep.
+     ```
+   - Same format: `## {YYYY} Q{Q}` → `### {YYYY-MM-DD} Sweep`
+   - Focus on: personal projects launched/progressed, new tools built, family milestones, spiritual growth, skills deepened
+
+4. Mark both brag sheet tasks `completed` after writing.
+
+- Commit and push after writing all reflection files and brag sheets:
+  ```bash
+  git add -A
+  git commit -m "reflect(sweep): add {YYYY-MM-DD} self-knowledge observations + habits update"
+  git pull --rebase   # resolve any conflicts before pushing
+  git push
+  ```
 
 ---
 
@@ -1013,6 +1085,10 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Meeting planning → next business day | When routing unscheduled meeting tasks from Unsorted (e.g. "Figure out meetings — Jeff, Khusbha, etc."), place them in the **next business day's daily note** (create it if needed), not in a general backlog. |
 | Self-knowledge capture | After each sweep's final commit (Phase 8.5), append dated observations to `🪞 Reflections/🏡💭💻 GenAI Thoughts/Observations.md`, `Gaps.md`, and `Superpowers.md`. Only write what's verifiable from the notes read. |
 | Habits tracking in sweep | Phase 8.5 also updates `🏡📋 Habits.md`: scan swept notes for habit signals (observed habits, aspired habits, habit reflections). Update `Last Seen` and frequency on existing rows; add new rows for newly spotted habits. |
+| Brag sheets via tasks | Phase 8.5 updates two brag sheets using TaskCreate: `🏢📋 Brag Sheet.md` (work) and `🏡📋 Brag Sheet.md` (personal). Create a task per sheet before updating, mark completed after. Only concrete, verifiable achievements from the swept notes. |
+| Git pull before sweep | Phase 2 must run `git pull` before the pre-sweep commit. Stop if pull fails. |
+| Git push after every commit | After every commit in the sweep (pre-sweep, checkpoint, Unsorted re-route, final, reflect), run `git push` immediately. |
+| Tasks are mandatory, not optional | Create ALL phase tasks with dependencies at session start using TaskCreate. Mark `in_progress` before each phase, `completed` after. The task list is the user's primary visibility window. |
 | Swept breadcrumbs in source | After sweeping a daily note, append a markdown table (`| Swept | Section | Summary | Destination |`) at the end of the source file so the user can trace where content went. If a breadcrumb table already exists (note swept before), append new rows to it — do not create a second table. `is_allowed_new` allows `^\| ` (table rows). |
 | Search before asking | Before presenting a routing question for an uncertain section, use WebSearch to identify unknown URLs, names, or topics. If the search gives a confident answer, route directly. If ambiguous, include findings in the routing question. After the user decides, update the destination's `description:` frontmatter to capture the clarification for future sweeps. |
 | Integrity check — normalize both sides | The `removed` and `added` sets in the Phase 7 integrity check must both be normalized (strip trailing `>YYYY-MM-DD` tags and `#hashtags`) before comparison. Date-forwarding during sweeps (e.g. `>2026-03-16` → `>2026-03-20`) should not cause false "content loss" failures. |
