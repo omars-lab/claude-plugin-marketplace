@@ -619,23 +619,35 @@ function renderPlans() {{
   const board = document.getElementById('kanban-board');
   board.innerHTML = COLUMNS.map(col => {{
     const cards = plans.filter(p => (p.status || 'backlog') === col.key);
-    return `<div class="kanban-col">
+    return `<div class="kanban-col" id="kcol-${{col.key}}">
       <div class="kanban-col-header">
         <span style="color:${{col.color}}">${{col.label}}</span>
         <span style="color:#484f58;font-weight:400">${{cards.length}}</span>
       </div>
       ${{cards.map(p => `
-        <a class="kanban-card" href="${{esc(p.xcallback)}}" style="display:block;text-decoration:none">
-          <div class="kc-title">${{esc(p.title)}}</div>
+        <div class="kanban-card" data-stem="${{esc(p.stem)}}" style="cursor:pointer">
+          <div class="kc-title" onclick="SERVER_MODE ? openSidebar(DATA.plans.find(x=>x.stem==='${{p.stem}}')) : window.location.href='${{esc(p.xcallback)}}'">${{esc(p.title)}}</div>
           <div class="kc-meta">
             <span style="color:#8b949e">${{esc(p.project||'')}}</span>
             <span style="font-size:14px">${{esc(p.plantype||'')}}</span>
             <span class="kc-tasks"><span class="td">✓${{p.done_tasks}}</span>&nbsp;<span class="to">◦${{p.open_tasks}}</span></span>
+            ${{SERVER_MODE ? `<a href="${{esc(p.xcallback)}}" style="margin-left:auto;color:#484f58;font-size:10px;text-decoration:none" title="Open in NotePlan">↗</a>` : ''}}
           </div>
           ${{p.description ? `<div style="font-size:11px;color:#484f58;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${{esc(p.description)}}</div>` : ''}}
-        </a>`).join('')}}
+        </div>`).join('')}}
     </div>`;
   }}).join('');
+
+  // Wire drag-and-drop after DOM is built
+  if (SERVER_MODE) {{
+    COLUMNS.forEach(col => {{
+      const colEl = document.getElementById('kcol-' + col.key);
+      if (colEl) makeColDropTarget(colEl, col.key);
+    }});
+    document.querySelectorAll('.kanban-card[data-stem]').forEach(card => {{
+      makeCardDraggable(card, card.dataset.stem);
+    }});
+  }}
 }}
 
 function initGantt() {{
@@ -670,9 +682,12 @@ function renderTasks() {{
   document.getElementById('task-count').textContent = tasks.length + ' tasks';
   document.getElementById('tab-tasks-n').textContent = '(' + tasks.length + ')';
   document.getElementById('task-list').innerHTML = tasks.slice(0,300).map(t => `
-    <div class="card">
-      <div class="card-text">◦ ${{esc(t.text)}}</div>
-      <div class="card-meta">${{esc((t.source||'').split('/').pop())}}${{t.section ? ' · ' + esc(t.section) : ''}}</div>
+    <div class="card" style="display:flex;gap:8px;align-items:flex-start">
+      ${{SERVER_MODE && t.path ? `<input type="checkbox" ${{t._checked ? 'checked' : ''}} onchange="toggleTask('${{t.path}}', ${{t.line}}, this.checked)" style="margin-top:2px;flex-shrink:0;cursor:pointer">` : '<span style="color:#484f58;flex-shrink:0">◦</span>'}}
+      <div>
+        <div class="card-text">${{esc(t.text)}}</div>
+        <div class="card-meta">${{esc((t.source||'').split('/').pop())}}${{t.section ? ' · ' + esc(t.section) : ''}}</div>
+      </div>
     </div>`).join('');
 }}
 
@@ -820,10 +835,168 @@ function rerender() {{
   renderInitiatives();
 }}
 
+// ── Server mode (interactive write-back when served via noteplan-sweep serve) ──
+const SERVER_MODE = window.location.protocol === 'http:' && window.location.hostname === 'localhost';
+const API = SERVER_MODE ? '' : null;  // base URL — empty = same origin
+
+async function apiPost(endpoint, body) {{
+  if (!API && API !== '') return null;
+  try {{
+    const r = await fetch(endpoint, {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify(body),
+    }});
+    return await r.json();
+  }} catch(e) {{
+    console.warn('API error:', e);
+    return null;
+  }}
+}}
+
+function showToast(msg, ok = true) {{
+  let t = document.getElementById('np-toast');
+  if (!t) {{
+    t = document.createElement('div');
+    t.id = 'np-toast';
+    t.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px 16px;font-size:12px;z-index:9999;transition:opacity 0.3s;pointer-events:none';
+    document.body.appendChild(t);
+  }}
+  t.textContent = msg;
+  t.style.color = ok ? '#3fb950' : '#f85149';
+  t.style.opacity = '1';
+  clearTimeout(t._to);
+  t._to = setTimeout(() => t.style.opacity = '0', 2000);
+}}
+
+// Kanban drag-and-drop (server mode only)
+function makeCardDraggable(cardEl, stem) {{
+  if (!SERVER_MODE) return;
+  cardEl.setAttribute('draggable', 'true');
+  cardEl.addEventListener('dragstart', e => {{
+    e.dataTransfer.setData('text/plain', stem);
+    cardEl.style.opacity = '0.5';
+  }});
+  cardEl.addEventListener('dragend', () => cardEl.style.opacity = '');
+}}
+
+function makeColDropTarget(colEl, statusKey) {{
+  if (!SERVER_MODE) return;
+  colEl.addEventListener('dragover', e => {{ e.preventDefault(); colEl.style.background = '#1f4a2a22'; }});
+  colEl.addEventListener('dragleave', () => colEl.style.background = '');
+  colEl.addEventListener('drop', async e => {{
+    e.preventDefault();
+    colEl.style.background = '';
+    const stem = e.dataTransfer.getData('text/plain');
+    if (!stem) return;
+    const statusEmoji = {{'backlog':'🔵','active':'🟢','paused':'🟡','done':'✅'}}[statusKey] || statusKey;
+    const res = await apiPost('/api/plan-status', {{stem, status: statusEmoji}});
+    if (res && res.ok) {{
+      // Update in-memory data
+      const p = DATA.plans.find(p => p.stem === stem);
+      if (p) {{ p.status = statusKey; p.status_emoji = statusEmoji; }}
+      renderPlans();
+      showToast(`✓ Moved to ${{statusKey}}`);
+    }} else {{
+      showToast(`✗ ${{res ? res.error : 'Server error'}}`, false);
+    }}
+  }});
+}}
+
+// Frontmatter sidebar
+let _sidebarPlan = null;
+
+function openSidebar(plan) {{
+  if (!SERVER_MODE) return;
+  _sidebarPlan = plan;
+  let sb = document.getElementById('np-sidebar');
+  if (!sb) {{
+    sb = document.createElement('div');
+    sb.id = 'np-sidebar';
+    sb.style.cssText = 'position:fixed;top:0;right:0;width:300px;height:100vh;background:#161b22;border-left:1px solid #30363d;padding:20px;z-index:200;overflow-y:auto;transition:transform 0.2s';
+    sb.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <strong style="color:#e6edf3">Edit Plan</strong>
+        <button onclick="closeSidebar()" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:16px">✕</button>
+      </div>
+      <div id="sb-title" style="font-size:12px;color:#8b949e;margin-bottom:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+      <label style="font-size:11px;color:#484f58;text-transform:uppercase">Status</label>
+      <select id="sb-status" style="width:100%;background:#21262d;border:1px solid #30363d;border-radius:5px;padding:6px;color:#e6edf3;margin:4px 0 12px;font-size:13px">
+        <option value="🔵">🔵 Backlog</option>
+        <option value="🟢">🟢 Active</option>
+        <option value="🟡">🟡 Paused</option>
+        <option value="✅">✅ Done</option>
+      </select>
+      <label style="font-size:11px;color:#484f58;text-transform:uppercase">Initiative</label>
+      <input id="sb-initiative" style="width:100%;background:#21262d;border:1px solid #30363d;border-radius:5px;padding:6px;color:#e6edf3;margin:4px 0 12px;font-size:13px" placeholder="e.g. Config Agent">
+      <label style="font-size:11px;color:#484f58;text-transform:uppercase">Completed</label>
+      <input id="sb-completed" type="date" style="width:100%;background:#21262d;border:1px solid #30363d;border-radius:5px;padding:6px;color:#e6edf3;margin:4px 0 16px;font-size:13px">
+      <button onclick="saveSidebar()" style="width:100%;background:#238636;border:none;border-radius:5px;padding:8px;color:#fff;font-size:13px;cursor:pointer">Save</button>
+    `;
+    document.body.appendChild(sb);
+  }}
+  document.getElementById('sb-title').textContent = plan.title;
+  document.getElementById('sb-status').value = plan.status_emoji || '🔵';
+  document.getElementById('sb-initiative').value = plan.initiative || '';
+  document.getElementById('sb-completed').value = plan.end_date || '';
+  sb.style.transform = 'translateX(0)';
+}}
+
+function closeSidebar() {{
+  const sb = document.getElementById('np-sidebar');
+  if (sb) sb.style.transform = 'translateX(100%)';
+  _sidebarPlan = null;
+}}
+
+async function saveSidebar() {{
+  if (!_sidebarPlan) return;
+  const status = document.getElementById('sb-status').value;
+  const initiative = document.getElementById('sb-initiative').value.trim();
+  const completed = document.getElementById('sb-completed').value;
+  const updates = {{ status }};
+  if (initiative) updates.initiative = initiative;
+  if (completed) updates.completed = completed;
+  const res = await apiPost('/api/frontmatter', {{path: _sidebarPlan.path, updates}});
+  if (res && res.ok) {{
+    Object.assign(_sidebarPlan, {{
+      status_emoji: status,
+      status: {{'🔵':'backlog','🟢':'active','🟡':'paused','✅':'done'}}[status]||'backlog',
+      initiative: initiative,
+      end_date: completed,
+    }});
+    closeSidebar();
+    rerender();
+    showToast('✓ Plan updated');
+  }} else {{
+    showToast(`✗ ${{res ? res.error : 'Server error'}}`, false);
+  }}
+}}
+
+// Task toggle (server mode)
+async function toggleTask(path, lineNum, checked) {{
+  const res = await apiPost('/api/task', {{path, line: lineNum, checked}});
+  if (res && res.ok) {{
+    // Flip in DATA.tasks
+    const t = DATA.tasks.find(t => t.source_path === path && t.line === lineNum);
+    if (t) t._checked = checked;
+    showToast(checked ? '✓ Task completed' : '○ Task reopened');
+  }} else {{
+    showToast(`✗ ${{res ? res.error : 'Server error'}}`, false);
+  }}
+}}
+
 window.addEventListener('DOMContentLoaded', () => {{
   setInboxFilter('all');
   rerender();
   initGantt();
+  if (SERVER_MODE) {{
+    // Show server-mode indicator in header
+    const ind = document.createElement('span');
+    ind.textContent = '⚡ Live';
+    ind.title = 'Server mode — edits write to NotePlan files';
+    ind.style.cssText = 'font-size:11px;color:#3fb950;background:#1f4a2a;border:1px solid #238636;border-radius:4px;padding:2px 7px;';
+    document.getElementById('topbar-row1').appendChild(ind);
+  }}
 }});
 </script>
 </body>
