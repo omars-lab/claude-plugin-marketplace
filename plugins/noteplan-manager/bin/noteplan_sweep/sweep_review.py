@@ -754,7 +754,7 @@ function classifyDestLines(removedLines, addedLines) {{
   // Keep original index alongside norm so matchIdx maps back to removedLines correctly
   const removedEntries = removedLines
     .map((l, origIdx) => {{ const n = norm(l); return {{ line: l, n, b: body(n), origIdx }}; }})
-    .filter(e => e.n.length > 3);
+    .filter(e => e.n.length > 3 && !isNoiseLine(e.line)); // exclude headers/noise — must match countableRemoved
   const moved = [], newContent = [];
   const movedPairs = new Map(); // destLine → srcLine (for grouped source panel)
   for (const line of addedLines) {{
@@ -964,6 +964,17 @@ function updateRowBadge(idx, classification) {{
   const emptyDetail = (displayType === 'empty' && classification.emptyReason)
     ? ` — ${{classification.emptyReason}}` : '';
   badge.title = (_badgeTitles[displayType] || displayType) + counts + emptyDetail;
+  // Mark destination cell for lost rows — "intended but not confirmed"
+  const destCell = tr.querySelector('.dest-col');
+  if (destCell) {{
+    if (type === 'lost' || (type === 'empty' && !mixed)) {{
+      destCell.style.opacity = '0.45';
+      destCell.title = 'Intended destination — content was NOT confirmed moved here';
+    }} else {{
+      destCell.style.opacity = '';
+      destCell.title = destCell.querySelector('a')?.textContent || '';
+    }}
+  }}
   // Populate count cell
   const countCell = tr.querySelector('.count-col');
   if (countCell) {{
