@@ -582,7 +582,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
   <button class="type-chip" data-type="lost" onclick="setType('lost')" title="Lost — one or more source lines did not arrive">✗ Lost</button>
   <button class="type-chip" data-type="mixed" onclick="setType('mixed')" title="Mixed — some lines moved, some lost; needs split">⚡ Mixed</button>
   <button class="type-chip" data-type="anomaly" onclick="setType('anomaly')" title="Anomaly — destination has additions with no matching source">+ Anomaly</button>
-  <button class="type-chip" data-type="empty" onclick="setType('empty')" title="Unverifiable — source or destination not found in diff">· Empty</button>
+  <button class="type-chip" data-type="empty" onclick="setType('empty')" title="Empty — no source content found or destination file is empty">· Empty</button>
   <button class="copy-btn" id="copy-btn" onclick="copyNarrative()">📋 Copy</button>
 </div>
 <div id="layout">
@@ -870,9 +870,15 @@ function classifyRow(idx) {{
 
   // Binary classification: every source line either arrived (move) or didn't (lost).
   // No partial — a row with any lost lines is Lost, even if others moved.
-  let type;
-  if (destMissing || srcMissing) type = 'empty';
-  else if (total === 0 && addedLines.length === 0) type = 'empty';
+  let type, emptyReason = '';
+  if (srcMissing)  {{ type = 'empty'; emptyReason = 'source file not in diff'; }}
+  else if (destMissing) {{ type = 'empty'; emptyReason = 'destination file not in diff'; }}
+  else if (total === 0 && addedLines.length === 0) {{
+    type = 'empty';
+    emptyReason = srcResult.matched
+      ? 'section has no content lines'
+      : 'section not found + destination is empty';
+  }}
   else if (total === 0 && addedLines.length > 0) type = 'anomaly';
   else if (movedCount === total) type = 'move';   // ALL source lines arrived
   else type = 'lost';                              // ANY source line missing → lost
@@ -880,7 +886,7 @@ function classifyRow(idx) {{
   const lostCount = total - movedCount;
   // Mixed = some lines moved, some didn't — sweep should have split this into two rows
   const mixed = type === 'lost' && movedCount > 0 && lostCount > 0;
-  const result = {{ type, movedCount, lostCount, newCount: trueNewCount, mixed }};
+  const result = {{ type, movedCount, lostCount, newCount: trueNewCount, mixed, emptyReason }};
   _rowClassifications.set(idx, result);
   return result;
 }}
@@ -890,7 +896,7 @@ const _badgeTitles   = {{
   move:    'Move — all source lines confirmed at destination',
   lost:    'Lost — one or more source lines did not arrive at destination',
   anomaly: 'Anomaly — destination has additions with no matching source',
-  empty:   'Unverifiable — source or destination not found in diff',
+  empty:   'Empty — nothing to verify',
   mixed:   'Mixed — some lines moved, some lost. This section should have been split into separate rows during sweep.',
 }};
 
@@ -942,7 +948,9 @@ function updateRowBadge(idx, classification) {{
   else if (type === 'move')    counts = ` (${{movedCount}} line${{movedCount!==1?'s':''}} moved)`;
   else if (type === 'lost')    counts = ` (${{lostCount}} line${{lostCount!==1?'s':''}} not arrived)`;
   else if (type === 'anomaly') counts = newCount ? ` (${{newCount}} unexpected)` : '';
-  badge.title = (_badgeTitles[displayType] || displayType) + counts;
+  const emptyDetail = (displayType === 'empty' && classification.emptyReason)
+    ? ` — ${{classification.emptyReason}}` : '';
+  badge.title = (_badgeTitles[displayType] || displayType) + counts + emptyDetail;
   tr.dataset.rowType = displayType;
   if (activeType !== 'all' && displayType !== activeType) tr.style.display = 'none';
   // Inject synthetic Lost sub-row (idempotent — guard inside)
@@ -1279,11 +1287,16 @@ function showSectionModal(idx, focusLost = false) {{
   const srcNotInDiff  = !DIFF_TEXT.toLowerCase().includes(row.source_file.split('/').pop().toLowerCase());
   let countLabel;
   if (validMoved.length === 0 && removedLines.length === 0 && addedLines.length === 0) {{
+    // Check if dest file is in diff but empty (new empty file)
+    const destInDiff = !destNotInDiff;
+    const destFileSection = destInDiff && DIFF_TEXT.includes(`b/${{destRaw}}.md\nnew file`);
     const why = destNotInDiff
       ? `<span style="color:#e3b341;font-size:10px">⚠ destination not found in diff</span>`
       : srcNotInDiff
         ? `<span style="color:#e3b341;font-size:10px">⚠ source file not found in diff</span>`
-        : `<span style="color:#8b949e;font-size:10px">— nothing to verify</span>`;
+        : destFileSection
+          ? `<span style="color:#f85149;font-size:10px">⚠ destination file was created empty — content was never written</span>`
+          : `<span style="color:#8b949e;font-size:10px">— no content lines found in source section</span>`;
     countLabel = `<div class="modal-panel-tabs">${{why}}</div>`;
   }} else if (validMoved.length === 0) {{
     countLabel = `<div class="modal-panel-tabs"><span style="color:#f85149;font-size:10px">✗ 0 lines confirmed moved</span>${{validationWarning}}</div>`;
