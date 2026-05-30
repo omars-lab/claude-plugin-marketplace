@@ -1107,9 +1107,11 @@ function showSectionModal(idx, focusLost = false) {{
   const row = MODAL_ROWS[idx];
   if (!row) return;
   // Auto-enable focusLost for pure Lost rows (not mixed — mixed sub-row already passes true explicitly)
+  // Also use single-panel mode for empty rows — nothing useful to show on dest side
   if (!focusLost) {{
     const cached = _rowClassifications.get(idx);
     if (cached && cached.type === 'lost' && !cached.mixed) focusLost = true;
+    if (cached && cached.type === 'empty') focusLost = true;
   }}
 
   const sectionName = row.section.replace(/^#+\\s*/, '').trim();
@@ -1266,16 +1268,26 @@ function showSectionModal(idx, focusLost = false) {{
       ? `<div style="color:#3fb950;font-size:11px;font-weight:600;padding:2px 0 6px">✓ Moved (${{moved.length}} line${{moved.length!==1?'s':''}}) — arrived at destination</div>`
       : '';
     if (focusLost) {{
-      // Lost-focus mode: render lost lines directly — no mixed-row header, no moved content
-      const lostLineHtmlClean = lostLines.map(l => {{
-        const lno = srcLineNos?.get(l);
-        const lnoHtml = lno ? `<span class="line-no">${{lno}}</span>` : '';
-        return `<div class="diff-line removed">${{lnoHtml}}${{esc(l)}}</div>`;
-      }}).join('');
-      const lostFocusHtml = lostLines.length > 0
-        ? lostLineHtmlClean
-        : '<div class="modal-empty" style="color:#6e7681">No unmatched lines found — these lines may already be in the destination file from a prior sweep.</div>';
-      srcBody = `${{srcTabBar}}<div class="diff-lines">${{lostFocusHtml}}</div>`;
+      const cached = _rowClassifications.get(idx);
+      if (cached?.type === 'empty') {{
+        // Empty row — explain why, no diff lines to show
+        const reason = cached.emptyReason || 'no content found';
+        const emptyMsg = reason.includes('empty')
+          ? `<div style="color:#f85149;padding:12px 0">⚠ Destination file was created empty — content was never written.<br><br>During the next sweep, ensure content is actually written to <strong>${{esc(destRaw)}}</strong> or route it to an existing destination.</div>`
+          : `<div style="color:#e3b341;padding:12px 0">⚠ ${{esc(reason)}}<br><br>Cannot verify this row — open the source file to inspect manually.</div>`;
+        srcBody = `${{srcTabBar}}<div class="diff-lines">${{emptyMsg}}</div>`;
+      }} else {{
+        // Lost-focus mode: render lost lines directly — no mixed-row header, no moved content
+        const lostLineHtmlClean = lostLines.map(l => {{
+          const lno = srcLineNos?.get(l);
+          const lnoHtml = lno ? `<span class="line-no">${{lno}}</span>` : '';
+          return `<div class="diff-line removed">${{lnoHtml}}${{esc(l)}}</div>`;
+        }}).join('');
+        const lostFocusHtml = lostLines.length > 0
+          ? lostLineHtmlClean
+          : '<div class="modal-empty" style="color:#6e7681">No unmatched lines found — these lines may already be in the destination file from a prior sweep.</div>';
+        srcBody = `${{srcTabBar}}<div class="diff-lines">${{lostFocusHtml}}</div>`;
+      }}
     }} else {{
       srcBody = `${{srcTabBar}}<div class="diff-lines">${{movedHeader}}${{srcGrouped}}${{lostHtml}}</div>`;
     }}
@@ -1308,9 +1320,12 @@ function showSectionModal(idx, focusLost = false) {{
   const srcNotInDiff  = !DIFF_TEXT.toLowerCase().includes(row.source_file.split('/').pop().toLowerCase());
   let countLabel;
   if (validMoved.length === 0 && removedLines.length === 0 && addedLines.length === 0) {{
-    // Check if dest file is in diff but empty (new empty file)
+    // Check if dest file is in diff but empty (new empty file — index 0000000..e69de29)
     const destInDiff = !destNotInDiff;
-    const destFileSection = destInDiff && DIFF_TEXT.includes(`b/${{destRaw}}.md\nnew file`);
+    const destFileSection = destInDiff && (
+      DIFF_TEXT.includes(`/${{destRaw}}.md\nnew file`) ||
+      DIFF_TEXT.includes(`/${{destRaw}}.md b/`) && DIFF_TEXT.includes('index 0000000..e69de29')
+    );
     const why = destNotInDiff
       ? `<span style="color:#e3b341;font-size:10px">⚠ destination not found in diff</span>`
       : srcNotInDiff
