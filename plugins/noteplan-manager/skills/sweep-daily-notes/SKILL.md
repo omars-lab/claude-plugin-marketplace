@@ -46,7 +46,8 @@ Use `TaskCreate` and `TaskUpdate` to track all phases with dependencies:
 5. Discover daily notes in scope (blocked by 4)
 6. Day-by-day guided sweep (blocked by 5) — **one sub-task per day** (see below)
 7. Validate via git diff (blocked by 6)
-8. Final commit (blocked by 7)
+7b. Post-sweep Unsorted review (blocked by 7) — only if Unsorted grew during sweep
+8. Final commit (blocked by 7b)
 
 ### Per-day task checklist
 
@@ -758,6 +759,42 @@ git reset --hard <pre-sweep-commit-hash>   # only if user confirms
 
 ---
 
+## Phase 7b: Post-Sweep Unsorted Review
+
+After the integrity check passes, review the accumulated `# Unsorted` content in the target notes. New plans and lists created during the sweep may now be good homes for content that couldn't be routed earlier.
+
+**Steps:**
+
+1. Read the `# Unsorted` section of each target note (Friday and/or Sunday)
+2. For each block in Unsorted, re-score against the **full current index** (plans + lists + meetings — including newly created ones from this sweep)
+3. Present re-routing suggestions:
+   ```
+   📋 Unsorted review: {N} blocks, {K} have potential matches now:
+
+     Block 1: "- [ ] Make a hifz plan..." → [[🏡260304👨🏻‍💻 Claude Artifacts Planner]] (new plan from today)
+     Block 2: "- [ ] Share recruiter saad" → no new match, stays Unsorted
+   ```
+4. Ask once per target note:
+   ```javascript
+   AskUserQuestion({
+     questions: [{
+       question: "Re-route matched Unsorted items, or leave them all?",
+       header: "Unsorted review",
+       options: [
+         { label: "Route all suggested matches", description: "Move the K matched blocks out of Unsorted" },
+         { label: "Review individually", description: "Ask about each match one at a time" },
+         { label: "Leave Unsorted as-is", description: "Skip this step" }
+       ]
+     }]
+   })
+   ```
+5. If "Route all" or individual review: move matched blocks out of Unsorted, append them under the appropriate `# [[PlanName]]` header in the same target note
+6. **Commit** the Unsorted re-routing: `git commit -m "sweep(daily): re-route Unsorted → ${N} blocks moved to plans"`
+
+This phase only runs if there are Unsorted items AND the full index grew during the sweep (new plans/lists created).
+
+---
+
 ## Phase 8: Final Commit
 
 ```bash
@@ -802,6 +839,8 @@ git commit -m "sweep(daily): complete ${MODE} sweep → ${TARGET_DATE}
 | Meetings indexed | Index recently-modified meeting files alongside plans and lists. Show them in routing UI with highest priority when section content matches a person's name or meeting keyword. |
 | Date annotation on moved blocks | When appending to an existing plan or target daily note, prefix each moved block with `## From {fileDate}` so content origin is traceable. Omit for new plan files (the `started:` field serves this purpose). |
 | User notes are authoritative | Free-text notes in AskUserQuestion answers override scoring. Re-score the plan index against the user's clarification before presenting the next question. |
+| Post-sweep Unsorted review | After integrity check, re-score Unsorted blocks against the full updated index (including new plans). Offer to re-route matched blocks. Only runs if Unsorted content exists and new plans were created. |
+| Templates must be read first | Before creating any new plan, meeting, or list file, read the corresponding template from `@Templates/` to ensure correct frontmatter structure and H1 format. |
 | New plans follow the template | Use the computed filename convention and frontmatter structure exactly. |
 | New plan subdirs are discovered | `ls $PLAN_ROOT` to find the right workstream/plantype subdir. Never hardcode. |
 | Checkpoint commits per day | Commit after each day's sweep for granular recoverability. |
