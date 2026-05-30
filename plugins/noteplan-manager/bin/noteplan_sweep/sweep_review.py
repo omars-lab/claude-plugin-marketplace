@@ -657,6 +657,19 @@ function toggleSectionItems(rowIdx, btn) {{
   // Insert after the mixed-lost sub-row if present, otherwise after parent
   let insertAfter = parentRow.nextSibling?.dataset?.mixedLostFor === String(rowIdx)
     ? parentRow.nextSibling : parentRow;
+  const _destNormE = normDest(destRawE).normalize('NFC').toLowerCase();
+  // Ensure _allAddedEntries is populated for V-R6 per-line check
+  if (!_allAddedEntries && allParsedFiles.length > 0) {{
+    _allAddedEntries = [];
+    for (const f of allParsedFiles) {{
+      for (const hunk of f.hunks) {{
+        for (const r of hunk.right) {{
+          const n = normLine(r.c);
+          if (n.length > 2 && !isNoiseLine(r.c)) _allAddedEntries.push({{ filename: f.filename, n, b: bodyText(n) }});
+        }}
+      }}
+    }}
+  }}
   for (const line of lines) {{
     const tr = document.createElement('tr');
     tr.className = 'item-row';
@@ -664,10 +677,32 @@ function toggleSectionItems(rowIdx, btn) {{
     const clean = line.replace(/^-\\s*\\[[x ]\\]\\s*/i, '').replace(/^-\\s+/, '').trim();
     if (!clean) continue;
     const inDest = movedSrcSet.has(line) || isLineInDestFile(line, destRawE);
+    // V-R6 per-line: check if line is in any OTHER diff file (went-to)
+    let wentElsewhere = false;
+    if (!inDest && _allAddedEntries) {{
+      const nll = normLine(line); const bll = bodyText(nll);
+      if (nll.length >= 6) {{
+        wentElsewhere = _allAddedEntries.some(e => {{
+          if (normDest(e.filename).normalize('NFC').toLowerCase() === _destNormE) return false;
+          if (nll === e.n) return true;
+          const pLen = Math.min(50, Math.min(nll.length, e.n.length));
+          if (pLen >= 10 && Math.min(nll.length, e.n.length) / Math.max(nll.length, e.n.length) >= 0.5
+              && (nll.startsWith(e.n.slice(0, pLen)) || e.n.startsWith(nll.slice(0, pLen)))) return true;
+          if (bll.length >= 8 && e.b.length >= 8) {{
+            const bLen = Math.min(40, Math.min(bll.length, e.b.length));
+            if (bLen >= 8 && Math.min(bll.length, e.b.length) / Math.max(bll.length, e.b.length) >= 0.5
+                && (bll.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(bll.slice(0, bLen)))) return true;
+          }}
+          return false;
+        }});
+      }}
+    }}
     const badge = inDest
       ? `<span style="color:#3fb950;font-size:9px;margin-right:4px">→</span>`
-      : `<span style="color:#f85149;font-size:9px;margin-right:4px">✗</span>`;
-    const color = inDest ? '' : 'color:#f85149;opacity:0.8;';
+      : wentElsewhere
+        ? `<span style="color:#58a6ff;font-size:9px;margin-right:4px">⇢</span>`
+        : `<span style="color:#f85149;font-size:9px;margin-right:4px">✗</span>`;
+    const color = inDest ? '' : wentElsewhere ? 'color:#58a6ff;opacity:0.8;' : 'color:#f85149;opacity:0.8;';
     tr.innerHTML = `<td class="sec-toggle" style="color:#30363d;text-align:right">↳</td><td></td><td class="item-text" colspan="3" style="${{color}}">${{badge}}${{esc(clean)}}</td><td></td><td></td>`;
     insertAfter.insertAdjacentElement('afterend', tr);
     insertAfter = tr;
@@ -1797,22 +1832,31 @@ function showSectionModal(idx, focusLost = false) {{
     }}
     let lostHtml = '';
     if (lostLines.length > 0) {{
-      const lostLineHtml = lostLines.map(l => {{
+      // Only show truly absent lines (not found anywhere in the diff).
+      // Lines found elsewhere are already covered by the misrouteHtml banner.
+      const trulyAbsentLines = _trulyLostSet ? lostLines.filter(l => _trulyLostSet.has(l)) : lostLines;
+      const lostLineHtml = trulyAbsentLines.map(l => {{
         const lno = srcLineNos?.get(l);
         const lnoHtml = lno ? `<span class="line-no">${{lno}}</span>` : '';
         return `<div class="diff-line removed">${{lnoHtml}}${{esc(l)}}</div>`;
       }}).join('');
       if (isMixed) {{
-        // Mixed row: prominent labeled split between moved and lost blocks
+        // Mixed row: prominent labeled split between moved and absent blocks
         lostHtml = `<div style="margin-top:10px;border-top:2px solid #e3b341;padding-top:6px">` +
-          `<div style="color:#e3b341;font-size:11px;font-weight:600;padding:2px 0 6px">` +
-          `⚡ ✗ Absent (${{lostLines.length}} line${{lostLines.length>1?'s':''}}) — not found at destination — sweep should have split this section</div>` +
-          misrouteHtml + lostLineHtml + `</div>`;
-      }} else {{
+          misrouteHtml +
+          (trulyAbsentLines.length > 0
+            ? `<div style="color:#e3b341;font-size:11px;font-weight:600;padding:2px 0 6px">⚡ ✗ Absent (${{trulyAbsentLines.length}} line${{trulyAbsentLines.length>1?'s':''}}) — not found at destination — sweep should have split this section</div>` + lostLineHtml
+            : '') +
+          `</div>`;
+      }} else if (trulyAbsentLines.length > 0) {{
+        // Some lines genuinely absent — show absent count + source lines
         lostHtml = `<div style="margin-top:8px;border-top:1px solid #30363d;padding-top:6px">` +
           misrouteHtml +
-          `<div style="color:#f85149;font-size:10px;padding:2px 0 4px">✗ ${{lostLines.length}} line${{lostLines.length>1?'s':''}} absent from diff additions</div>` +
+          `<div style="color:#f85149;font-size:10px;padding:2px 0 4px">✗ ${{trulyAbsentLines.length}} line${{trulyAbsentLines.length>1?'s':''}} absent from diff additions</div>` +
           lostLineHtml + `</div>`;
+      }} else if (misrouteHtml) {{
+        // All lines found elsewhere (went-to) — show only the destination banner, no absent count
+        lostHtml = `<div style="margin-top:8px;border-top:1px solid #30363d;padding-top:6px">${{misrouteHtml}}</div>`;
       }}
     }}
     const movedHeader = isMixed && !focusLost
