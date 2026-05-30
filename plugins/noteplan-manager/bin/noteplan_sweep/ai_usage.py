@@ -693,6 +693,29 @@ def cmd_ai_usage_generate(args):
   .skill-ph {{ background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 40px; text-align: center; color: var(--muted); }}
   .skill-ph p {{ margin-top: 8px; font-size: 12px; }}
 
+  /* Graph sidebar */
+  #graph-body {{ display: flex; gap: 0; height: calc(100vh - 190px); }}
+  #graph-svg-wrap {{ flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px 0 0 8px; overflow: hidden; position: relative; }}
+  #graph-sidebar {{ width: 0; overflow: hidden; transition: width 0.2s; background: var(--surface); border: 1px solid var(--border); border-left: none; border-radius: 0 8px 8px 0; display: flex; flex-direction: column; }}
+  #graph-sidebar.open {{ width: 280px; }}
+  #gs-header {{ display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); gap: 8px; flex-shrink: 0; }}
+  #gs-type-badge {{ font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600; }}
+  #gs-close {{ margin-left: auto; cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; background: none; border: none; padding: 0; }}
+  #gs-body {{ padding: 12px 14px; overflow-y: auto; flex: 1; font-size: 12px; }}
+  .gs-row {{ display: flex; gap: 6px; margin-bottom: 5px; }}
+  .gs-key {{ color: var(--muted); min-width: 70px; flex-shrink: 0; }}
+  .gs-val {{ color: var(--text); word-break: break-all; }}
+  .gs-section {{ font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 10px 0 5px; padding-bottom: 3px; border-bottom: 1px solid var(--border); }}
+  .gs-edge {{ padding: 3px 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+  .gs-edge strong {{ color: var(--text); font-weight: 500; }}
+  #gs-xcb {{ display: block; margin-top: 12px; padding: 7px 12px; background: #1f2d4a; border: 1px solid #58a6ff44; border-radius: 6px; color: #58a6ff; font-size: 12px; text-decoration: none; text-align: center; }}
+  #gs-xcb:hover {{ background: #253a5e; }}
+
+  /* Graph toolbar extras */
+  .graph-sep {{ width: 1px; height: 18px; background: var(--border); margin: 0 4px; }}
+  #gdate-from, #gdate-to {{ background: #1a1a1a; border: 1px solid var(--border); border-radius: 5px; padding: 3px 7px; color: var(--text); font-size: 11px; width: 120px; }}
+  #gdate-from:focus, #gdate-to:focus {{ outline: none; border-color: var(--accent); }}
+
   /* View toggle */
   .view-btn {{ background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; font-size: 12px; color: var(--muted); cursor: pointer; }}
   .view-btn.active {{ background: #1a1a2a; border-color: var(--accent); color: var(--accent); }}
@@ -778,19 +801,34 @@ def cmd_ai_usage_generate(args):
   </div>
 
   <div class="pane" id="pane-graph">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-      <span style="font-size:12px;color:var(--muted)">Show:</span>
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--muted)">Nodes:</span>
       <button class="view-btn active" id="gn-session" onclick="toggleGNode('session',this)">Sessions</button>
       <button class="view-btn active" id="gn-plan"    onclick="toggleGNode('plan',this)">Plans</button>
       <button class="view-btn active" id="gn-repo"    onclick="toggleGNode('repo',this)">Repos</button>
       <button class="view-btn active" id="gn-skill"   onclick="toggleGNode('skill',this)">Skills</button>
       <button class="view-btn active" id="gn-usecase" onclick="toggleGNode('usecase',this)">Use Cases</button>
       <button class="view-btn"        id="gn-app"     onclick="toggleGNode('app',this)" title="App nodes from plan titles (requires graph-extract)">Apps</button>
+      <div class="graph-sep"></div>
+      <span style="font-size:11px;color:var(--muted)">From:</span>
+      <input type="date" id="gdate-from" oninput="initGraph()" title="Filter sessions from this date">
+      <span style="font-size:11px;color:var(--muted)">To:</span>
+      <input type="date" id="gdate-to" oninput="initGraph()" title="Filter sessions up to this date">
       <span style="margin-left:auto;font-size:11px;color:var(--muted)" id="graph-stats"></span>
     </div>
-    <div id="graph-svg-wrap" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;height:calc(100vh - 190px);position:relative">
-      <svg id="graph-svg" style="width:100%;height:100%"></svg>
-      <div id="graph-tooltip" style="display:none;position:absolute;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;max-width:280px;pointer-events:none;z-index:10"></div>
+    <div id="graph-body">
+      <div id="graph-svg-wrap">
+        <svg id="graph-svg" style="width:100%;height:100%"></svg>
+        <div id="graph-tooltip" style="display:none;position:absolute;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;max-width:280px;pointer-events:none;z-index:10"></div>
+      </div>
+      <div id="graph-sidebar">
+        <div id="gs-header">
+          <span id="gs-label" style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px"></span>
+          <span id="gs-type-badge"></span>
+          <button id="gs-close" onclick="closeSidebar()" title="Close">✕</button>
+        </div>
+        <div id="gs-body"></div>
+      </div>
     </div>
   </div>
 
@@ -828,7 +866,7 @@ function setView(v) {{
 
 {ORG_JS}
 
-function rerender() {{ renderProjects(); }}
+function rerender() {{ renderProjects(); if (graphInitialized) initGraph(); }}
 
 function renderProjects() {{
   const q = (document.getElementById('proj-search').value||'').toLowerCase();
@@ -1005,6 +1043,71 @@ function toggleGNode(type, btn) {{
   initGraph();
 }}
 
+// ── Graph sidebar ─────────────────────────────────────────────────────────
+const TYPE_BADGE_COLORS = {{
+  session:'#2d3748',plan:'#1f3a2a',repo:'#1f2d4a',
+  skill:'#3a2010',usecase:'#2a1a3a',app:'#0a3a3a'
+}};
+const TYPE_BADGE_TEXT = {{
+  session:'#8b949e',plan:'#3fb950',repo:'#58a6ff',
+  skill:'#d97757',usecase:'#d2a8ff',app:'#2dd4bf'
+}};
+
+function showNodeSidebar(d) {{
+  const sidebar = document.getElementById('graph-sidebar');
+  sidebar.classList.add('open');
+  document.getElementById('gs-label').textContent = d.label;
+  const badge = document.getElementById('gs-type-badge');
+  badge.textContent = d.type;
+  badge.style.background = TYPE_BADGE_COLORS[d.type] || '#2d3748';
+  badge.style.color = TYPE_BADGE_TEXT[d.type] || '#8b949e';
+
+  const attrs = d.attrs || {{}};
+  const rows = Object.entries(attrs)
+    .filter(([k,v]) => v !== null && v !== undefined && v !== '')
+    .map(([k,v]) => `<div class="gs-row"><span class="gs-key">${{esc(k)}}</span><span class="gs-val">${{esc(String(v))}}</span></div>`)
+    .join('');
+
+  // Top-5 edges from GRAPH_DATA
+  let edgesHtml = '';
+  if (GRAPH_DATA && GRAPH_DATA.edges) {{
+    const nodeMap = new Map((GRAPH_DATA.nodes||[]).map(n=>[n.id,n]));
+    const connected = GRAPH_DATA.edges
+      .filter(e => e.source === d.id || e.target === d.id)
+      .slice(0, 5)
+      .map(e => {{
+        const otherId = e.source === d.id ? e.target : e.source;
+        const dir     = e.source === d.id ? '→' : '←';
+        const other   = nodeMap.get(otherId);
+        const lbl     = other ? other.label : otherId;
+        return `<div class="gs-edge">${{esc(dir)}} <strong>${{esc(e.rel)}}</strong> ${{esc(lbl.length>36?lbl.slice(0,36)+'…':lbl)}}</div>`;
+      }}).join('');
+    if (connected) edgesHtml = `<div class="gs-section">Edges</div>${{connected}}`;
+  }}
+
+  // xcallback for Plan nodes
+  let xcbHtml = '';
+  if (d.type === 'plan') {{
+    const encoded = encodeURIComponent(d.label);
+    xcbHtml = `<a id="gs-xcb" href="noteplan://x-callback-url/openNote?noteTitle=${{encoded}}" title="Open in NotePlan">↗ Open in NotePlan</a>`;
+  }}
+
+  document.getElementById('gs-body').innerHTML =
+    `${{rows}}${{edgesHtml}}${{xcbHtml}}`;
+}}
+
+function closeSidebar() {{
+  document.getElementById('graph-sidebar').classList.remove('open');
+}}
+
+// Close sidebar on SVG background click
+document.addEventListener('click', e => {{
+  if (!document.getElementById('graph-sidebar').contains(e.target) &&
+      !document.getElementById('graph-svg-wrap').contains(e.target)) {{
+    closeSidebar();
+  }}
+}});
+
 function initGraph() {{
   if (GRAPH_DATA && GRAPH_DATA.nodes && GRAPH_DATA.nodes.length > 0) {{
     initGraphFromData();
@@ -1036,12 +1139,32 @@ function initGraphFromData() {{
     typeGroups[t].push(n);
   }});
 
+  const gDateFrom = (document.getElementById('gdate-from')||{{}}).value || '';
+  const gDateTo   = (document.getElementById('gdate-to')||{{}}).value   || '';
+
   const selectedIds = new Set();
   for (const [t, gnodes] of Object.entries(typeGroups)) {{
     let sorted = gnodes;
-    if (t === 'session') sorted = gnodes.filter(n=>!n.attrs.automated).slice(-CAPS[t]);
-    else if (t === 'plan') sorted = [...gnodes].sort((a,b)=>(touchCounts[b.id]||0)-(touchCounts[a.id]||0)).slice(0, CAPS[t]);
-    else sorted = gnodes.slice(0, CAPS[t] ?? gnodes.length);
+    if (t === 'session') {{
+      sorted = gnodes.filter(n => {{
+        if (n.attrs.automated) return false;
+        const d = n.attrs.date || '';
+        if (gDateFrom && d < gDateFrom) return false;
+        if (gDateTo   && d > gDateTo)   return false;
+        return true;
+      }}).slice(-CAPS[t]);
+    }} else if (t === 'plan') {{
+      sorted = [...gnodes]
+        .filter(n => matchesDomain((n.attrs.domain||'').toLowerCase()))
+        .sort((a,b)=>(touchCounts[b.id]||0)-(touchCounts[a.id]||0))
+        .slice(0, CAPS[t]);
+    }} else if (t === 'repo') {{
+      sorted = gnodes
+        .filter(n => matchesDomain((n.attrs.domain||'').toLowerCase()))
+        .slice(0, CAPS[t] ?? gnodes.length);
+    }} else {{
+      sorted = gnodes.slice(0, CAPS[t] ?? gnodes.length);
+    }}
     sorted.forEach(n => selectedIds.add(n.id));
   }}
 
@@ -1131,10 +1254,7 @@ function initGraphFromData() {{
     tip.style.left = (e.offsetX+14)+'px'; tip.style.top = (e.offsetY-10)+'px';
   }}).on('mouseout', () => {{ tip.style.display = 'none'; }});
 
-  node.on('click', (e,d) => {{
-    if (d.type==='repo')  {{ showTab('projects'); document.getElementById('proj-search').value=d.label; renderProjects(); }}
-    if (d.type==='skill') {{ showTab('skills'); document.getElementById('skill-search').value=d.label; renderSkillCards(); }}
-  }});
+  node.on('click', (e,d) => {{ e.stopPropagation(); showNodeSidebar(d); }});
 
   sim.on('tick', () => {{
     link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y)
@@ -1244,10 +1364,7 @@ function initGraphFallback() {{
     tip.style.left = (e.offsetX+14)+'px'; tip.style.top = (e.offsetY-10)+'px';
   }}).on('mouseout', ()=>{{ tip.style.display='none'; }});
 
-  node.on('click', (e,d) => {{
-    if (d.type==='repo')  {{ showTab('projects'); document.getElementById('proj-search').value=d.label; renderProjects(); }}
-    if (d.type==='skill') {{ showTab('skills'); document.getElementById('skill-search').value=d.label; renderSkillCards(); }}
-  }});
+  node.on('click', (e,d) => {{ e.stopPropagation(); showNodeSidebar(d); }});
 
   sim.on('tick', () => {{
     link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y)
