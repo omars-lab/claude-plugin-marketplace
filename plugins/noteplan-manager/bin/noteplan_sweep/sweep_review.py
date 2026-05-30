@@ -672,8 +672,13 @@ function normSectionStr(s) {{
 function sectionHeaderMatches(content, nameLower) {{
   const stripped = normSectionStr(content);
   if (!stripped) return false;
-  if (stripped === nameLower || stripped.startsWith(nameLower + ' ') || stripped.startsWith(nameLower + ':')) return true;
-  // Word-overlap fallback: 60%+ of significant words (len>3) must appear
+  // Exact match or query is a prefix of header (header is MORE specific — ok)
+  if (stripped === nameLower) return true;
+  if (stripped.startsWith(nameLower + ' ') || stripped.startsWith(nameLower + ':')) return true;
+  // Header must NOT be a strict prefix of query — that means the header is more general
+  // e.g. header="config agent", query="config agent arb" → reject (parent section, not this row's section)
+  if (nameLower.startsWith(stripped + ' ') || nameLower.startsWith(stripped + ':')) return false;
+  // Word-overlap fallback: 60%+ of significant words (len>3) from query must appear in header
   const words = nameLower.split(' ').filter(w => w.length > 3);
   if (!words.length) return stripped.includes(nameLower);
   const hits = words.filter(w => stripped.includes(w)).length;
@@ -2131,7 +2136,12 @@ def _extract_section_lines(diff_text: str, filename: str, section_name: str, lin
 
     def header_matches(content: str) -> bool:
         h = re.sub(r'^#+\s*', '', content).strip().lower()
-        return h == name_lower or h.startswith(name_lower or '')
+        n = name_lower or ''
+        if h == n: return True
+        if h.startswith(n + ' ') or h.startswith(n + ':'): return True
+        # Reject if header is a strict prefix of query — parent section, not this one
+        if n.startswith(h + ' ') or n.startswith(h + ':'): return False
+        return False
 
     for raw in diff_text.splitlines():
         if raw.startswith('diff --git '):
