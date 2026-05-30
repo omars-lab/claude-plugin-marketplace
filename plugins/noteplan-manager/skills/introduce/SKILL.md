@@ -212,6 +212,32 @@ discover-structure   ← run first to generate 🗺️ Note Map.md
 - Note Map: read by emoji and structure maintenance skills
 - Naming conventions from `manage-filenames` are shared with `manage-notes` (create-note)
 
+## CLI Setup (noteplan-sweep)
+
+Several skills use `noteplan-sweep`, a Python CLI included in this plugin. It requires a one-time setup step.
+
+### First-time setup
+
+```bash
+PLUGIN_BIN="$HOME/workspace/oeid-claude-plugin-marketplace/plugins/noteplan-manager/bin"
+
+# 1. Run setup (creates venv, installs deps, installs Playwright/Chromium)
+bash "$PLUGIN_BIN/setup.sh"
+
+# 2. Link the CLI so it's in PATH
+ln -sf "$PLUGIN_BIN/noteplan-sweep" /usr/local/bin/noteplan-sweep
+
+# 3. Verify
+noteplan-sweep --version
+```
+
+Setup takes ~30–60s on first run (Playwright downloads Chromium). After that it's instant — the CLI re-execs with the venv Python automatically, no `source activate` needed.
+
+**What the venv enables:**
+- `noteplan-sweep enrich-links --use-chrome` — Enrich Okta/SSO-protected URLs using your existing Chrome session
+
+**If you skip the venv:** The CLI still works for all operations except `--use-chrome`. The `sweep-daily-notes` Phase 0 check will detect a missing venv and offer to run setup automatically.
+
 ## NotePlan Location
 
 The plugin works with NotePlan at:

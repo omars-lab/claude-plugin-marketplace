@@ -1,0 +1,9 @@
+# Optional dependencies for noteplan-sweep
+# Install with: bin/setup.sh (or manually: pip install -r bin/requirements.txt)
+#
+# Core CLI uses stdlib only. These extend specific commands:
+#   playwright  →  noteplan-sweep enrich-links --use-chrome
+#                  Reuses existing Chrome Default profile for Okta-protected URLs.
+#                  After install: playwright install chromium
+
+playwright

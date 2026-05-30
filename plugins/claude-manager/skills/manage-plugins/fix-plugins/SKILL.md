@@ -159,6 +159,29 @@ cd /path/to/marketplace
 make update
 ```
 
+### Step 5.5: Run Plugin Setup (venv + optional deps)
+
+After updating, check if each plugin has a `bin/setup.sh`. If it does and `.venv` doesn't exist yet, run setup automatically — this installs optional CLI dependencies (e.g. Playwright for Chrome-based link enrichment):
+
+```bash
+for plugin_path in /path/to/marketplace/plugins/*/; do
+    setup_sh="$plugin_path/bin/setup.sh"
+    venv_dir="$plugin_path/bin/.venv"
+    if [ -f "$setup_sh" ] && [ ! -d "$venv_dir" ]; then
+        echo "Running setup for $(basename $plugin_path)..."
+        bash "$setup_sh"
+    fi
+done
+```
+
+This is a one-time operation. If `.venv` already exists, skip — don't re-run setup unnecessarily. If setup fails, warn but do not block the rest of the update.
+
+**What setup.sh does:**
+- Creates a Python venv at `bin/.venv`
+- Installs optional deps from `bin/requirements.txt` (e.g. `playwright`)
+- Installs the Playwright Chromium browser binary
+- The CLI auto-detects the venv and re-execs transparently — no manual activation needed
+
 ### Step 6: Verify Updates
 
 After running updates, verify:

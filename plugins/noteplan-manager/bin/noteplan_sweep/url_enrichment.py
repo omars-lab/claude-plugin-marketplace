@@ -26,6 +26,15 @@ from urllib.parse import urlparse
 import noteplan_sweep.utils as utils
 
 # ---------------------------------------------------------------------------
+# Optional Playwright import (for --use-chrome)
+# ---------------------------------------------------------------------------
+try:
+    from playwright.sync_api import sync_playwright as _sync_playwright  # noqa: F401
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+
+# ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 USER_AGENT = "noteplan-sweep/0.1"
@@ -35,6 +44,14 @@ DEFAULT_TIMEOUT = 5
 URL_RE = re.compile(r'https?://[^\s\)\]\'"<>]+')
 # Matches a markdown link whose target is a URL: [text](https://...)
 MD_LINK_RE = re.compile(r'\[.*?\]\((https?://[^\s\)\]\'"<>]+)\)')
+
+# Internal / Okta-protected domains — skip unless --use-chrome is set
+INTERNAL_DOMAINS_RE = re.compile(
+    r'https?://[^/\s]*(?:service-now\.com|servicenow\.com|sharepoint\.com|okta\.com)',
+    re.IGNORECASE,
+)
+
+_CHROME_PROFILE = Path.home() / "Library/Application Support/Google/Chrome"
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +455,143 @@ def cmd_enrich_research_doc(args):
         f"{new_domain_count} new domain(s) added to frontmatter "
         f"({len(merged_domains)} total) in {path.name}"
     )
+    sys.exit(utils.EXIT_OK)
+
+
+def _fetch_with_chrome(url: str, timeout: int = 30) -> tuple[str | None, str | None]:
+    """
+    Fetch title and description from *url* using the existing Chrome Default
+    profile (reuses Okta/SSO cookies already present in the profile).
+
+    Returns ``(title, description)`` — either may be None on failure.
+
+    Requires Playwright: ``pip install playwright && playwright install chromium``
+    Chrome must NOT be running when this is called (profile lock conflict).
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        return None, None
+    from playwright.sync_api import sync_playwright
+    try:
+        with sync_playwright() as p:
+            ctx = p.chromium.launch_persistent_context(
+                str(_CHROME_PROFILE),
+                headless=True,
+                channel="chrome",
+                args=["--no-sandbox"],
+            )
+            page = ctx.new_page()
+            page.goto(url, timeout=timeout * 1000, wait_until="domcontentloaded")
+            title = page.title() or None
+            desc_el = page.query_selector(
+                'meta[name="description"], meta[property="og:description"]'
+            )
+            description = desc_el.get_attribute("content") if desc_el else None
+            ctx.close()
+        return title, description
+    except Exception as exc:
+        utils.err(f"chrome fetch failed for {url}: {exc}")
+        return None, None
+
+
+def cmd_enrich_links(args):
+    """
+    Replace bare URLs in a Markdown file with ``[title](url)`` links.
+
+    Usage: noteplan-sweep enrich-links <file> [options]
+
+    Like ``enrich-urls`` but with:
+    - Domain skip list: ServiceNow, SharePoint, Okta domains are skipped
+      unless ``--use-chrome`` is set.
+    - ``--use-chrome``: fetch internal/Okta-protected URLs using the existing
+      Chrome Default profile (requires Playwright; Chrome must be closed).
+    - ``--interactive``: confirm each replacement interactively (Y/n).
+    - ``--dry-run-preview``: print proposed changes without writing.
+    """
+    path = Path(args.file)
+    timeout = getattr(args, "timeout", DEFAULT_TIMEOUT)
+    dry_preview = getattr(args, "dry_run_preview", False)
+    use_chrome = getattr(args, "use_chrome", False)
+    interactive = getattr(args, "interactive", False)
+
+    if use_chrome and not PLAYWRIGHT_AVAILABLE:
+        utils.err(
+            "--use-chrome requires Playwright.\n"
+            "Install with:\n"
+            "  pip install playwright\n"
+            "  playwright install chromium\n"
+            "Then close Chrome before running with --use-chrome."
+        )
+        sys.exit(utils.EXIT_VALIDATION_FAILURE)
+
+    text = utils.read_file(path)
+
+    already_linked_urls: set[str] = {m.group(1) for m in MD_LINK_RE.finditer(text)}
+
+    seen: dict[str, str] = {}
+    enriched: list[str] = []
+
+    for m in URL_RE.finditer(text):
+        url = m.group()
+        if url in seen:
+            continue
+        if url in already_linked_urls:
+            seen[url] = url
+            continue
+        preceding = text[max(0, m.start() - 2):m.start()]
+        if preceding.endswith("]("):
+            seen[url] = url
+            continue
+
+        is_internal = bool(INTERNAL_DOMAINS_RE.match(url))
+
+        if is_internal and not use_chrome:
+            utils.err(f"skipping internal URL (use --use-chrome to enrich): {url}")
+            seen[url] = url
+            continue
+
+        if is_internal:
+            title, _ = _fetch_with_chrome(url, timeout=timeout)
+        else:
+            title = _fetch_title(url, timeout=timeout)
+
+        if title is None:
+            utils.err(f"skipping {url} — could not fetch title")
+            seen[url] = url
+            continue
+
+        md_link = f"[{title}]({url})"
+
+        if interactive:
+            sys.stderr.write(f"\n  {url}\n  → {md_link}\n  Enrich? [Y/n] ")
+            sys.stderr.flush()
+            answer = sys.stdin.readline().strip().lower()
+            if answer not in ("", "y", "yes"):
+                seen[url] = url
+                continue
+
+        seen[url] = md_link
+        enriched.append(url)
+
+    if dry_preview:
+        for url in enriched:
+            utils.log(f"  {url!r}\n    → {seen[url]!r}")
+        utils.log(f"\n{len(enriched)} URL(s) would be enriched (dry-run preview)")
+        sys.exit(utils.EXIT_OK)
+
+    if not enriched:
+        utils.log("No bare URLs to enrich.")
+        sys.exit(utils.EXIT_OK)
+
+    def _safe_replace(match: re.Match) -> str:
+        url = match.group()
+        preceding = text[max(0, match.start() - 2):match.start()]
+        if preceding.endswith("]("):
+            return url
+        return seen.get(url, url)
+
+    new_text = URL_RE.sub(_safe_replace, text)
+    utils.write_file(path, new_text)
+    utils.log(f"Enriched {len(enriched)} URL(s) in {path.name}")
     sys.exit(utils.EXIT_OK)
 
 

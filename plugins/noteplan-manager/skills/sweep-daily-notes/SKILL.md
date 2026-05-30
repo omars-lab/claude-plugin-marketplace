@@ -43,7 +43,8 @@ Discover subdirectories with `find` — never hardcode subdir names.
 
 ```javascript
 // Example — create all in one shot at session start
-t1 = TaskCreate({ title: "Phase 1: Ask mode", status: "in_progress" })
+t0 = TaskCreate({ title: "Phase 0: CLI prerequisites check", status: "in_progress" })
+t1 = TaskCreate({ title: "Phase 1: Ask mode", status: "todo", blocked_by: [t0.id] })
 t2 = TaskCreate({ title: "Phase 2: Pre-sweep git pull + commit", status: "todo", blocked_by: [t1.id] })
 t3 = TaskCreate({ title: "Phase 3: Build plan + lists + meetings + thoughts index", status: "todo", blocked_by: [t2.id] })
 t4 = TaskCreate({ title: "Phase 4: Enrich missing descriptions + contributors", status: "todo", blocked_by: [t3.id] })
@@ -73,6 +74,56 @@ When starting each day in Phase 6, create a sub-task with `blocked_by: [t6.id]` 
 - [ ] Checkpoint commit + push
 
 Mark each sub-task `in_progress` before starting, `completed` when done.
+
+---
+
+## Phase 0: CLI Prerequisites Check
+
+**Run before anything else.** The sweep uses `noteplan-sweep` for all mechanical operations. If it's missing or missing its optional deps, the skill cannot proceed.
+
+### Check 1: Is noteplan-sweep in PATH?
+
+```bash
+which noteplan-sweep
+```
+
+**If missing:** The CLI needs to be linked from the plugin bin directory.
+
+```bash
+# Find where it lives
+MARKETPLACE="$HOME/workspace/oeid-claude-plugin-marketplace"
+ls "$MARKETPLACE/plugins/noteplan-manager/bin/noteplan-sweep"
+
+# Link it (or add to PATH in your shell profile)
+ln -sf "$MARKETPLACE/plugins/noteplan-manager/bin/noteplan-sweep" /usr/local/bin/noteplan-sweep
+```
+
+If the link fails or the file doesn't exist, stop and report — sweep cannot run without the CLI.
+
+### Check 2: Is the venv set up? (needed for --use-chrome / Playwright)
+
+```bash
+BIN_DIR="$HOME/workspace/oeid-claude-plugin-marketplace/plugins/noteplan-manager/bin"
+test -d "$BIN_DIR/.venv" && echo "venv ok" || echo "venv missing"
+```
+
+**If venv is missing:** Run setup automatically — this is a one-time install and takes ~30s:
+
+```bash
+bash "$BIN_DIR/setup.sh"
+```
+
+Setup installs `playwright` + Chromium into the venv. The CLI re-execs with the venv Python transparently — no manual activation needed.
+
+If setup fails, warn the user but continue — the sweep can still run without Playwright (Chrome-based link enrichment will be unavailable).
+
+### Check 3: Quick smoke test
+
+```bash
+noteplan-sweep --version
+```
+
+If this returns a version string, the CLI is ready. Mark Phase 0 complete and proceed to Phase 1.
 
 ---
 

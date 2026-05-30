@@ -11,11 +11,22 @@ import argparse
 import sys
 import os
 
+# ---------------------------------------------------------------------------
+# Venv re-exec shim
+# If a .venv exists in the same directory as this script (created by
+# bin/setup.sh), transparently re-exec with the venv Python so that optional
+# dependencies (e.g. playwright for --use-chrome) are available.
+# ---------------------------------------------------------------------------
+_SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+_VENV_PYTHON = os.path.join(_SCRIPT_DIR, ".venv", "bin", "python3")
+if os.path.isfile(_VENV_PYTHON) and not sys.executable.startswith(_SCRIPT_DIR):
+    os.execv(_VENV_PYTHON, [_VENV_PYTHON] + sys.argv)
+
 # Allow importing noteplan_sweep package from same directory
 sys.path.insert(0, os.path.dirname(__file__))
 
 import noteplan_sweep.utils as utils
-from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment
+from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair
 
 VERSION = "0.1.0"
 
@@ -63,6 +74,9 @@ COMMANDS = [
     ("enrich-research-doc",     "Fetch metadata for all URLs, update domains: frontmatter, append titled refs"),
     ("check-dead-links",        "HEAD each URL in file, report 404s and timeouts"),
     ("archive-url",             "Submit URL to Wayback Machine, return archive link"),
+    # Group 7: Link Repair
+    ("enrich-links",            "Enrich bare URLs in file; --use-chrome for Okta-protected internal URLs"),
+    ("fix-links",               "Repair [[wikilinks]] and [[Stem#Heading]] anchors after file renames"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -231,6 +245,26 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("archive-url", help=COMMANDS[33][1])
     p.add_argument("url", help="URL to archive")
 
+    # ── Group 7: Link Repair ───────────────────────────────────────────────
+    p = sub.add_parser("enrich-links", help=COMMANDS[34][1])
+    p.add_argument("file", help="File to enrich links in")
+    p.add_argument("--use-chrome", action="store_true",
+                   help="Use existing Chrome Default profile for internal/Okta URLs (requires Playwright; Chrome must be closed)")
+    p.add_argument("--dry-run-preview", action="store_true",
+                   help="Show proposed replacements without writing")
+    p.add_argument("--interactive", action="store_true",
+                   help="Confirm each URL enrichment interactively")
+
+    p = sub.add_parser("fix-links", help=COMMANDS[35][1])
+    p.add_argument("--from-git-renames", action="store_true",
+                   help="Auto-detect renames from git status --porcelain")
+    p.add_argument("old_stem", nargs="?",
+                   help="Old filename stem (without .md) — required without --from-git-renames")
+    p.add_argument("new_stem", nargs="?",
+                   help="New filename stem (without .md) — required without --from-git-renames")
+    p.add_argument("notes_root", nargs="?",
+                   help="Notes root directory to scan (default: cwd)")
+
     return parser
 
 # ---------------------------------------------------------------------------
@@ -271,6 +305,8 @@ DISPATCH = {
     "enrich-research-doc":      url_enrichment.cmd_enrich_research_doc,
     "check-dead-links":         url_enrichment.cmd_check_dead_links,
     "archive-url":              url_enrichment.cmd_archive_url,
+    "enrich-links":             url_enrichment.cmd_enrich_links,
+    "fix-links":                link_repair.cmd_fix_links,
 }
 
 def cmd_list_commands(_args=None):
