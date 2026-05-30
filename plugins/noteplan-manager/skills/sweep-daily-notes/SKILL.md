@@ -784,7 +784,16 @@ removed = set()
 added = set()
 
 for line in lines:
-    if line.startswith('--- ') or line.startswith('+++ ') or line.startswith('@@'):
+    # CRITICAL: handle both plain paths (+++ b/path) and quoted paths (+++ "b/path")
+    # Git quotes paths containing non-ASCII characters (e.g. emoji filenames).
+    # Without this, current_file stays as the previous file, causing lines to be
+    # silently skipped under the wrong file filter (e.g. today_date filter).
+    if line.startswith('+++ '):
+        rest = line[4:].strip().strip('"')
+        if rest.startswith('b/'):
+            current_file = rest[2:]
+        continue
+    if line.startswith('--- ') or line.startswith('@@') or line.startswith('diff ') or line.startswith('index '):
         continue
     # Skip JSON/backup files — they track system state, not user content
     if current_file.endswith('.json') or 'Backup' in current_file:
@@ -1007,6 +1016,8 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Swept breadcrumbs in source | After sweeping a daily note, append a markdown table (`| Swept | Section | Summary | Destination |`) at the end of the source file so the user can trace where content went. If a breadcrumb table already exists (note swept before), append new rows to it — do not create a second table. `is_allowed_new` allows `^\| ` (table rows). |
 | Search before asking | Before presenting a routing question for an uncertain section, use WebSearch to identify unknown URLs, names, or topics. If the search gives a confident answer, route directly. If ambiguous, include findings in the routing question. After the user decides, update the destination's `description:` frontmatter to capture the clarification for future sweeps. |
 | Integrity check — normalize both sides | The `removed` and `added` sets in the Phase 7 integrity check must both be normalized (strip trailing `>YYYY-MM-DD` tags and `#hashtags`) before comparison. Date-forwarding during sweeps (e.g. `>2026-03-16` → `>2026-03-20`) should not cause false "content loss" failures. |
+| Integrity check — quoted diff paths | Git quotes paths containing non-ASCII characters (emoji filenames). The `+++ ` line may be `+++ "b/path"` instead of `+++ b/path`. Always handle both forms when tracking `current_file` in the diff parser. |
+| Verbatim moves — read from source | When executing content moves via Python, always read lines directly from the source file rather than hardcoding them as strings. Hardcoded strings silently lose `\xa0` non-breaking spaces and other non-standard whitespace that NotePlan embeds in rich text exports. |
 | NotePlan date format is `>YYYY-MM-DD` | Date scheduling tags MUST use hyphens (`>2026-03-20`), never compact (`>20260320`). Tags without hyphens are silently ignored by NotePlan. Step 6f runs a repair pass after each day to fix any broken tags in touched files. |
 | Raw links are routing signals | Inspect URL domains during classification. ServiceNow instance/docs links route to matching work plans. Learning/reference URLs route to `📋 Lists/References[...]` when standalone. Standalone raw links are `❓ Uncertain` — present with domain context. |
 
