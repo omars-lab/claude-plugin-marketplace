@@ -762,3 +762,60 @@ def test_js16_new_file_frontmatter_not_anomaly(playwright, http_server):
     assert "rb-anomaly" not in badge_class, (
         f"B-14: new-file frontmatter should NOT be classified as anomaly. Badge: {badge_class}"
     )
+
+
+# ---------------------------------------------------------------------------
+# JS-17  B-13: cross-row anomaly — sibling row claims dest additions
+# ---------------------------------------------------------------------------
+
+def test_js17_cross_row_anomaly_cleared_by_sibling(playwright, http_server):
+    """JS-17 (B-13): When two rows share the same dest, and row B has no source removed
+    lines but the dest's additions are all claimed by row A's removed norms, row B must
+    be classified as 'empty', NOT 'anomaly'."""
+    base_url, serve_dir = http_server
+
+    shared_task = "- [ ] shared content that row A moved"
+
+    narrative = [
+        {"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+         "section": "Work", "summary": "row A moves content",
+         "destination": "[[Calendar/20260421]]"},
+        {"date": "2026-04-14", "source_file": "Calendar/20260414.md",
+         "section": "NonExistentSection", "summary": "row B — no source match",
+         "destination": "[[Calendar/20260421]]"},
+    ]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": ["## Work", shared_task], "added": []},
+        {"path": "Calendar/20260414.md",
+         "removed": [], "added": []},
+        {"path": "Calendar/20260421.md",
+         "added": [f"{shared_task} >2026-04-24"], "removed": []},
+    ])
+    page_name = _write_page(serve_dir, "js17.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    badge_classes = page.eval_on_selector_all(
+        "tr[data-row-idx] .row-badge", "els => els.map(e => e.className)"
+    )
+    browser.close()
+
+    assert len(badge_classes) == 2, f"Expected 2 badge rows, got {len(badge_classes)}"
+    row_a_badge, row_b_badge = badge_classes[0], badge_classes[1]
+
+    assert "rb-move" in row_a_badge, (
+        f"Row A should be rb-move (source lines matched). Got: {row_a_badge}"
+    )
+    assert "rb-anomaly" not in row_b_badge, (
+        f"B-13: Row B's dest additions claimed by Row A — should NOT be anomaly. "
+        f"Got: {row_b_badge}"
+    )

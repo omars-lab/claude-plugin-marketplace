@@ -922,7 +922,27 @@ function classifyRow(idx) {{
   }}
   // B-14: if dest was newly created, its additions are portal boilerplate + swept content —
   // not anomalous. Classify as empty (nothing to verify from this row's source).
-  else if (total === 0 && addedLines.length > 0) type = (destFile && destFile.isNewFile) ? 'empty' : 'anomaly';
+  // B-13: filter addedLines by two layers of claimed norms:
+  //  1. Sibling rows' removed norms — lines attributed to another row pointing to the same dest
+  //  2. Global removed map — lines removed from ANY source file in this diff (section name may not match)
+  // A dest addition is a true anomaly only if it appears in neither layer.
+  else if (total === 0 && addedLines.length > 0) {{
+    if (destFile && destFile.isNewFile) {{
+      type = 'empty';
+    }} else {{
+      const siblingNorms = getDestSiblingNorms().get(destRawC) || new Set();
+      const globalMap = getGlobalRemovedMap();
+      const unclaimedAdded = addedLines.filter(l => {{
+        if (isNoiseLine(l)) return false;
+        const n = normLine(l);
+        return n.length > 2 && !siblingNorms.has(n) && !globalMap.has(n);
+      }});
+      type = unclaimedAdded.length > 0 ? 'anomaly' : 'empty';
+      if (unclaimedAdded.length === 0 && addedLines.length > 0) {{
+        console.debug('B-13: all additions claimed by diff sources → empty', {{ idx, destRawC }});
+      }}
+    }}
+  }}
   else if (movedCount === total) type = 'move';   // ALL source lines arrived
   else type = 'lost';                              // ANY source line missing → lost
 
@@ -1213,6 +1233,28 @@ function getGlobalRemovedMap() {{
     }}
   }}
   return _globalRemovedMap;
+}}
+
+// B-13: Sibling norms map — for each dest stem, the union of normLine(removed lines) from
+// ALL narrative rows pointing to that dest. Used to subtract cross-row additions from the
+// anomaly check: if an added line is already claimed by a sibling row's removed lines, it
+// is not a true anomaly for the current row.
+let _destSiblingNorms = null;
+function getDestSiblingNorms() {{
+  if (_destSiblingNorms) return _destSiblingNorms;
+  _destSiblingNorms = new Map();
+  for (const row of MODAL_ROWS) {{
+    const destStem = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
+    const sec = row.section.replace(/^#+\\s*/, '').trim();
+    const removed = extractSectionLines(row.source_file, sec, '-').lines;
+    if (!_destSiblingNorms.has(destStem)) _destSiblingNorms.set(destStem, new Set());
+    const norms = _destSiblingNorms.get(destStem);
+    for (const l of removed) {{
+      const n = normLine(l);
+      if (n.length > 2 && !isNoiseLine(l)) norms.add(n);
+    }}
+  }}
+  return _destSiblingNorms;
 }}
 
 // Walk dest file diff, grouping + lines by nearest preceding # header in context lines.
@@ -2572,6 +2614,33 @@ def cmd_sweep_review_audit(args):
                 return v
         return None
 
+    # B-13 layer 1: per-dest union of all sibling rows' removed norms.
+    def _build_sibling_norms() -> dict:
+        result: dict[str, set] = {}
+        for r in narrative:
+            d = re.sub(r'\[\[([^\]]+)\]\]', r'\1', r.get('destination', '')).strip()
+            d = re.sub(r'\.md$', '', d).strip()
+            sec = re.sub(r'^#+\s*', '', r.get('section', '')).strip()
+            src = (r.get('source_file') or '').split('/')[-1]
+            lines = _extract_section_lines(diff_text, src, sec, '-')
+            norms = {_norm_line(l) for l in lines if not _is_noise(l) and len(_norm_line(l)) > 2}
+            result.setdefault(d, set()).update(norms)
+        return result
+
+    # B-13 layer 2: global removed norms — all lines removed from ANY source file in diff.
+    # Catches lines that were swept under an unmatched section name (V-47 scope miss).
+    def _build_global_removed_norms() -> set:
+        norms: set = set()
+        for line in diff_text.split('\n'):
+            if line.startswith('-') and len(line) > 1:
+                n = _norm_line(line[1:])
+                if len(n) > 5:
+                    norms.add(n)
+        return norms
+
+    _sibling_norms = _build_sibling_norms()
+    _global_removed_norms = _build_global_removed_norms()
+
     def classify_row(row: dict) -> dict:
         src_file  = (row.get('source_file') or '').split('/')[-1]
         dest_raw  = re.sub(r'\[\[([^\]]+)\]\]', r'\1', row.get('destination', '')).strip()
@@ -2615,7 +2684,14 @@ def cmd_sweep_review_audit(args):
                 return {'type': 'empty', 'issues': issues + ['new_file'],
                         'moved': [], 'lost': [], 'new': []}
             dest_added = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
-            dest_content = [l for l in dest_added if not _is_noise(l) and len(_norm_line(l)) > 2]
+            # B-13: subtract additions claimed by sibling rows (layer 1) OR any diff source (layer 2)
+            sibling_norms = _sibling_norms.get(dest_raw, set())
+            dest_content = [
+                l for l in dest_added
+                if not _is_noise(l) and len(_norm_line(l)) > 2
+                and _norm_line(l) not in sibling_norms
+                and _norm_line(l) not in _global_removed_norms
+            ]
             return {'type': 'anomaly' if dest_content else 'empty', 'issues': issues,
                     'moved': [], 'lost': [], 'new': dest_content[:5]}
 
