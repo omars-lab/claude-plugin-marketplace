@@ -574,7 +574,10 @@ def test_js11_move_row_badge_and_modal(playwright, http_server):
 # ---------------------------------------------------------------------------
 
 def test_js12_mixed_row_badge_and_modal(playwright, http_server):
-    """JS-12: Some lines moved, some lost → compound badge →1 ✗1 (rb-lost), no sub-row."""
+    """JS-12 (rev for #97): Some lines moved, some lost → 2 sibling outcome rows
+    sharing data-row-idx=0; first is rb-move (→), second is rb-lost (✗).
+    Modal still aggregates both kinds under the breadcrumb idx.
+    """
     base_url, serve_dir = http_server
 
     moved_task = "- [ ] task that arrives"
@@ -596,29 +599,32 @@ def test_js12_mixed_row_badge_and_modal(playwright, http_server):
     page.goto(f"{base_url}/{page_name}")
     page.wait_for_selector(".nav-tbl")
 
+    # Open modal via the lost-row sibling — clicking either should open the
+    # same breadcrumb modal (shared idx=0).
     page.click(".view-btn")
     page.wait_for_selector("#modal-overlay.open")
 
-    badge_class = page.eval_on_selector(
-        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    sibling_kinds = page.evaluate(
+        "() => [...document.querySelectorAll(\"tr[data-row-idx='0']\")]"
+        "        .map(tr => tr.dataset.outcomeKind)"
     )
-    badge_text = page.eval_on_selector(
-        "tr[data-row-idx='0'] .row-badge", "el => el.textContent"
+    badge_classes = page.evaluate(
+        "() => [...document.querySelectorAll(\"tr[data-row-idx='0'] .row-badge\")]"
+        "        .map(b => b.className)"
     )
     modal_text = page.eval_on_selector("#modal-body", "el => el.textContent")
-    # Blocks model: no sub-row — the compound badge carries both counts
-    sub_row = page.query_selector("tr[data-mixed-lost-for='0']")
     browser.close()
 
-    # Compound badge: rb-lost class (Mixed collapsed into Lost), text shows →N ✗M
-    assert "rb-lost" in badge_class, (
-        f"Expected rb-lost badge on compound row (Mixed merged into Lost), got: {badge_class}"
+    assert sibling_kinds == ["move", "lost"], (
+        f"Expected 2 sibling rows kinds=[move, lost], got: {sibling_kinds!r}"
     )
-    assert "→" in badge_text and "✗" in badge_text, (
-        f"Expected compound →N ✗M badge text, got: {badge_text!r}"
+    assert any("rb-move" in c for c in badge_classes), (
+        f"Expected rb-move badge on move sibling, got classes: {badge_classes}"
     )
-    assert sub_row is None, "Expected no sub-row injection (blocks model replaces sub-row)"
-    # Modal should show the moved task
+    assert any("rb-lost" in c for c in badge_classes), (
+        f"Expected rb-lost badge on lost sibling, got classes: {badge_classes}"
+    )
+    # Modal still shows the moved task (rendered from PRE_CLASSIFICATION breadcrumb)
     assert "task that arrives" in modal_text, (
         f"Expected moved task in modal body, got: {modal_text!r}"
     )
@@ -1018,7 +1024,9 @@ def test_js19_source_empty_dest_has_additions_is_anomaly(playwright, http_server
 # ---------------------------------------------------------------------------
 
 def test_js20_compound_lost_row_filter_visibility(playwright, http_server):
-    """JS-20: Compound row (some moved, some lost) → data-row-type=lost, visible in Lost filter."""
+    """JS-20 (rev for #97): Compound row splits into 2 sibling rows (move + lost).
+    Filter ✗ Lost → only the lost sibling visible; → Move → only the move sibling.
+    """
     base_url, serve_dir = http_server
 
     moved_task = "- [ ] task that arrives"
@@ -1043,29 +1051,38 @@ def test_js20_compound_lost_row_filter_visibility(playwright, http_server):
     page.wait_for_selector("#modal-overlay.open")
     page.keyboard.press("Escape")
 
-    row_type = page.eval_on_selector(
-        "tr[data-row-idx='0']", "el => el.dataset.rowType"
+    row_types = page.evaluate(
+        "() => [...document.querySelectorAll(\"tr[data-row-idx='0']\")]"
+        "        .map(tr => tr.dataset.rowType)"
     )
 
-    # Filter by Lost — compound row must be visible
+    # Filter by Lost — only the lost sibling visible
     page.eval_on_selector("button[data-type='lost']", "el => el.click()")
-    visible_after_lost = page.eval_on_selector(
-        "tr[data-row-idx='0']", "el => el.style.display !== 'none'"
+    visible_kinds_lost = page.evaluate(
+        "() => [...document.querySelectorAll(\"tr[data-row-idx='0']\")]"
+        "        .filter(tr => tr.style.display !== 'none')"
+        "        .map(tr => tr.dataset.outcomeKind)"
     )
 
-    # Filter by Move — compound row must be hidden
+    # Filter by Move — only the move sibling visible
     page.eval_on_selector("button[data-type='move']", "el => el.click()")
-    visible_after_move = page.eval_on_selector(
-        "tr[data-row-idx='0']", "el => el.style.display !== 'none'"
+    visible_kinds_move = page.evaluate(
+        "() => [...document.querySelectorAll(\"tr[data-row-idx='0']\")]"
+        "        .filter(tr => tr.style.display !== 'none')"
+        "        .map(tr => tr.dataset.outcomeKind)"
     )
 
     browser.close()
 
-    assert row_type == "lost", (
-        f"Compound row (some moved, some lost) must have data-row-type=lost, got: {row_type!r}"
+    assert "move" in row_types and "lost" in row_types, (
+        f"Compound breadcrumb must split into move + lost siblings, got: {row_types!r}"
     )
-    assert visible_after_lost, "Compound row must be visible when filtering by ✗ Lost"
-    assert not visible_after_move, "Compound row must be hidden when filtering by → Move"
+    assert visible_kinds_lost == ["lost"], (
+        f"Lost filter should show only lost sibling, got: {visible_kinds_lost!r}"
+    )
+    assert visible_kinds_move == ["move"], (
+        f"Move filter should show only move sibling, got: {visible_kinds_move!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1923,3 +1940,77 @@ def test_js34_cross_row_issues_from_python(playwright, http_server):
     assert not has_validate_cross, "validateCrossRowConsistency must be deleted from JS (A2)"
 
     browser.close()
+
+
+# ---------------------------------------------------------------------------
+# JS-35  #97 row split — N <tr> per breadcrumb, one per outcome
+# ---------------------------------------------------------------------------
+
+def test_js35_row_split_one_tr_per_outcome(playwright, http_server):
+    """JS-35: a breadcrumb with multiple outcomes (move + went-to + lost) emits
+    one <tr> per outcome, all sharing the same data-row-idx. Each row carries
+    its own kind-specific badge and dest cell.
+    """
+    base_url, serve_dir = http_server
+
+    moved   = "- [ ] task that lands at the breadcrumb dest"
+    wt      = "- [ ] task that ends up at a different file via went-to"
+    lost    = "- [ ] task that has nowhere on this run"
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Mixed", "summary": "mixed outcomes",
+                  "destination": "[[Plans/Breadcrumb]]"}]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": ["## Mixed", moved, wt, lost], "added": []},
+        {"path": "Plans/Breadcrumb.md", "removed": [], "added": [moved]},
+        {"path": "Plans/Elsewhere.md",  "removed": [], "added": [wt]},
+    ])
+    page_name = _write_page(serve_dir, "js35.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    # Get all sibling kinds for idx=0
+    sibling_kinds = page.evaluate(
+        "() => [...document.querySelectorAll(\"tr[data-row-idx='0']\")]"
+        "        .map(tr => tr.dataset.outcomeKind)"
+    )
+    # Confirm sibling rows are tagged outcome-rendered (not aggregate)
+    all_outcome_rendered = page.evaluate(
+        "() => [...document.querySelectorAll(\"tr[data-row-idx='0']\")]"
+        "        .every(tr => tr.dataset.outcomeRendered === 'true')"
+    )
+    # The first sibling owns the section toggle button; later ones don't
+    first_has_toggle = page.evaluate(
+        "() => {"
+        "  const trs = [...document.querySelectorAll(\"tr[data-row-idx='0']\")];"
+        "  if (!trs.length) return false;"
+        "  return !!trs[0].querySelector('.sec-toggle');"
+        "}"
+    )
+    # Modal opens via any sibling (clicking the lost row's view button still
+    # opens the breadcrumb modal at idx=0)
+    page.evaluate(
+        "() => document.querySelectorAll(\"tr[data-row-idx='0'] .view-btn\")[0].click()"
+    )
+    page.wait_for_selector("#modal-overlay.open")
+    modal_text = page.eval_on_selector("#modal-body", "el => el.textContent")
+    browser.close()
+
+    assert sorted(sibling_kinds) == ["lost", "move", "went-to"], (
+        f"Expected 3 sibling rows kinds=[move, went-to, lost], got: {sibling_kinds!r}"
+    )
+    assert all_outcome_rendered, (
+        "Every sibling tr must be tagged data-outcome-rendered=true so "
+        "updateRowBadge() doesn't overwrite the per-outcome badge."
+    )
+    assert first_has_toggle, (
+        "First sibling must own the section toggle button (subsequent siblings "
+        "share the breadcrumb's expanded items via shared idx)."
+    )
+    # Modal aggregates all outcomes — both moved and lost lines surface
+    assert "lands at the breadcrumb" in modal_text, (
+        f"Modal must show moved line: {modal_text!r}"
+    )

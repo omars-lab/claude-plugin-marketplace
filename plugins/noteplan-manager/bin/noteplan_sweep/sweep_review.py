@@ -618,8 +618,14 @@ function xcallbackUrl(dest) {{
 
 // ── Section diff modal ─────────────────────────────────────────────────────
 // ── Expandable section rows ────────────────────────────────────────────────
-function toggleSectionItems(rowIdx, btn) {{
-  const existing = document.querySelectorAll(`tr.item-row[data-parent="${{rowIdx}}"]`);
+// rowIdx       — breadcrumb idx (PRE_CLASSIFICATION lookup)
+// btn          — the toggle button DOM element
+// outcomeIdx   — optional: when set, expand only that outcome's lines (per-row
+//                view from #97). Without it, expand the full breadcrumb (legacy
+//                non-split tables and old snapshots).
+function toggleSectionItems(rowIdx, btn, outcomeIdx) {{
+  const parentKey = (outcomeIdx == null) ? String(rowIdx) : `${{rowIdx}}-${{outcomeIdx}}`;
+  const existing = document.querySelectorAll(`tr.item-row[data-parent="${{parentKey}}"]`);
   if (existing.length) {{
     existing.forEach(r => r.remove());
     btn.textContent = '▶';
@@ -632,14 +638,24 @@ function toggleSectionItems(rowIdx, btn) {{
   // classified at compile time as 'move' / 'went-to' / 'absent' — JS only renders.
   const _pyc = (PRE_CLASSIFICATION || []).find(pc => pc.idx === rowIdx);
   const _lineStatuses = _pyc?.line_statuses || {{}};
-  const allSrcLines = _pyc ? [
-    ...(_pyc.moved_lines      || []),
-    ...(_pyc.truly_lost_lines || []),
-    ...Object.values(_pyc.went_to_details || {{}}).flat(),
-  ].filter(l => l.trim() && !isNoiseLine(l)) : [];
+  // Per-outcome expand (#97): show only the lines for the specific outcome
+  // owning this toggle button. Falls back to full breadcrumb aggregation when
+  // outcomeIdx is unset (legacy non-split rendering).
+  let allSrcLines;
+  if (_pyc && outcomeIdx != null && _pyc.outcomes && _pyc.outcomes[outcomeIdx]) {{
+    allSrcLines = (_pyc.outcomes[outcomeIdx].lines || [])
+      .filter(l => l.trim() && !isNoiseLine(l));
+  }} else {{
+    allSrcLines = _pyc ? [
+      ...(_pyc.moved_lines      || []),
+      ...(_pyc.truly_lost_lines || []),
+      ...Object.values(_pyc.went_to_details || {{}}).flat(),
+    ].filter(l => l.trim() && !isNoiseLine(l)) : [];
+  }}
   if (!allSrcLines.length) {{ btn.textContent = '○'; return; }}
   btn.textContent = '▼';
-  const parentRow = document.querySelector(`tr[data-row-idx="${{rowIdx}}"]`);
+  // Anchor expanded items right after the row that owns this toggle button.
+  const parentRow = btn.closest('tr') || document.querySelector(`tr[data-row-idx="${{rowIdx}}"]`);
   if (!parentRow) return;
   let insertAfter = parentRow.nextSibling?.dataset?.mixedLostFor === String(rowIdx)
     ? parentRow.nextSibling : parentRow;
@@ -655,7 +671,7 @@ function toggleSectionItems(rowIdx, btn) {{
     const color = status === 'move' ? '' : status === 'went-to' ? 'color:#58a6ff;opacity:0.8;' : 'color:#f85149;opacity:0.8;';
     const tr = document.createElement('tr');
     tr.className = 'item-row';
-    tr.dataset.parent = rowIdx;
+    tr.dataset.parent = parentKey;
     tr.innerHTML = `<td class="sec-toggle" style="color:#30363d;text-align:right">↳</td><td></td><td class="item-text" colspan="3" style="${{color}}">${{badge}}${{esc(clean)}}</td><td></td><td></td>`;
     insertAfter.insertAdjacentElement('afterend', tr);
     insertAfter = tr;
@@ -708,6 +724,9 @@ const _badgeTitles   = {{
 function updateRowBadge(idx, classification) {{
   const tr = document.querySelector(`tr[data-row-idx="${{idx}}"]`);
   if (!tr) return;
+  // #97 — per-outcome rows render their badges at compile time. Skip aggregate
+  // updates so we don't overwrite per-row truth.
+  if (tr.dataset.outcomeRendered === 'true') return;
   const badge = tr.querySelector('.row-badge');
   if (!badge) return;
   classification = classification || _rowClassifications.get(idx);
@@ -1137,38 +1156,95 @@ function renderNarrative() {{
         }}
         lastSrcStem = srcStem;
       }}
-      // Per-outcome dest display: lost rows show "⌀ no destination", went-to rows
-      // show the actual stem they reached, mixed rows show all destinations.
+      // #97 — per-outcome row split. Each entry in pyc.outcomes becomes its own
+      // <tr> sharing the breadcrumb's modal idx via data-row-idx; siblings are
+      // visually grouped under the breadcrumb's section label.
       const _pyc = (PRE_CLASSIFICATION || []).find(pc => pc.idx === idx);
-      const _outcomes = (_pyc && _pyc.outcomes) || [];
-      let destCellHtml;
-      if (_outcomes.length === 0) {{
-        destCellHtml = `<a class="dest-link" href="${{xcallbackUrl(r.destination)}}">${{esc(normDest(r.destination))}}</a>`;
-      }} else if (_outcomes.length === 1 && _outcomes[0].kind === 'lost') {{
-        destCellHtml = `<span style="color:#f85149" title="Lost lines have no destination — they were not added anywhere in the diff">⌀ no destination</span>`;
-      }} else if (_outcomes.length === 1 && _outcomes[0].kind === 'went-to') {{
-        const stem = _outcomes[0].dest || normDest(r.destination);
-        destCellHtml = `<a class="dest-link" href="${{xcallbackUrl('[[' + stem + ']]')}}" style="color:#58a6ff" title="Lines arrived at ${{esc(stem)}} — not the breadcrumb's claimed destination ${{esc(normDest(r.destination))}}">⇢ ${{esc(stem)}}</a>`;
-      }} else {{
-        // Move (or anomaly/empty) — show breadcrumb dest. If multiple outcomes (e.g.
-        // move + lost or move + went-to), append small chips for the others.
-        const primary = `<a class="dest-link" href="${{xcallbackUrl(r.destination)}}">${{esc(normDest(r.destination))}}</a>`;
-        const sideChips = _outcomes.filter(o => o.kind !== 'move' && o.kind !== 'anomaly' && o.kind !== 'empty').map(o => {{
-          if (o.kind === 'lost')   return `<span style="color:#f85149;font-size:9px;margin-left:4px" title="${{o.lines.length}} line(s) absent">⌀ ${{o.lines.length}}</span>`;
-          if (o.kind === 'went-to') return `<span style="color:#58a6ff;font-size:9px;margin-left:4px" title="${{o.lines.length}} line(s) at ${{esc(o.dest)}}">⇢ ${{esc(o.dest)}}</span>`;
-          return '';
-        }}).join('');
-        destCellHtml = primary + sideChips;
-      }}
-      return sepRow + `<tr data-row-idx="${{idx}}">
-        <td style="padding:3px 6px;text-align:center"><span class="row-badge rb-pending" title="Not yet classified">·</span></td>
-        <td class="count-col" style="width:48px;text-align:center;font-size:10px;color:#484f58;font-family:monospace">—</td>
-        <td class="section-col"><button class="sec-toggle" onclick="toggleSectionItems(${{idx}},this)" title="Expand items">▶</button>${{esc(r.section)}}</td>
-        <td class="summary-col">${{esc(r.summary)}}</td>
-        <td class="src-col"><a class="dest-link" href="${{srcUrl}}" title="${{esc(r.source_file)}}">${{srcStem}}</a></td>
-        <td class="dest-col" title="${{esc(r.destination)}}">${{destCellHtml}}</td>
-        <td style="padding:3px 6px;text-align:center"><button class="view-btn" onclick="showSectionModal(${{idx}})">⌕</button></td>
-      </tr>`;
+      // Fallback: legacy fixtures (and old snapshots) lack `outcomes`. Synthesize
+      // them from legacy fields so the row split renders correctly without a
+      // recompile from current Python.
+      const _synthOutcomes = (pc) => {{
+        if (!pc) return [];
+        const out = [];
+        if ((pc.moved_lines || []).length) out.push({{ kind: 'move', dest: r.destination, dest_stem: null, lines: pc.moved_lines }});
+        const wt = pc.went_to_details || {{}};
+        for (const [stem, lines] of Object.entries(wt)) {{
+          if ((lines || []).length) out.push({{ kind: 'went-to', dest: stem, dest_stem: stem.toLowerCase(), lines }});
+        }}
+        if ((pc.truly_lost_lines || []).length) out.push({{ kind: 'lost', dest: null, dest_stem: null, lines: pc.truly_lost_lines }});
+        if (pc.type === 'anomaly' && (pc.dest_lines || []).length) {{
+          out.push({{ kind: 'anomaly', dest: r.destination, dest_stem: null, lines: pc.dest_lines }});
+        }}
+        return out;
+      }};
+      const _outcomes = (_pyc && _pyc.outcomes && _pyc.outcomes.length)
+        ? _pyc.outcomes
+        : (_synthOutcomes(_pyc).length
+            ? _synthOutcomes(_pyc)
+            : [{{ kind: 'empty', dest: r.destination, dest_stem: null, lines: [] }}]);
+      const _badgeStem = {{ move: 'move', 'went-to': 'went-to', lost: 'lost', anomaly: 'untraced', empty: 'empty' }};
+      const _badgeGlyph = {{ move: '→', 'went-to': '⇢', lost: '✗', anomaly: '?', empty: '·' }};
+      const _countColor = {{ move: '#3fb950', 'went-to': '#58a6ff', lost: '#f85149', anomaly: '#e3b341', empty: '#484f58' }};
+      const _kindTitle = {{
+        move:      'Move — lines confirmed at the breadcrumb destination',
+        'went-to': 'Went to — lines found at a different file than the breadcrumb claimed',
+        lost:      'Absent — lines not found in any diff addition',
+        anomaly:   'Untraced — destination has additions with no traceable source',
+        empty:     'Empty — nothing to verify for this outcome'
+      }};
+      // Render N <tr> rows — one per outcome. First row owns the section/source
+      // columns; subsequent siblings show "↳" prefix and reduced visual weight.
+      const trs = _outcomes.map((o, oi) => {{
+        const isFirst = oi === 0;
+        const kind    = o.kind || 'empty';
+        const lineN   = (o.lines || []).length;
+        const badgeCls = _badgeStem[kind] || kind;
+        const glyph   = _badgeGlyph[kind] || '·';
+        // Per-outcome dest cell.
+        let destCellHtml;
+        if (kind === 'lost') {{
+          destCellHtml = `<span style="color:#f85149" title="Lost lines have no destination">⌀ no destination</span>`;
+        }} else if (kind === 'went-to') {{
+          const stem = o.dest || normDest(r.destination);
+          destCellHtml = `<a class="dest-link" href="${{xcallbackUrl('[[' + stem + ']]')}}" style="color:#58a6ff" title="Lines arrived at ${{esc(stem)}} (breadcrumb claimed ${{esc(normDest(r.destination))}})">⇢ ${{esc(stem)}}</a>`;
+        }} else {{
+          // move / anomaly / empty — show breadcrumb dest
+          destCellHtml = `<a class="dest-link" href="${{xcallbackUrl(r.destination)}}">${{esc(normDest(r.destination))}}</a>`;
+        }}
+        const countCellTxt = (kind === 'empty') ? '·' : (lineN || 0);
+        const countTitle   = (kind === 'empty')
+          ? 'Empty outcome'
+          : `${{lineN}} ${{kind}} line${{lineN === 1 ? '' : 's'}}`;
+        // Section/source columns: first sibling shows full info; later siblings
+        // get a "↳" sibling marker and inherit the breadcrumb's data via title.
+        // Each sibling gets its OWN toggle button — expansion is per-outcome so
+        // the line count cell and the expand list always agree.
+        const toggleHtml = (lineN > 0)
+          ? `<button class="sec-toggle" onclick="toggleSectionItems(${{idx}},this,${{oi}})" title="Expand items for this outcome">▶</button>`
+          : '';
+        const sectionCell = isFirst
+          ? `<td class="section-col">${{toggleHtml}}${{esc(r.section)}}</td>`
+          : `<td class="section-col" style="padding-left:24px;color:#7d8590;font-size:11px" title="Sibling outcome of: ${{esc(r.section)}}">${{toggleHtml}}↳ ${{esc(r.section)}}</td>`;
+        const summaryCell = isFirst
+          ? `<td class="summary-col">${{esc(r.summary)}}</td>`
+          : `<td class="summary-col" style="color:#484f58;font-size:11px;font-style:italic">${{esc(r.summary || '')}}</td>`;
+        const srcCell = isFirst
+          ? `<td class="src-col"><a class="dest-link" href="${{srcUrl}}" title="${{esc(r.source_file)}}">${{srcStem}}</a></td>`
+          : `<td class="src-col" style="opacity:0.4">${{srcStem}}</td>`;
+        // Sibling-row visual marker: subtle left border so a glance shows grouping.
+        const trStyle = isFirst ? '' : 'background:rgba(110,118,129,0.04);border-left:2px solid #30363d';
+        const dataAttrs = `data-row-idx="${{idx}}" data-row-type="${{kind}}" data-outcome-kind="${{kind}}" data-outcome-rendered="true" data-sibling="${{isFirst ? 'first' : 'true'}}"`;
+        return `<tr ${{dataAttrs}} style="${{trStyle}}">
+          <td style="padding:3px 6px;text-align:center"><span class="row-badge rb-${{badgeCls}}" title="${{_kindTitle[kind] || kind}}" onclick="event.stopPropagation();showSectionModal(${{idx}})" style="cursor:pointer">${{glyph}}</span></td>
+          <td class="count-col" style="width:48px;text-align:center;font-size:10px;color:${{_countColor[kind] || '#484f58'}};font-family:monospace" title="${{countTitle}}">${{countCellTxt}}</td>
+          ${{sectionCell}}
+          ${{summaryCell}}
+          ${{srcCell}}
+          <td class="dest-col" title="${{esc(r.destination)}}">${{destCellHtml}}</td>
+          <td style="padding:3px 6px;text-align:center"><button class="view-btn" onclick="showSectionModal(${{idx}})">⌕</button></td>
+        </tr>`;
+      }}).join('');
+      return sepRow + trs;
     }}).join('');
   }}
 
