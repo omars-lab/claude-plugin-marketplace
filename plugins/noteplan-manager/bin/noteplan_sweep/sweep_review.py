@@ -1618,11 +1618,13 @@ function showSectionModal(idx, focusLost = false) {{
   if (!row) return;
   // Auto-mode flags: lost → focusLost single panel; anomaly → focusAnomaly single panel
   let focusAnomaly = false;
+  let focusWentTo  = false;
   if (!focusLost) {{
     const cached = _rowClassifications.get(idx);
     if (cached && cached.type === 'lost' && (cached.blocks || []).length <= 1) focusLost = true;
     if (cached && cached.type === 'empty') focusLost = true;
     if (cached && cached.type === 'anomaly') focusAnomaly = true;
+    if (cached && cached.type === 'went-to') focusWentTo = true;
   }}
 
   const sectionName = row.section.replace(/^#+\\s*/, '').trim();
@@ -1862,7 +1864,16 @@ function showSectionModal(idx, focusLost = false) {{
     const movedHeader = isMixed && !focusLost
       ? `<div style="color:#3fb950;font-size:11px;font-weight:600;padding:2px 0 6px">✓ Moved (${{moved.length}} line${{moved.length!==1?'s':''}}) — arrived at destination</div>`
       : '';
-    if (focusLost) {{
+    if (focusWentTo) {{
+      // Went-to mode: show source lines directly + ⇢ banner. srcGrouped is empty here because
+      // no lines moved to the breadcrumb dest, so renderSrcGrouped finds no groups to display.
+      const wentToSrcHtml = removedLines.map(l => {{
+        const lno = srcLineNos?.get(l);
+        const lnoHtml = lno ? `<span class="line-no">${{lno}}</span>` : '';
+        return `<div class="diff-line removed">${{lnoHtml}}${{esc(l)}}</div>`;
+      }}).join('') || '<div class="modal-empty" style="color:#6e7681">No source lines in diff for this section.</div>';
+      srcBody = `${{srcTabBar}}<div class="diff-lines">${{misrouteHtml}}${{wentToSrcHtml}}</div>`;
+    }} else if (focusLost) {{
       const cached = _rowClassifications.get(idx);
       if (cached?.type === 'empty') {{
         // Empty row — explain why, no diff lines to show
@@ -1966,8 +1977,8 @@ function showSectionModal(idx, focusLost = false) {{
   }}
 
   let destPanel;
-  if (focusLost) {{
-    destPanel = '';  // No destination panel for lost rows — full width for source
+  if (focusLost || focusWentTo) {{
+    destPanel = '';  // No destination panel for lost/went-to rows — full width for source
   }} else {{
     destPanel = `<div>
       <div class="modal-panel-hdr">${{destHdr}}</div>
@@ -1976,17 +1987,19 @@ function showSectionModal(idx, focusLost = false) {{
     </div>`;
   }}
 
-  const titleSuffix = focusLost ? ' — ✗ Absent lines' : ' → ' + normDest(row.destination);
+  const titleSuffix = focusLost ? ' — ✗ Absent lines'
+    : focusWentTo ? ' ⇢ Arrived elsewhere'
+    : ' → ' + normDest(row.destination);
   document.getElementById('modal-title').textContent = sectionName + titleSuffix;
   // V-47c removed with V-47a (#82): no longer scoping to section, so no header to show
   const scopeEl = document.getElementById('modal-scope');
   if (scopeEl) scopeEl.style.display = 'none';
   const modalBodyEl = document.getElementById('modal-body');
-  // Lost mode: single-column full-width; normal: two-column side-by-side
-  modalBodyEl.style.gridTemplateColumns = focusLost ? '1fr' : '1fr 1fr';
+  // Lost/went-to mode: single-column full-width; normal: two-column side-by-side
+  modalBodyEl.style.gridTemplateColumns = (focusLost || focusWentTo) ? '1fr' : '1fr 1fr';
   modalBodyEl.innerHTML = srcPanel + destPanel;
   // V-P6: src and dest panels should have the same number of paired lines
-  if (!focusLost && !focusAnomaly) {{
+  if (!focusLost && !focusWentTo && !focusAnomaly) {{
     const srcPaired  = modalBodyEl.querySelectorAll('#modal-src-lines [data-pair-id]').length;
     const destPaired = modalBodyEl.querySelectorAll('#modal-dest-lines [data-pair-id]').length;
     if (srcPaired !== destPaired) console.warn('V-P6: panel pair count mismatch', {{idx, srcPaired, destPaired}});
