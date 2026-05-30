@@ -68,6 +68,9 @@ AskUserQuestion({
 | Flatten Future/Present/Past folders | "flatten plans", "one-time migration" |
 | Reorganize plan file content | "organize plan", "clean up sections" |
 | Generate performance review / promo narrative | "brag sheet summary", "impact narrative", "perf review" |
+| Move plan to a different domain (org) | "switch org", "move to work", "move to personal", `noteplan-sweep switch-plan-org` |
+
+**switch-plan-org cascade:** renames the file, updates frontmatter namespace + plantype, rewrites the H1 heading, moves the file to the target domain's workstream directory, and rewrites all `[[wikilinks]]` across the vault. Supports `--dry-run`.
 
 ---
 
@@ -173,10 +176,10 @@ Global facet chips: Status (single-select), Project (multi-toggle), Plantype (mu
 
 | Tab | Contents |
 |---|---|
-| **Commit Heatmap** | SVG 52×7 grid (GitHub-style), colored by commit count, domain toggle (All / Work / Personal / EarlBear), 4 summary tiles |
+| **Commit Heatmap** | SVG 52×7 grid (GitHub-style), colored by commit count; task completion sparkline (Chart.js, last 90 days); 5 summary tiles |
 | **Work Logs** | `## Work Log` table rows from plan files, grouped by ISO week |
 | **Shipped Plans** | Vertical timeline of plans with `completed:` + ✅ frontmatter |
-| **Repos** | Repo cards with domain badge, commit count, AI-assisted % bar |
+| **Repos** | Repo cards with domain badge, commit count, AI-assisted % bar; click to expand 90-day mini heatmap + last 5 commits |
 
 `contributions-generate` scans `~/workspace/` + OneDrive workspace repos (365 days of git history), extracts work logs from plan files, and writes `contributions.json` + `contributions.html`.
 
@@ -200,6 +203,12 @@ Knowledge graph built from all Claude sessions, NotePlan plans, repos, and skill
 Edge types: `TOUCHES` (session→plan), `CLASSIFIED_AS` (session→use_case), `IN_REPO` (session→repo), `DEFINED_IN` (skill→repo), `BUILT` (session/plan→app).
 
 `graph-embed` stores L2-normalized Float32 vectors in binary format (`graph.embeddings.bin` + `.keys`, compatible with icon-kit). `graph-query-vec` does cosine similarity search. The D3 pane in `ai-usage.html` auto-loads `graph.json` when present.
+
+---
+
+### Shared Org Switcher
+
+All 4 dashboards (`insights.html`, `plans.html`, `contributions.html`, `ai-usage.html`) share a hub nav bar with an **org switcher** dropdown (🗂 All / 🏢 ServiceNow / 🏡 Personal / 👥 EarlBear). Selection persists in `localStorage('noteplan_org')` and filters all panes — plans, repos, heatmap, graph — simultaneously. Powered by `nav.py` (`hub_nav_html()`, `ORG_CSS`, `ORG_JS`).
 
 ---
 
@@ -306,7 +315,7 @@ Snapshots are immutable. Comments download as `.jsonl` sidecars via the "Save Co
 
 ## Part 3: CLI Reference
 
-`noteplan-sweep` — 52 commands across 12 groups. Key groups:
+`noteplan-sweep` — 62 commands across 13 groups. Key groups:
 
 | Group | Commands |
 |---|---|
@@ -314,7 +323,7 @@ Snapshots are immutable. Comments download as `.jsonl` sidecars via the "Save Co
 | Source Management | `clear-source`, `add-breadcrumb` |
 | Validation | `check-source-clean`, `check-wikilinks`, `check-backlinks`, `check-frontmatter`, `fix-date-tags`, … |
 | Backlinks | `update-backlinks`, `check-emoji-mappings`, `sync-emoji-mappings`, `check-note-map`, `sync-note-map`, … |
-| Discovery | `list-workstreams`, `list-plans`, `clone-plan`, `clone-template`, … |
+| Discovery | `list-workstreams`, `list-plans`, `clone-plan`, `clone-template`, **`switch-plan-org`** |
 | URL Enrichment | `enrich-urls`, `enrich-links`, `fetch-title`, `check-dead-links`, `archive-url`, … |
 | Dashboard | `dashboard-generate`, `dashboard-open` |
 | Conversation Mining | `conversation-mine`, `mine-commit` |
@@ -325,7 +334,7 @@ Snapshots are immutable. Comments download as `.jsonl` sidecars via the "Save Co
 | Sweep Review | `sweep-commit`, `sweep-review-generate`, `sweep-review-compile`, `sweep-review-squash`, `sweep-review-list`, `sweep-review-open` |
 
 ```bash
-noteplan-sweep list-commands   # full listing (61 commands)
+noteplan-sweep list-commands   # full listing (62 commands)
 noteplan-sweep <command> --help
 ```
 
@@ -361,6 +370,9 @@ noteplan-sweep --version
 
 **"Review what changed in my last sweep"**
 → `noteplan-sweep sweep-review-open`
+
+**"Move a plan from personal to work (or vice versa)"**
+→ `noteplan-sweep switch-plan-org "🏡260421👨🏻‍💻 My Plan" --to work` (or `--to personal` / `--to earlbear`; use `--dry-run` to preview)
 
 **"My filenames / emojis / frontmatter are broken"**
 → `/noteplan-manager:manage-filenames` / `manage-emojis` / `manage-frontmatter`
