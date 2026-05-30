@@ -279,6 +279,59 @@ async function note() {
   await createAndOpen(filename, folder, noteBody(filename, NAMESPACE[domain]))
 }
 
+// ─── createNote (programmatic entry point for other plugins) ─────────────────
+//
+// Called via: DataStore.invokePluginCommandByName('oeid.noteplan-quicknote', 'createNote', [jsonParams])
+//
+// params JSON shape:
+//   { domain, type, title, workstream?, status?, daysAgo? }
+//   domain:    'work' | 'personal' | 'coffee' | 'earlbear'
+//   type:      'plan' | 'meeting' | 'note'
+//   title:     string
+//   workstream: emoji+name string, e.g. '🧑🏻‍💻 Development' (plans only)
+//   status:    emoji+label string, e.g. '🟢 Started' (plans only, default '🚦 Ready')
+//   daysAgo:   number (meetings only, default 0)
+//
+async function createNote(jsonParams) {
+  let params
+  try {
+    params = typeof jsonParams === 'string' ? JSON.parse(jsonParams) : jsonParams
+  } catch (e) {
+    await CommandBar.prompt('createNote error', `Invalid params: ${jsonParams}`, ['OK'])
+    return
+  }
+
+  const { domain, type, title, workstream = '', status = '🚦 Ready', daysAgo = 0 } = params
+  if (!domain || !type || !title) return
+
+  const wsEmoji = workstream ? workstream.split(' ')[0] : ''
+  const statusEmoji = status.split(' ')[0]
+  const date = formatDate(daysAgo, 'yymmdd')
+  const domainEmoji = DOMAIN_EMOJIS[domain]
+
+  let filename, folder, content
+
+  if (type === 'plan') {
+    filename = `${domainEmoji}${date}${wsEmoji} ${title}`
+    folder = PLAN_ROOTS[domain] + (workstream ? '/' + workstream : '')
+    if (domain === 'work') content = planBody(filename, workPlanFrontmatter(wsEmoji, statusEmoji, daysAgo), daysAgo)
+    else if (domain === 'personal') content = planBody(filename, personalPlanFrontmatter(wsEmoji, statusEmoji, daysAgo), daysAgo)
+    else content = planBody(filename, domainPlanFrontmatter(NAMESPACE[domain], wsEmoji, statusEmoji, daysAgo), daysAgo)
+  } else if (type === 'meeting') {
+    filename = `${domainEmoji} ${date} ${title}`
+    folder = MEETING_FOLDERS[domain]
+    const fm = meetingFrontmatter(NAMESPACE[domain], daysAgo)
+    content = meetingBody(filename, fm, daysAgo, domain === 'work')
+  } else if (type === 'note') {
+    filename = `${domainEmoji}📝 ${title}`
+    folder = NOTE_FOLDERS[domain]
+    content = noteBody(filename, NAMESPACE[domain])
+  }
+
+  if (!filename || !folder || !content) return
+  await createAndOpen(filename, folder, content)
+}
+
 // Allow pure-function testing in Node.js (module is undefined in NotePlan's JS context)
 if (typeof module !== 'undefined') {
   module.exports = {
@@ -297,5 +350,6 @@ if (typeof module !== 'undefined') {
     NOTE_FOLDERS,
     DOMAIN_EMOJIS,
     NAMESPACE,
+    createNote,
   }
 }

@@ -25,6 +25,12 @@
       "alias": ["note"],
       "description": "Create a freeform note — Work, Personal, or NaqshCoffee",
       "jsFunction": "note"
+    },
+    {
+      "name": "Create Note (API)",
+      "description": "Programmatic note creation for other plugins — pass JSON params",
+      "jsFunction": "createNote",
+      "hidden": true
     }
   ]
 }

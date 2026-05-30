@@ -167,6 +167,9 @@ install-noteplan-quicknote: ## Install oeid-noteplan-quicknote into NotePlan Plu
 	@echo "$(GREEN)✓ Installed to $(NOTEPLAN_PLUGINS_DIR)/oeid.noteplan-quicknote$(NC)"
 	@$(MAKE) --no-print-directory reload-noteplan
 
+test-noteplan-quicknote: ## Run oeid-noteplan-quicknote unit tests
+	@cd plugins/oeid-noteplan-quicknote && npm test
+
 reload-noteplan: ## Restart NotePlan so it picks up plugin changes (quit + relaunch)
 	@if pgrep -x NotePlan > /dev/null 2>&1; then \
 		osascript -e 'tell application "NotePlan" to quit' 2>/dev/null; \
