@@ -5,13 +5,31 @@ description: Validate and fix YAML frontmatter across all NotePlan note types us
 
 # Manage Frontmatter
 
-You are the frontmatter management skill for noteplan-manager. When invoked, read and follow the [fix-frontmatter/SKILL.md](fix-frontmatter/SKILL.md) workflow directly.
+You are the frontmatter management skill for noteplan-manager. When invoked, detect the scope and route to the appropriate operation.
 
-## What This Skill Does
+## Routing
 
-Validates and fixes frontmatter across all note types (plans, meetings, questions, ideas, thoughts) using Python tooling with a parse → fix → re-validate roundtrip.
+| Signal | Operation | CLI |
+|---|---|---|
+| Single file with `--` delimiters (broken) | Quick-fix delimiters only | `noteplan-sweep fix-frontmatter-delimiters <file>` |
+| "fix delimiters", "broken frontmatter", `--` in file | Quick-fix delimiters only | `noteplan-sweep fix-frontmatter-delimiters <file>` |
+| Bulk fix, all files, validate across notes | Full roundtrip workflow | [fix-frontmatter/SKILL.md](fix-frontmatter/SKILL.md) |
 
-Read [fix-frontmatter/SKILL.md](fix-frontmatter/SKILL.md) and follow its workflow.
+### Single-file quick-fix
+
+When the user points at one file with broken `--` delimiters (instead of `---`), run the CLI directly — no need to invoke the full sub-skill:
+
+```bash
+noteplan-sweep fix-frontmatter-delimiters "path/to/note.md"
+# Then verify:
+noteplan-sweep check-frontmatter "path/to/note.md"
+```
+
+Report the before/after delimiter change and whether `check-frontmatter` now passes.
+
+### Full workflow
+
+For bulk fixes or anything beyond delimiter repair, read [fix-frontmatter/SKILL.md](fix-frontmatter/SKILL.md) and follow its workflow.
 
 ## Task Management
 

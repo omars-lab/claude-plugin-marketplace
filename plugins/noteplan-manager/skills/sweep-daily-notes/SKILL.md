@@ -226,16 +226,18 @@ If the commit fails, **stop and report**. Confirm the tree is clean before conti
 - Process one daily note at a time during the sweep — discard after processing
 
 ```bash
-PLAN_ROOT="$NOTES_ROOT/<mode-plans-directory>"
+# Discover plan roots + workstream dirs dynamically — never hardcode paths
+noteplan-sweep list-workstreams --mode work      # → work PLAN_ROOT + workstream subdirs
+noteplan-sweep list-workstreams --mode personal  # → personal PLAN_ROOT + activity subdirs
+
 LOOKBACK_DAYS=60   # 60 for work, 90 for personal
 
-find "$PLAN_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} | sort
-
+# Then scan: find "$PLAN_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} | sort
 # Extract only frontmatter + H1 per plan
 head -15 "$plan_file"
 ```
 
-> **CLI shortcut**: `noteplan-sweep list-workstreams --mode work` (or `--mode personal`) discovers all workstream subdirectories and their emoji mappings dynamically, which can seed `PLAN_ROOT` discovery without needing to hardcode subdir names.
+`list-workstreams` output gives both the PLAN_ROOT and each `[emoji] Name` subdir — use this to build the plan index without hardcoding any directory names.
 
 For each plan file:
 1. Parse frontmatter between `---` delimiters
