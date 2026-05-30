@@ -11,6 +11,7 @@ Commands:
 
 import json
 import re
+import subprocess
 import sys
 from datetime import datetime, date
 from pathlib import Path
@@ -240,6 +241,10 @@ def build_work_board_html(
     brag: list, observations: list, gaps: list, superpowers: list,
     impact: list, ai_summary: dict | None,
     generated_at: str,
+    active_plan_count: int = 0,
+    last_brag_date: str = "",
+    ai_sessions_month: int = 0,
+    days_since_commit: int = -1,
 ) -> str:
     data_json = json.dumps({
         "plans": plans,
@@ -258,6 +263,10 @@ def build_work_board_html(
     plantypes = sorted({p["plantype"] for p in plans if p.get("plantype")})
     quarters = sorted({e["quarter"] for e in brag if e.get("quarter")}, reverse=True)
     obs_tags = sorted({t for e in observations for t in e.get("tags", [])})
+
+    # Hub tile display values
+    _brag_short = last_brag_date[5:] if len(last_brag_date) >= 10 else (last_brag_date or "—")
+    _days_label = f"{days_since_commit}d" if days_since_commit >= 0 else "—"
 
     project_chips = "".join(
         f'<span class="chip" data-facet="project" data-val="{p}" onclick="toggleChip(this)">{p}</span>'
@@ -370,9 +379,52 @@ def build_work_board_html(
   /* Gantt placeholder */
   .gantt-ph {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 40px; text-align: center; color: #484f58; }}
   .gantt-ph p {{ margin-top: 8px; font-size: 12px; }}
+
+  /* Hub nav */
+  #hub-nav {{ background: #010409; border-bottom: 1px solid #21262d; padding: 0 20px; }}
+  .hub-inner {{ display: flex; align-items: center; height: 44px; gap: 0; }}
+  .hub-brand {{ font-size: 14px; font-weight: 700; color: #e6edf3; white-space: nowrap; margin-right: 20px; flex-shrink: 0; }}
+  .hub-links {{ display: flex; height: 100%; }}
+  .hub-link {{ display: flex; align-items: center; padding: 0 14px; font-size: 12px; color: #8b949e; text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; transition: color 0.12s; }}
+  .hub-link:hover {{ color: #e6edf3; }}
+  .hub-link.active {{ color: #e6edf3; border-bottom-color: #58a6ff; cursor: default; }}
+  .hub-tiles {{ display: flex; gap: 6px; margin-left: auto; }}
+  .hub-tile {{ background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 3px 12px; text-align: center; min-width: 72px; }}
+  .hub-tile-num {{ font-size: 14px; font-weight: 700; color: #58a6ff; display: block; line-height: 1.5; }}
+  .hub-tile-lbl {{ font-size: 9px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.5px; display: block; }}
 </style>
 </head>
 <body>
+
+<div id="hub-nav">
+  <div class="hub-inner">
+    <span class="hub-brand">🗂 Insights Hub</span>
+    <div class="hub-links">
+      <span class="hub-link active">Insights</span>
+      <a class="hub-link" href="/plans" id="hl-plans">Plans</a>
+      <a class="hub-link" href="/contributions" id="hl-contributions">Contributions</a>
+      <a class="hub-link" href="/ai-usage" id="hl-ai-usage">AI Usage</a>
+    </div>
+    <div class="hub-tiles">
+      <div class="hub-tile">
+        <span class="hub-tile-num">{active_plan_count}</span>
+        <span class="hub-tile-lbl">active plans</span>
+      </div>
+      <div class="hub-tile">
+        <span class="hub-tile-num">{_brag_short}</span>
+        <span class="hub-tile-lbl">last brag</span>
+      </div>
+      <div class="hub-tile">
+        <span class="hub-tile-num">{ai_sessions_month}</span>
+        <span class="hub-tile-lbl">AI / 30d</span>
+      </div>
+      <div class="hub-tile">
+        <span class="hub-tile-num">{_days_label}</span>
+        <span class="hub-tile-lbl">since commit</span>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div id="topbar">
   <div id="topbar-row1">
@@ -717,7 +769,19 @@ function rerender() {{
   renderPlans(); renderBrag(); renderObs(); renderGaps(); renderImpact(); renderTasks(); renderAI();
 }}
 
-window.addEventListener('DOMContentLoaded', rerender);
+window.addEventListener('DOMContentLoaded', () => {{
+  // Disable nav links when not served via localhost
+  const SERVER_MODE = window.location.protocol === 'http:' && window.location.hostname === 'localhost';
+  if (!SERVER_MODE) {{
+    document.querySelectorAll('.hub-link[href]').forEach(el => {{
+      el.title = 'Run: noteplan-sweep serve --open';
+      el.removeAttribute('href');
+      el.style.opacity = '0.35';
+      el.style.cursor = 'default';
+    }});
+  }}
+  rerender();
+}});
 </script>
 </body>
 </html>"""
@@ -769,6 +833,22 @@ def cmd_work_board_generate(args):
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
 
+    # Hub summary metrics
+    active_plan_count = len([p for p in plans if p.get("status") == "active"])
+    last_brag_date = max((e.get("sweep_date", "") for e in brag), default="") if brag else ""
+    ai_sessions_month = int(ai_summary.get("last_30_days", 0)) if ai_summary else 0
+    days_since_commit = -1
+    try:
+        r = subprocess.run(
+            ["git", "log", "-1", "--format=%ad", "--date=short"],
+            cwd=root, capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            last_commit = datetime.fromisoformat(r.stdout.strip()).date()
+            days_since_commit = (date.today() - last_commit).days
+    except Exception:
+        pass
+
     if utils.DRY_RUN:
         utils.log(f"[dry-run] Would write dashboard/insights.html ({len(plans)} plans, {len(brag)} brag, {len(observations)} obs, {len(gaps)} gaps, {len(superpowers)} superpowers, {len(impact)} impact)")
         return
@@ -777,6 +857,10 @@ def cmd_work_board_generate(args):
         plans, tasks, ideas,
         brag, observations, gaps, superpowers, impact,
         ai_summary, generated_at,
+        active_plan_count=active_plan_count,
+        last_brag_date=last_brag_date,
+        ai_sessions_month=ai_sessions_month,
+        days_since_commit=days_since_commit,
     )
     out = dash_dir / "insights.html"
     out.write_text(html, encoding="utf-8")
