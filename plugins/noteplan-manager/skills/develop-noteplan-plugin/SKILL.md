@@ -400,6 +400,107 @@ make -C "$MARKETPLACE" live-test-noteplan-{slug}  # live (NotePlan must be runni
 
 ---
 
+## Community Plugin Patterns
+
+Sourced from `github.com/NotePlan/plugins` — patterns not covered elsewhere in this doc.
+
+### Window reuse crash — always use unique customId suffix
+
+Reusing a window (reopening with the same `customId` before the old one fully closes) causes `EXC_BAD_ACCESS in JSC::JSRunLoopTimer::Manager::timerDidFireCallback`. Mitigation from `dwertheimer.Forms`:
+
+```javascript
+// 1. Close any existing windows with this base ID before opening a new one
+for (const win of NotePlan.htmlWindows) {
+  if (win.customId && win.customId.startsWith(BASE_CUSTOM_ID)) {
+    win.close()
+  }
+}
+// 2. Open with a unique suffix so the JSC timer cache is clean
+const customId = `${BASE_CUSTOM_ID}-${Date.now()}-${Math.random().toString(36).substr(2,6)}`
+await HTMLView.showWindowWithOptions(html, title, { customId, ... })
+```
+
+If you want positional persistence (`reuseUsersWindowRect: true`), you need a stable customId — this conflicts with the unique-suffix pattern. Choose one: crash-safety or position persistence.
+
+### `win.isVisible` — distinguish live vs cached windows (≥3.20.2)
+
+`NotePlan.htmlWindows` includes windows that are in memory but no longer visible. Always check `isVisible` before acting on a cached window reference:
+
+```javascript
+const win = NotePlan.htmlWindows.find(w => w.customId === MY_ID && (w.isVisible ?? true))
+```
+
+The `?? true` fallback handles NP < 3.20.2 where `isVisible` is undefined.
+
+### Close from inside the `code` string with platform guard
+
+`win.close()` called from inside the jsBridge `code` string (evaluated plugin-side) avoids the named-callback crash vector. Pattern from `np.ThemeChooser`:
+
+```javascript
+// Embed close logic in the code string — runs on plugin side, not in callback
+const code = `(async function(){
+  // ... do work ...
+  const win = NotePlan.htmlWindows.find(w => w.customId === "${customId}")
+  if (win) { NotePlan.environment.platform === 'macOS' ? win.close() : null }
+})()`
+window.webkit.messageHandlers.jsBridge.postMessage({ code, onHandle: '', id: 'action' })
+```
+
+The `onHandle: ''` is still required. The platform guard skips close on iOS where behavior differed.
+
+### `JSON.stringify` to safely embed code strings in HTML
+
+To embed a multi-line code string as a JS literal inside a `<script>` tag:
+
+```javascript
+// In plugin (buildFormHTML):
+const closeCode = JSON.stringify(`(async function(){
+  const win = NotePlan.htmlWindows.find(w => w.customId === "${customId}")
+  if (win) win.close()
+})()`)
+
+// In HTML <script>:
+// const closeCode = ${closeCode}  ← the JSON.stringify wraps it in quotes and escapes everything
+// window.webkit.messageHandlers.jsBridge.postMessage({ code: closeCode, onHandle: '', id: 'close' })
+```
+
+### `$$` hazard in `.replace()` — use function form
+
+`String.prototype.replace` treats `$$` in the replacement string as a literal `$`. If any arg value contains `$$`, plain string replacement silently corrupts the data:
+
+```javascript
+// ✗ broken if args contains $$
+html.replace('%%ARGS%%', JSON.stringify(args))
+
+// ✓ safe — function form bypasses $$ substitution
+html.replace('%%ARGS%%', () => JSON.stringify(args))
+```
+
+### NotePlan window Y-origin is bottom-left
+
+The macOS coordinate system has Y=0 at the **bottom** of the screen. To position a window from top-left coordinates (web convention):
+
+```javascript
+const env = NotePlan.environment
+const x = Math.round((env.screenWidth - width) / 2)
+const yFromTop = Math.round((env.screenHeight - height) / 3)
+const y = env.screenHeight - height - yFromTop  // convert to bottom-left origin
+await HTMLView.showWindowWithOptions(html, title, { width, height, x, y, customId, shouldFocus: true })
+```
+
+### Pass `windowId` through data for round-trip identity
+
+When using unique-suffix customIds, pass the actual id through `pluginData` so the HTML can send it back in each request:
+
+```javascript
+const customId = `my-form-${Date.now()}`
+const C = JSON.stringify({ ...formData, windowId: customId })
+// In HTML cancel/submit: send windowId back in the jsBridge code string
+// so the plugin can find the right window regardless of suffix
+```
+
+---
+
 ## Phase 4: Dev Loop
 
 **Preferred: use the NotePlan MCP** (when active in the Claude Code session):
