@@ -266,6 +266,20 @@ EOF
 
 Adjust the message to reflect actual changes.
 
+## Quick Single-File Fix (CLI)
+
+When another skill (e.g. `sweep-daily-notes`, `manage-filenames`) encounters a single file with broken frontmatter delimiters, it can fix it without invoking the full `fix-frontmatter` workflow:
+
+```bash
+# Fix -- → --- delimiters in a single file
+noteplan-sweep fix-frontmatter-delimiters "$FILE_PATH"
+
+# Validate a single file's frontmatter
+noteplan-sweep check-frontmatter "$FILE_PATH"
+```
+
+These commands call the same underlying `frontmatter.py` library — they are safe to use outside the full skill workflow for targeted, in-place fixes.
+
 ## Safety Checks
 
 - **No content modification**: Only frontmatter is modified. Never touch body content, todos, or links.

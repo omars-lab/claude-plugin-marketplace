@@ -183,6 +183,8 @@ find "$PLAN_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} | sort
 head -15 "$plan_file"
 ```
 
+> **CLI shortcut**: `noteplan-sweep list-workstreams --mode work` (or `--mode personal`) discovers all workstream subdirectories and their emoji mappings dynamically, which can seed `PLAN_ROOT` discovery without needing to hardcode subdir names.
+
 For each plan file:
 1. Parse frontmatter between `---` delimiters
 2. Extract `status` — skip 🔴 and 🏁; include 🟢, 🟡, unset
@@ -366,13 +368,19 @@ Include contributor additions in the same bulk commit as descriptions. Do not pr
 
 ### Research Doc Enrichment (run alongside plan enrichment)
 
-For each research doc in the research index:
+Use `noteplan-sweep enrich-research-doc` to extract domains and infer descriptions for research docs in one shot:
 
-1. **Extract domains**: Scan the full body for all URLs. Extract unique hostname domains (strip `www.`, keep the meaningful part: `code.devsnc.com`, `servicenow.com`, `fluidtopics.com`). Write/update the `domains:` frontmatter list — merge with any already present.
-2. **Infer description** (if missing): Summarize from H1 + first paragraph + domain list. E.g. `"Mapping available ServiceNow documentation APIs, PPM project hierarchy, and content connectors for the graph builder agent."`. Write to `description:` frontmatter.
-3. Include research doc enrichment in the same bulk commit as plan descriptions: `chore(plans/research): add descriptions + domains to N files`
+```bash
+# Enrich a research doc: extract URL domains → update domains: frontmatter, infer description if missing
+noteplan-sweep enrich-research-doc "$RESEARCH_DOC_PATH"
+```
 
-Research docs always use `---` (three dashes) for frontmatter delimiters.
+This command:
+1. Scans the full body for all URLs, extracts unique hostnames, merges into `domains:` frontmatter
+2. Infers a `description:` if absent (from H1 + first paragraph + domain list)
+3. Rewrites frontmatter in-place using `---` (three dashes) delimiters
+
+Run for every research doc in the research index that has `description_missing: true` or whose `domains:` list is empty. Include in the same bulk commit as plan descriptions: `chore(plans/research): add descriptions + domains to N files`
 
 ### Bulk path (preferred when N > 5 plans missing descriptions)
 
