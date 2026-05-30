@@ -13,7 +13,7 @@ Installs a complete security and test gate setup on any git repository.
 | Component | Purpose |
 |-----------|---------|
 | `.git/hooks/pre-commit` | Blocks commits if gitleaks not installed; scans staged changes for secrets |
-| `.git/hooks/pre-push` | Blocks pushes if gitleaks not installed; runs secret scan + tests |
+| `.git/hooks/pre-push` | Blocks pushes if gitleaks not installed; runs secret scan + tests; optionally blocks direct pushes to a protected mirror remote |
 | Makefile targets | `secret-scan`, `secret-scan-staged`, `install-hooks` |
 | `.claude/skills/secret-scan/SKILL.md` | Project-level skill documenting the security setup |
 
@@ -108,6 +108,35 @@ Replace `TEST_TARGET_HERE` with the actual test target (e.g., `all-test`, `test`
 If the repo has **no test target**, skip the test section and only include the secret scan. Note this gap in the output.
 
 Make executable: `chmod +x .git/hooks/pre-push`
+
+## Step 3b: Protected-Remote Guard (opt-in)
+
+Some repos must **not** be pushed to a given remote directly — e.g. a public GitHub mirror that is only meant to be reached through a sanitizing/author-rewriting sync (`make sync-remote`), never a raw `git push github`. A direct push bypasses the rewrite and can leak identity or unreviewed history.
+
+When the repo has such a remote (ask the user, or detect a `sync-remote`/`push-all` Makefile target alongside a remote named `github`), prepend this guard to `.git/hooks/pre-push`. Git passes the **remote name as `$1`** to the pre-push hook:
+
+```sh
+# === Protected-remote guard ===
+# This repo reaches its public mirror only via `make sync-remote` (author rewrite).
+# Block direct pushes to the protected remote.
+PROTECTED_REMOTE="github"          # configure per repo
+REMOTE_NAME="$1"
+if [ "$REMOTE_NAME" = "$PROTECTED_REMOTE" ]; then
+    echo ""
+    echo "ERROR: Direct push to '$PROTECTED_REMOTE' is blocked."
+    echo "This remote is a public mirror — push via the sanitizing sync instead:"
+    echo "    make sync-remote        # author-rewriting, content-checked path"
+    echo ""
+    echo "(If you really mean to bypass, push with --no-verify — and know why.)"
+    exit 1
+fi
+```
+
+Notes:
+- Put this **first** in the hook, before the secret scan, so it fails fast.
+- `PROTECTED_REMOTE` is per-repo; confirm the remote name with the user (here it's `github`).
+- The `--no-verify` escape hatch is intentional — the guard is a safety net against the *accidental* direct push (the common mistake), not a hard lock.
+- This complements (does not replace) the secret scan: gitleaks catches credentials, this catches the wrong-destination push.
 
 ## Step 4: Add Makefile Targets
 
