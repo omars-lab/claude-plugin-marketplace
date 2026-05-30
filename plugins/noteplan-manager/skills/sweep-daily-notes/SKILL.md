@@ -974,12 +974,28 @@ Add the new research doc to the research index so it's available for the rest of
 
 After the user confirms the day's routing plan:
 
+**Use `noteplan-sweep` CLI for all file operations.** Do not write ad-hoc Python.
+
+```bash
+# Append a section to target note under a wikilink header
+noteplan-sweep append-section "$TARGET_NOTE" "[[PlanName]]" /tmp/section_content.txt --date "$FILE_DATE"
+
+# Append a section directly to a plan or meeting file
+noteplan-sweep append-section "$PLAN_FILE" "Content" /tmp/section_content.txt --date "$FILE_DATE"
+
+# Clear the source after all sections are moved
+noteplan-sweep clear-source "$SOURCE_NOTE" --keep-completed
+
+# Add a breadcrumb row to the source
+noteplan-sweep add-breadcrumb "$SOURCE_NOTE" "$FILE_DATE" "SectionName" "one-line summary" "[[PlanName]]"
+```
+
 For each section confirmed for moving:
-- **To target daily note**: append verbatim under `# [[PlanName]]` header in `$CALENDAR_ROOT/<TARGET_DATE>.md`
+- **To target daily note**: `noteplan-sweep append-section "$TARGET" "[[PlanName]]" content.txt --date "$FILE_DATE"`
   - Merge under existing header if already present; create if not
   - **Same-plan sections from different parts of the source day get merged** under one header
-  - Prefix the moved block with a `## From {fileDate}` date sub-header so content origin is traceable
-- **To existing plan file (direct)**: append verbatim after existing content in the plan, under a `## From {fileDate}` sub-header
+  - The `--date` flag creates/reuses a `## From {fileDate}` sub-header to group content by origin date
+- **To existing plan file (direct)**: `noteplan-sweep append-section "$PLAN_FILE" "Content" content.txt --date "$FILE_DATE"`
 - **To new plan file**: append verbatim after the opening `* [ ]` line in the new plan (no date sub-header needed — the plan's `started:` field captures this)
 - **To existing research doc**: append verbatim under `## From {fileDate}` sub-header; also update `domains:` frontmatter with any new URL domains from the appended content (set union, rewrite frontmatter in-place)
 - **To new research note**: content is placed after the opening H1 in the new research doc (Step 6d handled creation)
@@ -1035,15 +1051,9 @@ All other lines (nested tasks, prose, URLs, code blocks) are moved strictly verb
 
 ```bash
 # Fix >YYYYMMDD to >YYYY-MM-DD in all touched files
-python3 -c "
-import re, sys
-for path in sys.argv[1:]:
-    with open(path) as f: text = f.read()
-    fixed = re.sub(r'>(\d{4})(\d{2})(\d{2})', r'>\1-\2-\3', text)
-    if fixed != text:
-        with open(path, 'w') as f: f.write(fixed)
-        print(f'Fixed date tags in {path}')
-" "${TOUCHED_FILES[@]}"
+for path in "${TOUCHED_FILES[@]}"; do
+    noteplan-sweep fix-date-tags "$path"
+done
 ```
 
 After repair:
@@ -1201,6 +1211,17 @@ If **any check fails**, do not proceed. Report the failure to the user and offer
 git reset --hard <pre-sweep-commit-hash>   # only if user confirms
 ```
 
+**Additional source-clean validation (after diff check passes):** Confirm each swept source note has no remaining open tasks:
+
+```bash
+# Verify every source note was fully cleared
+for source in "${SWEPT_SOURCE_FILES[@]}"; do
+    noteplan-sweep check-source-clean "$source"
+done
+```
+
+Exit code `1` means open tasks remain — report the specific lines to the user before proceeding to Phase 7b.
+
 ---
 
 ## Phase 7b: Post-Sweep Unsorted Review
@@ -1284,6 +1305,18 @@ git commit -m "sweep(daily): complete ${MODE} sweep → ${TARGET_DATE}
 git pull --rebase   # resolve any conflicts before pushing
 git push
 ```
+
+### Self-update trigger
+
+If during this sweep any file operation was performed with ad-hoc inline Python instead of `noteplan-sweep`, add an item to Phase 8.5 to implement that operation in the CLI:
+
+1. Identify which operation was missing (e.g. `noteplan-sweep foo-bar`)
+2. Implement it in `~/workspace/oeid-claude-plugin-marketplace/plugins/noteplan-manager/bin/noteplan_sweep/`
+3. Add the subcommand to `noteplan-sweep` entrypoint's `DISPATCH` dict
+4. Commit to plugin repo + bump version (patch) + reinstall (`make update` in plugin repo)
+5. Update the relevant plan file task to `[x]`
+
+This ensures the CLI stays complete and the next sweep doesn't re-invent the same operation.
 
 ---
 

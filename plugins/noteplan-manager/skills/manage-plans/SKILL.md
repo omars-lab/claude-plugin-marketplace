@@ -11,12 +11,13 @@ You are the plan management orchestrator for noteplan-manager. When invoked, det
 
 Single entry point for all plan file operations:
 
-| Operation | Triggers | Sub-skill |
+| Operation | Triggers | Sub-skill / CLI |
 |---|---|---|
 | Fix plan structure and frontmatter | "fix plans", "standardize plans", "plan structure", "missing frontmatter" | [fix-plans/SKILL.md](fix-plans/SKILL.md) |
 | Update a plan's status | "status", "future", "started", "done", "paused", "change status" | [update-plan-status/SKILL.md](update-plan-status/SKILL.md) |
 | Flatten Future/Present/Past folder structure | "flatten", "migrate", "future/present/past", "one-time migration" | [flatten-plans/SKILL.md](flatten-plans/SKILL.md) |
 | Reorganize plan file content under sections | "organize plan", "reorganize", "sections", "scattered content" | [organize-plans/SKILL.md](organize-plans/SKILL.md) |
+| Create a new plan | "new plan", "create plan", "start a plan" | `noteplan-sweep clone-plan` |
 
 ## Task Management (MANDATORY)
 
@@ -36,6 +37,7 @@ Check if the user's message clearly signals an operation from the table above. C
 - "update status" / "change to started" / "mark as done" / "future → started" → update-plan-status
 - "flatten plans" / "migrate from future/present/past" / "one-time migration" → flatten-plans
 - "organize plan" / "reorganize" / "clean up sections" / "scattered content" → organize-plans
+- "new plan" / "create plan" / "start a plan" / "make a plan for" → `noteplan-sweep clone-plan`
 
 If the intent is **clear** from the message, proceed directly to Phase 2 without asking.
 
@@ -68,6 +70,20 @@ Read the appropriate sub-skill SKILL.md and follow its workflow as if it had bee
 **For flatten-plans:** Read [flatten-plans/SKILL.md](flatten-plans/SKILL.md) and follow its workflow.
 
 **For organize-plans:** Read [organize-plans/SKILL.md](organize-plans/SKILL.md) and follow its workflow.
+
+**For create-plan:** Use `noteplan-sweep clone-plan` to create a new plan file from the standard template:
+
+```bash
+# List available workstreams / activities first
+noteplan-sweep list-workstreams --mode work     # or --mode personal
+
+# Create the plan
+noteplan-sweep clone-plan "Plan Title" --workstream 🧑🏻‍💻 --date $(date +%y%m%d)
+# Personal plans:
+noteplan-sweep clone-plan "Plan Title" --workstream 👨🏻‍💻 --date $(date +%y%m%d)
+```
+
+Ask the user for: (1) the plan title, (2) which workstream/activity (offer the list from `list-workstreams`), and (3) whether today's date is correct for the `YYMMDD` prefix. Then run the command and report the path of the created file.
 
 ## What This Skill Does NOT Do
 

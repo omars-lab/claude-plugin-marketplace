@@ -490,9 +490,10 @@ For each approved fix:
      git rm "Notes/path/Duplicate.md"
      ```
 
-6. **After all renames**: Check for broken `[[Note Name]]` wikilinks
-   - Search recently modified files for `[[OldFilename]]` references
-   - Report any broken links found (but don't auto-fix cross-file links)
+6. **After all renames**: Fix broken `[[Note Name]]` wikilinks using the CLI
+   - For each rename, run `noteplan-sweep update-backlinks --from-rename "$OLD_PATH" "$NEW_PATH"` to update all references across the vault
+   - If the CLI is not available, fall back to `noteplan-sweep check-backlinks "$OLD_STEM"` to report the blast radius, then fix manually
+   - Report all updated files in the execution summary
 
 **Report execution results:**
 ```
@@ -622,7 +623,7 @@ All tasks completed!
 - **No content modification**: Never modify file body content (tasks, notes, links beyond the heading line)
 - **User approval**: Always present proposed changes and get explicit approval before executing
 - **Pre-flight checks**: Verify target path is clear immediately before each rename
-- **Wikilink awareness**: Report broken `[[wikilinks]]` after renames (but don't auto-fix cross-file references)
+- **Wikilink repair**: After every rename, run `noteplan-sweep update-backlinks --from-rename "$OLD" "$NEW"` to fix cross-file references — never leave broken wikilinks after a rename
 - **Scope limitation**: Only process files with pending git changes, not the entire repository
 
 ## Example Usage
