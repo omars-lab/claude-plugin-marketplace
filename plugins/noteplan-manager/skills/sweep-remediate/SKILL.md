@@ -1,6 +1,6 @@
 ---
 name: sweep-remediate
-description: Guided sweep remediation — loads the latest sweep report, verifies each lost/anomaly/mixed row against git history and current disk state, walks through confirmed real issues one at a time with remediation options, and feeds findings back to improve portal classification accuracy
+description: Guided sweep remediation — loads the latest sweep report, verifies each lost/untraced row against git history and current disk state, walks through confirmed real issues one at a time with remediation options, and feeds findings back to improve portal classification accuracy
 ---
 
 # Sweep Remediate
@@ -8,7 +8,7 @@ description: Guided sweep remediation — loads the latest sweep report, verifie
 You are a guided sweep remediation assistant. Your job is to:
 
 1. Load the latest sweep export (narrative rows + full diff)
-2. For every row classified as Lost, Untraced, or Mixed — **verify it is a real issue** by checking the current destination file on disk and git history
+2. For every row classified as Lost or Untraced — **verify it is a real issue** by checking the current destination file on disk and git history
 3. Present only confirmed real issues one at a time via `AskUserQuestion`
 4. Execute the chosen remediation action
 5. After all issues are resolved, produce a data quality report and use findings to improve the portal's classification logic
@@ -24,8 +24,7 @@ A sweep moves content from daily calendar notes into destination plan/list files
 | Row type | Meaning | Real issue? |
 |---|---|---|
 | **Move (→)** | All source lines confirmed present in destination diff | No — clean |
-| **Lost (✗)** | Source lines removed but NOT found in destination additions | **Yes if still absent from dest file on disk** |
-| **Mixed (⚡)** | Some lines moved, some lost | **Yes for the lost subset if still absent on disk** |
+| **Lost (✗)** | Source lines removed but NOT found in destination additions. Compound badge `→N ✗M` means some lines moved and some were lost — still classified Lost, needs review for the missing subset. | **Yes if still absent from dest file on disk** |
 | **Untraced (?)** | Destination has additions with no traceable source row | **Yes if not covered by any other row** |
 | **Empty (·)** | Source section had only noise lines (headers, checkboxes, etc.) | No — nothing to move |
 
@@ -128,8 +127,7 @@ Use the `sweep-review-diagnose` output from Phase 0 to pre-label each row. Do NO
 | `B-16 disk_confirmed` | Retroactive sweep — content moved in prior run, confirmed on disk | **Auto-skip** — no action needed |
 | `V-47 scope miss` | Section header not in diff hunk; full-file fallback used | Note in summary — inspect if dest content looks wrong |
 | `genuine anomaly` | Dest has additions with no traceable source; not on disk | **Escalate to user** |
-| `lost` | Source lines removed but not in dest diff | **Verify on disk** (Phase 2) |
-| `mixed` | Some lines moved, some lost | **Verify lost subset** (Phase 2) |
+| `lost` | Source lines removed but not in dest diff (incl. compound `→N ✗M` rows) | **Verify on disk** (Phase 2) |
 | `move` | All source lines confirmed at dest | **Auto-skip** — clean |
 | `empty` | Source section had only noise lines | **Auto-skip** — nothing to verify |
 
@@ -137,15 +135,14 @@ Use the `sweep-review-diagnose` output from Phase 0 to pre-label each row. Do NO
 
 From the diagnose output:
 - **Auto-skip**: B-14, B-13, B-16, move, empty rows → report count to user but don't pause
-- **Work list**: lost, mixed, V-47 scope miss, and genuine anomaly rows → these go to Phase 2/3
+- **Work list**: lost (incl. compound `→N ✗M`), V-47 scope miss, and genuine anomaly rows → Phase 2/3
 
 Show a pre-labelled summary before Phase 2:
 
 ```
 Total rows: N
   → move:             N  (auto-skip)
-  → lost:             N  (verify on disk)
-  → mixed:            N  (verify lost subset)
+  → lost:             N  (verify on disk — compound badge means partial move)
   → genuine anomaly:  N  (escalate to user)
   → V-47 scope miss:  N  (inspect if suspicious)
   → B-14/B-13/B-16:  N  (auto-skip — known FP patterns)
@@ -191,7 +188,7 @@ matched = lines in countableRemoved that also appear (fuzzy-prefix-normalized) i
 if countableRemoved == 0:           type = 'empty'
 elif matched == countableRemoved:   type = 'move'
 elif matched == 0:                  type = 'lost'
-elif matched > 0:                   type = 'mixed'   (some moved, some lost)
+elif matched > 0:                   type = 'lost'  # compound badge →N ✗M shown in portal
 elif addedLines > 0, matched == 0:  type = 'anomaly'  # displayed as '? Untraced' in portal
 ```
 
@@ -204,11 +201,10 @@ elif addedLines > 0, matched == 0:  type = 'anomaly'  # displayed as '? Untraced
 Build a summary:
 ```
 Total rows: N
-  → move:    N  (skip — clean)
-  → lost:    N  (verify)
-  → mixed:   N  (verify lost subset)
-  → untraced: N (verify — portal shows '? Untraced')
-  → empty:   N  (skip — no content)
+  → move:     N  (skip — clean)
+  → lost:     N  (verify — compound badge →N ✗M means partial move)
+  → untraced: N  (verify — portal shows '? Untraced')
+  → empty:    N  (skip — no content)
 ```
 
 Show summary to user before proceeding to Phase 2.
@@ -408,9 +404,8 @@ Before closing, verify the current sweep report matches the intended mental mode
 | Type | Expected behaviour | Check |
 |---|---|---|
 | Move (→) | All source lines confirmed at destination | Verified against disk |
-| Lost (✗) | Lines genuinely absent from dest file | Confirmed by Phase 2 disk grep |
+| Lost (✗) | Lines genuinely absent from dest file. Compound badge `→N ✗M` = some arrived, some didn't. | Confirmed by Phase 2 disk grep |
 | Untraced (?) | Dest additions with no traceable source row | Not from any narrative row's source |
-| Mixed (⚡) | Some moved, some genuinely lost | Lost subset verified on disk |
 | Empty (·) | Source section had only noise lines | No real content removed |
 
 If the portal is showing incorrect types for a majority of rows, recommend running Phase 4c fixes and re-running `sweep-review-compile` before continuing.
