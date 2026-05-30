@@ -104,8 +104,9 @@ COMMANDS = [
     ("graph-build",             "Validate embedding coverage + write embedding_meta to graph.json"),
     ("graph-query-vec",         "Cosine similarity search over embedded nodes"),
     # Group 13: Sweep Review
+    ("sweep-start",             "Record current HEAD as sweep base + assign sweep ID (call at Phase 2 before first commit)"),
     ("sweep-commit",            "Stage modified .md files and create a structured sweep(YYYY-MM-DD) commit"),
-    ("sweep-review-generate",   "Generate immutable snapshot HTML from the sweep commit diff"),
+    ("sweep-review-generate",   "Generate immutable snapshot HTML from the full sweep diff (base..HEAD)"),
     ("sweep-review-compile",    "Merge snapshot + all rN.comments.jsonl rounds → review.html"),
     ("sweep-review-squash",     "Squash all rN comment files for a run into r1.comments.jsonl"),
     ("sweep-review-list",       "List all sweep runs grouped by date with comment + compile status"),
@@ -382,8 +383,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("sweep-commit", help=COMMANDS[56][1])
     p.add_argument("--dry-run", action="store_true", help="Print what would be committed without writing")
 
-    p = sub.add_parser("sweep-review-generate", help=COMMANDS[57][1])
+    p = sub.add_parser("sweep-start", help=COMMANDS[57][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
+
+    p = sub.add_parser("sweep-review-generate", help=COMMANDS[58][1])
+    p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
+    p.add_argument("--base-commit", metavar="SHA",
+                   help="Base commit for the diff range (default: auto-detect parent of first sweep commit today)")
     p.add_argument("--no-carry-comments", action="store_true",
                    help="Start fresh — do not inject existing comments into new snapshot")
 
@@ -465,6 +471,7 @@ DISPATCH = {
     "graph-embed":              graph_embed.cmd_graph_embed,
     "graph-build":              graph_embed.cmd_graph_build,
     "graph-query-vec":          graph_embed.cmd_graph_query_vec,
+    "sweep-start":              sweep_review.cmd_sweep_start,
     "sweep-commit":             sweep_review.cmd_sweep_commit,
     "sweep-review-generate":    sweep_review.cmd_sweep_review_generate,
     "sweep-review-compile":     sweep_review.cmd_sweep_review_compile,

@@ -67,6 +67,38 @@ def _latest_run(sweeps: Path, date_str: str | None = None) -> tuple[str | None, 
 
 
 # ---------------------------------------------------------------------------
+# sweep-start  (called at Phase 2 before any sweep commits)
+# ---------------------------------------------------------------------------
+
+def cmd_sweep_start(args):
+    """Record the current HEAD as the sweep base and assign a sweep ID.
+
+    Writes two files to sweeps/:
+      .sweep-base   — current HEAD SHA (used as diff base by sweep-review-generate)
+      .sweep-id     — human-readable ID like "2026-04-21-01"
+    """
+    root = _np_root()
+    sweeps = _sweeps_dir(root)
+
+    date_str = args.date or date.today().strftime("%Y-%m-%d")
+    run_n = _run_counter(sweeps, date_str)
+    sweep_id = f"{date_str}-{run_n:02d}"
+
+    head_r = _git(["rev-parse", "HEAD"], cwd=root)
+    if head_r.returncode != 0:
+        utils.err("Could not determine HEAD SHA.")
+        sys.exit(utils.EXIT_VALIDATION_FAILURE)
+    base_sha = head_r.stdout.strip()
+
+    base_file = sweeps / ".sweep-base"
+    id_file   = sweeps / ".sweep-id"
+    base_file.write_text(base_sha + "\n", encoding="utf-8")
+    id_file.write_text(sweep_id + "\n", encoding="utf-8")
+
+    utils.log(f"sweep-start: sweep ID = {sweep_id} | base = {base_sha[:7]}")
+
+
+# ---------------------------------------------------------------------------
 # sweep-commit
 # ---------------------------------------------------------------------------
 
@@ -188,38 +220,64 @@ def cmd_sweep_review_generate(args):
 
     date_str = args.date or date.today().strftime("%Y-%m-%d")
 
-    # Find the sweep commit for this date
-    log_r = _git(
-        ["log", "--oneline", "--after", f"{date_str} 00:00:00",
-         "--before", f"{date_str} 23:59:59", "--grep", f"^sweep({date_str})"],
-        cwd=root
-    )
-    sweep_sha = None
-    if log_r.returncode == 0 and log_r.stdout.strip():
-        sweep_sha = log_r.stdout.strip().split()[0]
+    # Determine the base commit for the diff range.
+    # Priority: --base-commit arg > .sweep-base file > auto-detect first sweep commit today
+    base_commit = getattr(args, "base_commit", None)
+    sweep_id = None
 
-    if not sweep_sha:
-        # Fall back to HEAD if it looks like a sweep commit
-        head_r = _git(["log", "-1", "--oneline"], cwd=root)
-        if head_r.returncode == 0 and f"sweep({date_str})" in head_r.stdout:
-            sweep_sha = head_r.stdout.strip().split()[0]
+    base_file = sweeps / ".sweep-base"
+    id_file   = sweeps / ".sweep-id"
 
-    if not sweep_sha:
-        utils.err(f"No sweep commit found for {date_str}. Run sweep-commit first.")
-        sys.exit(utils.EXIT_NOT_FOUND)
+    if base_commit:
+        # Validate it exists
+        check = _git(["rev-parse", "--verify", base_commit], cwd=root)
+        if check.returncode != 0:
+            utils.err(f"Base commit not found: {base_commit}")
+            sys.exit(utils.EXIT_NOT_FOUND)
+        base_commit = check.stdout.strip()
+    elif base_file.exists():
+        # Use sweep-start recorded base
+        base_commit = base_file.read_text(encoding="utf-8").strip()
+        sweep_id = id_file.read_text(encoding="utf-8").strip() if id_file.exists() else None
+    else:
+        # Fall back: parent of first sweep-related commit today
+        log_r = _git(
+            ["log", "--oneline", "--after", f"{date_str} 00:00:00",
+             "--before", f"{date_str} 23:59:59",
+             "--extended-regexp", "--grep",
+             r"^(sweep|chore|reflect|fix|feat)\("],
+            cwd=root
+        )
+        sweep_commits = []
+        if log_r.returncode == 0 and log_r.stdout.strip():
+            sweep_commits = [line.split()[0] for line in log_r.stdout.strip().splitlines()]
+
+        if not sweep_commits:
+            utils.err(f"No sweep commits found for {date_str}. Run 'sweep-start' at Phase 2 or pass --base-commit.")
+            sys.exit(utils.EXIT_NOT_FOUND)
+
+        earliest_sweep = sweep_commits[-1]
+        parent_r = _git(["rev-parse", f"{earliest_sweep}^"], cwd=root)
+        if parent_r.returncode != 0:
+            utils.err(f"Could not find parent of {earliest_sweep}")
+            sys.exit(utils.EXIT_VALIDATION_FAILURE)
+        base_commit = parent_r.stdout.strip()
+
+    head_sha = _git(["rev-parse", "HEAD"], cwd=root).stdout.strip()
+    sweep_sha = (sweep_id or head_sha[:7])  # display label
 
     run_n = _run_counter(sweeps, date_str)
     run_id = f"{date_str}-{run_n:02d}"
 
-    # Get diff stat + unified diff
-    stat_r = _git(["show", "--stat", "--no-patch", sweep_sha], cwd=root)
+    # Get diff stat + unified diff for the full range base..HEAD
+    stat_r = _git(["diff", "--stat", f"{base_commit}..HEAD"], cwd=root)
     stat_text = stat_r.stdout if stat_r.returncode == 0 else ""
 
-    diff_r = _git(["show", "--unified=3", sweep_sha], cwd=root)
+    diff_r = _git(["diff", "--unified=3", f"{base_commit}..HEAD"], cwd=root)
     diff_text = diff_r.stdout if diff_r.returncode == 0 else ""
 
     if not diff_text:
-        utils.err(f"Could not get diff for commit {sweep_sha}")
+        utils.err(f"Could not get diff for range {base_commit[:7]}..HEAD")
         sys.exit(utils.EXIT_VALIDATION_FAILURE)
 
     # Check for existing comments file to carry forward
