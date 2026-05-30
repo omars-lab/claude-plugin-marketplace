@@ -14,6 +14,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import noteplan_sweep.utils as utils
+from noteplan_sweep.nav import hub_nav_html, ORG_CSS, ORG_JS
 
 
 # ---------------------------------------------------------------------------
@@ -628,6 +629,13 @@ def cmd_ai_usage_generate(args):
         except Exception:
             pass
 
+    _nav_html = hub_nav_html("ai-usage", [
+        {"num": f"{summary.get('total_interactive', 0):,}", "label": "my sessions",   "title": "Interactive (human-initiated) Claude sessions"},
+        {"num": str(summary.get("total_projects", 0)),      "label": "projects",      "title": "Distinct project directories with sessions"},
+        {"num": str(summary.get("last_30_days_interactive", 0)), "label": "last 30d", "title": "Interactive sessions in the last 30 days"},
+        {"num": str(summary.get("total_skills", 0)),        "label": "skills",        "title": "Skills found across plugin repositories"},
+    ])
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -645,8 +653,9 @@ def cmd_ai_usage_generate(args):
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; background: var(--bg); color: var(--text); }}
 
-  #header {{ background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }}
-  #header h1 {{ font-size: 16px; font-weight: 700; color: var(--accent); }}
+{ORG_CSS}
+  #header {{ background: var(--surface); border-bottom: 1px solid var(--border); padding: 8px 20px; display: flex; align-items: center; gap: 12px; }}
+  #header h1 {{ font-size: 14px; font-weight: 700; color: var(--accent); }}
   #header .sub {{ font-size: 12px; color: var(--muted); }}
   #gen-time {{ font-size: 11px; color: var(--muted); margin-left: auto; }}
 
@@ -693,8 +702,9 @@ def cmd_ai_usage_generate(args):
 </style>
 </head>
 <body>
+{_nav_html}
 <div id="header">
-  <h1>🤖 AI Usage Dashboard</h1>
+  <h1>🤖 AI Usage</h1>
   <span class="sub">{summary.get('total_sessions', 0):,} sessions · {summary.get('total_projects', 0)} projects</span>
   <div id="gen-time">Generated {generated_at}</div>
 </div>
@@ -816,9 +826,16 @@ function setView(v) {{
   dailyChart.update();
 }}
 
+{ORG_JS}
+
+function rerender() {{ renderProjects(); }}
+
 function renderProjects() {{
   const q = (document.getElementById('proj-search').value||'').toLowerCase();
-  const rows = DATA.projects.filter(p => !q || p.label.toLowerCase().includes(q) || p.domain.toLowerCase().includes(q));
+  const rows = DATA.projects.filter(p =>
+    matchesDomain(p.domain) &&
+    (!q || p.label.toLowerCase().includes(q) || p.domain.toLowerCase().includes(q))
+  );
   document.getElementById('proj-body').innerHTML = rows.map(p => {{
     const interactive = p.interactive_count ?? p.session_count;
     const automated = p.automated_count ?? 0;
@@ -839,6 +856,7 @@ const CHART_INT = {chart_data_int};
 let dailyChart;
 
 window.addEventListener('DOMContentLoaded', () => {{
+  _applyOrg();
   renderProjects();
 
   // Daily sessions chart — default to interactive

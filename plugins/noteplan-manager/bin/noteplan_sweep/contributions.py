@@ -18,6 +18,7 @@ from pathlib import Path
 
 import noteplan_sweep.utils as utils
 from noteplan_sweep.dashboard import parse_frontmatter
+from noteplan_sweep.nav import hub_nav_html, ORG_CSS, ORG_JS
 
 # ---------------------------------------------------------------------------
 # Workspace roots (same as ai_usage.py)
@@ -328,6 +329,13 @@ def build_contributions_html(data: dict) -> str:
 
     data_json = json.dumps(data, indent=2, ensure_ascii=False)
 
+    _nav_html = hub_nav_html("contributions", [
+        {"num": str(summary.get("total_commits", 0)),    "label": "commits / yr",  "title": "Total commits in the last 12 months"},
+        {"num": str(summary.get("total_ai_commits", 0)), "label": "AI-assisted",   "title": "Commits with Claude co-authorship"},
+        {"num": str(summary.get("shipped_count", 0)),    "label": "shipped plans", "title": "Plans marked ✅ completed"},
+        {"num": str(summary.get("month_commits", 0)),    "label": "this month",    "title": "Commits in the current calendar month"},
+    ])
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -338,18 +346,7 @@ def build_contributions_html(data: dict) -> str:
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; background: #0d1117; color: #e6edf3; }}
 
-  /* Hub nav */
-  #hub-nav {{ background: #010409; border-bottom: 1px solid #21262d; padding: 0 20px; }}
-  .hub-inner {{ display: flex; align-items: center; height: 44px; gap: 0; }}
-  .hub-brand {{ font-size: 14px; font-weight: 700; color: #e6edf3; white-space: nowrap; margin-right: 20px; flex-shrink: 0; }}
-  .hub-links {{ display: flex; height: 100%; }}
-  .hub-link {{ display: flex; align-items: center; padding: 0 14px; font-size: 12px; color: #8b949e; text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; transition: color 0.12s; }}
-  .hub-link:hover {{ color: #e6edf3; }}
-  .hub-link.active {{ color: #e6edf3; border-bottom-color: #58a6ff; cursor: default; }}
-  .hub-tiles {{ display: flex; gap: 6px; margin-left: auto; }}
-  .hub-tile {{ background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 3px 12px; text-align: center; min-width: 72px; }}
-  .hub-tile-num {{ font-size: 14px; font-weight: 700; color: #58a6ff; display: block; line-height: 1.5; }}
-  .hub-tile-lbl {{ font-size: 9px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.5px; display: block; }}
+{ORG_CSS}
 
   /* Topbar */
   #topbar {{ background: #161b22; border-bottom: 1px solid #30363d; padding: 10px 20px; display: flex; align-items: center; gap: 12px; }}
@@ -439,42 +436,10 @@ def build_contributions_html(data: dict) -> str:
 </head>
 <body>
 
-<div id="hub-nav">
-  <div class="hub-inner">
-    <span class="hub-brand">🗂 Insights Hub</span>
-    <div class="hub-links">
-      <a class="hub-link" href="/" id="hl-insights">Insights</a>
-      <a class="hub-link" href="/plans" id="hl-plans">Plans</a>
-      <span class="hub-link active">Contributions</span>
-      <a class="hub-link" href="/ai-usage" id="hl-ai-usage">AI Usage</a>
-    </div>
-    <div class="hub-tiles">
-      <div class="hub-tile">
-        <span class="hub-tile-num">{summary.get("total_commits", 0)}</span>
-        <span class="hub-tile-lbl">commits / yr</span>
-      </div>
-      <div class="hub-tile">
-        <span class="hub-tile-num">{summary.get("total_ai_commits", 0)}</span>
-        <span class="hub-tile-lbl">AI-assisted</span>
-      </div>
-      <div class="hub-tile">
-        <span class="hub-tile-num">{summary.get("shipped_count", 0)}</span>
-        <span class="hub-tile-lbl">shipped plans</span>
-      </div>
-      <div class="hub-tile">
-        <span class="hub-tile-num">{summary.get("month_commits", 0)}</span>
-        <span class="hub-tile-lbl">this month</span>
-      </div>
-    </div>
-  </div>
-</div>
+{_nav_html}
 
 <div id="topbar">
   <h1>📦 Contributions</h1>
-  <span class="domain-chip active" data-domain="all" onclick="toggleDomain(this)">All</span>
-  <span class="domain-chip" data-domain="work" onclick="toggleDomain(this)">🏢 Work</span>
-  <span class="domain-chip" data-domain="personal" onclick="toggleDomain(this)">🏡 Personal</span>
-  <span class="domain-chip" data-domain="earlbear" onclick="toggleDomain(this)">👥 EarlBear</span>
   <div id="gen-time">Generated {generated_at}</div>
 </div>
 
@@ -556,11 +521,13 @@ def build_contributions_html(data: dict) -> str:
 
 <script>
 const DATA = {data_json};
+{ORG_JS}
 
 const TAB_NAMES = ['heatmap','worklogs','shipped','repos'];
-let activeDomain = 'all';
 
 function esc(s) {{ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
+
+function rerender() {{ renderHeatmap(); renderWorkLogs(); renderShipped(); renderRepos(); }}
 
 function showTab(tab) {{
   document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', TAB_NAMES[i] === tab));
@@ -570,13 +537,6 @@ function showTab(tab) {{
   if (tab === 'worklogs') renderWorkLogs();
   if (tab === 'shipped') renderShipped();
   if (tab === 'repos') renderRepos();
-}}
-
-function toggleDomain(el) {{
-  document.querySelectorAll('.domain-chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  activeDomain = el.dataset.domain;
-  renderWorkLogs(); renderShipped(); renderRepos(); renderHeatmap();
 }}
 
 // ── Heatmap ───────────────────────────────────────────────────────────────
@@ -589,7 +549,7 @@ function renderHeatmap() {{
   // Build date → count lookup
   const byDate = {{}};
   DATA.heatmap.forEach(h => {{
-    if (activeDomain !== 'all' && !(h.domains||[]).includes(activeDomain)) return;
+    if (activeOrg !== 'all' && !(h.domains||[]).includes(activeOrg)) return;
     byDate[h.date] = (byDate[h.date] || 0) + h.count;
   }});
 
@@ -730,7 +690,7 @@ function renderShipped() {{
 function renderRepos() {{
   const q = (document.getElementById('repo-search').value||'').toLowerCase();
   let repos = DATA.repos.filter(r =>
-    (activeDomain === 'all' || r.domain === activeDomain) &&
+    matchesDomain(r.domain) &&
     (!q || r.name.toLowerCase().includes(q))
   );
   repos = repos.sort((a,b) => b.commit_count - a.commit_count);
@@ -785,6 +745,7 @@ function toggleRepo(idx) {{
 
 // ── Init ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {{
+  _applyOrg();
   const SERVER_MODE = window.location.protocol === 'http:' && window.location.hostname === 'localhost';
   if (!SERVER_MODE) {{
     document.querySelectorAll('.hub-link[href]').forEach(el => {{
