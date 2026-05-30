@@ -200,6 +200,84 @@ def _extract_session_meta(jsonl_path: Path) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
+# Deep session parser (AUD-B) — reads full JSONL for tool counts + use case
+# ---------------------------------------------------------------------------
+
+_USE_CASE_PATTERNS = [
+    ('Debug',       re.compile(r'\b(fix|bug|error|crash|fail|broken|exception|traceback|debug|not work)\b', re.I)),
+    ('Code Gen',    re.compile(r'\b(creat|build|implement|add feature|scaffold|generat|write.*function|new.*class)\b', re.I)),
+    ('Planning',    re.compile(r'\b(plan|design|architect|roadmap|strateg|approach|how should|outline)\b', re.I)),
+    ('Research',    re.compile(r'\b(research|explore|find|look into|what is|explain|understand|learn|investigat)\b', re.I)),
+    ('Docs',        re.compile(r'\b(document|readme|write.*doc|explain.*code|comment|describe)\b', re.I)),
+    ('Review',      re.compile(r'\b(review|check|analyz|audit|evaluat|assess|look at|inspect)\b', re.I)),
+    ('Refactor',    re.compile(r'\b(refactor|clean.?up|reorganiz|restructur|rename|simplif|optimiz)\b', re.I)),
+]
+
+def _classify_use_case(text: str) -> str:
+    """Classify a session use case from the first user message."""
+    if not text:
+        return 'General'
+    for label, pat in _USE_CASE_PATTERNS:
+        if pat.search(text):
+            return label
+    return 'General'
+
+
+_TOOL_TRACK = {'Write', 'Edit', 'Bash', 'Read', 'MultiEdit', 'Glob', 'Grep'}
+
+def _parse_session_deep(jsonl_path: Path) -> dict:
+    """Read full JSONL transcript and return tool counts + use case."""
+    tool_counts: dict[str, int] = {}
+    first_user_text = ''
+    message_count = 0
+
+    try:
+        with open(jsonl_path, encoding='utf-8', errors='replace') as f:
+            for raw_line in f:
+                raw_line = raw_line.strip()
+                if not raw_line:
+                    continue
+                try:
+                    msg = json.loads(raw_line)
+                except Exception:
+                    continue
+                message_count += 1
+
+                # Capture first user message text
+                if not first_user_text and msg.get('type') == 'user':
+                    content = msg.get('message', {}).get('content', '')
+                    if isinstance(content, str):
+                        first_user_text = content.strip()
+                    elif isinstance(content, list):
+                        for block in content:
+                            if isinstance(block, dict) and block.get('type') == 'text':
+                                first_user_text = block.get('text', '').strip()
+                                if first_user_text:
+                                    break
+
+                # Count tool_use blocks
+                content = msg.get('message', {}).get('content', [])
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get('type') == 'tool_use':
+                            name = block.get('name', 'unknown')
+                            key = name if name in _TOOL_TRACK else 'other'
+                            tool_counts[key] = tool_counts.get(key, 0) + 1
+    except Exception:
+        pass
+
+    use_case = _classify_use_case(first_user_text)
+    files_written = tool_counts.get('Write', 0) + tool_counts.get('Edit', 0) + tool_counts.get('MultiEdit', 0)
+
+    return {
+        'tool_counts': tool_counts,
+        'use_case': use_case,
+        'message_count': message_count,
+        'files_written': files_written,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Cursor management
 # ---------------------------------------------------------------------------
 
@@ -238,6 +316,7 @@ def cmd_ai_usage_mine(args):
 
     workspace_dirs = _workspace_dirs()
     full_mode = getattr(args, 'full', False)
+    deep_mode = getattr(args, 'deep', False)
 
     cursor = {} if full_mode else _load_cursor(dash_dir)
     already_processed: set = set(cursor.get('processed', {}).keys())
@@ -292,6 +371,19 @@ def cmd_ai_usage_mine(args):
             meta['project_label'] = label
             meta['domain'] = domain
 
+            if deep_mode:
+                utils.verbose(f"  deep-parsing {jf.name}")
+                deep = _parse_session_deep(jf)
+                meta['tool_counts'] = deep['tool_counts']
+                meta['use_case'] = deep['use_case']
+                meta['message_count'] = deep['message_count']
+                meta['files_written'] = deep['files_written']
+            else:
+                meta.setdefault('tool_counts', {})
+                meta.setdefault('use_case', '')
+                meta.setdefault('message_count', 0)
+                meta.setdefault('files_written', 0)
+
             existing_sessions[session_id] = meta
             already_processed.add(session_id)
             new_count += 1
@@ -326,10 +418,21 @@ def cmd_ai_usage_mine(args):
                 'first_date': s.get('date', ''),
                 'last_date': s.get('date', ''),
                 'total_size_bytes': 0,
+                'total_files_written': 0,
+                'tool_counts': {},
+                'use_case_dist': {},
             }
         p = by_project[lbl]
         p['session_count'] += 1
         p['total_size_bytes'] += s.get('file_size', 0)
+        p['total_files_written'] += s.get('files_written', 0)
+        # Aggregate tool counts
+        for tool, cnt in s.get('tool_counts', {}).items():
+            p['tool_counts'][tool] = p['tool_counts'].get(tool, 0) + cnt
+        # Aggregate use case distribution
+        uc = s.get('use_case', '')
+        if uc:
+            p['use_case_dist'][uc] = p['use_case_dist'].get(uc, 0) + 1
         if is_auto:
             p['automated_count'] += 1
         else:
@@ -371,6 +474,14 @@ def cmd_ai_usage_mine(args):
     )
     top_project = interactive_projects[0]['label'] if interactive_projects else ''
 
+    total_files_written = sum(s.get('files_written', 0) for s in sessions)
+    # Global use case distribution (interactive sessions only)
+    global_use_case_dist: dict[str, int] = {}
+    for s in sessions:
+        if not s.get('automated', False) and s.get('use_case'):
+            uc = s['use_case']
+            global_use_case_dist[uc] = global_use_case_dist.get(uc, 0) + 1
+
     summary = {
         'total_sessions': len(sessions),
         'total_interactive': total_interactive,
@@ -379,7 +490,9 @@ def cmd_ai_usage_mine(args):
         'last_30_days': last_30,
         'last_30_days_interactive': last_30_interactive,
         'top_project': top_project,
-        'total_files_written': 0,  # populated by --deep mode (AUD-B)
+        'total_files_written': total_files_written,
+        'use_case_dist': global_use_case_dist,
+        'deep_indexed': deep_mode,
         'indexed_at': now.isoformat(),
     }
 

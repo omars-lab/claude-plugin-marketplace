@@ -186,12 +186,26 @@ _IDEA_SECTION_RE = re.compile(
 _IDEA_TAG_RE = re.compile(r'#idea\b', re.IGNORECASE)
 
 
+def _source_xcallback(rel_path: str) -> tuple[str, str]:
+    """Return (xcallback_url, source_type) for a relative file path."""
+    from urllib.parse import quote
+    if rel_path.startswith("Calendar/"):
+        stem = rel_path.split("/")[-1].replace(".md", "")
+        if len(stem) == 8 and stem.isdigit():
+            note_date = f"{stem[:4]}-{stem[4:6]}-{stem[6:]}"
+            return f"noteplan://x-callback-url/openNote?noteDate={note_date}", "daily"
+        return "noteplan://x-callback-url/openNote?noteTitle=" + quote(stem, safe=""), "daily"
+    stem = rel_path.split("/")[-1].replace(".md", "")
+    return "noteplan://x-callback-url/openNote?noteTitle=" + quote(stem, safe=""), "plan"
+
+
 def extract_tasks_and_ideas(path: Path, rel_path: str, body: str) -> tuple[list[dict], list[dict]]:
     tasks: list[dict] = []
     ideas: list[dict] = []
     lines = body.splitlines()
     in_idea_section = False
     current_section = ""
+    source_xcb, source_type = _source_xcallback(rel_path)
 
     for i, line in enumerate(lines):
         stripped = line.strip()
@@ -208,30 +222,35 @@ def extract_tasks_and_ideas(path: Path, rel_path: str, body: str) -> tuple[list[
             tasks.append({
                 "text": task_text,
                 "source": rel_path,
+                "source_type": source_type,
                 "section": current_section,
                 "line": i + 1,
+                "xcallback": source_xcb,
             })
 
         # Ideas: either in idea section or tagged #idea
         if in_idea_section and stripped and not stripped.startswith("#"):
-            # Any content line in an idea section
             text = re.sub(r'^[-*]\s*', '', stripped)
             if text:
                 ideas.append({
                     "text": text,
                     "source": rel_path,
+                    "source_type": source_type,
                     "section": current_section,
                     "line": i + 1,
                     "tagged": False,
+                    "xcallback": source_xcb,
                 })
         elif _IDEA_TAG_RE.search(stripped):
             text = re.sub(r'^[-*]\s*(?:\[[ x]\]\s*)?', '', stripped)
             ideas.append({
                 "text": text,
                 "source": rel_path,
+                "source_type": source_type,
                 "section": current_section,
                 "line": i + 1,
                 "tagged": True,
+                "xcallback": source_xcb,
             })
 
     return tasks, ideas
@@ -432,6 +451,7 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
   <div class="tab"        onclick="showTab('gantt')">Gantt</div>
   <div class="tab"        onclick="showTab('tasks')">Tasks <span id="tab-tasks-n"></span></div>
   <div class="tab"        onclick="showTab('ideas')">Ideas <span id="tab-ideas-n"></span></div>
+  <div class="tab"        onclick="showTab('inbox')">Inbox <span id="tab-inbox-n"></span></div>
 </div>
 
 <div id="content">
@@ -467,6 +487,19 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
       <span class="count-badge" id="idea-count"></span>
     </div>
     <div class="card-list" id="idea-list"></div>
+  </div>
+
+  <div class="pane" id="pane-inbox">
+    <div class="filter-bar">
+      <input type="text" id="inbox-search" placeholder="Filter inbox…" oninput="renderInbox()">
+      <span class="chip" id="inbox-filter-all"   data-ifilter="all"   onclick="setInboxFilter('all')"   style="cursor:pointer">All</span>
+      <span class="chip" id="inbox-filter-idea"  data-ifilter="idea"  onclick="setInboxFilter('idea')"  style="cursor:pointer">💡 Ideas</span>
+      <span class="chip" id="inbox-filter-task"  data-ifilter="task"  onclick="setInboxFilter('task')"  style="cursor:pointer">◦ Tasks</span>
+      <span class="chip" id="inbox-filter-daily" data-ifilter="daily" onclick="setInboxFilter('daily')" style="cursor:pointer">📅 Daily</span>
+      <span class="chip" id="inbox-filter-plan"  data-ifilter="plan"  onclick="setInboxFilter('plan')"  style="cursor:pointer">📄 Plans</span>
+      <span class="count-badge" id="inbox-count"></span>
+    </div>
+    <div class="card-list" id="inbox-list"></div>
   </div>
 
 </div>
@@ -539,7 +572,7 @@ function matchesCard(item) {{
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 function showTab(tab) {{
-  const names = ['plans','gantt','tasks','ideas'];
+  const names = ['plans','gantt','tasks','ideas','inbox'];
   document.querySelectorAll('.tab').forEach((el, i) => el.classList.toggle('active', names[i] === tab));
   document.querySelectorAll('.pane').forEach(el => el.classList.remove('active'));
   document.getElementById('pane-' + tab).classList.add('active');
@@ -635,13 +668,79 @@ function renderIdeas() {{
     </div>`).join('');
 }}
 
+let inboxFilter = 'all';
+function setInboxFilter(f) {{
+  inboxFilter = f;
+  ['all','idea','task','daily','plan'].forEach(k => {{
+    const el = document.getElementById('inbox-filter-' + k);
+    if (el) el.classList.toggle('active', k === f);
+  }});
+  renderInbox();
+}}
+
+function renderInbox() {{
+  const q = (document.getElementById('inbox-search').value || '').toLowerCase();
+  const qg = (document.getElementById('search-global').value || '').toLowerCase();
+
+  // Merge ideas + tasks into one feed
+  const ideas = DATA.ideas.map(i => ({{ ...i, _kind: 'idea' }}));
+  const tasks = DATA.tasks.map(t => ({{ ...t, _kind: 'task' }}));
+  let items = [...ideas, ...tasks];
+
+  // Filter by inbox type
+  if (inboxFilter === 'idea')  items = items.filter(x => x._kind === 'idea');
+  if (inboxFilter === 'task')  items = items.filter(x => x._kind === 'task');
+  if (inboxFilter === 'daily') items = items.filter(x => x.source_type === 'daily');
+  if (inboxFilter === 'plan')  items = items.filter(x => x.source_type === 'plan');
+
+  // Text filter
+  items = items.filter(x => {{
+    const t = (x.text || '').toLowerCase();
+    const s = (x.source || '').toLowerCase();
+    return (!q || t.includes(q) || s.includes(q)) && (!qg || t.includes(qg) || s.includes(qg));
+  }});
+
+  // Sort: daily first (most recent), then plan
+  items.sort((a, b) => {{
+    if (a.source_type !== b.source_type) return a.source_type === 'daily' ? -1 : 1;
+    return (b.source || '').localeCompare(a.source || '');
+  }});
+
+  document.getElementById('inbox-count').textContent = items.length + ' items';
+  document.getElementById('tab-inbox-n').textContent = '(' + items.length + ')';
+
+  document.getElementById('inbox-list').innerHTML = items.slice(0, 400).map(item => {{
+    const srcName = esc((item.source || '').split('/').pop().replace('.md',''));
+    const srcBadge = item.source_type === 'daily'
+      ? '<span style="color:#d29922;font-size:10px">📅 Daily</span>'
+      : '<span style="color:#8b949e;font-size:10px">📄 Plan</span>';
+    const kindBadge = item._kind === 'idea'
+      ? '<span style="color:#58a6ff;font-size:10px">💡 idea</span>'
+      : '<span style="color:#3fb950;font-size:10px">◦ task</span>';
+    const tagBadge = item.tagged ? ' <span style="color:#58a6ff;font-size:10px">#idea</span>' : '';
+    const openLink = item.xcallback
+      ? `<a href="${{esc(item.xcallback)}}" style="margin-left:auto;font-size:11px;color:#58a6ff;text-decoration:none;flex-shrink:0" title="Open in NotePlan">↗</a>`
+      : '';
+    return `<div class="card">
+      <div class="card-text" style="margin-bottom:5px">${{esc(item.text)}}</div>
+      <div class="card-meta" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        ${{srcBadge}} ${{kindBadge}}${{tagBadge}}
+        <span style="color:#484f58">${{srcName}}${{item.section ? ' · ' + esc(item.section) : ''}}</span>
+        ${{openLink}}
+      </div>
+    </div>`;
+  }}).join('');
+}}
+
 function rerender() {{
   renderPlans();
   renderTasks();
   renderIdeas();
+  renderInbox();
 }}
 
 window.addEventListener('DOMContentLoaded', () => {{
+  setInboxFilter('all');
   rerender();
   initGantt();
 }});
