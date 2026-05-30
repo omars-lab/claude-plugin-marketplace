@@ -21,7 +21,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib import request as urequest
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs, unquote_plus
 
 import noteplan_sweep.utils as utils
 
@@ -52,25 +52,50 @@ INTERNAL_DOMAINS_RE = re.compile(
     re.IGNORECASE,
 )
 
-# URLs to skip entirely (local networks, auth callbacks, search queries — no stable title)
+# URLs to skip or handle specially (local networks, auth callbacks, binaries, UUIDs)
+
 _SKIP_DOMAIN_RE = re.compile(
     r'https?://[^/\s]*(?:'
     r'service-now\.com|servicenow\.com|sharepoint\.com|okta\.com'
     r'|localhost|attlocal\.net|\.local(?:[:/]|$)'
-    r'|google\.com/search|bing\.com/search|duckduckgo\.com/\?'
     r')',
     re.IGNORECASE,
 )
 _PRIVATE_IP_RE = re.compile(r'https?://(?:192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)')
 _OAUTH_PARAM_RE = re.compile(r'[?&](?:code|state|auth_callback|access_token|id_token)=', re.IGNORECASE)
+_IMAGE_EXT_RE = re.compile(r'\.(jpe?g|png|gif|webp|svg|ico|bmp|tiff?|mp4|mov|pdf|zip|tar|gz)(\?|$)', re.IGNORECASE)
+_UUID_RE = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', re.IGNORECASE)
+_SEARCH_ENGINE_RE = re.compile(
+    r'https?://(?:www\.)?(?P<engine>google|bing|duckduckgo)\.com/(?:search|[?])',
+    re.IGNORECASE,
+)
 
 def _should_skip_url(url: str) -> bool:
-    """Return True if a URL should be skipped for enrichment (no stable/useful title)."""
+    """Return True if a URL should be skipped entirely for enrichment."""
     if _SKIP_DOMAIN_RE.search(url): return True
     if _PRIVATE_IP_RE.match(url): return True
     if _OAUTH_PARAM_RE.search(url): return True
+    if _IMAGE_EXT_RE.search(url): return True
+    if _UUID_RE.search(url): return True
     if len(url) > 300: return True
     return False
+
+def _search_engine_label(url: str) -> str | None:
+    """Return 'Engine: <decoded query>' if url is a search engine query, else None."""
+    m = _SEARCH_ENGINE_RE.match(url)
+    if not m:
+        return None
+    engine = m.group('engine').capitalize()
+    try:
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        query = (qs.get('q') or qs.get('p') or [''])[0]
+        query = unquote_plus(query).strip()
+        if query:
+            return f"{engine}: {query}"
+    except Exception:
+        pass
+    return f"{engine} search"
 
 _CHROME_PROFILE = Path.home() / "Library/Application Support/Google/Chrome"
 
@@ -560,6 +585,19 @@ def cmd_enrich_links(args):
             continue
         preceding = text[max(0, m.start() - 2):m.start()]
         if preceding.endswith("]("):
+            seen[url] = url
+            continue
+
+        # Search engine URLs: auto-format from query param, no network call
+        search_label = _search_engine_label(url)
+        if search_label:
+            md_link = f"[{search_label}]({url})"
+            seen[url] = md_link
+            enriched.append(url)
+            continue
+
+        # Skip binary/image/UUID/session-specific URLs
+        if _should_skip_url(url):
             seen[url] = url
             continue
 

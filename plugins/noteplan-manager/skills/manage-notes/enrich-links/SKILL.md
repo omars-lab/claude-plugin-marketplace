@@ -125,6 +125,22 @@ git push
 
 ---
 
+## Search Engine URLs — Auto-Format from Query Param
+
+Search engine query URLs (`google.com/search?q=...`, `bing.com/search?q=...`, `duckduckgo.com/?q=...`) do NOT need Haiku summarization or a network call. Extract the `q=` parameter and format directly:
+
+```
+https://www.google.com/search?q=ha+cli+install+addon+nginx&pws=0
+→ [Google: ha cli install addon nginx](url)
+
+https://www.bing.com/search?q=what+is+a+OKR
+→ [Bing: what is a OKR](url)
+```
+
+Use `urllib.parse.parse_qs` + `unquote_plus` to decode the query parameter. No sub-agent needed.
+
+---
+
 ## Skip List Reference
 
 URLs to skip silently (no warning needed):
@@ -139,14 +155,20 @@ r'https?://[^/\s]*(?:localhost|\.local(?:[:/]|$)|attlocal\.net)'
 # OAuth / auth callbacks
 r'[?&](?:code|state|auth_callback|access_token|id_token)='
 
-# Search engine queries
-r'https?://[^/\s]*(?:google\.com/search|bing\.com/search|duckduckgo\.com/\?)'
+# Image / binary file extensions (nothing to title-enrich)
+r'\.(jpe?g|png|gif|webp|svg|ico|bmp|tiff?|mp4|mov|pdf|zip)(\?|$)'
+
+# UUID path segments (order IDs, download tokens — session-specific)
+r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 
 # Internal tools (require --use-chrome in CLI, skip in skill context)
 r'https?://[^/\s]*(?:service-now\.com|servicenow\.com|sharepoint\.com|okta\.com)'
 
 # Too long — session-specific
 len(url) > 300
+
+# NOTE: Search engine URLs (google.com/search, bing, duckduckgo) are NOT skipped
+# — they get auto-formatted as "Engine: <decoded query>" (see above)
 ```
 
 ---
