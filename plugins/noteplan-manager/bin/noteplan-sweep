@@ -1,0 +1,313 @@
+#!/usr/bin/env python3
+"""
+noteplan-sweep — Primitive CLI library for NotePlan mechanical operations.
+
+Handles content moves, section management, backlinks, validation, template
+cloning, and URL enrichment so skills call it instead of generating ad-hoc
+Python per session.
+"""
+
+import argparse
+import sys
+import os
+
+# Allow importing noteplan_sweep package from same directory
+sys.path.insert(0, os.path.dirname(__file__))
+
+import noteplan_sweep.utils as utils
+from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment
+
+VERSION = "0.1.0"
+
+# ---------------------------------------------------------------------------
+# Command registry — used by list-commands
+# ---------------------------------------------------------------------------
+COMMANDS = [
+    # Group 1: Content Movement
+    ("move-range",              "Move lines start–end verbatim from src to dst under section-header; remove from src"),
+    ("move-section",            "Auto-detect section line range and move it to dst under dst-section-header"),
+    ("append-section",          "Append content under section-header in dst; create section if absent; dedup ## From dates"),
+    ("create-section",          "Add # [[section]] at EOF if not already present"),
+    ("clean-empty-subheaders",  "Remove ## subheaders with no content (fixes empty '## From YYYY-MM-DD' blocks)"),
+    # Group 2: Source Management
+    ("clear-source",            "Remove open tasks + unlabeled content; keep [x] tasks and breadcrumb table"),
+    ("add-breadcrumb",          "Append a row to the | Swept | table; create table if absent"),
+    # Group 3: Validation
+    ("check-source-clean",      "Verify source has no remaining open tasks"),
+    ("check-section-exists",    "Confirm # [[section-header]] is present in file"),
+    ("check-date-tags",         "Report >YYYYMMDD tags without fixing (dry-run for fix-date-tags)"),
+    ("fix-date-tags",           "Replace all >YYYYMMDD with >YYYY-MM-DD in file"),
+    ("check-wikilinks",         "Find [[Stem]] references that don't resolve to any .md in notes-root"),
+    ("check-backlinks",         "Report all files referencing [[stem]] — use before rename to see blast radius"),
+    ("check-frontmatter",       "Validate --- delimiters, required fields, no duplicate keys"),
+    ("fix-frontmatter-delimiters", "Replace -- frontmatter delimiters with ---"),
+    # Group 4: Backlinks + Living Artifacts
+    ("update-backlinks",        "Replace [[old-stem]] with [[new-stem]] across all .md files"),
+    ("check-emoji-mappings",    "Report mismatches between actual plan dirs and CLAUDE.md emoji tables"),
+    ("sync-emoji-mappings",     "Rewrite emoji mapping tables in CLAUDE.md from actual plan dirs"),
+    ("check-living-artifacts",  "After rename or new plan, list every living doc that may need updating"),
+    ("check-note-map",          "Validate Note Map folder tree matches actual directory structure"),
+    ("sync-note-map",           "Rebuild Note Map folder tree from actual directory structure"),
+    # Group 5: Discovery
+    ("list-workstreams",        "Enumerate available workstreams/plantypes by scanning plan dirs"),
+    ("list-plans",              "List recently-modified plans with descriptions"),
+    ("list-templates",          "List available templates from @Templates/"),
+    ("extract-domains",         "Scan all URLs in file; extract unique hostnames as YAML list"),
+    ("clone-template",          "Copy template from @Templates/, fill vars, write to output-path"),
+    ("clone-plan",              "Full plan creation: derive filename, clone template, write frontmatter"),
+    # Group 6: URL Enrichment
+    ("fetch-title",             "Fetch page title from URL"),
+    ("to-markdown-link",        "Convert single URL to [Title](url) markdown link"),
+    ("fetch-metadata",          "Return structured metadata: title, description, author, date, domain"),
+    ("enrich-urls",             "Batch convert bare URLs in file to [Title](url) markdown links"),
+    ("enrich-research-doc",     "Fetch metadata for all URLs, update domains: frontmatter, append titled refs"),
+    ("check-dead-links",        "HEAD each URL in file, report 404s and timeouts"),
+    ("archive-url",             "Submit URL to Wayback Machine, return archive link"),
+]
+
+# ---------------------------------------------------------------------------
+# Parser
+# ---------------------------------------------------------------------------
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="noteplan-sweep",
+        description="Primitive CLI for NotePlan mechanical operations.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would change without writing")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Detailed output")
+    parser.add_argument("--quiet", "-q", action="store_true", help="Errors only")
+
+    sub = parser.add_subparsers(dest="command", metavar="<command>")
+
+    # list-commands
+    sub.add_parser("list-commands", help="List all available commands with descriptions")
+
+    # ── Group 1: Content Movement ──────────────────────────────────────────
+    p = sub.add_parser("move-range", help=COMMANDS[0][1])
+    p.add_argument("src", help="Source file path")
+    p.add_argument("start", type=int, help="Start line number (1-based, inclusive)")
+    p.add_argument("end", type=int, help="End line number (1-based, inclusive)")
+    p.add_argument("dst", help="Destination file path")
+    p.add_argument("section_header", metavar="section-header", help="# [[Header]] to append under in dst")
+    p.add_argument("--date", help="YYYY-MM-DD for ## From date subheader (deduplicates if already exists)")
+
+    p = sub.add_parser("move-section", help=COMMANDS[1][1])
+    p.add_argument("src", help="Source file path")
+    p.add_argument("section_header", metavar="section-header", help="Section header to move from src")
+    p.add_argument("dst", help="Destination file path")
+    p.add_argument("dst_section_header", metavar="dst-section-header", help="Section header to append under in dst")
+    p.add_argument("--date", help="YYYY-MM-DD for ## From date subheader")
+
+    p = sub.add_parser("append-section", help=COMMANDS[2][1])
+    p.add_argument("dst", help="Destination file path")
+    p.add_argument("section_header", metavar="section-header", help="# [[Header]] to append under")
+    p.add_argument("content_file", metavar="content-file", help="File containing content to append (or - for stdin)")
+    p.add_argument("--date", help="YYYY-MM-DD for ## From date subheader (deduplicates if already exists)")
+
+    p = sub.add_parser("create-section", help=COMMANDS[3][1])
+    p.add_argument("file", help="File path")
+    p.add_argument("section_header", metavar="section-header", help="# [[Header]] to create")
+
+    p = sub.add_parser("clean-empty-subheaders", help=COMMANDS[4][1])
+    p.add_argument("file", help="File path")
+    p.add_argument("--level", type=int, default=2, help="Header level to clean (default: 2 = ##)")
+
+    # ── Group 2: Source Management ─────────────────────────────────────────
+    p = sub.add_parser("clear-source", help=COMMANDS[5][1])
+    p.add_argument("file", help="Source daily note path")
+    p.add_argument("--keep-completed", action="store_true", default=True,
+                   help="Keep [x] completed tasks (default: true)")
+
+    p = sub.add_parser("add-breadcrumb", help=COMMANDS[6][1])
+    p.add_argument("file", help="Source note to append breadcrumb table to")
+    p.add_argument("date", help="Sweep date (YYYY-MM-DD)")
+    p.add_argument("section", help="Section name that was swept")
+    p.add_argument("summary", help="One-line summary of what was moved")
+    p.add_argument("destination", help="Destination wikilink e.g. [[20260412]]")
+
+    # ── Group 3: Validation ────────────────────────────────────────────────
+    p = sub.add_parser("check-source-clean", help=COMMANDS[7][1])
+    p.add_argument("file", help="Source note path")
+
+    p = sub.add_parser("check-section-exists", help=COMMANDS[8][1])
+    p.add_argument("file", help="File path")
+    p.add_argument("section_header", metavar="section-header", help="# [[Header]] to look for")
+
+    p = sub.add_parser("check-date-tags", help=COMMANDS[9][1])
+    p.add_argument("file", help="File path")
+
+    p = sub.add_parser("fix-date-tags", help=COMMANDS[10][1])
+    p.add_argument("file", help="File path")
+
+    p = sub.add_parser("check-wikilinks", help=COMMANDS[11][1])
+    p.add_argument("file", help="File to check wikilinks in")
+    p.add_argument("--dir", dest="notes_dir", help="Notes root (default: auto-detect)")
+
+    p = sub.add_parser("check-backlinks", help=COMMANDS[12][1])
+    p.add_argument("stem", help="Filename stem to search for as [[stem]]")
+    p.add_argument("--dir", dest="notes_dir", help="Notes root (default: auto-detect)")
+
+    p = sub.add_parser("check-frontmatter", help=COMMANDS[13][1])
+    p.add_argument("file", help="File path")
+
+    p = sub.add_parser("fix-frontmatter-delimiters", help=COMMANDS[14][1])
+    p.add_argument("file", help="File path")
+
+    # ── Group 4: Backlinks + Living Artifacts ──────────────────────────────
+    p = sub.add_parser("update-backlinks", help=COMMANDS[15][1])
+    p.add_argument("--old-stem", help="Old filename stem")
+    p.add_argument("--new-stem", help="New filename stem")
+    p.add_argument("--from-rename", nargs=2, metavar=("OLD_FILE", "NEW_FILE"),
+                   help="Derive old/new stems from file paths automatically")
+    p.add_argument("--dir", dest="notes_dir", help="Notes root (default: auto-detect)")
+
+    p = sub.add_parser("check-emoji-mappings", help=COMMANDS[16][1])
+    p.add_argument("--dir", dest="notes_dir", help="Notes root (default: auto-detect)")
+
+    p = sub.add_parser("sync-emoji-mappings", help=COMMANDS[17][1])
+    p.add_argument("--dir", dest="notes_dir", help="Notes root (default: auto-detect)")
+
+    p = sub.add_parser("check-living-artifacts", help=COMMANDS[18][1])
+    p.add_argument("--after-rename", nargs=2, metavar=("OLD", "NEW"), help="Old and new stem after a rename")
+    p.add_argument("--after-new-plan", metavar="STEM", help="New plan stem just created")
+    p.add_argument("--dir", dest="notes_dir", help="Notes root (default: auto-detect)")
+
+    p = sub.add_parser("check-note-map", help=COMMANDS[19][1])
+    p.add_argument("--dir", dest="notes_dir", help="Notes root (default: auto-detect)")
+
+    p = sub.add_parser("sync-note-map", help=COMMANDS[20][1])
+    p.add_argument("--dir", dest="notes_dir", help="Notes root (default: auto-detect)")
+
+    # ── Group 5: Discovery ─────────────────────────────────────────────────
+    p = sub.add_parser("list-workstreams", help=COMMANDS[21][1])
+    p.add_argument("--mode", choices=["work", "personal", "earlbear", "all"], default="all")
+
+    p = sub.add_parser("list-plans", help=COMMANDS[22][1])
+    p.add_argument("--workstream", help="Filter by workstream emoji")
+    p.add_argument("--status", help="Filter by status emoji")
+    p.add_argument("--days", type=int, default=90, help="Only plans modified within N days")
+
+    p = sub.add_parser("list-templates", help=COMMANDS[23][1])
+
+    p = sub.add_parser("extract-domains", help=COMMANDS[24][1])
+    p.add_argument("file", help="File to scan for URLs")
+
+    p = sub.add_parser("clone-template", help=COMMANDS[25][1])
+    p.add_argument("template_name", metavar="template-name", help="Template name from @Templates/")
+    p.add_argument("output_path", metavar="output-path", help="Destination file path")
+    p.add_argument("--var", action="append", metavar="KEY=VALUE", dest="vars",
+                   help="Template variable substitution (repeatable)")
+
+    p = sub.add_parser("clone-plan", help=COMMANDS[26][1])
+    p.add_argument("title", help="Plan title")
+    p.add_argument("--workstream", required=True, help="Workstream emoji (e.g. 🧑🏻‍💻)")
+    p.add_argument("--plantype", help="Personal plantype emoji (e.g. 👨🏻‍💻)")
+    p.add_argument("--date", help="YYMMDD date prefix (default: today)")
+
+    # ── Group 6: URL Enrichment ────────────────────────────────────────────
+    p = sub.add_parser("fetch-title", help=COMMANDS[27][1])
+    p.add_argument("url", help="URL to fetch title from")
+
+    p = sub.add_parser("to-markdown-link", help=COMMANDS[28][1])
+    p.add_argument("url", help="URL to convert")
+
+    p = sub.add_parser("fetch-metadata", help=COMMANDS[29][1])
+    p.add_argument("url", help="URL to fetch metadata for")
+    p.add_argument("--internal-map", metavar="JSON", help="JSON file mapping known domains to descriptions")
+
+    p = sub.add_parser("enrich-urls", help=COMMANDS[30][1])
+    p.add_argument("file", help="File to enrich URLs in")
+    p.add_argument("--dry-run-preview", action="store_true", help="Show replacements without writing")
+
+    p = sub.add_parser("enrich-research-doc", help=COMMANDS[31][1])
+    p.add_argument("file", help="Research doc to enrich")
+
+    p = sub.add_parser("check-dead-links", help=COMMANDS[32][1])
+    p.add_argument("file", help="File to check links in")
+    p.add_argument("--timeout", type=float, default=5.0, help="Request timeout in seconds")
+
+    p = sub.add_parser("archive-url", help=COMMANDS[33][1])
+    p.add_argument("url", help="URL to archive")
+
+    return parser
+
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+DISPATCH = {
+    "move-range":               movement.cmd_move_range,
+    "move-section":             movement.cmd_move_section,
+    "append-section":           movement.cmd_append_section,
+    "create-section":           movement.cmd_create_section,
+    "clean-empty-subheaders":   movement.cmd_clean_empty_subheaders,
+    "clear-source":             source.cmd_clear_source,
+    "add-breadcrumb":           source.cmd_add_breadcrumb,
+    "check-source-clean":       validation.cmd_check_source_clean,
+    "check-section-exists":     validation.cmd_check_section_exists,
+    "check-date-tags":          validation.cmd_check_date_tags,
+    "fix-date-tags":            validation.cmd_fix_date_tags,
+    "check-wikilinks":          validation.cmd_check_wikilinks,
+    "check-backlinks":          validation.cmd_check_backlinks,
+    "check-frontmatter":        validation.cmd_check_frontmatter,
+    "fix-frontmatter-delimiters": validation.cmd_fix_frontmatter_delimiters,
+    "update-backlinks":         backlinks.cmd_update_backlinks,
+    "check-emoji-mappings":     backlinks.cmd_check_emoji_mappings,
+    "sync-emoji-mappings":      backlinks.cmd_sync_emoji_mappings,
+    "check-living-artifacts":   backlinks.cmd_check_living_artifacts,
+    "check-note-map":           backlinks.cmd_check_note_map,
+    "sync-note-map":            backlinks.cmd_sync_note_map,
+    "list-workstreams":         discovery.cmd_list_workstreams,
+    "list-plans":               discovery.cmd_list_plans,
+    "list-templates":           discovery.cmd_list_templates,
+    "extract-domains":          discovery.cmd_extract_domains,
+    "clone-template":           discovery.cmd_clone_template,
+    "clone-plan":               discovery.cmd_clone_plan,
+    "fetch-title":              url_enrichment.cmd_fetch_title,
+    "to-markdown-link":         url_enrichment.cmd_to_markdown_link,
+    "fetch-metadata":           url_enrichment.cmd_fetch_metadata,
+    "enrich-urls":              url_enrichment.cmd_enrich_urls,
+    "enrich-research-doc":      url_enrichment.cmd_enrich_research_doc,
+    "check-dead-links":         url_enrichment.cmd_check_dead_links,
+    "archive-url":              url_enrichment.cmd_archive_url,
+}
+
+def cmd_list_commands(_args=None):
+    col = max(len(name) for name, _ in COMMANDS) + 2
+    for name, desc in COMMANDS:
+        print(f"  {name:<{col}}{desc}")
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+
+    # Apply global flags
+    utils.DRY_RUN = args.dry_run
+    utils.VERBOSE = args.verbose
+    utils.QUIET = args.quiet
+
+    if args.command is None:
+        parser.print_help()
+        sys.exit(utils.EXIT_OK)
+
+    if args.command == "list-commands":
+        cmd_list_commands()
+        sys.exit(utils.EXIT_OK)
+
+    fn = DISPATCH.get(args.command)
+    if fn is None:
+        utils.err(f"Unknown command: {args.command}")
+        sys.exit(utils.EXIT_NOT_FOUND)
+
+    try:
+        fn(args)
+    except NotImplementedError as e:
+        utils.err(f"'{args.command}' is not yet implemented ({e})")
+        sys.exit(utils.EXIT_NOT_FOUND)
+
+if __name__ == "__main__":
+    main()
