@@ -41,12 +41,24 @@ Use `TaskCreate` and `TaskUpdate` to track all phases with dependencies:
 
 1. Ask mode
 2. Pre-sweep git commit (blocked by 1) — **HARD MUST**
-3. Build plan index (blocked by 2)
-4. Enrich missing descriptions (blocked by 3)
+3. Build plan index + lists + meetings index (blocked by 2)
+4. Enrich missing descriptions + contributors (blocked by 3)
 5. Discover daily notes in scope (blocked by 4)
-6. Day-by-day guided sweep (blocked by 5) — one task per day
+6. Day-by-day guided sweep (blocked by 5) — **one sub-task per day** (see below)
 7. Validate via git diff (blocked by 6)
 8. Final commit (blocked by 7)
+
+### Per-day task checklist
+
+When starting each day in Phase 6, create a sub-task (or list the checklist inline) with these required steps:
+
+- [ ] Read daily note
+- [ ] Classify all sections (confident / uncertain / skip / personal-in-work)
+- [ ] Route all uncertain sections (one AskUserQuestion per uncertain section)
+- [ ] Present final routing plan and confirm
+- [ ] Execute: move all sections, create new plans/meetings if needed
+- [ ] Verify source note has only completed tasks + kept content remaining
+- [ ] Checkpoint commit
 
 Mark each task `in_progress` before starting, `completed` when done.
 
@@ -497,6 +509,13 @@ AskUserQuestion({
 })
 ```
 
+**Templates location:** `$NOTES_ROOT/@Templates/`
+- Work plan: `🏢📆 Work Plan.md`
+- Personal plan: `🏡📆 Personal Plan.md`
+- Work meeting notes: `🏢📝 Work Meeting Notes.md`
+
+Read the appropriate template before writing any new file — always match its frontmatter structure and H1 format exactly. Templates use `--` as YAML frontmatter delimiters (two dashes).
+
 **Compute the filename** following the template naming convention:
 
 ```bash
@@ -511,19 +530,23 @@ YEAR=$(date +%Y)
 # Personal plan:
 # filename_stem = "🏡{YYMMDD}{plantype_emoji} {title}"
 # e.g. "🏡260313👨🏻‍💻 My New Initiative"
+
+# Work meeting notes:
+# filename_stem = "🏢 {YYMMDD} {title}"
+# e.g. "🏢 260313 Dennis 1-1"
 ```
 
-**Write the new plan file** following the template output format exactly:
+**Write the new plan file** following the template output format exactly (read template first to verify current format):
 
 *Work plan:*
 ```markdown
----
+--
 doctype: 📆
 status: {status_emoji}
 started: {YYYY-MM-DD}
 namespace: 🏢
 workstream: {workstream_emoji}
----
+--
 # 🏢{YYMMDD}{workstream_emoji} {title}
 * [ ] Is [[🏢{YYMMDD}{workstream_emoji} {title}]] done? >{YEAR}-W{WW}
 * [ ]
@@ -531,25 +554,37 @@ workstream: {workstream_emoji}
 
 *Personal plan:*
 ```markdown
----
+--
 doctype: 📆
 status: {status_emoji}
 started: {YYMMDD}
 namespace: 🏡
 plantype: {plantype_emoji}
----
+--
 # 🏡{YYMMDD}{plantype_emoji} {title}
 * [ ] Is [[🏡{YYMMDD}{plantype_emoji} {title}]] done? >{YEAR}-W{WW}
 * [ ]
 ```
 
+*Work meeting notes:*
+```markdown
+--
+doctype: 🗒️
+started: {YYMMDD}
+namespace: 🏢
+--
+# 🏢 {YYMMDD} {title}
+* [ ] Are Action Items for [[🏢 {YYMMDD} {title}]] done? >{YEAR}-W{WW}
+```
+
 **Place the file** in the correct subdirectory:
-- Work: `$PLAN_ROOT/{workstream_dir}/` (match the existing subdir for that workstream emoji)
-- Personal: `$PLAN_ROOT/Present/{plantype_dir}/` (match the existing subdir for that plantype emoji)
+- Work plan: `$PLAN_ROOT/{workstream_dir}/` (match the existing subdir for that workstream emoji)
+- Personal plan: `$PLAN_ROOT/Present/{plantype_dir}/` (match the existing subdir for that plantype emoji)
+- Work meeting: `$NOTES_ROOT/🏢 ServiceNow/👤 Meetings/` (root or `1-1s/` subdir as appropriate)
 
-Discover the correct subdir by listing `$PLAN_ROOT` — never hardcode.
+Discover the correct subdir by listing the directory — never hardcode.
 
-**Add to plan index** so it's available for the rest of the sweep.
+**Add to plan/meetings index** so it's available for the rest of the sweep.
 
 Confirm creation to the user: "Created `[[{filename_stem}]]` at `{path}`."
 
