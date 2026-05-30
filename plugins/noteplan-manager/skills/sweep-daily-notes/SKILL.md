@@ -959,8 +959,8 @@ domains:
 ---
 # 🔬 {Title}
 
-## From {YYYY-MM-DD}
-{content verbatim}
+## References
+{content verbatim — URLs and reference material}
 ```
 
 **Path B — Deep Dive plan** (concluded research, decision reached, goal achieved):
@@ -972,7 +972,7 @@ domains:
 - Content placed after the `* [ ]` boilerplate line (same as any new plan)
 
 **Appending to an existing research doc** (when user routes to an existing `🔬` entry):
-- Append content under `## From {fileDate}` sub-header (same as plans)
+- Classify the content and append under the matching semantic section (`## References`, `## Findings`, `## Next Steps`, etc.) — same rules as plans
 - **Also update `domains:` frontmatter**: extract URL domains from the newly appended content, merge (set union) with existing `domains:` list, rewrite frontmatter in-place
 - Do NOT rewrite `description:` on append — only set at creation
 
@@ -985,11 +985,9 @@ After the user confirms the day's routing plan:
 **Use `noteplan-sweep` CLI for all file operations.** Do not write ad-hoc Python.
 
 ```bash
-# Append a section to target note under a wikilink header
-noteplan-sweep append-section "$TARGET_NOTE" "[[PlanName]]" /tmp/section_content.txt --date "$FILE_DATE"
-
-# Append a section directly to a plan or meeting file
-noteplan-sweep append-section "$PLAN_FILE" "Content" /tmp/section_content.txt --date "$FILE_DATE"
+# Classify content into a semantic section, then append (no date subheader)
+noteplan-sweep create-section "$TARGET_FILE" "## SectionName"   # creates section if absent
+noteplan-sweep append-section "$TARGET_FILE" "## SectionName" /tmp/section_content.txt
 
 # Clear the source after all sections are moved
 noteplan-sweep clear-source "$SOURCE_NOTE" --keep-completed
@@ -998,17 +996,32 @@ noteplan-sweep clear-source "$SOURCE_NOTE" --keep-completed
 noteplan-sweep add-breadcrumb "$SOURCE_NOTE" "$FILE_DATE" "SectionName" "one-line summary" "[[PlanName]]"
 ```
 
+**Semantic section routing — no `## From` date subheaders.** The date origin of every task is already captured in its `>YYYY-MM-DD` scheduling tag. Adding a `## From YYYY-MM-DD` subheader is redundant. Instead, classify each block of content by *what question it answers* and append it to the matching semantic section within the plan:
+
+| Content type | Target section |
+|---|---|
+| Goals, vision, what the outcome should be | `## Goals` |
+| Specific capabilities, features, what it should do | `## Capabilities` or `## Features` |
+| External services, APIs, MCPs to integrate | `## Integrations` |
+| Reference URLs, docs, starting points | `## References` |
+| Blocked work, waiting-on items | `## Blocked` |
+| Concrete next steps, implementation tasks | `## Next Steps` |
+| People to sync with, follow-ups, meeting notes | `## Collaborators` |
+
+**How to route to a semantic section:**
+1. Read the first 15 lines of the target plan to see what sections already exist
+2. Match the content to the best existing section, or pick the most fitting name from the table above
+3. If the section doesn't exist yet: `noteplan-sweep create-section "$TARGET" "## SectionName"`
+4. Append: `noteplan-sweep append-section "$TARGET" "## SectionName" content.txt`
+5. Same-plan content from different parts of the source day merges under the same section
+
 For each section confirmed for moving:
-- **To target daily note**: `noteplan-sweep append-section "$TARGET" "[[PlanName]]" content.txt --date "$FILE_DATE"`
-  - Merge under existing header if already present; create if not
-  - **Same-plan sections from different parts of the source day get merged** under one header
-  - The `--date` flag creates/reuses a `## From {fileDate}` sub-header to group content by origin date
-- **To existing plan file (direct)**: `noteplan-sweep append-section "$PLAN_FILE" "Content" content.txt --date "$FILE_DATE"`
-- **To new plan file**: append verbatim after the opening `* [ ]` line in the new plan (no date sub-header needed — the plan's `started:` field captures this)
-- **To existing research doc**: append verbatim under `## From {fileDate}` sub-header; also update `domains:` frontmatter with any new URL domains from the appended content (set union, rewrite frontmatter in-place)
-- **To new research note**: content is placed after the opening H1 in the new research doc (Step 6d handled creation)
-- **To meeting file**: append verbatim under a `## {YYYY-MM-DD} Notes` sub-header in the meeting file
-- **Unsorted**: append under `# Unsorted` in the target note (no date sub-header needed in Unsorted)
+- **To target daily note or existing plan file**: route to the matching semantic `##` section (see table above), create if needed
+- **To new plan file**: append verbatim after the opening `* [ ]` line (no section needed — content seeds the first section)
+- **To existing research doc**: append under `## References` or the most fitting section; also update `domains:` frontmatter with any new URL domains (set union, rewrite frontmatter in-place)
+- **To new research note**: content placed after the opening H1
+- **To meeting file**: append verbatim under a `## {YYYY-MM-DD} Notes` sub-header (date IS meaningful for meetings — it identifies the session)
+- **Unsorted**: append under `# Unsorted` in the target note
 - **Remove** from source: all content lines AND their section header (`# SectionName`). Do NOT move the original section header to the target — the target gets `# [[PlanName]]` instead.
 - **Split sections**: when individual lines within a section go to different plans, remove the section header and each line individually, routing each line to its designated plan header.
 - **Leave a swept breadcrumb in the source note**: after all sections for a day are moved, append a markdown table at the end of the source daily note so the user can trace where content went. Use `[[YYYY-MM-DD]]` wikilinks for daily note references and `[[PlanName]]` wikilinks for plan references so they're clickable in NotePlan. Format:
@@ -1033,11 +1046,13 @@ For each section confirmed for moving:
 
 **No content modification rule:** Copy every line exactly as-is. Preserve all leading whitespace / indentation. The only new text introduced is:
 - `# [[PlanName]]` headers in the target note
-- `## From {fileDate}` sub-headers when appending to an existing plan, research doc, or target daily note
-- `## {YYYY-MM-DD} Notes` sub-headers when appending to a meeting file
+- `## SectionName` semantic sub-headers in plan files (Goals, Capabilities, Integrations, References, etc.)
+- `## {YYYY-MM-DD} Notes` sub-headers when appending to a **meeting file** (date is meaningful for meetings)
 - `# Unsorted` header (if needed)
 - The plan file boilerplate when creating a new plan
 - The research doc frontmatter + H1 when creating a new research note or deep dive
+
+**Do NOT introduce `## From YYYY-MM-DD` subheaders.** The date origin is already on every task via its `>YYYY-MM-DD` scheduling tag — duplicating it as a section header adds noise. Use semantic sections instead.
 
 **Permitted task annotations (the only allowed content additions to moved lines):**
 
@@ -1192,8 +1207,8 @@ def is_allowed_new(l):
         re.match(r'^---$', l) or             # frontmatter delimiters
         re.match(r'^(doctype|status|started|namespace|workstream|plantype|contributors|description):', l) or
         re.match(r'^# [🏡🏢🔁]', l) or      # H1 for new plan files
-        re.match(r'^## From \d{4}', l) or   # date annotation sub-headers
-        re.match(r'^## \d{4}-\d{2}-\d{2}', l) or  # meeting date headers
+        re.match(r'^## \d{4}-\d{2}-\d{2}', l) or  # meeting date headers (## YYYY-MM-DD Notes)
+        re.match(r'^## (Goals|Capabilities|Features|Integrations|References|Blocked|Next Steps|Collaborators)', l) or  # semantic section headers
         re.match(r'^#', l.strip()) or        # any section header in Unsorted context
         re.match(r'^\| ', l) or              # swept breadcrumb table rows
         re.match(r'^\- → ', l) or            # swept breadcrumb destination lines (legacy)
@@ -1259,7 +1274,7 @@ After the integrity check passes, review ALL accumulated `# Unsorted` content in
    })
    ```
 
-5. For each block the user routes: move it out of Unsorted and append it under the appropriate `# [[PlanName]]` header in the same target note (with a `## From Unsorted` sub-header)
+5. For each block the user routes: move it out of Unsorted and append it under the appropriate `# [[PlanName]]` header in the same target note, routed to the matching semantic section within that plan
 6. For "Keep in Unsorted": leave untouched
 7. For "Delete": remove from the target note entirely
 8. After processing all blocks for all target notes:
@@ -1458,7 +1473,7 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Personal in Both mode — ask | In Both mode, personal side projects in work-day notes should not be silently skipped. Batch-ask once per day: route to personal target, work Unsorted, or skip. |
 | Meeting notes routing | Route meeting/1-1 content to the actual meeting file in `👤 Meetings/`, not to Unsorted. Search by person name, event name, or date. Raw prose blocks and bullet talking-points may also be meeting notes even without explicit headers. |
 | Meetings indexed | Index recently-modified meeting files alongside plans and lists. Show them in routing UI with highest priority when section content matches a person's name or meeting keyword. |
-| Date annotation on moved blocks | When appending to an existing plan or target daily note, prefix each moved block with `## From {fileDate}` so content origin is traceable. Omit for new plan files (the `started:` field serves this purpose). |
+| Semantic section routing | When appending to an existing plan or target daily note, route content to the matching semantic `##` section (Goals, Capabilities, Integrations, References, etc.). The `>YYYY-MM-DD` tag on each task already records origin date — do not add `## From` date subheaders. |
 | User notes are authoritative | Free-text notes in AskUserQuestion answers override scoring. Re-score the plan index against the user's clarification before presenting the next question. |
 | Post-sweep Unsorted review | After integrity check, review EVERY Unsorted block individually — one AskUserQuestion per block with top-3 plan suggestions. Ask "keep or move?" for each. Runs whenever any Unsorted content exists. |
 | Templates must be read first | Before creating any new plan, meeting, or list file, read the corresponding template from `@Templates/` to verify the H1 format and frontmatter fields. |
