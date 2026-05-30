@@ -643,6 +643,44 @@ function toggleSectionItems(rowIdx, btn) {{
   }}
   const row = MODAL_ROWS[rowIdx];
   if (!row) return;
+
+  // Python-primary path: when line_statuses is available, render from Python data.
+  const _pyc = PRE_CLASSIFICATION ? PRE_CLASSIFICATION.find(pc => pc.idx === rowIdx) : null;
+  const _lineStatuses = _pyc?.line_statuses || {{}};
+  const _usePythonToggle = !!(_pyc && Object.keys(_lineStatuses).length > 0);
+  if (_usePythonToggle) {{
+    const allSrcLines = [
+      ...(_pyc.moved_lines || []),
+      ...(_pyc.truly_lost_lines || []),
+      ...Object.values(_pyc.went_to_details || {{}}).flat(),
+    ].filter(l => l.trim() && !isNoiseLine(l));
+    if (!allSrcLines.length) {{ btn.textContent = '○'; return; }}
+    btn.textContent = '▼';
+    const parentRow = document.querySelector(`tr[data-row-idx="${{rowIdx}}"]`);
+    if (!parentRow) return;
+    let insertAfter = parentRow.nextSibling?.dataset?.mixedLostFor === String(rowIdx)
+      ? parentRow.nextSibling : parentRow;
+    for (const line of allSrcLines) {{
+      const clean = line.replace(/^-\\s*\\[[x ]\\]\\s*/i, '').replace(/^-\\s+/, '').trim();
+      if (!clean) continue;
+      const status = _lineStatuses[normLine(line)] || 'absent';
+      const badge = status === 'move'
+        ? `<span style="color:#3fb950;font-size:9px;margin-right:4px">→</span>`
+        : status === 'went-to'
+          ? `<span style="color:#58a6ff;font-size:9px;margin-right:4px">⇢</span>`
+          : `<span style="color:#f85149;font-size:9px;margin-right:4px">✗</span>`;
+      const color = status === 'move' ? '' : status === 'went-to' ? 'color:#58a6ff;opacity:0.8;' : 'color:#f85149;opacity:0.8;';
+      const tr = document.createElement('tr');
+      tr.className = 'item-row';
+      tr.dataset.parent = rowIdx;
+      tr.innerHTML = `<td class="sec-toggle" style="color:#30363d;text-align:right">↳</td><td></td><td class="item-text" colspan="3" style="${{color}}">${{badge}}${{esc(clean)}}</td><td></td><td></td>`;
+      insertAfter.insertAdjacentElement('afterend', tr);
+      insertAfter = tr;
+    }}
+    return;
+  }}
+
+  // JS fallback path
   const result = extractSectionLines(row.source_file, row.section, '-');
   const lines = result.lines.filter(l => l.trim() && !isNoiseLine(l));
   if (!lines.length) {{ btn.textContent = '○'; return; }}

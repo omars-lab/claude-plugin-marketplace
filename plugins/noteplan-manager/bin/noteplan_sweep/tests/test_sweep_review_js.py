@@ -1728,3 +1728,70 @@ def test_js31_python_primary_modal_renders_moved_lines(playwright, http_server):
     assert "2026-04-30" in dest_text, (
         f"Dest panel must show dest_task (with due date) from Python pc.dest_lines. Got: {dest_text!r}"
     )
+
+
+# JS-32  toggleSectionItems: per-line badges from PRE_CLASSIFICATION.line_statuses
+# ---------------------------------------------------------------------------
+
+def test_js32_toggle_section_items_line_statuses(playwright, http_server):
+    """JS-32: Expanding a row shows per-line badges from line_statuses (Python-primary).
+    B-15 redirect case: task was moved but only the redirect stub is in the breadcrumb dest.
+    JS classifyDestLines would mark the task as ✗ (not in breadcrumb additions), but
+    Python line_statuses says 'move' (Python followed the redirect). Badge must be → ."""
+    base_url, serve_dir = http_server
+
+    moved_task = "- [ ] Build ESGenius scoring API for integration test pipeline runs"
+
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "ESGenius", "summary": "ESGenius work",
+                  "destination": "[[Notes/Plans/ESGenius]]"}]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": ["## ESGenius", moved_task], "added": []},
+        # Breadcrumb dest: only redirect stub — task NOT here (JS can't see it)
+        {"path": "Notes/Plans/ESGenius.md",
+         "removed": [], "added": ["> Migrated: see [[Notes/Plans/ESGenius2]]"]},
+        # Actual dest after B-15 redirect — Python sees it, JS doesn't follow the link
+        {"path": "Notes/Plans/ESGenius2.md",
+         "removed": [], "added": [moved_task]},
+    ])
+    moved_norm = moved_task.strip().lower()
+    # Python followed B-15: classifies as 'move', line_statuses maps task → 'move'
+    pre_class = [{"idx": 0, "type": "move", "moved_count": 1, "lost_count": 0,
+                  "truly_lost_lines": [], "moved_lines": [moved_task], "dest_lines": [moved_task],
+                  "went_to_details": {}, "line_statuses": {moved_norm: "move"},
+                  "misrouted_count": 0, "went_to_files": [], "issues": ["b15_redirect"]}]
+    page_name = _write_page(serve_dir, "js32.html", diff, narrative, pre_classification=pre_class)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    # Click the ▶ expand button on row 0
+    page.click("tr[data-row-idx='0'] .sec-toggle")
+    page.wait_for_selector("tr.item-row")
+
+    item_rows = page.eval_on_selector_all(
+        "tr.item-row",
+        """els => els.map(r => ({
+            text: r.querySelector('.item-text')?.textContent?.trim() || '',
+            badge: (r.querySelector('span') || {}).style?.color || ''
+        }))"""
+    )
+    browser.close()
+
+    assert len(item_rows) >= 1, f"Expected ≥1 item row, got {item_rows}"
+    moved_row = next((r for r in item_rows if "scoring api" in r["text"].lower()), None)
+    assert moved_row is not None, f"Moved task row not found: {item_rows}"
+
+    # Python line_statuses says 'move' → green → badge (rgb(63, 185, 80) = #3fb950)
+    # Without Python-primary, JS classifyDestLines would see only redirect stub → red ✗
+    moved_badge = moved_row["badge"].lower()
+    assert ("3fb950" in moved_badge or "63, 185, 80" in moved_badge or "→" in moved_row["text"]), (
+        f"B-15 moved task must show green → from Python line_statuses. Got: {moved_row}"
+    )
