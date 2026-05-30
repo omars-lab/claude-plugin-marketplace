@@ -1,0 +1,10 @@
+{
+  "name": "document-co-author",
+  "description": "Build presentation decks and structured documents from content specs — separating content from rendering for prompt-driven iteration",
+  "version": "1.0.0",
+  "author": {
+    "name": "Omar Eid",
+    "email": "omar.eid@servicenow.com"
+  },
+  "license": "MIT"
+}
