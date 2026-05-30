@@ -180,6 +180,128 @@ def parse_transcript(jsonl_path: Path) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
+# Plan cross-mapping (CM-B)
+# ---------------------------------------------------------------------------
+
+_EMOJI_STRIP_RE = re.compile(
+    r'^[\U00010000-\U0010ffff\u2600-\u26FF\u2700-\u27BF\U0001F300-\U0001F9FF'
+    r'\U0001FA00-\U0001FA9F\u200d\ufe0f\U0001F1E0-\U0001F1FF\U00002702-\U000027B0]+'
+)
+_YYMMDD_RE = re.compile(r'^\d{6}')
+
+
+def _normalize_stem(stem: str) -> str:
+    """Strip leading emoji + YYMMDD prefix, lowercase, strip punctuation."""
+    s = _EMOJI_STRIP_RE.sub('', stem).strip()
+    s = _YYMMDD_RE.sub('', s).strip()
+    s = re.sub(r'[^\w\s]', ' ', s).lower()
+    return ' '.join(s.split())
+
+
+def _keyword_overlap(a: str, b: str) -> float:
+    """Jaccard similarity of word sets between two strings."""
+    stop = {'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'for', 'with', 'on', 'at', 'by', 'is', 'are', 'was'}
+    wa = {w for w in re.findall(r'\w+', a.lower()) if len(w) > 2 and w not in stop}
+    wb = {w for w in re.findall(r'\w+', b.lower()) if len(w) > 2 and w not in stop}
+    if not wa or not wb:
+        return 0.0
+    return len(wa & wb) / len(wa | wb)
+
+
+def load_plan_index(notes_root: Path) -> list[dict]:
+    """Load all plan files and build a cross-mapping index."""
+    from noteplan_sweep.dashboard import parse_frontmatter, PLAN_PATH_RE
+    plans = []
+    for p in sorted(notes_root.rglob("*.md")):
+        if any(x in str(p) for x in ("@Backup", "@Trash", "@Archive", "@Templates")):
+            continue
+        rel = str(p.relative_to(notes_root))
+        if not PLAN_PATH_RE.search(rel):
+            continue
+        try:
+            content = p.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        fm, _ = parse_frontmatter(content)
+        stem = p.stem
+        title = fm.get("title", stem)
+        plans.append({
+            "stem": stem,
+            "norm_stem": _normalize_stem(stem),
+            "title": title,
+            "norm_title": _normalize_stem(title),
+            "description": fm.get("description", ""),
+            "status": fm.get("status", ""),
+            "path": str(p),
+        })
+    return plans
+
+
+def cross_map_session(session: dict, plan_index: list[dict]) -> list[str]:
+    """Return list of plan stems that match this session's signals.
+
+    Match priority:
+    1. File written whose path contains the plan stem (direct write)
+    2. [[wikilink]] exact match to plan stem or title
+    3. Keyword overlap ≥ 0.25 between user text and plan title/description
+    """
+    matched: set = set()
+
+    # 1. Direct file writes
+    for fp in session.get("files_written", []):
+        fp_stem = Path(fp).stem
+        for plan in plan_index:
+            if plan["stem"] == fp_stem:
+                matched.add(plan["stem"])
+                break
+            # Partial match: plan stem appears in file path
+            if plan["stem"] in fp:
+                matched.add(plan["stem"])
+
+    # 2. Wikilinks
+    wikilinks = {w.strip() for w in session.get("wikilinks_mentioned", [])}
+    for plan in plan_index:
+        if plan["stem"] in wikilinks or plan["title"] in wikilinks:
+            matched.add(plan["stem"])
+        # Normalize match
+        for wl in wikilinks:
+            if _normalize_stem(wl) == plan["norm_stem"] or _normalize_stem(wl) == plan["norm_title"]:
+                matched.add(plan["stem"])
+
+    # 3. Keyword overlap on user text
+    all_user_text = " ".join(session.get("imperative_phrases", []) + session.get("idea_lines", []))
+    if all_user_text:
+        for plan in plan_index:
+            if plan["stem"] in matched:
+                continue
+            target = f"{plan['norm_title']} {plan['description']}"
+            if _keyword_overlap(all_user_text, target) >= 0.25:
+                matched.add(plan["stem"])
+
+    return sorted(matched)
+
+
+def build_plan_sessions_map(sessions: list[dict], plan_index: list[dict]) -> dict[str, list[dict]]:
+    """Return {plan_stem: [{session_id, date, summary}]} with cross-mapped sessions."""
+    result: dict[str, list] = {}
+    for s in sessions:
+        matched = cross_map_session(s, plan_index)
+        for stem in matched:
+            result.setdefault(stem, [])
+            entry = {
+                "session_id": s["session_id"],
+                "date": s.get("date", ""),
+                "files_written": [
+                    fp for fp in s.get("files_written", [])
+                    if stem in fp or Path(fp).stem == stem
+                ],
+                "wikilinks": [w for w in s.get("wikilinks_mentioned", []) if stem in w or w in stem],
+            }
+            result[stem].append(entry)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Cursor (incremental mode)
 # ---------------------------------------------------------------------------
 
@@ -288,25 +410,37 @@ def cmd_conversation_mine(args):
     )
     utils.log(f"conversation-mine: processed {len(new_sessions)} new session(s) → {sessions_path}")
 
-    # Write plan-sessions.json: plan stem → [session_ids]
-    plan_sessions: dict[str, list[str]] = {}
-    for s in merged_sessions:
-        for fp in s.get("files_written", []):
-            if "Plans/" in fp or "📆" in fp:
-                stem = Path(fp).stem
-                plan_sessions.setdefault(stem, [])
-                if s["session_id"] not in plan_sessions[stem]:
-                    plan_sessions[stem].append(s["session_id"])
-        for wl in s.get("wikilinks_mentioned", []):
-            plan_sessions.setdefault(wl, [])
-            if s["session_id"] not in plan_sessions[wl]:
-                plan_sessions[wl].append(s["session_id"])
+    # CM-B: Cross-map all sessions against plan index
+    utils.verbose("Cross-mapping sessions against plan files...")
+    notes_root = root / "Notes"
+    plan_index = load_plan_index(notes_root)
+    utils.verbose(f"  Plan index: {len(plan_index)} plans")
 
-    plan_sessions_path = dash_dir / "plan-sessions.json"
-    plan_sessions_path.write_text(
-        json.dumps(plan_sessions, indent=2, ensure_ascii=False),
+    plan_sessions_rich = build_plan_sessions_map(merged_sessions, plan_index)
+
+    # Enrich each session with its matched plans
+    ps_by_id = {s["session_id"]: s for s in merged_sessions}
+    for stem, session_list in plan_sessions_rich.items():
+        for entry in session_list:
+            sid = entry["session_id"]
+            if sid in ps_by_id:
+                plans_touched = ps_by_id[sid].setdefault("plans_touched", [])
+                if stem not in plans_touched:
+                    plans_touched.append(stem)
+
+    # Re-write enriched sessions.json
+    sessions_path.write_text(
+        json.dumps(merged_sessions, indent=2, ensure_ascii=False),
         encoding="utf-8"
     )
+
+    # Write plan-sessions.json with rich cross-map data
+    plan_sessions_path = dash_dir / "plan-sessions.json"
+    plan_sessions_path.write_text(
+        json.dumps(plan_sessions_rich, indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
+    utils.log(f"  Cross-mapped {len(plan_sessions_rich)} plan(s) to sessions")
 
     # Write ideas.json: surfaced idea lines (dedup by text fingerprint)
     existing_ideas_path = dash_dir / "ideas.json"
@@ -325,18 +459,27 @@ def cmd_conversation_mine(args):
 
     existing_fps = {i.get("fingerprint") for i in existing_ideas if i.get("fingerprint")}
     new_ideas: list[dict] = []
+    plan_norm_map = {p["norm_stem"]: p["stem"] for p in plan_index}
     for s in new_sessions:
+        session_plans = s.get("plans_touched", [])
         for line in s.get("idea_lines", []):
-            fp = _fingerprint(line)
-            if fp not in existing_fps:
+            fp_hash = _fingerprint(line)
+            if fp_hash not in existing_fps:
+                # Try to match idea to a plan
+                matched_plan = session_plans[0] if session_plans else None
+                if not matched_plan:
+                    for plan in plan_index:
+                        if _keyword_overlap(line, f"{plan['norm_title']} {plan['description']}") >= 0.3:
+                            matched_plan = plan["stem"]
+                            break
                 new_ideas.append({
                     "text": line,
-                    "fingerprint": fp,
+                    "fingerprint": fp_hash,
                     "session_id": s["session_id"],
                     "date": s["date"],
-                    "matched_plan": None,
+                    "matched_plan": matched_plan,
                 })
-                existing_fps.add(fp)
+                existing_fps.add(fp_hash)
 
     all_ideas = existing_ideas + new_ideas
     existing_ideas_path.write_text(
@@ -351,4 +494,4 @@ def cmd_conversation_mine(args):
     }
     save_cursor(dash_dir, new_cursor)
 
-    utils.log(f"  sessions: {len(merged_sessions)} total | plan-sessions: {len(plan_sessions)} plans | ideas: {len(all_ideas)} ({len(new_ideas)} new)")
+    utils.log(f"  sessions: {len(merged_sessions)} total | plan-sessions: {len(plan_sessions_rich)} plans | ideas: {len(all_ideas)} ({len(new_ideas)} new)")

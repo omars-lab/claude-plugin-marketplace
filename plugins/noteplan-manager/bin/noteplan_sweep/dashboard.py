@@ -295,11 +295,30 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
         for t in plantypes
     )
 
+    # Gantt tasks: plans with known date ranges sorted by start
+    gantt_plans = [
+        p for p in plans
+        if p.get("start_date") and p.get("status") != "done"
+    ]
+    gantt_plans_done = [p for p in plans if p.get("status") == "done" and p.get("start_date")]
+    gantt_json = json.dumps([
+        {
+            "id": p["stem"],
+            "name": p["title"],
+            "start": p["start_date"],
+            "end": p.get("end_date") or "",
+            "progress": 100 if p["status"] == "done" else (50 if p["status"] == "active" else 10),
+            "custom_class": f"gantt-{p['status']}",
+        }
+        for p in sorted(gantt_plans + gantt_plans_done[:20], key=lambda x: x["start_date"])
+    ], ensure_ascii=False) if (gantt_plans or gantt_plans_done) else "[]"
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Idea Dashboard</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; background: #0d1117; color: #e6edf3; }}
@@ -360,9 +379,28 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
   .card .card-text {{ color: #e6edf3; margin-bottom: 3px; }}
   .card .card-meta {{ font-size: 11px; color: #484f58; }}
 
-  /* ── Gantt placeholder ── */
-  .gantt-ph {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 40px; text-align: center; color: #484f58; }}
-  .gantt-ph p {{ margin-top: 8px; font-size: 12px; }}
+  /* ── Kanban ── */
+  .kanban-board {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; align-items: start; }}
+  .kanban-col {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px; min-height: 120px; }}
+  .kanban-col-header {{ font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }}
+  .kanban-card {{ background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 9px 11px; margin-bottom: 6px; }}
+  .kanban-card:hover {{ border-color: #58a6ff; }}
+  .kanban-card .kc-title {{ font-size: 12px; font-weight: 600; color: #e6edf3; margin-bottom: 4px; line-height: 1.4; }}
+  .kanban-card .kc-meta {{ font-size: 11px; color: #484f58; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 4px; }}
+  .kc-tasks .td {{ color: #3fb950; }} .kc-tasks .to {{ color: #d29922; }}
+
+  /* ── Gantt ── */
+  .gantt-wrap {{ overflow-x: auto; border-radius: 8px; background: #0d1117; padding: 12px; }}
+  .gantt .bar {{ fill: #1f6feb; }} .gantt .bar-progress {{ fill: #58a6ff; }}
+  .gantt .bar-label {{ fill: #e6edf3 !important; font-size: 11px; }}
+  .gantt .lower-text, .gantt .upper-text {{ fill: #8b949e !important; }}
+  .gantt .grid-header {{ fill: #161b22 !important; }}
+  .gantt .grid-row {{ fill: #0d1117 !important; }} .gantt .grid-row:nth-child(even) {{ fill: #161b22 !important; }}
+  .gantt .row-line {{ stroke: #21262d !important; }} .gantt .tick {{ stroke: #30363d !important; }}
+  svg.gantt {{ background: #0d1117 !important; }}
+  #gantt-zoom {{ display: flex; gap: 6px; margin-bottom: 10px; }}
+  #gantt-zoom button {{ background: #21262d; border: 1px solid #30363d; border-radius: 4px; padding: 3px 10px; color: #8b949e; cursor: pointer; font-size: 12px; }}
+  #gantt-zoom button.active {{ background: #1f3a4a; color: #79c0ff; border-color: #79c0ff; }}
 </style>
 </head>
 <body>
@@ -403,22 +441,16 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
       <input type="text" id="plan-search" placeholder="Filter plans…" oninput="renderPlans()">
       <span class="count-badge" id="plan-count"></span>
     </div>
-    <table class="plans-table">
-      <thead><tr>
-        <th></th><th>Plan</th><th>Project</th><th>Workstream</th>
-        <th>Type</th><th>Started</th><th>Tasks</th><th>Description</th>
-      </tr></thead>
-      <tbody id="plans-body"></tbody>
-    </table>
+    <div class="kanban-board" id="kanban-board"></div>
   </div>
 
   <div class="pane" id="pane-gantt">
-    <div class="gantt-ph">
-      <div style="font-size:32px">📅</div>
-      <strong>Gantt View — coming in Phase C</strong>
-      <p>Will use Frappe Gantt to render plan timelines.<br>
-      Start = filename YYMMDD · End = <code>completed:</code> frontmatter (set by conversation-mine)</p>
+    <div id="gantt-zoom">
+      <button class="active" onclick="setGanttView('Month',this)">Month</button>
+      <button onclick="setGanttView('Quarter',this)">Quarter</button>
+      <button onclick="setGanttView('Year',this)">Year</button>
     </div>
+    <div class="gantt-wrap"><svg id="gantt-svg"></svg></div>
   </div>
 
   <div class="pane" id="pane-tasks">
@@ -439,12 +471,15 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
 
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.umd.min.js"></script>
 <script>
 const DATA = {data_json};
+const GANTT_DATA = {gantt_json};
 
 // ── Filter state ──────────────────────────────────────────────────────────
 // Multi-select per facet (empty set = "all")
 const sel = {{ status: new Set(), project: new Set(), plantype: new Set() }};
+let ganttChart = null;
 
 function esc(s) {{
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -513,6 +548,13 @@ function showTab(tab) {{
 // ── Renderers ─────────────────────────────────────────────────────────────
 const sClass = {{active:'s-active',paused:'s-paused',done:'s-done',backlog:'s-backlog'}};
 
+const COLUMNS = [
+  {{ key: 'backlog', label: '🔵 Backlog', color: '#79c0ff' }},
+  {{ key: 'active',  label: '🟢 Active',  color: '#3fb950' }},
+  {{ key: 'paused',  label: '🟡 Paused',  color: '#d29922' }},
+  {{ key: 'done',    label: '✅ Done',    color: '#484f58' }},
+];
+
 function renderPlans() {{
   const q2 = (document.getElementById('plan-search').value || '').toLowerCase();
   const plans = DATA.plans.filter(p => matchesPlan(p) && (
@@ -520,18 +562,53 @@ function renderPlans() {{
   ));
   document.getElementById('plan-count').textContent = plans.length + ' plans';
   document.getElementById('tab-plans-n').textContent = '(' + plans.length + ')';
-  document.getElementById('plans-body').innerHTML = plans.map(p => `
-    <tr>
-      <td><span class="status-dot ${{sClass[p.status]||'s-unknown'}}"></span></td>
-      <td><a class="np-link" href="${{esc(p.xcallback)}}">${{esc(p.title)}}</a></td>
-      <td style="color:#8b949e;white-space:nowrap">${{esc(p.project||'')}}</td>
-      <td style="color:#8b949e">${{esc(p.workstream||'')}}</td>
-      <td style="font-size:15px">${{esc(p.plantype||'')}}</td>
-      <td style="color:#484f58;white-space:nowrap">${{esc(p.start_date||'')}}</td>
-      <td><div class="task-bar"><span class="td">✓${{p.done_tasks}}</span>&nbsp;<span class="to">◦${{p.open_tasks}}</span></div></td>
-      <td style="color:#8b949e;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-          title="${{esc(p.description||'')}}">${{esc(p.description||'')}}</td>
-    </tr>`).join('');
+
+  const board = document.getElementById('kanban-board');
+  board.innerHTML = COLUMNS.map(col => {{
+    const cards = plans.filter(p => (p.status || 'backlog') === col.key);
+    return `<div class="kanban-col">
+      <div class="kanban-col-header">
+        <span style="color:${{col.color}}">${{col.label}}</span>
+        <span style="color:#484f58;font-weight:400">${{cards.length}}</span>
+      </div>
+      ${{cards.map(p => `
+        <a class="kanban-card" href="${{esc(p.xcallback)}}" style="display:block;text-decoration:none">
+          <div class="kc-title">${{esc(p.title)}}</div>
+          <div class="kc-meta">
+            <span style="color:#8b949e">${{esc(p.project||'')}}</span>
+            <span style="font-size:14px">${{esc(p.plantype||'')}}</span>
+            <span class="kc-tasks"><span class="td">✓${{p.done_tasks}}</span>&nbsp;<span class="to">◦${{p.open_tasks}}</span></span>
+          </div>
+          ${{p.description ? `<div style="font-size:11px;color:#484f58;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${{esc(p.description)}}</div>` : ''}}
+        </a>`).join('')}}
+    </div>`;
+  }}).join('');
+}}
+
+function initGantt() {{
+  if (!GANTT_DATA || !GANTT_DATA.length) {{
+    document.querySelector('.gantt-wrap').innerHTML = '<div style="padding:40px;text-align:center;color:#484f58">No plans with date ranges found.<br><small>Start = filename YYMMDD · End = <code>completed:</code> frontmatter</small></div>';
+    return;
+  }}
+  const defaultEnd = new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10);
+  const tasks = GANTT_DATA.map(t => ({{ ...t, end: t.end || defaultEnd }}));
+  try {{
+    ganttChart = new Gantt('#gantt-svg', tasks, {{
+      view_mode: 'Month',
+      date_format: 'YYYY-MM-DD',
+      bar_height: 20,
+      padding: 18,
+      on_click: task => {{ window.location.href = 'noteplan://x-callback-url/openNote?noteTitle=' + encodeURIComponent(task.name); }},
+    }});
+  }} catch(e) {{
+    document.querySelector('.gantt-wrap').innerHTML = `<div style="padding:20px;color:#f85149">Gantt error: ${{e.message}}</div>`;
+  }}
+}}
+
+function setGanttView(mode, btn) {{
+  document.querySelectorAll('#gantt-zoom button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (ganttChart) ganttChart.change_view_mode(mode);
 }}
 
 function renderTasks() {{
@@ -564,7 +641,10 @@ function rerender() {{
   renderIdeas();
 }}
 
-window.addEventListener('DOMContentLoaded', rerender);
+window.addEventListener('DOMContentLoaded', () => {{
+  rerender();
+  initGantt();
+}});
 </script>
 </body>
 </html>"""
