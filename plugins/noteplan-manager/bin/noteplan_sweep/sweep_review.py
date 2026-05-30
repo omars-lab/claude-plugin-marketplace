@@ -951,6 +951,14 @@ function updateRowBadge(idx, classification) {{
   const emptyDetail = (displayType === 'empty' && classification.emptyReason)
     ? ` — ${{classification.emptyReason}}` : '';
   badge.title = (_badgeTitles[displayType] || displayType) + counts + emptyDetail;
+  // Lost/anomaly/empty badges are clickable — open the modal directly
+  if (displayType === 'lost' || displayType === 'anomaly' || displayType === 'empty') {{
+    badge.style.cursor = 'pointer';
+    badge.onclick = (e) => {{ e.stopPropagation(); showSectionModal(idx); }};
+  }} else {{
+    badge.style.cursor = '';
+    badge.onclick = null;
+  }}
   tr.dataset.rowType = displayType;
   if (activeType !== 'all' && displayType !== activeType) tr.style.display = 'none';
   // Inject synthetic Lost sub-row (idempotent — guard inside)
