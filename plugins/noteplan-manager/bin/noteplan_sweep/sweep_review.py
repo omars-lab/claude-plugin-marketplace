@@ -469,6 +469,10 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .modal-body{{flex:1;min-height:0;overflow-y:auto;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px}}
 .modal-panel-hdr{{font-size:11px;font-weight:600;color:#8b949e;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #30363d}}
 .modal-empty{{color:#484f58;font-size:12px;padding:16px;text-align:center}}
+.diff-lines{{font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;line-height:18px;overflow-x:auto}}
+.diff-line{{padding:1px 8px;white-space:pre}}
+.diff-line.removed{{background:#4a0f1a;color:#ffdcd7}}
+.diff-line.added{{background:#0e4429;color:#aff5b4}}
 #layout{{display:flex;flex:1;min-height:0}}
 #sidebar{{width:260px;min-width:160px;background:#161b22;border-right:1px solid #30363d;overflow-y:auto;flex-shrink:0;padding:8px 0}}
 .fi{{padding:5px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;border-left:3px solid transparent;font-size:12px}}
@@ -564,39 +568,74 @@ function closeModal() {{
 
 document.addEventListener('keydown', e => {{ if (e.key === 'Escape') closeModal(); }});
 
+// Extract only the + or - lines for a section from DIFF_TEXT.
+// lineType: '-' for removed from source, '+' for added to destination.
+// For destination, pass lineType='+' and sectionName=null to get ALL added lines.
+function extractSectionLines(filename, sectionName, lineType) {{
+  const lines = DIFF_TEXT.split('\\n');
+  const baseName = filename.split('/').pop().toLowerCase();
+  let inFile = false;
+  let inSection = sectionName === null; // null means accept all
+  const result = [];
+  const nameLower = sectionName ? sectionName.replace(/^#+\\s*/, '').trim().toLowerCase() : null;
+
+  for (const line of lines) {{
+    if (line.startsWith('diff --git ')) {{
+      inFile = line.toLowerCase().includes(baseName);
+      inSection = sectionName === null;
+      continue;
+    }}
+    if (!inFile || line.startsWith('+++') || line.startsWith('---') || line.startsWith('index') || line.startsWith('@@')) continue;
+
+    const type = line.length ? line[0] : ' ';
+    if (type !== '+' && type !== '-' && type !== ' ') continue;
+    const content = line.slice(1);
+
+    if (sectionName !== null) {{
+      // Detect section start: line contains the section name (stripping leading #s)
+      const stripped = content.replace(/^#+\\s*/, '').toLowerCase();
+      if (stripped === nameLower || stripped.startsWith(nameLower + ' ') || stripped.startsWith(nameLower + ':')) {{
+        inSection = true;
+      }} else if (inSection && /^#+\\s/.test(content) && type !== '+') {{
+        inSection = false; // next section header — stop
+      }}
+    }}
+
+    if (inSection && type === lineType) {{
+      result.push(content);
+    }}
+  }}
+  return result;
+}}
+
 function showSectionModal(idx) {{
   const row = MODAL_ROWS[idx];
   if (!row) return;
-  const sourceFile = row.source_file;
+
+  const sectionName = row.section.replace(/^#+\\s*/, '').trim();
   let destRaw = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
 
-  const sourceFileDiff = allParsedFiles.find(f => f.filename === sourceFile);
-  const destFileDiff = allParsedFiles.find(f => {{
-    if (!f.filename) return false;
-    const fStem = f.filename.split('/').pop().replace(/\\.md$/, '');
-    return fStem === destRaw || f.filename.endsWith(destRaw + '.md');
+  // Source: removed lines belonging to this section
+  const removedLines = extractSectionLines(row.source_file, sectionName, '-');
+
+  // Destination: all added lines (content arrived under a plan wikilink header, not original section name)
+  const destFile = allParsedFiles.find(f => {{
+    const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '');
+    return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
   }});
+  const addedLines = destFile ? extractSectionLines(destFile.filename, null, '+') : [];
 
-  const sectionKey = row.section.replace(/^#+\\s*/, '').trim().toLowerCase();
-
-  const renderPanel = (title, fileDiff) => {{
-    if (!fileDiff) return `<div><div class="modal-panel-hdr">${{esc(title)}}</div><div class="modal-empty">No diff found for this file</div></div>`;
-    const displayName = fileDiff.filename.split('/').pop();
-    const relevant = fileDiff.hunks.filter(h =>
-      [...h.left, ...h.right].some(l => l.c.toLowerCase().includes(sectionKey))
-    );
-    const hunks = (relevant.length > 0 ? relevant : fileDiff.hunks).slice(0, 6);
-    const body = hunks.map(h => renderHunk(h)).join('') || '<div class="modal-empty">No changes</div>';
-    return `<div>
-      <div class="modal-panel-hdr">${{esc(title)}} — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(displayName)}}</span></div>
-      ${{body}}
-    </div>`;
+  const renderLines = (lines, cls, title, filename) => {{
+    const hdr = `${{esc(title)}} — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(filename)}}</span>`;
+    if (!lines.length) return `<div><div class="modal-panel-hdr">${{hdr}}</div><div class="modal-empty">No matching lines found</div></div>`;
+    const body = lines.map(l => `<div class="diff-line ${{cls}}">${{esc(l)}}</div>`).join('');
+    return `<div><div class="modal-panel-hdr">${{hdr}}</div><div class="diff-lines">${{body}}</div></div>`;
   }};
 
-  document.getElementById('modal-title').textContent = row.section + ' → ' + normDest(row.destination);
+  document.getElementById('modal-title').textContent = sectionName + ' → ' + normDest(row.destination);
   document.getElementById('modal-body').innerHTML =
-    renderPanel('Removed from source', sourceFileDiff) +
-    renderPanel('Added to destination', destFileDiff);
+    renderLines(removedLines, 'removed', 'Removed from source', row.source_file.split('/').pop()) +
+    renderLines(addedLines,  'added',   'Added to destination', destFile ? destFile.filename.split('/').pop() : destRaw);
   document.getElementById('modal-overlay').classList.add('open');
 }}
 
