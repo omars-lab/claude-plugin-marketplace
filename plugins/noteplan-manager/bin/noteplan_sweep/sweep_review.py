@@ -675,9 +675,16 @@ function sectionHeaderMatches(content, nameLower) {{
   // Exact match or query is a prefix of header (header is MORE specific — ok)
   if (stripped === nameLower) return true;
   if (stripped.startsWith(nameLower + ' ') || stripped.startsWith(nameLower + ':')) return true;
-  // Header must NOT be a strict prefix of query — that means the header is more general
-  // e.g. header="config agent", query="config agent arb" → reject (parent section, not this row's section)
+  // Reject: header is a strict prefix of query → parent section, not this row's section
   if (nameLower.startsWith(stripped + ' ') || nameLower.startsWith(stripped + ':')) return false;
+  // Last-token check: query's last significant word (≥3 chars) matched as whole word in header
+  // e.g. "Config Agent ARB" → last token "arb" → matches "## ARB & Governance"
+  const qToks = nameLower.split(' ').filter(w => w.length >= 3);
+  const lastTok = qToks[qToks.length - 1];
+  if (lastTok && lastTok.length >= 3) {{
+    const safe = lastTok.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&');
+    if (new RegExp(`\\\\b${{safe}}\\\\b`).test(stripped)) return true;
+  }}
   // Word-overlap fallback: 60%+ of significant words (len>3) from query must appear in header
   const words = nameLower.split(' ').filter(w => w.length > 3);
   if (!words.length) return stripped.includes(nameLower);
@@ -2165,8 +2172,12 @@ def _extract_section_lines(diff_text: str, filename: str, section_name: str, lin
         n = name_lower or ''
         if h == n: return True
         if h.startswith(n + ' ') or h.startswith(n + ':'): return True
-        # Reject if header is a strict prefix of query — parent section, not this one
         if n.startswith(h + ' ') or n.startswith(h + ':'): return False
+        # Last-token check: query's last token (≥3 chars) as whole word in header
+        q_toks = [w for w in n.split() if len(w) >= 3]
+        if q_toks:
+            last = re.escape(q_toks[-1])
+            if re.search(rf'\b{last}\b', h): return True
         return False
 
     for raw in diff_text.splitlines():
