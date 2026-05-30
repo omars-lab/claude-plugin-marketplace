@@ -26,6 +26,14 @@ This is distinct from `suggest-groupings`, which uses event-snapshot directories
 
 Run OCR first (fast, free) to get token-level text. Then for each screenshot, use the `Read` tool to view the image natively. Your visual understanding of UI layout, meeting chrome, window titles, and code context is more reliable than text overlap alone.
 
+**NNBSP workaround:** macOS screenshot filenames use U+202F (narrow no-break space) before AM/PM. The `Read` tool cannot open these paths directly. To visually inspect a screenshot, first copy it to a temp path without NNBSP, read it, then delete the copy:
+```bash
+cp "/path/to/Screenshot 2026-04-24 at 9.21.58 AM.png" /tmp/organize-by-plan/preview/inspect.png
+# Read /tmp/organize-by-plan/preview/inspect.png
+rm /tmp/organize-by-plan/preview/inspect.png
+```
+**Never leave inspection copies behind.** Delete immediately after reading.
+
 ### 2. Plan directories are semantic, not event-based
 
 `🏡 Developing OCR Tooling/` collects all screenshots related to that plan, regardless of the specific date they were taken. Multiple work sessions on the same plan go into the same subdir.
@@ -506,7 +514,8 @@ SCRIPTS=$(find "$HOME/.claude/plugins/cache" \
 
 ## Safety Rules
 
-- **Never delete screenshots** — only move + rename. `move_files.py` uses `shutil.move`.
+- **Move + rename, never copy.** `move_files.py` uses `shutil.move` — the original is gone after a move. There must be exactly one copy of each screenshot at all times. Never use `cp`, `shutil.copy`, or `shutil.copy2` on the original files.
+- **Temp inspection copies are the only exception** — when using `Read` on NNBSP filenames, copy to `/tmp/organize-by-plan/preview/`, read immediately, then `rm`. Delete before moving on to the next file.
 - **Always confirm before mutating** — all moves and note writes require `AskUserQuestion` approval.
 - **NNBSP-safe paths** — always resolve screenshot paths through `move_files.py` or via its `resolve_src` logic (handles U+202F narrow no-break space in macOS screenshot filenames).
 - **Preserve mtime** — `shutil.move` and macOS `mv` preserve mtime by default.
