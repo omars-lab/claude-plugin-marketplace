@@ -158,6 +158,8 @@ When you encounter a bare URL, use this table to decide how to handle it. Apply 
 | **X/Twitter post** | `x.com/<handle>/status/<id>`, `twitter.com/<handle>/status/<id>` | **Use handle + context** if available; strip tracking params (`?s=`, `?t=`); fallback: `X/@<handle> announcement` | `[X/@openaidevs announcement](url)` |
 | **Reddit share link** | `reddit.com/r/<sub>/s/<id>` (short share URL, no title slug) | **Use subreddit context** — no title in URL; fallback: `Reddit/r/<sub> discussion` | `[Reddit/r/ClaudeAI discussion](url)` |
 | **Internal code host** | `code.devsnc.com`, GitHub Enterprise behind SSO | **Skip silently** (hook); for manual enrichment: use URL path segments as label with `(internal, Okta)` suffix | `[snowops-mcp-server: ServiceNow ops MCP server (internal, Okta)](url)` |
+| **arXiv abstract** | `arxiv.org/abs/<id>` | **Use meta description** — HTML title is garbage ("subscribe to arXiv mailings"); paper title is in `<meta name="description">` as "Abstract page for arXiv paper XXXX: [Paper Title]" | `[MAS-Orchestra: improving multi-agent reasoning via holistic orchestration and benchmarks](url)` |
+| **arXiv HTML paper** | `arxiv.org/html/<id>` | **Use page title** — HTML rendering has correct paper title in `<title>` tag | `[Evaluating AGENTS.md: whether repo-level context files help coding agents](url)` |
 
 **Rule of thumb:**
 - If the URL type gives you enough info without a network call → auto-format
