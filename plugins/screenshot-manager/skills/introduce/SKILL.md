@@ -18,12 +18,13 @@ Screenshot Manager solves two common problems with topic-organized screenshot di
 ### Step 1: Welcome and Context
 
 ```
-Screenshot Manager — 3 skills for your Screenshots folder.
+Screenshot Manager — 4 skills for your Screenshots folder.
 
 I can help with:
-- Prefixing directories with their earliest screenshot date (sortable chronology)
-- Finding misplaced files and importing Desktop screenshots using OCR + date proximity
-- Extracting URLs from browser screenshots
+- Organizing Desktop screenshots into NotePlan plan-named subdirs with meeting-note cross-references (organize-by-plan)
+- Finding misplaced files and importing Desktop screenshots using OCR + date proximity (suggest-groupings)
+- Prefixing directories with their earliest screenshot date for chronological sorting (sort-dirs)
+- Extracting URLs from browser screenshots (extract-urls)
 ```
 
 ### Step 2: Ask What They Want to Do
@@ -32,8 +33,9 @@ Use `AskUserQuestion`:
 ```
 What would you like to do?
 
-- Sort directories by date (sort-dirs)
+- Organize Desktop screenshots by active NotePlan plans (organize-by-plan)
 - Find misplaced files / import from Desktop (suggest-groupings)
+- Sort directories by date (sort-dirs)
 - Extract URLs from browser screenshots (extract-urls)
 - Learn about all skills
 ```
@@ -43,6 +45,25 @@ What would you like to do?
 Based on their selection, explain the relevant skills with usage examples.
 
 ## Skills
+
+### `organize-by-plan` — Organize Desktop screenshots by NotePlan plan
+
+**Invocation:** `/screenshot-manager:organize-by-plan`
+
+**What it does:** OCRs all Desktop screenshots and uses **Claude Vision as primary classifier** (OCR text as context) to match each screenshot to the best active NotePlan plan across all four domains (🏢 ServiceNow, 🏡 Personal, ☕️ NaqshCoffee, 👥 EarlBear). Renames files to a compact sortable form (`YYYYMMDD-HHMMSS {slug}.png`), moves them into `~/Desktop/Screenshots/{domain-emoji} {plan-title}/`, and:
+- Creates/updates a per-subdir `INDEX.md` with OCR excerpts and plan wikilinks
+- Clusters screenshots by meeting session, links to existing NotePlan meeting notes (or creates placeholder stubs)
+- Appends linked file paths + OCR excerpts to each meeting note's `## Screenshots` section
+
+**Key philosophy:** Directories are **semantic** (named after active plans), not event-snapshots. All screenshots related to `🏡 Developing OCR Tooling` go into the same subdir regardless of date. This is the **opposite** philosophy of `suggest-groupings` — choose one or the other for a given Screenshots root.
+
+**Target root:** `~/Desktop/Screenshots/` (separate from the OneDrive root used by `suggest-groupings`)
+
+**Requires:** `screenshot-ocr` conda env (auto-created if missing). NotePlan plans with frontmatter (`description`, `status`, `started`).
+
+**When to use:** You have Desktop screenshots piling up and want them cross-referenced with your active work plans and meeting notes in NotePlan.
+
+---
 
 ### `sort-dirs` — Prefix directories with dates
 
@@ -113,40 +134,64 @@ Keep: SF Trip and Canceling NYC Trip separate
 
 ## How They Work Together
 
-```
-suggest-groupings  →  fix misplaced files and import Desktop screenshots
-sort-dirs          →  prefix all directories with dates for chronological sorting
-extract-urls       →  pull URLs out of any screenshot, any time (independent)
-```
+Two organization paradigms — choose based on what you want:
 
-**Recommended workflow:**
+**Semantic (plan-based) organization:**
 ```
-1. /screenshot-manager:suggest-groupings  -- clean up misplaced files first
-2. /screenshot-manager:sort-dirs          -- then prefix dirs with dates
-3. /screenshot-manager:extract-urls       -- on demand, whenever you need URLs back
+organize-by-plan  →  Desktop screenshots → plan-named subdirs + meeting notes in NotePlan
+sort-dirs         →  optionally prefix plan subdirs with dates after organizing
 ```
 
-`extract-urls` is independent — run it any time on any screenshot without needing to run the other skills first.
+**Event-snapshot organization:**
+```
+suggest-groupings  →  fix misplaced files and import Desktop screenshots into event-snapshot dirs
+sort-dirs          →  prefix event dirs with dates for chronological sorting
+```
 
-## Screenshots Location
+**URL extraction (independent):**
+```
+extract-urls  →  run any time on any screenshot dir or file to extract browser URLs
+```
 
-Default root: `~/Library/CloudStorage/OneDrive-ServiceNow/📸 Screenshots`
+**Recommended workflows:**
 
-Both skills start by confirming the root path via `AskUserQuestion` before doing anything.
+*"I want screenshots cross-referenced with my NotePlan plans and meetings"*
+```
+1. /screenshot-manager:organize-by-plan   -- classify by plan + link to meeting notes
+2. /screenshot-manager:sort-dirs          -- optionally add date prefixes to plan subdirs
+3. /screenshot-manager:extract-urls       -- on demand for any subdir
+```
+
+*"I want screenshots organized by when and where they happened"*
+```
+1. /screenshot-manager:suggest-groupings  -- clean up misplaced files and import Desktop
+2. /screenshot-manager:sort-dirs          -- prefix event dirs with dates
+```
+
+**Important:** `organize-by-plan` and `suggest-groupings` use **different root directories** and different philosophies. Do not run both on the same Screenshots root.
+
+## Screenshots Locations
+
+| Skill | Default root |
+|---|---|
+| `organize-by-plan` | `~/Desktop/Screenshots/` (local Desktop) |
+| `suggest-groupings` + `sort-dirs` | `~/Library/CloudStorage/OneDrive-ServiceNow/📸 Screenshots` (OneDrive-synced) |
+
+Both skills confirm the path via `AskUserQuestion` before doing anything.
 
 ## Common Scenarios
 
 **"My Screenshots folder doesn't sort chronologically"**
 → `/screenshot-manager:sort-dirs`
 
-**"I have Desktop screenshots piling up and want to file them"**
+**"I have Desktop screenshots piling up and want to file them, cross-referenced with my work plans"**
+→ `/screenshot-manager:organize-by-plan`
+
+**"I have Desktop screenshots to file by event/session context"**
 → `/screenshot-manager:suggest-groupings`
 
 **"Some screenshots seem to be in the wrong directory"**
 → `/screenshot-manager:suggest-groupings`
-
-**"I want to do both organization + sorting"**
-→ Run `suggest-groupings` first, then `sort-dirs`
 
 **"I screenshot a browser tab and need the URL back"**
 → `/screenshot-manager:extract-urls`
