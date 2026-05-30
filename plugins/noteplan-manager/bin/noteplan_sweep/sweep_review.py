@@ -640,7 +640,11 @@ function toggleSectionItems(rowIdx, btn) {{
   btn.textContent = '▼';
   // Classify each line as moved or lost using dest diff + dest file on disk
   const destRawE = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
-  const addedLines = extractSectionLines(destRawE + '.md', null, '+').lines;
+  const sectionNameE = row.section.replace(/^#+\\s*/, '').trim();
+  const _destSecE = extractSectionLines(destRawE + '.md', sectionNameE, '+');
+  const addedLines = _destSecE.lines.length > 0
+    ? _destSecE.lines
+    : extractSectionLines(destRawE + '.md', null, '+').lines;
   const {{ moved: movedSet, movedPairs }} = classifyDestLines(lines, addedLines);
   const movedSrcSet = new Set([...movedPairs.values()]);
   const parentRow = document.querySelector(`tr[data-row-idx="${{rowIdx}}"]`);
@@ -748,6 +752,12 @@ function extractSectionLines(filename, sectionName, lineType) {{
       lineNos.push(curLineNo);
     }}
   }}
+  // V-P (duplicate detection): warn if the same content line appears more than once
+  const _seenContents = new Map();
+  result.forEach((l, i) => {{ const n = normLine(l); _seenContents.set(n, (_seenContents.get(n) || 0) + 1); }});
+  const _dupCount = [..._seenContents.values()].filter(c => c > 1).length;
+  if (_dupCount > 0) console.warn('V-P (dup): duplicate lines in section extract', {{ filename, sectionName, dupCount: _dupCount }});
+
   return {{ lines: result, lineNos, matched: result.length > 0 }};
 }}
 
@@ -854,7 +864,12 @@ function classifyRow(idx) {{
     return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
   }});
   const destGroups = destFile ? extractDestWithContext(destFile.filename) : [];
-  const addedLines = destGroups.flatMap(g => g.lines);
+  // V-47: scope added lines to the matching section in dest first; fall back to full file
+  const destFilenameC = destFile ? destFile.filename : (destRaw + '.md');
+  const destSectionResult = extractSectionLines(destFilenameC, sectionName, '+');
+  const addedLines = destSectionResult.lines.length > 0
+    ? destSectionResult.lines
+    : destGroups.flatMap(g => g.lines);
 
   if (!srcResult.matched && addedLines.length > 0) {{
     const allSrc = extractSectionLines(row.source_file, null, '-').lines;
@@ -1328,7 +1343,12 @@ function showSectionModal(idx, focusLost = false) {{
     return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
   }});
   _modalDestGroups = destFile ? extractDestWithContext(destFile.filename) : [];
-  const addedLines = _modalDestGroups.flatMap(g => g.lines);
+  // V-47: scope added lines to the matching section in dest first; fall back to full file
+  const _destFilenameM = destFile ? destFile.filename : (destRaw + '.md');
+  const _destSectionM = extractSectionLines(_destFilenameM, sectionName, '+');
+  const addedLines = _destSectionM.lines.length > 0
+    ? _destSectionM.lines
+    : _modalDestGroups.flatMap(g => g.lines);
 
   // Section header not found (synthetic section name) — infer removed lines by
   // content-matching ALL source removed lines against what landed in the destination.
