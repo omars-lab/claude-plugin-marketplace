@@ -918,8 +918,9 @@ function classifyRow(idx) {{
   const _srcLineNosCheck = new Map();
   srcResult.lines.forEach((l, i) => {{ if (!_srcLineNosCheck.has(l)) _srcLineNosCheck.set(l, srcResult.lineNos?.[i]); }});
   if ([..._srcLineNosCheck.values()].some(n => n != null && n <= 0)) console.warn('V-P5: invalid line numbers', idx);
-  // TODO V-P3: srcLine norm non-empty check (srcLine.length > 3 after normLine)
-  // TODO V-P6: source panel line count == destination panel line count (rendering symmetry)
+  // V-P3: warn when source lines normalize to empty — they were silently excluded from matching
+  const noisyExcluded = removedLines.filter(l => isNoiseLine(l) || normLine(l).length <= 2);
+  if (noisyExcluded.length > 0) console.debug('V-P3:', noisyExcluded.length, 'source lines normalized to empty (excluded from match)', idx);
   // Store movedPairs for cross-row pass (Layer 4)
   _rowMovedPairs.set(idx, movedPairs);
   const result = {{ type, movedCount, lostCount, newCount: trueNewCount, mixed, emptyReason }};
@@ -1089,10 +1090,14 @@ function validateRowIntegrity(idx, row, seen) {{
 function validateCrossRowConsistency() {{
   const destLineOwners = new Map(); // normLine(destLine) → [idx, ...]
   const srcLineOwners  = new Map(); // normLine(srcLine)  → [idx, ...]
+  const destMovedTotals = new Map(); // destStem → total moved lines claimed
 
   for (const [idx, pairs] of _rowMovedPairs) {{
     const row = MODAL_ROWS[idx];
     if (!row || !pairs) continue;
+    const dStem = normDest(row.destination);
+    if (!destMovedTotals.has(dStem)) destMovedTotals.set(dStem, 0);
+    destMovedTotals.set(dStem, destMovedTotals.get(dStem) + pairs.size);
     for (const [destLine, srcLine] of pairs) {{
       const dn = normLine(destLine);
       const sn = normLine(srcLine);
@@ -1102,6 +1107,30 @@ function validateCrossRowConsistency() {{
       // V-C3: no srcLine sent to two different destinations
       if (!srcLineOwners.has(sn)) srcLineOwners.set(sn, []);
       srcLineOwners.get(sn).push(idx);
+    }}
+  }}
+
+  // V-C1: per-destination total moved ≤ total added lines for that dest in diff
+  // Parse added line counts per dest file from DIFF_TEXT
+  const destAddedCounts = new Map(); // destStem → count of '+' content lines in diff
+  let curFile = null;
+  for (const line of DIFF_TEXT.split('\\n')) {{
+    const fm = line.match(/^\\+\\+\\+ b\\/.*?([^\\/]+)\\.md$/);
+    if (fm) {{ curFile = fm[1]; continue; }}
+    if (line.startsWith('--- ') || line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('@@')) {{ continue; }}
+    if (curFile && line.startsWith('+') && !line.startsWith('+++')) {{
+      const c = normLine(line.slice(1));
+      if (c.length > 2 && !isNoiseLine(line.slice(1))) {{
+        destAddedCounts.set(curFile, (destAddedCounts.get(curFile) || 0) + 1);
+      }}
+    }}
+  }}
+  let c1count = 0;
+  for (const [dStem, claimed] of destMovedTotals) {{
+    const available = destAddedCounts.get(dStem) ?? 0;
+    if (claimed > available) {{
+      c1count++;
+      _crossRowIssues.push(`V-C1: ${{dStem}} claims ${{claimed}} moved lines but diff only has ${{available}} additions`);
     }}
   }}
 
@@ -1120,8 +1149,8 @@ function validateCrossRowConsistency() {{
       _crossRowIssues.push(`V-C3: src line sent to multiple rows (${{unique.join(', ')}}): ${{sn.slice(0, 60)}}`);
     }}
   }}
-  if (c2count || c3count) {{
-    console.warn('[V-C] Cross-row issues:', _crossRowIssues.length, 'total', {{c2count, c3count}});
+  if (c1count || c2count || c3count) {{
+    console.warn('[V-C] Cross-row issues:', _crossRowIssues.length, 'total', {{c1count, c2count, c3count}});
   }}
   updateValidationBanner();
 }}
@@ -1536,6 +1565,12 @@ function showSectionModal(idx, focusLost = false) {{
   // Lost mode: single-column full-width; normal: two-column side-by-side
   modalBodyEl.style.gridTemplateColumns = focusLost ? '1fr' : '';
   modalBodyEl.innerHTML = srcPanel + destPanel;
+  // V-P6: src and dest panels should have the same number of paired lines
+  if (!focusLost) {{
+    const srcPaired  = modalBodyEl.querySelectorAll('#modal-src-lines [data-pair-id]').length;
+    const destPaired = modalBodyEl.querySelectorAll('#modal-dest-lines [data-pair-id]').length;
+    if (srcPaired !== destPaired) console.warn('V-P6: panel pair count mismatch', {{idx, srcPaired, destPaired}});
+  }}
   document.getElementById('modal-overlay').classList.add('open');
 
   // Update table badge — score = Moved / removedLines.length (direct) or Moved (inferred).
