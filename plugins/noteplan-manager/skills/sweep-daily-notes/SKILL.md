@@ -1315,9 +1315,8 @@ for line in lines:
     # Skip JSON/backup files — they track system state, not user content
     if current_file.endswith('.json') or 'Backup' in current_file:
         continue
-    # Skip today's note (it may have new content added post-sweep)
-    if today_date and today_date in current_file:
-        continue
+    # Note: do NOT skip today's note — IOUs are routed there legitimately.
+    # The check will naturally pass since moved lines appear in both removed + added sets.
 
     content = line[1:].rstrip()  # strip trailing whitespace for comparison
     # Normalize permitted task annotations (trailing date tags + hashtags) on BOTH sides
@@ -1338,7 +1337,11 @@ new = added - removed
 lost = {l for l in lost if not re.match(r'^#', l.strip())}
 
 # Only allowed new lines (non-content additions)
+VOICE_NOTE_CLEANED_LINES = set()  # populated when voice note cleaning occurs — these are expected new lines
+
 def is_allowed_new(l):
+    if l in VOICE_NOTE_CLEANED_LINES:
+        return True  # voice note cleaning exception
     return (
         re.match(r'^# \[\[', l) or          # wikilink section headers
         l.strip() == '# Unsorted' or
@@ -1897,6 +1900,7 @@ type: direction-checkpoint
 | Voice note is the one content edit exception | Voice note cleaning is the only case where content is modified during sweep. The raw transcription is preserved in the breadcrumb table Summary column for traceability. User must explicitly confirm the transformation. |
 | Categorized Unsorted sub-sections | After Phase 7b routing, restructure remaining Unsorted items into categorized sub-sections (📋 References, 💬 Comms, 👨‍👩‍👧‍👦 Family, 🏠 Home, 💼 Work, 💡 Ideas). Only create categories with ≥1 item. Present restructured layout for confirmation. |
 | Project subfolders supported | Workstream dirs can contain **project subfolders** (e.g. `🧑🏻‍💻 Development/🤖 Config Agent/`) to group related plans. Plans in project subfolders use the **project emoji** in their filename (e.g. `🏢260302🤖 Title.md`) instead of the parent workstream emoji. The `workstream` frontmatter still reflects the parent workstream (`🧑🏻‍💻`). When routing content, prefer project subfolder matches when the section's content/wikilinks clearly relate to a specific project. When creating new plans, list project subfolders as placement options. Discover project subfolders dynamically — never hardcode. |
+| Ad-hoc script temp dir | When writing ad-hoc Python scripts during the sweep (for operations the CLI doesn't yet support), write them to `$NOTEPLAN_ROOT/.sweep-scripts/{TIMESTAMP}/` and log the filename + purpose. After the sweep completes, evaluate these scripts for CLI extension candidates. |
 | Self-healing after sweep | After completing a sweep, if gaps/improvements were identified, offer to update the skill source at `~/workspace/oeid-claude-plugin-marketplace/`. Never edit cache files. Workflow: edit SKILL.md → bump version → git push → `make update`. Do not self-heal mid-sweep. |
 | Skill source is the git repo | The authoritative skill source is `~/workspace/oeid-claude-plugin-marketplace/plugins/noteplan-manager/skills/sweep-daily-notes/SKILL.md`. The cache at `~/.claude/plugins/cache/` is read-only and overwritten on reinstall. |
 
