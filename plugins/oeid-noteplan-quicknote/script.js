@@ -278,3 +278,24 @@ async function note() {
 
   await createAndOpen(filename, folder, noteBody(filename, NAMESPACE[domain]))
 }
+
+// Allow pure-function testing in Node.js (module is undefined in NotePlan's JS context)
+if (typeof module !== 'undefined') {
+  module.exports = {
+    domainKey,
+    formatDate,
+    getWorkstreams,
+    planBody,
+    meetingBody,
+    noteBody,
+    workPlanFrontmatter,
+    personalPlanFrontmatter,
+    domainPlanFrontmatter,
+    meetingFrontmatter,
+    PLAN_ROOTS,
+    MEETING_FOLDERS,
+    NOTE_FOLDERS,
+    DOMAIN_EMOJIS,
+    NAMESPACE,
+  }
+}
