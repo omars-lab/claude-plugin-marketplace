@@ -171,6 +171,9 @@ When you encounter a bare URL, use this table to decide how to handle it. Apply 
 | **Obsidian plugin search** | `obsidian.md/plugins?search=<query>` | **Auto-format from `search=` param** — extract query and format as "Obsidian plugin directory: {query} plugins" | `[Obsidian plugin directory: Calendar plugins](url)` |
 | **Obsidian forum post** | `forum.obsidian.md/t/<slug>/<id>` | **Use page title** — title is reliable: "Topic Name - Category - Obsidian Forum"; strip category and site suffix | `[Obsidian forum: Personal Knowledge Graphs — concept and implementation in PKM](url)` |
 | **Tool homepage with garbage title** | Any domain whose page title is "external link", "redirect", or similarly meaningless | **Label from domain name + domain knowledge** — BorgBackup, similar self-hosted tools that return redirect pages | `[BorgBackup: deduplicating, encrypting backup program for Linux and macOS](url)` |
+| **GitHub subdirectory (tree view)** | `github.com/<owner>/<repo>/tree/<branch>/path/` | **Label from URL path segments** — page title may be null for subdirs (unlike repo root or file views); extract owner/repo + last path segment(s) | `[omars-lab/blueprints: coffee cups business plan](url)` |
+| **GitHub file (blob view)** | `github.com/<owner>/<repo>/blob/<branch>/path/file.ext` | **Use page title** — format is reliable: "path/file.ext at branch · owner/repo · GitHub" — descriptive, includes file path | `[quip/quip-apps: create-quip-app package.json for building Quip Live Apps](url)` |
+| **Google Sheets** | `docs.google.com/spreadsheets/d/<id>/edit` | **Use surrounding note context** — returns "Loading..." (JS-rendered, requires Google login); no stable title available from bot fetch | `[Google Sheets: Hifz (Quran memorization) schedule spreadsheet](url)` |
 
 **Rule of thumb:**
 - If the URL type gives you enough info without a network call → auto-format
