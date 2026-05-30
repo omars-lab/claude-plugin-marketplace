@@ -125,40 +125,70 @@ def extract_work_logs(notes_root: Path) -> list[dict]:
 
 
 def extract_task_completions(notes_root: Path, days: int = 90) -> list[dict]:
-    """Scan plan files for - [x] task lines; return daily counts for last N days."""
+    """
+    Scan Calendar + plan files for [x] tasks; return daily counts for last N days.
+
+    Date attribution (in priority order):
+      1. Calendar files: filename IS the date (20260203.md → 2026-02-03)
+      2. Plan files: nearest preceding '## From YYYY-MM-DD' section header
+      3. Inline date on the task line itself (>YYYY-MM-DD or YYYY-MM-DD)
+    File mtime is NOT used — too noisy and causes spikes on unrelated edits.
+    """
     cutoff = (date.today() - timedelta(days=days)).isoformat()
     daily: dict[str, int] = {}
     _DONE_RE = re.compile(r'^\s*[-*]\s+\[x\]\s+', re.IGNORECASE)
-    _DATE_CTX_RE = re.compile(r'(\d{4}-\d{2}-\d{2})')
+    _DATE_LINE_RE = re.compile(r'(\d{4}-\d{2}-\d{2})')
+    _SECTION_DATE_RE = re.compile(r'^##\s+(?:From\s+)?(\d{4}-\d{2}-\d{2})', re.IGNORECASE)
+    _CAL_NAME_RE = re.compile(r'^(\d{4})(\d{2})(\d{2})\.md$')
 
-    for md in notes_root.rglob("*.md"):
-        if "@Trash" in str(md) or "@Archive" in str(md):
-            continue
-        try:
-            content = md.read_text(encoding="utf-8")
-        except Exception:
-            continue
+    calendar_dir = notes_root.parent / "Calendar"
+    scan_dirs = []
+    if calendar_dir.exists():
+        scan_dirs.append(calendar_dir)
+    scan_dirs.append(notes_root)
 
-        # Use file mtime as proxy date if no inline date
-        try:
-            file_date = date.fromtimestamp(md.stat().st_mtime).isoformat()
-        except Exception:
-            file_date = date.today().isoformat()
-
-        if file_date < cutoff:
-            continue
-
-        for line in content.splitlines():
-            if not _DONE_RE.match(line):
+    for scan_dir in scan_dirs:
+        for md in scan_dir.rglob("*.md"):
+            if "@Trash" in str(md) or "@Archive" in str(md):
                 continue
-            # Try to find an inline date on the line; fall back to file mtime
-            dm = _DATE_CTX_RE.search(line)
-            d = dm.group(1) if dm else file_date
-            if d < cutoff:
-                continue
-            daily[d] = daily.get(d, 0) + 1
 
-    # Return sorted list with zeros filled for the range
+            # Calendar files: date from filename
+            cal_match = _CAL_NAME_RE.match(md.name)
+            if cal_match:
+                file_date = f"{cal_match.group(1)}-{cal_match.group(2)}-{cal_match.group(3)}"
+                if file_date < cutoff:
+                    continue
+                try:
+                    content = md.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+                for line in content.splitlines():
+                    if _DONE_RE.match(line):
+                        daily[file_date] = daily.get(file_date, 0) + 1
+                continue
+
+            # Plan / note files: use section headers or inline dates
+            try:
+                content = md.read_text(encoding="utf-8")
+            except Exception:
+                continue
+
+            section_date: str | None = None
+            for line in content.splitlines():
+                # Track nearest section date
+                sm = _SECTION_DATE_RE.match(line)
+                if sm:
+                    section_date = sm.group(1)
+                    continue
+                if not _DONE_RE.match(line):
+                    continue
+                # Determine date: inline > section header > skip
+                dm = _DATE_LINE_RE.search(line)
+                d = dm.group(1) if dm else section_date
+                if not d or d < cutoff:
+                    continue
+                daily[d] = daily.get(d, 0) + 1
+
     result = []
     cur = date.today() - timedelta(days=days - 1)
     for _ in range(days):
@@ -634,13 +664,51 @@ function renderHeatmap() {{
       const y = TOP_PAD + d * STEP;
       const fill = cell.inRange ? color(cell.count) : '#0d1117';
       const border = cell.inRange ? '' : 'opacity="0.3"';
-      html += `<rect x="${{x}}" y="${{y}}" width="${{CELL}}" height="${{CELL}}" rx="2" fill="${{fill}}" ${{border}}>
+      html += `<rect x="${{x}}" y="${{y}}" width="${{CELL}}" height="${{CELL}}" rx="2" fill="${{fill}}" ${{border}} data-date="${{cell.date}}" style="cursor:pointer">
         <title>${{esc(cell.date)}}: ${{cell.count}} commit${{cell.count===1?'':'s'}}</title>
       </rect>`;
     }});
   }});
 
   svg.innerHTML = html;
+
+  // Cross-highlight: heatmap cell hover → highlight sparkline bar
+  svg.addEventListener('mouseover', e => {{
+    const d = e.target.dataset.date;
+    if (d) _crossHighlight(d);
+  }});
+  svg.addEventListener('mouseout', e => {{
+    if (e.target.dataset.date) _clearCrossHighlight();
+  }});
+}}
+
+// ── Cross-highlight shared state ──────────────────────────────────────────
+function _crossHighlight(targetDate) {{
+  // Highlight matching heatmap cell
+  document.querySelectorAll('#heatmap-svg rect[data-date]').forEach(r => {{
+    r.style.outline = r.dataset.date === targetDate ? '2px solid #fff' : '';
+    r.style.opacity = r.dataset.date === targetDate ? '1' : '';
+  }});
+  // Highlight matching sparkline bar
+  document.querySelectorAll('#sparkline-svg rect[data-date]').forEach(r => {{
+    if (r.dataset.date === targetDate) {{
+      r.setAttribute('fill', '#7ee787');
+      r.setAttribute('opacity', '1');
+    }} else {{
+      r.setAttribute('opacity', '0.35');
+    }}
+  }});
+}}
+
+function _clearCrossHighlight() {{
+  document.querySelectorAll('#heatmap-svg rect[data-date]').forEach(r => {{
+    r.style.outline = '';
+    r.style.opacity = '';
+  }});
+  document.querySelectorAll('#sparkline-svg rect[data-date]').forEach(r => {{
+    r.removeAttribute('opacity');
+    r.setAttribute('fill', '#3fb950');
+  }});
 }}
 
 // ── Work Logs ─────────────────────────────────────────────────────────────
@@ -804,9 +872,18 @@ window.addEventListener('DOMContentLoaded', () => {{
       const bh = Math.max(MIN_H, rawH);
       const y = H - bh;
       const opacity = 0.45 + (t.count / scale) * 0.55;
-      inner += `<rect x="${{x.toFixed(1)}}" y="${{y.toFixed(1)}}" width="${{barW.toFixed(1)}}" height="${{bh.toFixed(1)}}" rx="1" fill="#3fb950" opacity="${{opacity.toFixed(2)}}"><title>${{esc(t.date)}}: ${{t.count}} task${{t.count===1?'':'s'}} done</title></rect>`;
+      inner += `<rect x="${{x.toFixed(1)}}" y="${{y.toFixed(1)}}" width="${{barW.toFixed(1)}}" height="${{bh.toFixed(1)}}" rx="1" fill="#3fb950" opacity="${{opacity.toFixed(2)}}" data-date="${{t.date}}" style="cursor:pointer"><title>${{esc(t.date)}}: ${{t.count}} task${{t.count===1?'':'s'}} done</title></rect>`;
     }});
     svg.innerHTML = inner;
+
+    // Cross-highlight: sparkline bar hover → highlight heatmap cell
+    svg.addEventListener('mouseover', e => {{
+      const d = e.target.dataset.date;
+      if (d) _crossHighlight(d);
+    }});
+    svg.addEventListener('mouseout', e => {{
+      if (e.target.dataset.date) _clearCrossHighlight();
+    }});
   }})();
 
   // Re-render heatmap on window resize
