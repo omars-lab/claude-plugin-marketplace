@@ -578,9 +578,9 @@ function renderHeatmap() {{
   const dow = curDate.getDay();
   if (dow !== 0) curDate.setDate(curDate.getDate() - dow);
 
+  let prevMonth = -1;
   for (let w = 0; w < WEEKS; w++) {{
     const col = [];
-    let prevMonth = -1;
     for (let d = 0; d < 7; d++) {{
       const iso = curDate.toISOString().slice(0,10);
       const cnt = byDate[iso] || 0;
