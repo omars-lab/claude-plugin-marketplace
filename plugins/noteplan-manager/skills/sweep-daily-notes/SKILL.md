@@ -378,6 +378,20 @@ For each sweepable section, determine the best destination using the plan index 
 
 **Same-plan entries are merged in the target** — multiple sections routing to the same plan get merged under one `# [[PlanName]]` header.
 
+**Raw link classification:** When a section or line contains raw URLs (not inside a task or prose), inspect the URL domain and path to inform routing:
+
+| URL pattern | Signal | Suggested routing |
+|---|---|---|
+| `*.service-now.com`, `*.servicenow.com` | ServiceNow instance/docs | Match to the relevant work plan (MCP, A2A, esgenius, etc.) by inspecting the path (`/sys_script_include`, `/rm_story`, `/atf`, etc.) |
+| `docs.google.com`, `icloud.com/notes` | External reference/doc | Route with the parent task, or to the relevant `📋 Lists/References[...]` file if it's a standalone reference |
+| `github.com`, `code.devsnc.com` | Repo/code reference | Route with parent task or to the relevant plan's reference section |
+| `youtube.com`, `learning.*` | Learning resource | Route to plan OR to `📋 Lists/References[Playlist - ...]` if standalone |
+| `calendly.com`, `*.zoom.us` | Scheduling link | Route with the meeting/1-1 content |
+| `claude.ai/chat/*`, `claude.ai/artifacts/*` | Claude session/artifact | Route with the parent task — these are working context |
+| Personal/shopping URLs (amazon, facebook marketplace, redfin) | Personal reference | Route to personal target or skip |
+
+For standalone raw links (not under any task), classify them as `❓ Uncertain` and present them to the user with the inspected domain as context. Standalone ServiceNow links are especially valuable — they often represent instance configurations, scripts, or documentation worth preserving in a plan or reference list.
+
 Announce the classification before routing:
 
 ```
@@ -623,17 +637,17 @@ For each section confirmed for moving:
 - **Unsorted**: append under `# Unsorted` in the target note (no date sub-header needed in Unsorted)
 - **Remove** from source: all content lines AND their section header (`# SectionName`). Do NOT move the original section header to the target — the target gets `# [[PlanName]]` instead.
 - **Split sections**: when individual lines within a section go to different plans, remove the section header and each line individually, routing each line to its designated plan header.
-- **Leave a swept breadcrumb in the source note**: after all sections for a day are moved, append a brief sweep-log block at the end of the source daily note so the user can see where things went. Format:
+- **Leave a swept breadcrumb in the source note**: after all sections for a day are moved, append a brief sweep-log block at the end of the source daily note so the user can see where things went. Use `[[YYYY-MM-DD]]` wikilinks for daily note references so they're clickable in NotePlan. Format:
   ```
   ---
   *Swept {YYYY-MM-DD}:*
   - → [[PlanName1]]: {section1 name}, {section2 name}
   - → [[PlanName2]]: {section3 name}
-  - → {TARGET_DATE} Errands: {count} errand task(s)
-  - → Unsorted ({TARGET_DATE}): {section name}
-  - → {YYYYMMDD} (meeting file): {section name}
+  - → [[{TARGET_DATE_ISO}]] Errands: {count} errand task(s)
+  - → [[{TARGET_DATE_ISO}]] Unsorted: {section name}
+  - → [[{MEETING_DATE_ISO}]]: {meeting/1-1 section name}
   ```
-  Only list destinations where content was actually moved. Skip skipped sections. The breadcrumb is the one exception to "no new content in source" — it is allowed because it is a reference to swept content, not content itself. Update the `is_allowed_new` check in Phase 7 to permit lines matching `^- → ` and `^\*Swept ` patterns.
+  Where `{TARGET_DATE_ISO}` is `YYYY-MM-DD` (e.g. `[[2026-03-15]]`). Only list destinations where content was actually moved. Skip skipped sections. The breadcrumb is the one exception to "no new content in source" — it is allowed because it is a reference to swept content, not content itself. Update the `is_allowed_new` check in Phase 7 to permit lines matching `^- → ` and `^\*Swept ` patterns.
 
 **Wikilink todos are ordinary content:** Tasks whose body is a wikilink (e.g. `- [ ] [[PlanName]]`) are moved verbatim exactly like any other task line. The wikilink in the body is the routing signal, but the full line (including `- [ ]` prefix) is preserved as-is.
 
@@ -650,8 +664,9 @@ For each section confirmed for moving:
 
 When moving a block, two types of metadata may be appended to **root-level task lines only** (lines with no leading whitespace / indentation — i.e. direct children of the section, not nested sub-tasks):
 
-1. **Date scheduling tag** — append `>{TARGET_DATE}` (the target note's date, e.g. `>2026-03-20`) so the task surfaces in NotePlan's calendar view for that week and doesn't get buried silently in a plan file.
-   - Format: `- [ ] Original task text >{YYYYMMDD}` (one space before `>`)
+1. **Date scheduling tag** — append `>{YYYY-MM-DD}` (the target note's date, e.g. `>2026-03-20`) so the task surfaces in NotePlan's calendar view for that week and doesn't get buried silently in a plan file.
+   - Format: `- [ ] Original task text >YYYY-MM-DD` (one space before `>`, **hyphens required**)
+   - **CRITICAL**: NotePlan date format is `>YYYY-MM-DD` (with hyphens), NOT `>YYYYMMDD`. Tags without hyphens are silently ignored by NotePlan and will not surface in the calendar.
    - Use the **target note's date** (next Friday for work, next Sunday for personal)
    - Only on `- [ ]` or `* [ ]` lines at root indentation level
 
@@ -659,9 +674,24 @@ When moving a block, two types of metadata may be appended to **root-level task 
 
 All other lines (nested tasks, prose, URLs, code blocks) are moved strictly verbatim with zero modification.
 
-### Step 6f — Checkpoint commit and advance to the next day
+### Step 6f — Repair broken date tags, checkpoint commit, and advance
 
-After executing a day's sweep:
+**Date tag repair (run after each day's sweep):** Before committing, scan ALL files touched in this day's sweep (source + targets) for broken date scheduling tags in `>YYYYMMDD` format (no hyphens) and fix them to `>YYYY-MM-DD`. This catches both newly-added tags from this sweep and any pre-existing broken tags in the files:
+
+```bash
+# Fix >YYYYMMDD to >YYYY-MM-DD in all touched files
+python3 -c "
+import re, sys
+for path in sys.argv[1:]:
+    with open(path) as f: text = f.read()
+    fixed = re.sub(r'>(\d{4})(\d{2})(\d{2})', r'>\1-\2-\3', text)
+    if fixed != text:
+        with open(path, 'w') as f: f.write(fixed)
+        print(f'Fixed date tags in {path}')
+" "${TOUCHED_FILES[@]}"
+```
+
+After repair:
 
 ```bash
 git add -A
@@ -754,9 +784,9 @@ for line in lines:
         removed.add(content)
     elif line.startswith('+'):
         # Normalize permitted task annotations before comparison:
-        # strip trailing >YYYYMMDD date tags and #hashtags appended during the move
+        # strip trailing >YYYY-MM-DD or >YYYYMMDD date tags and #hashtags appended during the move
         # so these additions don't falsely trigger "content loss" failures
-        normalized = re.sub(r'(\s+(>\d{8}|#\w+))+$', '', content)
+        normalized = re.sub(r'(\s+(>\d{4}-\d{2}-\d{2}|>\d{8}|#\w+))+$', '', content)
         added.add(normalized)
 
 # today_date = current date as YYYYMMDD string, exclude from diff
@@ -950,6 +980,8 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Meeting planning → next business day | When routing unscheduled meeting tasks from Unsorted (e.g. "Figure out meetings — Jeff, Khusbha, etc."), place them in the **next business day's daily note** (create it if needed), not in a general backlog. |
 | Self-knowledge capture | After each sweep's final commit (Phase 8.5), append dated observations to `🪞 Reflections/🏡💭💻 GenAI Thoughts/Observations.md`, `Gaps.md`, and `Superpowers.md`. Only write what's verifiable from the notes read. |
 | Swept breadcrumbs in source | After sweeping a daily note, append a `---` separator and a brief `*Swept YYYY-MM-DD:*` log at the end of the source file listing each destination wikilink and the section names routed there. This lets the user trace where content went without opening the target files. Update the Phase 7 `is_allowed_new` check to permit `^- → ` and `^\*Swept ` patterns. |
+| NotePlan date format is `>YYYY-MM-DD` | Date scheduling tags MUST use hyphens (`>2026-03-20`), never compact (`>20260320`). Tags without hyphens are silently ignored by NotePlan. Step 6f runs a repair pass after each day to fix any broken tags in touched files. |
+| Raw links are routing signals | Inspect URL domains during classification. ServiceNow instance/docs links route to matching work plans. Learning/reference URLs route to `📋 Lists/References[...]` when standalone. Standalone raw links are `❓ Uncertain` — present with domain context. |
 
 ---
 
