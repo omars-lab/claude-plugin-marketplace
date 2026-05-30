@@ -21,6 +21,12 @@ Bug index (each test references its ID):
   SR-13  _build_snapshot_html: embeds NARRATIVE as recoverable JSON array
   SR-14  _build_snapshot_html: DIFF_TEXT is decoded (no octal escapes remain)
   SR-15  compile round-trip: octal-encoded snapshot → compile → decoded DIFF_TEXT
+  SR-16  _py_classify_all_rows: moved_lines and dest_lines populated for move row
+  SR-17  _py_classify_all_rows: line_statuses maps each source line
+  SR-18  _py_classify_all_rows: went_to_details for went-to rows
+  SR-19  _py_classify_all_rows: inferred_section added when section header not in diff
+  SR-20  _py_classify_all_rows: self_migration added when src == dest stem
+  SR-21  _py_cross_row_issues: V-C2 detected when two rows claim same dest line
 """
 
 import json
@@ -41,6 +47,7 @@ from noteplan_sweep.sweep_review import (
     _extract_js_val,
     _build_snapshot_html,
     _py_classify_all_rows,
+    _py_cross_row_issues,
 )
 
 # ---------------------------------------------------------------------------
@@ -490,3 +497,65 @@ def test_sr18_py_classify_went_to_details():
     norm_task = task.strip().lower()
     assert r["line_statuses"].get(norm_task) == "went-to", \
         f"line_statuses must map went-to task: {r['line_statuses']}"
+
+
+# ---------------------------------------------------------------------------
+# SR-19  _py_classify_all_rows: inferred_section in issues when section not in diff
+# ---------------------------------------------------------------------------
+
+def test_sr19_py_classify_inferred_section():
+    """SR-19: 'inferred_section' appears in issues when the section header is absent from diff."""
+    task = "- [ ] Design the onboarding flow wireframes"
+    # No section header in removed lines — inference must be used
+    diff = _py_make_diff([
+        {"path": "Calendar/20260413.md", "removed": [task], "added": []},
+        {"path": "Plans/Design.md",      "removed": [],     "added": [task]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Design",
+                  "destination": "[[Plans/Design]]", "date": "2026-04-13", "summary": ""}]
+    results = _run_classify(diff, narrative)
+    assert len(results) == 1
+    r = results[0]
+    assert "inferred_section" in r["issues"], \
+        f"'inferred_section' must be in issues when section header absent: {r['issues']}"
+    assert r["inferred"] is True, f"'inferred' flag must be True: {r}"
+
+
+# ---------------------------------------------------------------------------
+# SR-20  _py_classify_all_rows: self_migration when source and dest are same file
+# ---------------------------------------------------------------------------
+
+def test_sr20_py_classify_self_migration():
+    """SR-20: 'self_migration' appears in issues when source_file stem == destination stem."""
+    task = "- [ ] Refactor the planning section"
+    diff = _py_make_diff([
+        {"path": "Calendar/20260413.md", "removed": [task], "added": []},
+        {"path": "Calendar/20260413.md", "removed": [],     "added": [task]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Planning",
+                  "destination": "[[Calendar/20260413]]", "date": "2026-04-13", "summary": ""}]
+    results = _run_classify(diff, narrative)
+    assert len(results) == 1
+    r = results[0]
+    assert "self_migration" in r["issues"], \
+        f"'self_migration' must be in issues when src == dest: {r['issues']}"
+
+
+# ---------------------------------------------------------------------------
+# SR-21  _py_cross_row_issues: V-C2 when two rows claim the same dest line
+# ---------------------------------------------------------------------------
+
+def test_sr21_py_cross_row_issues_v_c2():
+    """SR-21: _py_cross_row_issues returns V-C2 when same dest line appears in two rows."""
+    shared_line = "- [ ] Shared task moved to destination"
+    pre_class = [
+        {"idx": 0, "type": "move", "moved_lines": [shared_line],
+         "dest_lines": [shared_line], "truly_lost_lines": [], "issues": []},
+        {"idx": 1, "type": "move", "moved_lines": [shared_line],
+         "dest_lines": [shared_line], "truly_lost_lines": [], "issues": []},
+    ]
+    issues = _py_cross_row_issues(pre_class)
+    vc2 = [i for i in issues if i.startswith("V-C2")]
+    assert len(vc2) >= 1, f"Expected at least one V-C2 issue, got: {issues}"
+    assert "0" in vc2[0] and "1" in vc2[0], \
+        f"V-C2 issue must reference both row indices: {vc2[0]}"

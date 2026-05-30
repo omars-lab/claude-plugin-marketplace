@@ -75,7 +75,8 @@ def http_server(tmp_path_factory) -> Generator[str, None, None]:
 
 
 def _write_page(serve_dir: Path, name: str, diff: str, narrative: list,
-                stat: str = "1 file changed", pre_classification: list | None = None) -> str:
+                stat: str = "1 file changed", pre_classification: list | None = None,
+                cross_row_issues: list | None = None) -> str:
     """Build + write a review HTML page, return its filename."""
     html = _build_snapshot_html(
         run_id="test-01",
@@ -87,6 +88,7 @@ def _write_page(serve_dir: Path, name: str, diff: str, narrative: list,
         narrative=narrative,
         changed_calendar_files=[f for f in re.findall(r'b/(Calendar/\S+\.md)', diff)],
         pre_classification=pre_classification,
+        cross_row_issues=cross_row_issues,
     )
     path = serve_dir / name
     path.write_text(html, encoding="utf-8")
@@ -1795,3 +1797,117 @@ def test_js32_toggle_section_items_line_statuses(playwright, http_server):
     assert ("3fb950" in moved_badge or "63, 185, 80" in moved_badge or "→" in moved_row["text"]), (
         f"B-15 moved task must show green → from Python line_statuses. Got: {moved_row}"
     )
+
+
+# ---------------------------------------------------------------------------
+# JS-33  validation banner reads from Python PRE_CLASSIFICATION.issues[]
+#        validateRowIntegrity must NOT exist in the page (deleted in A1).
+# ---------------------------------------------------------------------------
+
+def test_js33_validation_banner_from_python(playwright, http_server):
+    """JS-33: Validation banner counts warnings from Python PRE_CLASSIFICATION.issues[].
+    validateRowIntegrity must be deleted — verifying it no longer exists as a function."""
+    base_url, serve_dir = http_server
+
+    task = "- [ ] Missing task that has no dest match anywhere"
+
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Work", "summary": "work item",
+                  "destination": "[[Plans/WorkPlan]]"}]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md", "removed": [task], "added": []},
+        {"path": "Plans/WorkPlan.md",    "removed": [], "added": [task]},
+    ])
+    # Row has inferred_section warning (no section header in diff)
+    pre_class = [{"idx": 0, "type": "move", "moved_count": 1, "lost_count": 0,
+                  "truly_lost_lines": [], "moved_lines": [task], "dest_lines": [task],
+                  "went_to_details": {}, "line_statuses": {task.strip().lower(): "move"},
+                  "misrouted_count": 0, "went_to_files": [], "inferred": True,
+                  "issues": ["inferred_section"]}]
+    page_name = _write_page(serve_dir, "js33.html", diff, narrative, pre_classification=pre_class)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    # Banner must show warning (1 row with issues)
+    banner_text = page.text_content("#validation-banner")
+    assert banner_text is not None, "validation-banner element not found"
+    assert "1 row" in banner_text and "V-R" in banner_text, (
+        f"Banner must show '1 row ... (V-R)' from Python issues[]. Got: {banner_text!r}"
+    )
+
+    # ⚠ warn icon must appear on the row
+    warn_icon = page.query_selector("tr[data-row-idx='0'] .row-warn")
+    assert warn_icon is not None, "Row must have ⚠ warn icon from annotateRowWarnings"
+
+    # validateRowIntegrity must NOT exist (deleted in A1)
+    has_validate_row = page.evaluate("() => typeof validateRowIntegrity !== 'undefined'")
+    assert not has_validate_row, "validateRowIntegrity must be deleted from JS (A1)"
+
+    browser.close()
+
+
+# ---------------------------------------------------------------------------
+# JS-34  CROSS_ROW_ISSUES embedded from Python; validateCrossRowConsistency deleted
+# ---------------------------------------------------------------------------
+
+def test_js34_cross_row_issues_from_python(playwright, http_server):
+    """JS-34: CROSS_ROW_ISSUES is Python-embedded; validateCrossRowConsistency must not exist.
+    When cross_row_issues is non-empty, banner shows V-C count."""
+    base_url, serve_dir = http_server
+
+    task = "- [ ] Task moved by two rows simultaneously"
+
+    narrative = [
+        {"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+         "section": "Work", "summary": "w1", "destination": "[[Plans/WorkPlan]]"},
+        {"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+         "section": "Work", "summary": "w2", "destination": "[[Plans/WorkPlan]]"},
+    ]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md", "removed": [task], "added": []},
+        {"path": "Plans/WorkPlan.md",    "removed": [], "added": [task]},
+    ])
+    pre_class = [
+        {"idx": 0, "type": "move", "moved_count": 1, "lost_count": 0,
+         "truly_lost_lines": [], "moved_lines": [task], "dest_lines": [task],
+         "went_to_details": {}, "line_statuses": {task.strip().lower(): "move"},
+         "misrouted_count": 0, "went_to_files": [], "inferred": False, "issues": []},
+        {"idx": 1, "type": "move", "moved_count": 1, "lost_count": 0,
+         "truly_lost_lines": [], "moved_lines": [task], "dest_lines": [task],
+         "went_to_details": {}, "line_statuses": {task.strip().lower(): "move"},
+         "misrouted_count": 0, "went_to_files": [], "inferred": False, "issues": []},
+    ]
+    cross_issues = [f"V-C2: dest line claimed by rows [0, 1]: {task.strip().lower()[:60]}"]
+    page_name = _write_page(serve_dir, "js34.html", diff, narrative,
+                            pre_classification=pre_class, cross_row_issues=cross_issues)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    # CROSS_ROW_ISSUES must be accessible and have 1 entry
+    cross_count = page.evaluate("() => CROSS_ROW_ISSUES.length")
+    assert cross_count == 1, f"CROSS_ROW_ISSUES must have 1 entry, got {cross_count}"
+
+    # Banner must mention V-C
+    banner_text = page.text_content("#validation-banner")
+    assert banner_text is not None, "validation-banner element not found"
+    assert "V-C" in banner_text, f"Banner must mention V-C from CROSS_ROW_ISSUES. Got: {banner_text!r}"
+
+    # validateCrossRowConsistency must NOT exist (deleted in A2)
+    has_validate_cross = page.evaluate("() => typeof validateCrossRowConsistency !== 'undefined'")
+    assert not has_validate_cross, "validateCrossRowConsistency must be deleted from JS (A2)"
+
+    browser.close()

@@ -432,11 +432,13 @@ def _build_snapshot_html(
     changed_calendar_files: list | None = None,
     base_commit: str | None = None,
     pre_classification: list | None = None,
+    cross_row_issues: list | None = None,
 ) -> str:
     seed_json = json.dumps(seed_comments, indent=2)
     narrative_json = json.dumps(narrative or [], indent=2)
     changed_cal_json = json.dumps(changed_calendar_files or [], indent=2)
     pre_classification_json = json.dumps(pre_classification or [], indent=2)
+    cross_row_issues_json = json.dumps(cross_row_issues or [], indent=2)
     # Build dest-file grep map: destStem → [normLine, ...] from actual files on disk
     # Used by JS classifyRow to confirm "lost" lines are truly absent (not already in dest)
     dest_file_lines: dict[str, list[str]] = {}
@@ -616,6 +618,7 @@ const SEED_COMMENTS = {seed_json};
 const NARRATIVE = {narrative_json};
 const CHANGED_CALENDAR_FILES = {changed_cal_json};
 const PRE_CLASSIFICATION = {pre_classification_json};
+const CROSS_ROW_ISSUES = {cross_row_issues_json};
 // destStem.lower() → [normLine, ...] — full file content at generate time, for lost-line verification
 const DEST_FILE_LINES = {dest_file_lines_json};
 
@@ -1348,7 +1351,7 @@ function updateRowBadge(idx, classification) {{
   tr.style.display = isRowVisible(displayType) ? '' : 'none';
 }}
 
-// ── Layer 2: Row integrity validation ─────────────────────────────────────
+// ── Row integrity warnings (from Python PRE_CLASSIFICATION.issues[]) ──────
 function annotateRowWarnings(idx, issues) {{
   if (!issues || !issues.length) return;
   _rowValidation.set(idx, issues);
@@ -1365,125 +1368,12 @@ function annotateRowWarnings(idx, issues) {{
   badgeCell.appendChild(span);
 }}
 
-function validateRowIntegrity(idx, row, seen) {{
-  const issues = [];
-  if (!row) return;
-  const diffLower = DIFF_TEXT.toLowerCase();
-
-  // V-R1: source_file appears in DIFF_TEXT
-  const srcStem = (row.source_file || '').split('/').pop().toLowerCase();
-  if (srcStem && !diffLower.includes(srcStem)) {{
-    issues.push(`V-R1: source_file '${{srcStem}}' not found in diff`);
-  }}
-
-  // V-R2: destination (normalized) appears in DIFF_TEXT
-  const destRaw = (row.destination || '').replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
-  const destStem = (destRaw.split('/').pop() + '.md').toLowerCase();
-  if (destStem && destStem !== '.md' && !diffLower.includes(destStem)) {{
-    issues.push(`V-R2: destination '${{destStem}}' not found in diff`);
-  }}
-
-  // V-R3: section name found as real header (srcResult.matched == false means inferred)
-  const cached = _rowClassifications.get(idx);
-  // We re-run extractSectionLines to check .matched — use cached result if classifyRow already ran
-  // classifyRow stores result but not srcResult.matched; re-check via a lightweight extract
-  const sectionName = (row.section || '').replace(/^#+\\s*/, '').trim();
-  const chk = extractSectionLines(row.source_file, sectionName, '-');
-  if (!chk.matched) {{
-    issues.push(`V-R3: section '${{sectionName}}' not found as a real header in source diff — inferred`);
-  }}
-
-  // V-R4: no duplicate (source_file × section × destination)
-  const tupleKey = `${{row.source_file}}|${{row.section}}|${{row.destination}}`;
-  if (seen.has(tupleKey)) {{
-    issues.push(`V-R4: duplicate row (source_file × section × destination): ${{tupleKey}}`);
-  }} else {{
-    seen.set(tupleKey, idx);
-  }}
-
-  // V-R5: source_file path ≠ destination path (self-migration)
-  const srcStemFull = (row.source_file || '').replace(/\\.md$/, '');
-  if (srcStemFull && destRaw && srcStemFull.endsWith(destRaw)) {{
-    issues.push(`V-R5: self-migration — source_file and destination resolve to the same file`);
-  }}
-
-  if (issues.length) annotateRowWarnings(idx, issues);
-}}
-
-// ── Layer 4: Cross-row consistency ────────────────────────────────────────
-function validateCrossRowConsistency() {{
-  const destLineOwners = new Map(); // normLine(destLine) → [idx, ...]
-  const srcLineOwners  = new Map(); // normLine(srcLine)  → [idx, ...]
-  const destMovedTotals = new Map(); // destStem → total moved lines claimed
-
-  for (const [idx, pairs] of _rowMovedPairs) {{
-    const row = MODAL_ROWS[idx];
-    if (!row || !pairs) continue;
-    const dStem = normDest(row.destination);
-    if (!destMovedTotals.has(dStem)) destMovedTotals.set(dStem, 0);
-    destMovedTotals.set(dStem, destMovedTotals.get(dStem) + pairs.size);
-    for (const [destLine, srcLine] of pairs) {{
-      const dn = normLine(destLine);
-      const sn = normLine(srcLine);
-      // V-C2: no destLine claimed by two rows
-      if (!destLineOwners.has(dn)) destLineOwners.set(dn, []);
-      destLineOwners.get(dn).push(idx);
-      // V-C3: no srcLine sent to two different destinations
-      if (!srcLineOwners.has(sn)) srcLineOwners.set(sn, []);
-      srcLineOwners.get(sn).push(idx);
-    }}
-  }}
-
-  // V-C1: per-destination total moved ≤ total added lines for that dest in diff
-  // Parse added line counts per dest file from DIFF_TEXT
-  const destAddedCounts = new Map(); // destStem → count of '+' content lines in diff
-  let curFile = null;
-  for (const line of DIFF_TEXT.split('\\n')) {{
-    const fm = line.match(/^\\+\\+\\+ b\\/.*?([^\\/]+)\\.md$/);
-    if (fm) {{ curFile = fm[1]; continue; }}
-    if (line.startsWith('--- ') || line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('@@')) {{ continue; }}
-    if (curFile && line.startsWith('+') && !line.startsWith('+++')) {{
-      const c = normLine(line.slice(1));
-      if (c.length > 2 && !isNoiseLine(line.slice(1))) {{
-        destAddedCounts.set(curFile, (destAddedCounts.get(curFile) || 0) + 1);
-      }}
-    }}
-  }}
-  let c1count = 0;
-  for (const [dStem, claimed] of destMovedTotals) {{
-    const available = destAddedCounts.get(dStem) ?? 0;
-    if (claimed > available) {{
-      c1count++;
-      _crossRowIssues.push(`V-C1: ${{dStem}} claims ${{claimed}} moved lines but diff only has ${{available}} additions`);
-    }}
-  }}
-
-  let c2count = 0, c3count = 0;
-  for (const [dn, idxs] of destLineOwners) {{
-    const unique = [...new Set(idxs)];
-    if (unique.length > 1) {{
-      c2count++;
-      _crossRowIssues.push(`V-C2: dest line claimed by rows ${{unique.join(', ')}}: ${{dn.slice(0, 60)}}`);
-    }}
-  }}
-  for (const [sn, idxs] of srcLineOwners) {{
-    const unique = [...new Set(idxs)];
-    if (unique.length > 1) {{
-      c3count++;
-      _crossRowIssues.push(`V-C3: src line sent to multiple rows (${{unique.join(', ')}}): ${{sn.slice(0, 60)}}`);
-    }}
-  }}
-  if (c1count || c2count || c3count) {{
-    console.warn('[V-C] Cross-row issues:', _crossRowIssues.length, 'total', {{c1count, c2count, c3count}});
-  }}
-  updateValidationBanner();
-}}
-
+// ── Validation banner (reads Python-embedded CROSS_ROW_ISSUES + _rowValidation) ──
 function updateValidationBanner() {{
   const banner = document.getElementById('validation-banner');
   if (!banner) return;
   const rowWarnCount = _rowValidation.size;
-  const crossCount = _crossRowIssues.length;
+  const crossCount = CROSS_ROW_ISSUES.length;
   if (rowWarnCount === 0 && crossCount === 0) {{
     banner.className = 'ok';
     banner.textContent = '✓ All rows validated — no integrity issues found';
@@ -2724,6 +2614,7 @@ window.addEventListener('DOMContentLoaded', () => {{
       if (c.lostCount  > 0) c.blocks.push({{ type: 'lost',  count: c.lostCount, lines: c.trulyLostLines }});
       _rowClassifications.set(idx, c);
       updateRowBadge(idx, c);
+      annotateRowWarnings(idx, pc.issues || []);
     }}
   }}
 
@@ -2731,24 +2622,20 @@ window.addEventListener('DOMContentLoaded', () => {{
   _allAddedEntries = null; // reset lazy cache whenever diff is (re)parsed
   renderDiffFiles(allParsedFiles);
 
-  // Background scan: classify all rows in idle time, 10 per frame
-  // Layer 2 (validateRowIntegrity) runs alongside each row classification.
-  // Layer 4 (validateCrossRowConsistency) runs once after all rows are done.
+  // Background scan: classify all rows in idle time, 10 per frame.
+  // Badges only — validation and warnings come from PRE_CLASSIFICATION (Phase E above).
   function classifyAllRows() {{
     let i = 0;
-    const seen = new Map(); // for V-R4 duplicate check
     function batch() {{
       const end = Math.min(i + 10, MODAL_ROWS.length);
       for (; i < end; i++) {{
         const c = classifyRow(i);
         if (c) updateRowBadge(i, c);
-        validateRowIntegrity(i, MODAL_ROWS[i], seen);
       }}
       if (i < MODAL_ROWS.length) {{
         requestIdleCallback(batch);
       }} else {{
-        // All rows done — run cross-row consistency pass (Layer 4)
-        validateCrossRowConsistency();
+        updateValidationBanner();
       }}
     }}
     if (MODAL_ROWS.length > 0) {{
@@ -2901,11 +2788,14 @@ def cmd_sweep_review_compile(args):
         utils.err(f"[V-D] {w}")
 
     # Phase E: pre-compute row classification in Python at compile time.
-    # Embedded as PRE_CLASSIFICATION so the portal has instant badges and inspectable data.
+    # Embedded as PRE_CLASSIFICATION / CROSS_ROW_ISSUES so the portal has instant badges
+    # and inspectable data without waiting for the JS background scan.
     pre_classification = _py_classify_all_rows(diff_text, narrative or [], _np_root())
+    cross_row_issues   = _py_cross_row_issues(pre_classification)
 
     new_html = _build_snapshot_html(run_id, date_str, sha, stat_text, diff_text, merged_comments, narrative, changed_cal,
-                                    pre_classification=pre_classification)
+                                    pre_classification=pre_classification,
+                                    cross_row_issues=cross_row_issues)
     review_path.write_text(new_html, encoding="utf-8")
     cmt_note = f"{len(merged_comments)} comment(s) from {len(comment_rounds)} round(s)" if merged_comments else "no comments"
     utils.log(f"sweep-review-compile: wrote {review_path} ({cmt_note})")
@@ -3567,6 +3457,7 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
         return count
 
     results: list[dict] = []
+    seen_tuples: dict[tuple, int] = {}  # (source_file, section, destination) → first modal_idx
     isSep = lambda r: re.match(r'^-+$', (r.get('section') or '').strip())
 
     # CRITICAL: Use MODAL_ROWS indices (non-separator rows only) not NARRATIVE indices.
@@ -3590,17 +3481,32 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
         if not src_in_diff:  issues.append('src_not_in_diff')
         if not dest_in_diff: issues.append('dest_not_in_diff')
 
+        # V-R4: duplicate (source_file × section × destination) tuple
+        _tuple_key = (row.get('source_file', ''), row.get('section', ''), row.get('destination', ''))
+        if _tuple_key in seen_tuples:
+            issues.append('duplicate_row')
+        else:
+            seen_tuples[_tuple_key] = modal_idx
+
+        # V-R5: self-migration — source file and destination resolve to the same file
+        if src_file.lower() == (dest_raw.split('/')[-1] + '.md').lower():
+            issues.append('self_migration')
+
         if not src_in_diff or not dest_in_diff:
             results.append({'idx': modal_idx, 'type': 'empty', 'moved_count': 0,
                             'lost_count': 0, 'truly_lost_lines': [], 'moved_lines': [],
                             'dest_lines': [], 'went_to_details': {}, 'line_statuses': {},
-                            'issues': issues})
+                            'inferred': False, 'issues': issues})
             modal_idx += 1
             continue
 
         # Extract removed lines for this section
+        inferred = False
         raw_removed = _extract_section_lines(diff_text, src_file, section, '-')
         if not raw_removed:
+            # V-R3: section header not found in diff — classification uses inference
+            inferred = True
+            issues.append('inferred_section')
             # Infer from full file if section not found.
             # Cross-source filter: only use dest additions that came from THIS source file
             # (or have no known source) — prevents matching lines swept on other dates.
@@ -3625,7 +3531,7 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             results.append({'idx': modal_idx, 'type': 'empty', 'moved_count': 0,
                             'lost_count': 0, 'truly_lost_lines': [], 'moved_lines': [],
                             'dest_lines': [], 'went_to_details': {}, 'line_statuses': {},
-                            'issues': issues})
+                            'inferred': inferred, 'issues': issues})
             modal_idx += 1
             continue
 
@@ -3725,11 +3631,48 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             'line_statuses':    line_statuses,
             'misrouted_count':  misrouted_count,
             'went_to_files':    sorted(went_to_files_set),
+            'inferred':         inferred,
             'issues':           issues,
         })
         modal_idx += 1
 
     return results
+
+
+def _py_cross_row_issues(pre_classification: list[dict]) -> list[str]:
+    """Detect cross-row consistency issues from PRE_CLASSIFICATION at compile time.
+    Replaces JS validateCrossRowConsistency. Returns list of human-readable issue strings.
+    V-C2: dest line claimed by two or more rows (double-move).
+    V-C3: src line appears in moved_lines of two or more rows (duplicated source).
+    """
+    issues: list[str] = []
+    dest_line_owners: dict[str, list[int]] = {}  # normLine → [idx, ...]
+    src_line_owners:  dict[str, list[int]] = {}  # normLine → [idx, ...]
+
+    for pc in pre_classification:
+        idx = pc.get('idx')
+        if idx is None:
+            continue
+        for dl in pc.get('dest_lines', []):
+            n = _norm_line(dl)
+            if len(n) > 4:
+                dest_line_owners.setdefault(n, []).append(idx)
+        for sl in pc.get('moved_lines', []):
+            n = _norm_line(sl)
+            if len(n) > 4:
+                src_line_owners.setdefault(n, []).append(idx)
+
+    for n, idxs in dest_line_owners.items():
+        unique = sorted(set(idxs))
+        if len(unique) > 1:
+            issues.append(f'V-C2: dest line claimed by rows {unique}: {n[:60]}')
+
+    for n, idxs in src_line_owners.items():
+        unique = sorted(set(idxs))
+        if len(unique) > 1:
+            issues.append(f'V-C3: src line moved by multiple rows {unique}: {n[:60]}')
+
+    return issues
 
 
 def _quality_log_path(root: Path) -> Path:
