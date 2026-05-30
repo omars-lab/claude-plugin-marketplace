@@ -16,5 +16,19 @@
   "plansDirectory": ".claude/plans",
   "companyAnnouncements": [
     "Welcome!"
-  ]
+  ],
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; echo \"$f\" | grep -q 'oeid-noteplan-quicknote/script\\.js' && cd /Users/omar.eid/workspace/oeid-claude-plugin-marketplace/plugins/oeid-noteplan-quicknote && npm test --silent 2>&1 | tail -4; } || true",
+            "statusMessage": "Running plugin tests..."
+          }
+        ]
+      }
+    ]
+  }
 }
