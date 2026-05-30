@@ -65,12 +65,13 @@ _SKIP_DOMAIN_RE = re.compile(
     r'|talent\.amazon\.dev'                      # Amazon internal transfer tool
     r'|quip-amazon\.com'                         # Amazon internal Quip (collaboration)
     r'|(?:issues|tiny|sim|broadcast|mcm|apttool|weblab|amzn-wwc)\.amazon\.com'  # Amazon internal tools
-    r'|(?:retro|plantuml|t)\.corp\.amazon\.com' # Amazon internal corp tools
+    r'|\.corp\.amazon\.com'                      # Amazon internal corp tools (all subdomains)
     r'|radar\.aka\.amazon\.com'                  # Amazon internal Radar
     r'|admin\.shopify\.com'                      # Shopify admin (authenticated)
     r'|amazon\.jobs/en/internal/'               # Amazon internal job postings (path-based)
     r'|\.a2z\.com(?:[:/]|$)'                     # Amazon internal *.a2z.com services
     r'|\.ts\.net(?:[:/]|$)'                      # Tailscale hostnames (*.ts.net)
+    r'|noteplan(?:[:/]|$)'                       # NotePlan x-callback-url scheme (https://noteplan/...)
     r'|localhost|attlocal\.net|\.local(?:[:/]|$)'
     r')',
     re.IGNORECASE,
