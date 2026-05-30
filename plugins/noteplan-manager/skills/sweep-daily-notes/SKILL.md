@@ -406,6 +406,13 @@ Process one daily note at a time, oldest first. **Complete each day fully before
 
 ### Step 6a — Announce the day
 
+**Pre-parse: strip separator headers.** Before scanning for sweepable sections, detect headers that are visual separators rather than real section names. These include: `# ---`, `# ===`, `# ___`, `# ***`, `# ------`, or any `#` followed only by punctuation/whitespace. When found, **remove the separator header** and treat the lines below it as continuation of the previous section (or as top-level orphan tasks if no prior section exists). Report stripped separators in the announcement:
+```
+⚠️ Stripped {n} separator header(s): "# ---" at line {L} — content treated as orphan tasks
+```
+
+**Pre-parse: split orphan mixed-domain tasks.** When top-level tasks (no section header) exist and contain items from clearly different domains (e.g. a work MCP task + a personal home repair task), split them into separate synthetic blocks before classification. Use domain signals: personal keywords (home, family, shopping, errands, spigot, vacuum), work keywords (ServiceNow, MCP, POC, meeting), wikilinks. Each synthetic block is classified independently.
+
 Open each daily note and scan for sweepable content (any section with at least one non-completed line):
 
 ```
@@ -426,10 +433,12 @@ For each sweepable section, determine the best destination using the plan index 
 2. Section header text closely matches a plan name → `✅ Confident`
 3. Section's workstream emoji matches a single plan's workstream → `✅ Confident`
 4. Section mentions a person's name that appears in a plan's `contributors` field → `✅ Confident` (e.g. "Dennis 1-1" content matching a plan with `contributors: ["Dennis"]`)
-5. Section matches **2+ research signals** (see below) → `🔬 Research candidate` — present research routing UI instead of plan routing
-6. Clearly personal content (shopping, errands, `[[🏡...]]` wikilinks in work mode) → `⏭️ Skip` (but see **Personal in Both mode** below)
-7. Completed-task-only block → `⏭️ Skip` by default, but see **Completed task routing** below
-8. Anything else → `❓ Uncertain`
+5. Section header contains meeting keywords ("Meeting Notes", "1-1", "Sync", "Catch Up", "Chat with", "Workshop") OR a person's name matching a meeting file in the index → `👤 Meeting candidate` — present meeting routing UI
+6. Section header contains "References" or "References:" → `📋 Reference candidate` — present list/reference routing UI
+7. Section matches **2+ research signals** (see below) → `🔬 Research candidate` — present research routing UI instead of plan routing
+8. Clearly personal content (shopping, errands, `[[🏡...]]` wikilinks in work mode) → `⏭️ Skip` (but see **Personal in Both mode** below)
+9. Completed-task-only block → `⏭️ Skip` by default, but see **Completed task routing** below
+10. Anything else → `❓ Uncertain`
 
 **Research candidate signals** (classify `🔬` when 2+ apply):
 
@@ -480,6 +489,8 @@ Announce the classification before routing:
 ```
 📅 {fileDate} — {n} sweepable section(s):
   ✅ {k} confident match(es) — will auto-route
+  👤 {p} meeting candidate(s) — will ask to route to meeting file
+  📋 {q} reference candidate(s) — will ask to route to list file
   🔬 {r} research candidate(s) — will ask to route to research doc or deep dive
   ❓ {m} uncertain section(s) — will ask individually
   ⏭️  {j} skip(s) — personal/completed
@@ -530,6 +541,61 @@ AskUserQuestion({
 })
 ```
 
+**For `👤 Meeting candidate` sections**, use a dedicated meeting routing UI:
+
+```javascript
+AskUserQuestion({
+  questions: [{
+    question: `Meeting section "${sectionHeader}" from ${fileDate}:\n\n${sectionPreview}\n\nSuggested destinations:`,
+    header: `Route meeting: "${sectionHeader}" (${currentIndex}/${totalMeetings})`,
+    options: [
+      // Top 3 meeting files matching person name / event name:
+      ...top3Meetings.map((m, i) => ({
+        label: `[[${m.filename_stem}]]`,
+        description: `#${i+1} · 👤 Meeting · ${m.description ?? '(no description)'}`
+      })),
+      { label: "👤 New Meeting note", description: `Create 🏢 {YYMMDD} {Title}.md in 👤 Meetings/` },
+      { label: "📥 Unsorted", description: "Place under # Unsorted in the target note" },
+      { label: "⏭️ Skip — leave it here", description: "Don't move this section" }
+    ],
+    multiSelect: false
+  }]
+})
+```
+
+If **"👤 New Meeting note"** is selected → go to **Step 6d: Create New Plan/Research Doc** (meeting path — use `🏢📝 Work Meeting Notes.md` template), then return to routing.
+
+**For `📋 Reference candidate` sections**, use a dedicated list/reference routing UI:
+
+```javascript
+AskUserQuestion({
+  questions: [{
+    question: `Reference section "${sectionHeader}" from ${fileDate}:\n\n${sectionPreview}\n\nSuggested destinations:`,
+    header: `Route reference: "${sectionHeader}" (${currentIndex}/${totalReferences})`,
+    options: [
+      // Top 3 list files scored by keyword match:
+      ...top3Lists.map((l, i) => ({
+        label: `[[${l.filename_stem}]]`,
+        description: `#${i+1} · 📋 List · ${l.description ?? '(no description)'}`
+      })),
+      { label: "📋 New List/Reference file", description: `Create 🏢📋 References[{Qualifier}].md in 📋 Lists/` },
+      { label: "📥 Unsorted", description: "Place under # Unsorted in the target note" },
+      { label: "⏭️ Skip — leave it here", description: "Don't move this section" }
+    ],
+    multiSelect: false
+  }]
+})
+```
+
+If **"📋 New List/Reference file"** is selected → ask for a qualifier name, then create `🏢📋 References[{Qualifier}].md` (work) or `🏡📋 References[{Qualifier}].md` (personal) in the appropriate Lists directory. Use minimal frontmatter:
+```markdown
+---
+doctype: 📋
+namespace: 🏢
+---
+# 🏢📋 References[{Qualifier}]
+```
+
 **For `❓ Uncertain` sections**, use the standard plan routing question with the full top-5 (plans + research + lists mixed by score):
 
 ```javascript
@@ -542,7 +608,9 @@ AskUserQuestion({
         label: `[[${p.filename_stem}]]`,
         description: `#${i+1} match · ${p.type === 'research' ? '🔬 ' : ''}${p.description || `(${p.workstream_or_plantype ?? p.type} — no description)`}`
       })),
-      { label: "🆕 Create a new plan/file for this", description: "This section deserves its own plan file" },
+      { label: "🆕 Create a new plan", description: "This section deserves its own plan file" },
+      { label: "👤 New Meeting note", description: "Create a meeting note file" },
+      { label: "📋 New List/Reference file", description: "Create a reference list file" },
       { label: "🔬 New Research note", description: "Create a standalone research doc" },
       { label: "📥 Unsorted", description: "Place under # Unsorted in the target note" },
       { label: "⏭️ Skip — leave it here", description: "Don't move this section" }
@@ -569,6 +637,8 @@ If the search produces **ambiguous or multiple valid routings** → include the 
 Show a **progress counter** in the header (`1/3`, `2/3`, etc.) so the user knows how many uncertain sections remain.
 
 If **"🆕 Create a new plan"** is selected → go to **Step 6d: Create New Plan/Research Doc**, then return to routing.
+If **"👤 New Meeting note"** is selected → go to **Step 6d: Create New Plan/Research Doc** (meeting path), then return to routing.
+If **"📋 New List/Reference file"** is selected → ask for qualifier, create the list file, then return to routing.
 If **"🔬 New Research note"** or **"🤿 New Deep Dive plan"** is selected → go to **Step 6d: Create New Plan/Research Doc** (research path), then return to routing.
 
 After all uncertain sections are routed, **present the complete day plan** (confident + newly routed):
@@ -1249,6 +1319,12 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Personal research folder | `🏡 Personal/🏡🔬 Research/` — create on first use if absent. Same indexing and routing as work research. |
 | Research doc domains update on append | When appending to an existing research doc, extract URL domains from the new content and merge (set union) into the doc's `domains:` frontmatter. Rewrite frontmatter in-place. |
 | Cross-day research consolidation | Track research candidates across all days in a topic/domain cluster map. When two or more candidates share a cluster, present them as a single consolidation question before individual routing. |
+| Separator headers stripped | Headers that are visual separators (`# ---`, `# ===`, `# ___`, `# ***`, or `#` followed only by punctuation) are removed during pre-parse. Content below them becomes orphan tasks or continues the previous section. |
+| Orphan tasks split by domain | Top-level tasks with no section header are split into separate synthetic blocks when they span different domains (work vs personal). Each block is classified independently. |
+| Meeting candidate classification | Sections with meeting keywords in the header ("Meeting Notes", "1-1", "Sync", "Catch Up", "Chat with", "Workshop") or matching a person name in the meetings index are classified as `👤 Meeting candidate` with a dedicated routing UI. |
+| Meeting note creation first-class | The routing UI includes `👤 New Meeting note` as a distinct option (not just `🆕 Create plan`). Uses `🏢📝 Work Meeting Notes.md` template. Available in both meeting candidate UI and uncertain section UI. |
+| Reference candidate classification | Sections with "References" or "References:" in the header are classified as `📋 Reference candidate` with a dedicated list/reference routing UI that surfaces list files first. |
+| List/reference file creation first-class | The routing UI includes `📋 New List/Reference file` as a distinct option. Creates `🏢📋 References[{Qualifier}].md` or `🏡📋 References[{Qualifier}].md` with minimal frontmatter. |
 
 ---
 
