@@ -54,6 +54,7 @@ t7 = TaskCreate({ title: "Phase 7: Validate via git diff", status: "todo", block
 t7b = TaskCreate({ title: "Phase 7b: Post-sweep Unsorted review", status: "todo", blocked_by: [t7.id] })
 t8 = TaskCreate({ title: "Phase 8: Final commit + push", status: "todo", blocked_by: [t7b.id] })
 t85 = TaskCreate({ title: "Phase 8.5: Self-knowledge + brag sheet capture + push", status: "todo", blocked_by: [t8.id] })
+t9  = TaskCreate({ title: "Phase 9: Dashboard + review pipeline", status: "todo", blocked_by: [t85.id] })
 ```
 
 **Before starting each phase**: `TaskUpdate(taskId, { status: "in_progress" })`
@@ -1896,6 +1897,74 @@ type: direction-checkpoint
 | Project subfolders supported | Workstream dirs can contain **project subfolders** (e.g. `🧑🏻‍💻 Development/🤖 Config Agent/`) to group related plans. Plans in project subfolders use the **project emoji** in their filename (e.g. `🏢260302🤖 Title.md`) instead of the parent workstream emoji. The `workstream` frontmatter still reflects the parent workstream (`🧑🏻‍💻`). When routing content, prefer project subfolder matches when the section's content/wikilinks clearly relate to a specific project. When creating new plans, list project subfolders as placement options. Discover project subfolders dynamically — never hardcode. |
 | Self-healing after sweep | After completing a sweep, if gaps/improvements were identified, offer to update the skill source at `~/workspace/oeid-claude-plugin-marketplace/`. Never edit cache files. Workflow: edit SKILL.md → bump version → git push → `make update`. Do not self-heal mid-sweep. |
 | Skill source is the git repo | The authoritative skill source is `~/workspace/oeid-claude-plugin-marketplace/plugins/noteplan-manager/skills/sweep-daily-notes/SKILL.md`. The cache at `~/.claude/plugins/cache/` is read-only and overwritten on reinstall. |
+
+---
+
+## Phase 9: Dashboard + Review Pipeline
+
+Phase 9 runs after Phase 8.5 on every sweep. It generates the sweep review diff, mines conversations, refreshes all dashboards, and opens the final output. All steps run sequentially; failures are non-blocking (log and continue).
+
+### 9.1 — Sweep commit + review
+
+```bash
+cd "$NOTEPLAN_ROOT"
+
+# Commit any remaining uncommitted changes (idempotent — no-op if clean)
+noteplan-sweep sweep-commit
+
+# Generate immutable HTML diff snapshot for this sweep
+noteplan-sweep sweep-review-generate
+
+# Compile snapshot + any existing comments into review.html
+noteplan-sweep sweep-review-compile
+
+# Open the compiled review in browser
+noteplan-sweep sweep-review-open
+```
+
+### 9.2 — Conversation mining
+
+```bash
+# Parse Claude transcripts, cross-map to plans, write discovered_ideas.json
+noteplan-sweep conversation-mine
+```
+
+### 9.3 — Dashboard refresh
+
+```bash
+# Regenerate Work Board HTML (brag, observations, gaps, impact, AI usage tile)
+noteplan-sweep work-board-generate
+
+# Regenerate AI Usage dashboard (includes repo scan data if available)
+noteplan-sweep ai-usage-generate
+
+# Regenerate Idea Dashboard (uses discovered_ideas.json from step 9.2, --skip-mine)
+noteplan-sweep dashboard-generate --skip-mine
+
+# Open Idea Dashboard in browser
+noteplan-sweep dashboard-open
+```
+
+### 9.4 — Repo scan (weekly, not every sweep)
+
+Run once per week or after adding a new AI-assisted project:
+
+```bash
+noteplan-sweep repo-scan
+noteplan-sweep ai-usage-generate   # re-generate to include new repo data
+```
+
+### Phase 9 checklist
+
+- [ ] `sweep-commit` — changes committed
+- [ ] `sweep-review-generate` — diff snapshot written to `sweeps/`
+- [ ] `sweep-review-compile` — compiled review HTML ready
+- [ ] `sweep-review-open` — review opened in browser
+- [ ] `conversation-mine` — transcripts mined, discovered_ideas.json updated
+- [ ] `work-board-generate` — Work Board HTML refreshed
+- [ ] `ai-usage-generate` — AI Usage HTML refreshed
+- [ ] `dashboard-generate --skip-mine` — Idea Dashboard HTML refreshed
+- [ ] `dashboard-open` — dashboard visible
 
 ---
 

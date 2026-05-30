@@ -625,6 +625,7 @@ def cmd_ai_usage_generate(args):
 <title>AI Usage Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <style>
   :root {{
     --bg: #0f0f0f; --surface: #1a1a1a; --border: #2a2a2a;
@@ -757,10 +758,17 @@ def cmd_ai_usage_generate(args):
   </div>
 
   <div class="pane" id="pane-graph">
-    <div class="skill-ph">
-      <div style="font-size:32px">🕸</div>
-      <strong>Prompt Graph — coming in AUD-F</strong>
-      <p>D3 force-directed graph of sessions → repos → skills</p>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="font-size:12px;color:var(--muted)">Show:</span>
+      <button class="view-btn active" id="gn-session" onclick="toggleGNode('session',this)">Sessions</button>
+      <button class="view-btn active" id="gn-repo"    onclick="toggleGNode('repo',this)">Repos</button>
+      <button class="view-btn active" id="gn-skill"   onclick="toggleGNode('skill',this)">Skills</button>
+      <button class="view-btn active" id="gn-usecase" onclick="toggleGNode('usecase',this)">Use Cases</button>
+      <span style="margin-left:auto;font-size:11px;color:var(--muted)" id="graph-stats"></span>
+    </div>
+    <div id="graph-svg-wrap" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;height:calc(100vh - 190px);position:relative">
+      <svg id="graph-svg" style="width:100%;height:100%"></svg>
+      <div id="graph-tooltip" style="display:none;position:absolute;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;max-width:280px;pointer-events:none;z-index:10"></div>
     </div>
   </div>
 
@@ -934,11 +942,182 @@ function copyPrompt() {{
 
 // Init skill cards when pane becomes visible
 const _origShowTab = showTab;
+let graphInitialized = false;
 function showTab(tab) {{
   _origShowTab(tab);
   if (tab === 'skills' && !document.getElementById('skill-count').textContent) {{
     renderSkillCards();
   }}
+  if (tab === 'graph' && !graphInitialized) {{
+    graphInitialized = true;
+    setTimeout(initGraph, 50);
+  }}
+}}
+
+// ── Prompt Graph (AUD-F) ─────────────────────────────────────────────────
+const UC_COLORS = {{
+  'Code Gen':'#3fb950','Debug':'#f85149','Planning':'#d2a8ff','Research':'#79c0ff',
+  'Docs':'#d29922','Review':'#58a6ff','Refactor':'#d97757','General':'#484f58'
+}};
+const DOMAIN_COLORS = {{'ServiceNow':'#1f6feb','Personal':'#8b5cf6','EarlBear':'#3fb950','Other':'#484f58'}};
+const NODE_SHAPES = {{'session':'circle','repo':'rect','skill':'diamond','usecase':'circle'}};
+
+let activeGNodes = new Set(['session','repo','skill','usecase']);
+
+function toggleGNode(type, btn) {{
+  if (activeGNodes.has(type)) {{ activeGNodes.delete(type); btn.classList.remove('active'); }}
+  else {{ activeGNodes.add(type); btn.classList.add('active'); }}
+  initGraph();
+}}
+
+function initGraph() {{
+  const wrap = document.getElementById('graph-svg-wrap');
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  const svg = d3.select('#graph-svg').attr('viewBox', `0 0 ${{W}} ${{H}}`);
+  svg.selectAll('*').remove();
+
+  // Build nodes
+  const nodes = [], links = [];
+  const nodeById = {{}};
+
+  // UseCase nodes
+  const useCases = [...new Set(DATA.sessions.filter(s=>!s.automated&&s.use_case).map(s=>s.use_case))];
+  if (activeGNodes.has('usecase')) {{
+    useCases.forEach(uc => {{
+      const n = {{id:'uc_'+uc, type:'usecase', label:uc, color:UC_COLORS[uc]||'#484f58', r:18}};
+      nodes.push(n); nodeById[n.id] = n;
+    }});
+  }}
+
+  // Repo nodes (top 15 interactive)
+  const topRepos = DATA.projects.filter(p=>p.interactive_count>0).slice(0,15);
+  if (activeGNodes.has('repo')) {{
+    topRepos.forEach(p => {{
+      const n = {{id:'repo_'+p.label, type:'repo', label:p.label, color:DOMAIN_COLORS[p.domain]||'#484f58', count:p.interactive_count}};
+      nodes.push(n); nodeById[n.id] = n;
+    }});
+  }}
+
+  // Skill nodes (top 12)
+  if (activeGNodes.has('skill')) {{
+    SKILLS_META.filter(s=>!s.is_subskill).slice(0,12).forEach(s => {{
+      const n = {{id:'skill_'+s.name, type:'skill', label:s.name, color:'#d97757'}};
+      nodes.push(n); nodeById[n.id] = n;
+    }});
+    // Link skills to noteplan-manager repo if it exists
+    const npmId = 'repo_oeid-claude-plugin-marketplace';
+    if (nodeById[npmId]) {{
+      SKILLS_META.filter(s=>!s.is_subskill).slice(0,12).forEach(s => {{
+        links.push({{source:'skill_'+s.name, target:npmId, type:'DEFINED_IN'}});
+      }});
+    }}
+  }}
+
+  // Session nodes (top 80 interactive, capped)
+  const interactiveSessions = DATA.sessions.filter(s=>!s.automated).slice(-80);
+  if (activeGNodes.has('session')) {{
+    interactiveSessions.forEach(s => {{
+      const n = {{id:'s_'+s.session_id, type:'session', label:s.use_case||'Session',
+                  color:UC_COLORS[s.use_case]||'#484f58', date:s.date, r:5,
+                  proj:s.project_label||''}};
+      nodes.push(n); nodeById[n.id] = n;
+      // Link session → usecase
+      if (s.use_case && activeGNodes.has('usecase') && nodeById['uc_'+s.use_case]) {{
+        links.push({{source:'s_'+s.session_id, target:'uc_'+s.use_case, type:'UC'}});
+      }}
+      // Link session → repo
+      if (activeGNodes.has('repo') && s.project_label) {{
+        const rid = 'repo_'+s.project_label;
+        if (nodeById[rid]) links.push({{source:'s_'+s.session_id, target:rid, type:'IN_REPO'}});
+      }}
+    }});
+  }}
+
+  document.getElementById('graph-stats').textContent = `${{nodes.length}} nodes · ${{links.length}} edges`;
+
+  const g = svg.append('g');
+
+  // Zoom + pan
+  svg.call(d3.zoom().scaleExtent([0.1,4]).on('zoom', e => g.attr('transform', e.transform)));
+
+  // Build valid link objects
+  const nodeMap = new Map(nodes.map(n => [n.id, n]));
+  const validLinks = links.filter(l => nodeMap.has(l.source) && nodeMap.has(l.target))
+                          .map(l => ({{...l, source: nodeMap.get(l.source), target: nodeMap.get(l.target)}}));
+
+  const sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(validLinks).id(d=>d.id).distance(d => d.type==='UC' ? 60 : 100).strength(0.3))
+    .force('charge', d3.forceManyBody().strength(-120))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .force('collide', d3.forceCollide(20));
+
+  // Edges
+  const link = g.append('g').selectAll('line').data(validLinks).join('line')
+    .attr('stroke', d => d.type==='UC' ? '#2a2a2a' : '#30363d')
+    .attr('stroke-width', d => d.type==='IN_REPO' ? 1.5 : 0.8)
+    .attr('stroke-opacity', 0.6);
+
+  // Nodes
+  const node = g.append('g').selectAll('g').data(nodes).join('g')
+    .style('cursor','pointer')
+    .call(d3.drag()
+      .on('start', (e,d) => {{ if(!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; }})
+      .on('drag',  (e,d) => {{ d.fx=e.x; d.fy=e.y; }})
+      .on('end',   (e,d) => {{ if(!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }}));
+
+  // Draw shapes
+  node.each(function(d) {{
+    const sel = d3.select(this);
+    if (d.type === 'session') {{
+      sel.append('circle').attr('r', d.r||5).attr('fill', d.color).attr('opacity', 0.8);
+    }} else if (d.type === 'repo') {{
+      sel.append('rect').attr('x',-10).attr('y',-10).attr('width',20).attr('height',20)
+         .attr('rx',3).attr('fill', d.color).attr('opacity', 0.9);
+    }} else if (d.type === 'skill') {{
+      sel.append('polygon').attr('points','0,-12 10,6 -10,6').attr('fill', d.color).attr('opacity', 0.9);
+    }} else if (d.type === 'usecase') {{
+      sel.append('circle').attr('r', d.r||18).attr('fill', d.color).attr('opacity', 0.25)
+         .attr('stroke', d.color).attr('stroke-width', 1.5);
+      sel.append('text').text(d.label).attr('text-anchor','middle').attr('dy','0.35em')
+         .attr('font-size', 10).attr('fill', d.color);
+    }}
+  }});
+
+  // Tooltip on hover
+  const tip = document.getElementById('graph-tooltip');
+  node.on('mouseover', function(e, d) {{
+    let html = `<strong>${{esc(d.label)}}</strong><br><span style="color:var(--muted)">${{d.type}}</span>`;
+    if (d.date) html += `<br>${{esc(d.date)}}`;
+    if (d.proj) html += `<br>${{esc(d.proj)}}`;
+    if (d.count) html += `<br>${{d.count}} sessions`;
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+    tip.style.left = (e.offsetX + 14) + 'px';
+    tip.style.top  = (e.offsetY - 10) + 'px';
+  }}).on('mousemove', function(e) {{
+    tip.style.left = (e.offsetX + 14) + 'px';
+    tip.style.top  = (e.offsetY - 10) + 'px';
+  }}).on('mouseout', () => {{ tip.style.display = 'none'; }});
+
+  // Click → open repo in projects tab (for repo nodes)
+  node.on('click', (e, d) => {{
+    if (d.type === 'repo') {{
+      showTab('projects');
+      document.getElementById('proj-search').value = d.label;
+      renderProjects();
+    }}
+    if (d.type === 'skill') {{
+      showTab('skills');
+      document.getElementById('skill-search').value = d.label;
+      renderSkillCards();
+    }}
+  }});
+
+  sim.on('tick', () => {{
+    link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y)
+        .attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    node.attr('transform', d=>`translate(${{d.x}},${{d.y}})`);
+  }});
 }}
 </script>
 </body>
