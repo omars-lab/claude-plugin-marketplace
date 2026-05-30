@@ -554,9 +554,11 @@ function showTab(tab) {{
 // ── Heatmap ───────────────────────────────────────────────────────────────
 function renderHeatmap() {{
   const svg = document.getElementById('heatmap-svg');
-  const CELL = 13, GAP = 2, STEP = CELL + GAP;
-  const LEFT_PAD = 30, TOP_PAD = 24;
+  const LEFT_PAD = 30, TOP_PAD = 24, GAP = 2;
   const WEEKS = 52;
+  const containerW = document.getElementById('heatmap-container').clientWidth || 900;
+  const CELL = Math.max(10, Math.min(16, Math.floor((containerW - LEFT_PAD - GAP * (WEEKS - 1)) / WEEKS)));
+  const STEP = CELL + GAP;
 
   // Build date → count lookup
   const byDate = {{}};
