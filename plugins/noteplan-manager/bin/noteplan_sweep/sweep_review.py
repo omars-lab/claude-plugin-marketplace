@@ -1650,7 +1650,46 @@ function showSectionModal(idx, focusLost = false) {{
   }});
   _modalDestGroups = destFile ? extractDestWithContext(destFile.filename) : [];
   // V-47a removed (#82): always use full-file added lines — same as classifyRow
-  const addedLines = _modalDestGroups.flatMap(g => g.lines);
+  let addedLines = _modalDestGroups.flatMap(g => g.lines);
+
+  // B-15 modal: if dest is a redirect stub, follow the link — same logic as classifyRow.
+  let _b15ModalTarget = null;
+  const _diskNormsModal = DEST_FILE_LINES[destRaw.toLowerCase()] || [];
+  const _diskRedirModal = _diskNormsModal.find(l => /^> migrated: see \\[\\[/.test(l));
+  if (_diskRedirModal) {{
+    _b15ModalTarget = _diskRedirModal.replace(/^> migrated: see \\[\\[/, '').replace(/\\]\\].*$/, '').trim();
+  }}
+  if (!_b15ModalTarget && destFile) {{
+    const _destBaseM = destFile.filename.split('/').pop().toLowerCase();
+    let _inBlkM = false;
+    for (const l of DIFF_TEXT.split('\\n')) {{
+      if (l.startsWith('diff --git ')) {{ _inBlkM = l.toLowerCase().includes(_destBaseM); continue; }}
+      if (!_inBlkM) continue;
+      if (l.startsWith('+++') || l.startsWith('---') || l.startsWith('index') || l.startsWith('@@')) continue;
+      if (l.length > 0 && l[0] === ' ') {{
+        const c = l.slice(1);
+        if (/^> Migrated: see \\[\\[/i.test(c)) {{
+          _b15ModalTarget = c.replace(/^> Migrated: see \\[\\[/i, '').replace(/\\]\\].*$/, '').trim();
+          break;
+        }}
+      }}
+    }}
+  }}
+  if (_b15ModalTarget) {{
+    const _b15LowerM = _b15ModalTarget.toLowerCase();
+    const _linkedFileM = allParsedFiles.find(f => {{
+      const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '');
+      return stem.toLowerCase() === _b15LowerM;
+    }});
+    if (_linkedFileM) {{
+      const _lkAddedM = extractDestWithContext(_linkedFileM.filename);
+      if (_lkAddedM.length > 0) {{
+        _modalDestGroups = _lkAddedM;
+        addedLines = _lkAddedM.flatMap(g => g.lines);
+        console.debug('B-15 modal: redirect stub → recheck via', _linkedFileM.filename.split('/').pop());
+      }}
+    }}
+  }}
 
   // Hoist globalMap/srcStem early so inference block can filter cross-content
   const globalMap = getGlobalRemovedMap();
