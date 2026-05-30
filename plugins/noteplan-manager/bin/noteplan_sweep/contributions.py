@@ -427,7 +427,8 @@ def build_contributions_html(data: dict) -> str:
   /* Sparkline tile */
   .sparkline-tile {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; }}
   .sparkline-tile h3 {{ font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }}
-  .sparkline-tile canvas {{ display: block; width: 100% !important; height: 60px !important; }}
+  .sparkline-chart-wrap {{ position: relative; height: 60px; }}
+  .sparkline-tile canvas {{ display: block; }}
 
   /* Repo drill-down */
   .repo-card {{ cursor: pointer; transition: border-color 0.15s; }}
@@ -484,7 +485,9 @@ def build_contributions_html(data: dict) -> str:
     </div>
     <div class="sparkline-tile">
       <h3>Tasks completed — last 90 days</h3>
-      <canvas id="sparkline-chart"></canvas>
+      <div class="sparkline-chart-wrap">
+        <canvas id="sparkline-chart"></canvas>
+      </div>
     </div>
     <div id="heatmap-container">
       <svg id="heatmap-svg"></svg>
