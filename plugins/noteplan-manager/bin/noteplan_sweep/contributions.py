@@ -348,7 +348,6 @@ def build_contributions_html(data: dict) -> str:
 <head>
 <meta charset="utf-8">
 <title>Contributions</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; background: #0d1117; color: #e6edf3; }}
@@ -427,8 +426,7 @@ def build_contributions_html(data: dict) -> str:
   /* Sparkline tile */
   .sparkline-tile {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; }}
   .sparkline-tile h3 {{ font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }}
-  .sparkline-chart-wrap {{ position: relative; height: 60px; }}
-  .sparkline-tile canvas {{ display: block; }}
+  #sparkline-svg {{ display: block; width: 100%; height: 56px; }}
 
   /* Repo drill-down */
   .repo-card {{ cursor: pointer; transition: border-color 0.15s; }}
@@ -485,9 +483,7 @@ def build_contributions_html(data: dict) -> str:
     </div>
     <div class="sparkline-tile">
       <h3>Tasks completed — last 90 days</h3>
-      <div class="sparkline-chart-wrap">
-        <canvas id="sparkline-chart"></canvas>
-      </div>
+      <svg id="sparkline-svg" preserveAspectRatio="none"></svg>
     </div>
     <div id="heatmap-container">
       <svg id="heatmap-svg"></svg>
@@ -770,29 +766,40 @@ window.addEventListener('DOMContentLoaded', () => {{
   document.getElementById('n-repos').textContent = '(' + DATA.repos.length + ')';
   renderHeatmap();
 
-  // Task completion sparkline (Chart.js)
-  const tc = DATA.task_completions || [];
-  if (tc.length && document.getElementById('sparkline-chart')) {{
-    new Chart(document.getElementById('sparkline-chart'), {{
-      type: 'bar',
-      data: {{
-        labels: tc.map(t => t.date),
-        datasets: [{{ data: tc.map(t => t.count), backgroundColor: '#3fb950', borderRadius: 1 }}]
-      }},
-      options: {{
-        animation: false,
-        plugins: {{ legend: {{ display: false }}, tooltip: {{ callbacks: {{
-          title: items => items[0].label,
-          label: item => item.raw + ' tasks done',
-        }} }} }},
-        scales: {{
-          x: {{ display: false }},
-          y: {{ display: false, min: 0 }},
-        }},
-        maintainAspectRatio: false,
-      }}
+  // Task completion sparkline — pure SVG, no CDN
+  (function() {{
+    const tc = DATA.task_completions || [];
+    const svg = document.getElementById('sparkline-svg');
+    if (!tc.length || !svg) return;
+
+    const W = svg.clientWidth || svg.parentElement.clientWidth || 800;
+    const H = 56;
+    const BAR_GAP = 1;
+    const n = tc.length;
+    const barW = Math.max(1, (W - BAR_GAP * (n - 1)) / n);
+
+    // Normalize: cap at 95th percentile so one spike doesn't flatten everything
+    const sorted = [...tc.map(t => t.count)].sort((a,b) => a - b);
+    const p95 = sorted[Math.floor(sorted.length * 0.95)] || sorted[sorted.length - 1] || 1;
+    const scale = Math.max(1, p95);
+    const MIN_H = 3; // minimum visible bar height for non-zero
+
+    svg.setAttribute('viewBox', `0 0 ${{W}} ${{H}}`);
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+
+    let inner = '';
+    tc.forEach((t, i) => {{
+      if (!t.count) return;
+      const x = i * (barW + BAR_GAP);
+      const rawH = (t.count / scale) * (H - 2);
+      const bh = Math.max(MIN_H, rawH);
+      const y = H - bh;
+      const opacity = 0.45 + (t.count / scale) * 0.55;
+      inner += `<rect x="${{x.toFixed(1)}}" y="${{y.toFixed(1)}}" width="${{barW.toFixed(1)}}" height="${{bh.toFixed(1)}}" rx="1" fill="#3fb950" opacity="${{opacity.toFixed(2)}}"><title>${{esc(t.date)}}: ${{t.count}} task${{t.count===1?'':'s'}} done</title></rect>`;
     }});
-  }}
+    svg.innerHTML = inner;
+  }})();
 }});
 </script>
 </body>
