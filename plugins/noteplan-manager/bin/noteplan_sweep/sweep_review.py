@@ -1619,12 +1619,21 @@ function showSectionModal(idx, focusLost = false) {{
   // Auto-mode flags: lost → focusLost single panel; anomaly → focusAnomaly single panel
   let focusAnomaly = false;
   let focusWentTo  = false;
+  let _pyc = null; // PRE_CLASSIFICATION entry for this row
   if (!focusLost) {{
     const cached = _rowClassifications.get(idx);
-    if (cached && cached.type === 'lost' && (cached.blocks || []).length <= 1) focusLost = true;
-    if (cached && cached.type === 'empty') focusLost = true;
-    if (cached && cached.type === 'anomaly') focusAnomaly = true;
-    if (cached && cached.type === 'went-to') focusWentTo = true;
+    _pyc = PRE_CLASSIFICATION ? PRE_CLASSIFICATION.find(pc => pc.idx === idx) : null;
+    const jsType = cached?.type;
+    const pyType = _pyc?.type;
+    // went-to takes priority over empty/lost — Python section extraction is more reliable.
+    // The JS scan can return 'empty' when it fails to find the section header in the diff.
+    if (jsType === 'went-to' || pyType === 'went-to') {{
+      focusWentTo = true;
+    }} else {{
+      if (jsType === 'lost' && (cached?.blocks || []).length <= 1) focusLost = true;
+      if (jsType === 'empty') focusLost = true;
+      if (jsType === 'anomaly') focusAnomaly = true;
+    }}
   }}
 
   const sectionName = row.section.replace(/^#+\\s*/, '').trim();
@@ -1867,12 +1876,24 @@ function showSectionModal(idx, focusLost = false) {{
     if (focusWentTo) {{
       // Went-to mode: show source lines directly + ⇢ banner. srcGrouped is empty here because
       // no lines moved to the breadcrumb dest, so renderSrcGrouped finds no groups to display.
+      // Fall back to Python PRE_CLASSIFICATION went_to_files if V-R6 banner is empty
+      // (happens when JS extractSectionLines fails to find the section — Python is more reliable).
+      let _wentToBanner = misrouteHtml;
+      if (!_wentToBanner && _pyc && (_pyc.went_to_files || []).length > 0) {{
+        const _pyItems = (_pyc.went_to_files || []).map(stem =>
+          `<details style="margin-top:4px"><summary style="color:#58a6ff;font-family:monospace;font-size:11px;cursor:pointer;list-style:none">${{esc(stem)}} ▸</summary></details>`
+        ).join('');
+        _wentToBanner = `<div class="v-r6-banner" style="margin:4px 0 8px;padding:6px 8px;background:#001730;border-left:2px solid #58a6ff;border-radius:3px">` +
+          `<div style="color:#58a6ff;font-size:11px;font-weight:600">⇢ Content arrived at a different destination</div>` +
+          `<div style="color:#8b949e;font-size:10px;margin-top:2px">Source lines found in a different file than the breadcrumb destination.</div>` +
+          _pyItems + `</div>`;
+      }}
       const wentToSrcHtml = removedLines.map(l => {{
         const lno = srcLineNos?.get(l);
         const lnoHtml = lno ? `<span class="line-no">${{lno}}</span>` : '';
         return `<div class="diff-line removed">${{lnoHtml}}${{esc(l)}}</div>`;
-      }}).join('') || '<div class="modal-empty" style="color:#6e7681">No source lines in diff for this section.</div>';
-      srcBody = `${{srcTabBar}}<div class="diff-lines">${{misrouteHtml}}${{wentToSrcHtml}}</div>`;
+      }}).join('') || '<div class="modal-empty" style="color:#6e7681">Source lines not extractable from this diff.</div>';
+      srcBody = `${{srcTabBar}}<div class="diff-lines">${{_wentToBanner}}${{wentToSrcHtml}}</div>`;
     }} else if (focusLost) {{
       const cached = _rowClassifications.get(idx);
       if (cached?.type === 'empty') {{
@@ -1897,6 +1918,20 @@ function showSectionModal(idx, focusLost = false) {{
     }} else {{
       srcBody = `${{srcTabBar}}<div class="diff-lines">${{movedHeader}}${{srcGrouped}}${{lostHtml}}</div>`;
     }}
+  }} else if (focusWentTo) {{
+    // Went-to but removedLines = [] — JS diff extraction failed for this section.
+    // Show ⇢ banner from Python PRE_CLASSIFICATION data.
+    let _wentToBannerFallback = '';
+    if (_pyc && (_pyc.went_to_files || []).length > 0) {{
+      const _pyItemsFallback = (_pyc.went_to_files || []).map(stem =>
+        `<details style="margin-top:4px"><summary style="color:#58a6ff;font-family:monospace;font-size:11px;cursor:pointer;list-style:none">${{esc(stem)}} ▸</summary></details>`
+      ).join('');
+      _wentToBannerFallback = `<div class="v-r6-banner" style="margin:4px 0 8px;padding:6px 8px;background:#001730;border-left:2px solid #58a6ff;border-radius:3px">` +
+        `<div style="color:#58a6ff;font-size:11px;font-weight:600">⇢ Content arrived at a different destination</div>` +
+        `<div style="color:#8b949e;font-size:10px;margin-top:2px">Source lines found in a different file than the breadcrumb destination.</div>` +
+        _pyItemsFallback + `</div>`;
+    }}
+    srcBody = `${{srcTabBar}}<div class="diff-lines">${{_wentToBannerFallback}}<div class="modal-empty" style="color:#6e7681;margin-top:8px">Source section not found in this diff — content may have been moved before the diff snapshot or section name uses a different heading.</div></div>`;
   }} else {{
     // No lines found — show collapsed fallback
     const allRemoved = extractSectionLines(row.source_file, null, '-').lines;
