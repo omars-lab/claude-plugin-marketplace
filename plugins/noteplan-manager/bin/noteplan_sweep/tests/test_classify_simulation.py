@@ -53,6 +53,15 @@ def is_noise_line(line: str) -> bool:
     return False
 
 
+def token_jaccard(a: str, b: str) -> float:
+    """Token Jaccard similarity between two strings (already normed/body-text)."""
+    ta = set(w for w in a.split() if len(w) >= 3)
+    tb = set(w for w in b.split() if len(w) >= 3)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
 def classify_dest_lines(removed_lines: list[str], added_lines: list[str]) -> dict:
     """
     classifyDestLines: match added lines against removed lines.
@@ -96,9 +105,15 @@ def classify_dest_lines(removed_lines: list[str], added_lines: list[str]) -> dic
                 break
             # Body-text prefix match (strips checkbox, min 8 chars)
             if not eb or len(eb) < 8 or len(nb) < 8:
-                continue
-            b_len = min(40, min(len(nb), len(eb)))
-            if b_len >= 8 and (nb.startswith(eb[:b_len]) or eb.startswith(nb[:b_len])):
+                pass
+            else:
+                b_len = min(40, min(len(nb), len(eb)))
+                if b_len >= 8 and (nb.startswith(eb[:b_len]) or eb.startswith(nb[:b_len])):
+                    match_idx = i
+                    break
+            # 4th tier: Token Jaccard (handles reworded lines with shared key terms)
+            # Gate: both sides ≥ 3 meaningful tokens; score ≥ 0.5
+            if token_jaccard(nb, eb) >= 0.5 and len([w for w in nb.split() if len(w) >= 3]) >= 3:
                 match_idx = i
                 break
 
@@ -132,10 +147,15 @@ def filter_valid_pairs(moved: list[str], moved_pairs: dict, removed_lines: list[
         db, sb = body_text(dn), body_text(sn)
         p_len = min(50, min(len(dn), len(sn)))
         b_len = min(40, min(len(db), len(sb)))
+        jaccard_ok = (
+            token_jaccard(db, sb) >= 0.5 and
+            len([w for w in db.split() if len(w) >= 3]) >= 3
+        )
         if (dn == sn or
                 (p_len >= 10 and (dn.startswith(sn[:p_len]) or sn.startswith(dn[:p_len]))) or
                 (len(sb) >= 8 and len(db) >= 8 and b_len >= 8 and
-                 (db.startswith(sb[:b_len]) or sb.startswith(db[:b_len])))):
+                 (db.startswith(sb[:b_len]) or sb.startswith(db[:b_len]))) or
+                jaccard_ok):
             valid.append(dest_line)
     return valid
 
@@ -449,3 +469,55 @@ def test_countable_excludes_short_norms():
     lines = ["ok", "hi", "- [ ] Substantial content line here"]
     countable = countable_removed(lines)
     assert len(countable) == 1
+
+
+# ---------------------------------------------------------------------------
+# Token Jaccard similarity (#83)
+# ---------------------------------------------------------------------------
+
+def test_token_jaccard_reword_matches():
+    """A meaningfully reworded line scores as moved via Jaccard 4th tier."""
+    src  = "- [ ] Set up monitoring alerts for production services"
+    dest = "- [ ] Configure production monitoring alerts and services"
+    result = classify_dest_lines([src], [dest])
+    assert dest in result["moved"], "reworded line should be matched by Jaccard tier"
+    assert result["moved_pairs"][dest] == src
+
+
+def test_token_jaccard_unrelated_no_match():
+    """Completely unrelated lines do not cross-match via Jaccard."""
+    src  = "- [ ] Fix the login timeout bug in the auth service"
+    dest = "- [ ] Update the dependency versions in package.json"
+    result = classify_dest_lines([src], [dest])
+    assert dest not in result["moved"], "unrelated line should NOT match via Jaccard"
+    assert dest in result["new_content"]
+
+
+def test_token_jaccard_gate_min_tokens():
+    """Jaccard does not match when either side has fewer than 3 meaningful tokens."""
+    src  = "- [ ] CI pipeline"   # only 2 tokens ≥ 3 chars: "pipeline", no wait...
+    # "CI" is 2 chars (excluded), "pipeline" is 8 chars → only 1 token ≥ 3 chars
+    dest = "- [ ] Set up CI pipeline"
+    result = classify_dest_lines([src], [dest])
+    # "pipeline" alone doesn't hit ≥ 3 token gate → should fall through to new_content
+    assert dest not in result["moved"]
+
+
+def test_token_jaccard_filter_valid_pairs_accepts():
+    """filterValidPairs accepts a Jaccard-matched pair."""
+    src  = "- [ ] Set up monitoring alerts for production services"
+    dest = "- [ ] Configure production monitoring alerts and services"
+    moved = [dest]
+    pairs = {dest: src}
+    valid = filter_valid_pairs(moved, pairs, [src])
+    assert dest in valid, "Jaccard pair should pass filterValidPairs"
+
+
+def test_token_jaccard_does_not_run_before_prefix():
+    """Prefix match takes priority — Jaccard runs only as a 4th tier fallback."""
+    src  = "- [ ] Deploy the application to staging environment now"
+    dest = "- [ ] Deploy the application to staging environment today"
+    # These share a 10-char prefix match — should match via tier 2, not Jaccard
+    result = classify_dest_lines([src], [dest])
+    assert dest in result["moved"]
+    assert result["moved_pairs"][dest] == src

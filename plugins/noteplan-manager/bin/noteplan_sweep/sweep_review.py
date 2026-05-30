@@ -862,9 +862,16 @@ function classifyDestLines(removedLines, addedLines) {{
       if (n === e.n) return true;
       const pLen = Math.min(50, Math.min(n.length, e.n.length));
       if (pLen >= 10 && (n.startsWith(e.n.slice(0, pLen)) || e.n.startsWith(n.slice(0, pLen)))) return true;
-      if (!e.b || e.b.length < 8 || nb.length < 8) return false;
-      const bLen = Math.min(40, Math.min(nb.length, e.b.length));
-      return nb.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(nb.slice(0, bLen));
+      if (e.b && e.b.length >= 8 && nb.length >= 8) {{
+        const bLen = Math.min(40, Math.min(nb.length, e.b.length));
+        if (nb.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(nb.slice(0, bLen))) return true;
+      }}
+      // 4th tier: Token Jaccard — handles reworded lines with shared key terms
+      const ta = nb.split(' ').filter(w => w.length >= 3);
+      const tb = e.b.split(' ').filter(w => w.length >= 3);
+      if (ta.length < 3 || tb.length < 3) return false;
+      const setA = new Set(ta), inter = tb.filter(w => setA.has(w)).length;
+      return inter / (setA.size + tb.length - inter) >= 0.5;
     }});
     if (matchIdx >= 0) {{
       moved.push(line);
@@ -908,10 +915,16 @@ function filterValidPairs(moved, movedPairs, removedLines) {{
     const db = bodyText(dn), sb = bodyText(sn);
     const pLen = Math.min(50, Math.min(dn.length, sn.length));
     const bLen = Math.min(40, Math.min(db.length, sb.length));
-    return dn === sn ||
-      (pLen >= 10 && (dn.startsWith(sn.slice(0, pLen)) || sn.startsWith(dn.slice(0, pLen)))) ||
-      (sb.length >= 8 && db.length >= 8 && bLen >= 8 &&
-        (db.startsWith(sb.slice(0, bLen)) || sb.startsWith(db.slice(0, bLen))));
+    if (dn === sn) return true;
+    if (pLen >= 10 && (dn.startsWith(sn.slice(0, pLen)) || sn.startsWith(dn.slice(0, pLen)))) return true;
+    if (sb.length >= 8 && db.length >= 8 && bLen >= 8 &&
+        (db.startsWith(sb.slice(0, bLen)) || sb.startsWith(db.slice(0, bLen)))) return true;
+    // 4th tier: Token Jaccard
+    const _ta = db.split(' ').filter(w => w.length >= 3);
+    const _tb = sb.split(' ').filter(w => w.length >= 3);
+    if (_ta.length < 3 || _tb.length < 3) return false;
+    const _setA = new Set(_ta), _inter = _tb.filter(w => _setA.has(w)).length;
+    return _inter / (_setA.size + _tb.length - _inter) >= 0.5;
   }});
 }}
 
