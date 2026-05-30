@@ -98,17 +98,21 @@ def classify_dest_lines(removed_lines: list[str], added_lines: list[str]) -> dic
             if n == en:
                 match_idx = i
                 break
-            # Prefix match on norm (up to 50 chars, min 10)
+            # Prefix match on norm (up to 50 chars, min 10) — guard: length ratio ≥ 0.5
             p_len = min(50, min(len(n), len(en)))
-            if p_len >= 10 and (n.startswith(en[:p_len]) or en.startswith(n[:p_len])):
+            if (p_len >= 10
+                    and min(len(n), len(en)) / max(len(n), len(en)) >= 0.5
+                    and (n.startswith(en[:p_len]) or en.startswith(n[:p_len]))):
                 match_idx = i
                 break
-            # Body-text prefix match (strips checkbox, min 8 chars)
+            # Body-text prefix match (strips checkbox, min 8 chars) — guard: length ratio ≥ 0.5
             if not eb or len(eb) < 8 or len(nb) < 8:
                 pass
             else:
                 b_len = min(40, min(len(nb), len(eb)))
-                if b_len >= 8 and (nb.startswith(eb[:b_len]) or eb.startswith(nb[:b_len])):
+                if (b_len >= 8
+                        and min(len(nb), len(eb)) / max(len(nb), len(eb)) >= 0.5
+                        and (nb.startswith(eb[:b_len]) or eb.startswith(nb[:b_len]))):
                     match_idx = i
                     break
             # 4th tier: Token Jaccard (handles reworded lines with shared key terms)
@@ -151,9 +155,11 @@ def filter_valid_pairs(moved: list[str], moved_pairs: dict, removed_lines: list[
             token_jaccard(db, sb) >= 0.5 and
             len([w for w in db.split() if len(w) >= 3]) >= 3
         )
+        ratio_norm = min(len(dn), len(sn)) / max(len(dn), len(sn))
+        ratio_body = min(len(db), len(sb)) / max(len(db), len(sb)) if db and sb else 0
         if (dn == sn or
-                (p_len >= 10 and (dn.startswith(sn[:p_len]) or sn.startswith(dn[:p_len]))) or
-                (len(sb) >= 8 and len(db) >= 8 and b_len >= 8 and
+                (p_len >= 10 and ratio_norm >= 0.5 and (dn.startswith(sn[:p_len]) or sn.startswith(dn[:p_len]))) or
+                (len(sb) >= 8 and len(db) >= 8 and b_len >= 8 and ratio_body >= 0.5 and
                  (db.startswith(sb[:b_len]) or sb.startswith(db[:b_len]))) or
                 jaccard_ok):
             valid.append(dest_line)
@@ -521,3 +527,78 @@ def test_token_jaccard_does_not_run_before_prefix():
     result = classify_dest_lines([src], [dest])
     assert dest in result["moved"]
     assert result["moved_pairs"][dest] == src
+
+
+# ---------------------------------------------------------------------------
+# Prefix false-positive guard (#88)
+# ---------------------------------------------------------------------------
+
+def test_prefix_false_positive_short_dest():
+    """A short dest line (ratio < 0.5 vs source) must NOT match via prefix."""
+    src  = "- [ ] Figma plugin idea — design a plugin that integrates with the palette generation workflow for Islamic art patterns"
+    dest = "- [ ] Figma plug"  # normed len ~16, source normed len ~100+ → ratio << 0.5
+    result = classify_dest_lines([src], [dest])
+    assert dest not in result["moved"], "short dest must not prefix-match a much longer source"
+    assert dest in result["new_content"]
+
+
+def test_prefix_similar_length_still_matches():
+    """Lines of similar length (ratio ≥ 0.5) must still match via prefix."""
+    src  = "- [ ] Deploy the application to staging environment now"
+    dest = "- [ ] Deploy the application to staging environment today"
+    # ratio ≈ 54/56 ≈ 0.96 ≥ 0.5 — prefix match should still fire
+    result = classify_dest_lines([src], [dest])
+    assert dest in result["moved"], "similar-length lines must still prefix-match"
+
+
+# ---------------------------------------------------------------------------
+# Mental model invariant tests (#86)
+# ---------------------------------------------------------------------------
+
+def test_moved_requires_both_sides():
+    """Invariant: moved classification requires line in BOTH source removals AND dest additions."""
+    src = "- [ ] Do the thing in the project backlog now"
+    dest_absent = "- [ ] Something completely unrelated to the above"
+    # Source removed but dest doesn't have it → dest line is new_content, not moved
+    result_no_dest = classify_dest_lines([src], [dest_absent])
+    assert src not in result_no_dest["moved"], "src-only removal must NOT be moved"
+    assert dest_absent in result_no_dest["new_content"]
+    # Dest has it but source doesn't → dest line is new_content (no source to match)
+    result_no_src = classify_dest_lines([], [src])
+    assert src not in result_no_src["moved"]
+    assert src in result_no_src["new_content"]
+    # Both sides → moved
+    result_both = classify_dest_lines([src], [src])
+    assert src in result_both["moved"], "line in both removals and additions must be moved"
+
+
+def test_absent_means_not_in_any_file():
+    """Invariant: a line classified as lost must not appear in any diff addition."""
+    src = "- [ ] The truly missing line that went nowhere in the diff"
+    other_dest = "- [ ] Completely different content at another destination"
+    # src is removed, other_dest is added — they don't match → src is lost
+    result = classify_dest_lines([src], [other_dest])
+    assert src not in result["moved"]
+    assert other_dest in result["new_content"]
+    # Sanity: if src IS in additions (even at another dest), classify_dest_lines finds it
+    result2 = classify_dest_lines([src], [src, other_dest])
+    assert src in result2["moved"], "line found in additions must not be lost"
+
+
+def test_went_to_shows_actual_file():
+    """classify_row marks a row as 'went-to' when all source lines land in a different dest."""
+    # This tests the classify_row pipeline: source removed, nothing at breadcrumb dest,
+    # but content arrives somewhere else. In the Python simulation, classify_dest_lines
+    # alone can't detect cross-file V-R6 — that requires the full _py_classify_all_rows.
+    # Here we verify that classify_dest_lines correctly classifies the breadcrumb dest as
+    # having no matches (all source lines end up in new_content for the breadcrumb dest).
+    src  = "- [ ] Went to another file instead"
+    # Breadcrumb dest has no content at all → no moved, src is lost from breadcrumb's perspective
+    result = classify_dest_lines([src], [])
+    assert src not in result["moved"]
+    assert result["new_content"] == []
+    # V-R6 check (simulated): src found in another file → should NOT appear in truly_lost
+    other_file_addition = src  # exact match in another file
+    # classify_dest_lines against that other file would find it as moved
+    result_other = classify_dest_lines([src], [other_file_addition])
+    assert other_file_addition in result_other["moved"], "line at actual dest must be classified as moved"

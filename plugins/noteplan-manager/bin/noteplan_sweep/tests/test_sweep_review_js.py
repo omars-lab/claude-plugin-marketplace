@@ -1269,26 +1269,25 @@ def test_js24_v_r6_breadcrumb_destination_mismatch(playwright, http_server):
         timeout=10_000,
     )
 
-    # Row should be rb-move: all 3 lines are in another diff file (misrouted, not truly lost).
-    # V-R6 badge promotion demotes ✗ → → when every lost line is found elsewhere in the diff.
+    # Row should be rb-went-to: all 3 lines found in another diff file (went elsewhere, not truly absent).
     badge_class = page.eval_on_selector(
         "tr[data-row-idx='0'] .row-badge", "el => el.className"
     )
-    assert "rb-move" in badge_class, (
-        f"Expected rb-move (all lines found in Coffee House Site.md — misrouted not lost) "
-        f"but got: {badge_class!r}. V-R6 badge promotion not firing."
+    assert "rb-went-to" in badge_class, (
+        f"Expected rb-went-to (all lines found in Coffee House Site.md — went elsewhere) "
+        f"but got: {badge_class!r}. V-R6 went-to classification not firing."
     )
 
-    # Open modal — V-R6 banner should still appear explaining the mismatch
+    # Open modal — ⇢ banner should appear naming the actual destination
     page.click("tr[data-row-idx='0'] button.view-btn")
     page.wait_for_selector(".v-r6-banner")
 
     banner_text = page.eval_on_selector(".v-r6-banner", "el => el.textContent")
-    assert "Coffee House Site.md" in banner_text, (
+    assert "Coffee House Site" in banner_text, (
         f"V-R6 banner should name the file where lines landed. Got: {banner_text!r}"
     )
-    assert "Breadcrumb destination mismatch" in banner_text, (
-        f"V-R6 banner should say 'Breadcrumb destination mismatch'. Got: {banner_text!r}"
+    assert "Content arrived at a different destination" in banner_text, (
+        f"V-R6 banner should say 'Content arrived at a different destination'. Got: {banner_text!r}"
     )
     browser.close()
 
@@ -1300,8 +1299,8 @@ def test_js24_v_r6_breadcrumb_destination_mismatch(playwright, http_server):
 
 def test_js25_v_r6_badge_promotion_misrouted_all_found(playwright, http_server):
     """JS-25: When ALL reported-lost lines are found in other diff files, the badge
-    must be promoted from rb-lost to rb-move. Only lines absent from the entire
-    diff count as genuinely lost."""
+    must be classified as rb-went-to. Only lines absent from the entire
+    diff count as genuinely absent (rb-lost)."""
     base_url, serve_dir = http_server
 
     line1 = "React DevTools: https://reactjs.org/link/react-devtools"
@@ -1348,9 +1347,9 @@ def test_js25_v_r6_badge_promotion_misrouted_all_found(playwright, http_server):
     )
     browser.close()
 
-    assert "rb-move" in badge_class, (
-        f"Expected rb-move — all 3 lost lines found in other diff files (misrouted, not truly lost). "
-        f"Got: {badge_class!r}. V-R6 badge promotion likely not firing in classifyRow."
+    assert "rb-went-to" in badge_class, (
+        f"Expected rb-went-to — all 3 lines found in other diff files (went elsewhere, not truly absent). "
+        f"Got: {badge_class!r}. V-R6 went-to classification not firing in classifyRow."
     )
 
 
@@ -1421,3 +1420,108 @@ def test_js26_v47a_removal_wrong_section_lock(playwright, http_server):
         f"Expected rb-move — all 5 Yara tasks found under ## Planning (full-file). "
         f"Got: {badge_class!r}. V-47a may still be locking dest to '## Home' (1 task)."
     )
+
+
+# ---------------------------------------------------------------------------
+# JS-27  Mental model invariant: went-to badge (#86/#87)
+#         Source lines removed, breadcrumb dest empty, lines found in OTHER file.
+#         Badge must be rb-went-to, not rb-move or rb-lost.
+# ---------------------------------------------------------------------------
+
+def test_js27_went_to_badge(playwright, http_server):
+    """JS-27: Source removed, nothing at breadcrumb dest, lines found in another diff file
+    → badge must be rb-went-to (⇢), not rb-move (→) or rb-lost (✗)."""
+    base_url, serve_dir = http_server
+
+    task1 = "- [ ] Design the NaqshCoffee logo for the coffee packaging"
+    task2 = "- [ ] Write brand guidelines document for Bikar project"
+
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "NaqshCoffee",
+                  "summary": "NaqshCoffee tasks",
+                  "destination": "[[NaqshCoffee/Plans/Bikar Plan]]"}]
+    diff = _make_diff([
+        # Source: tasks removed from calendar
+        {"path": "Calendar/20260413.md",
+         "removed": ["## NaqshCoffee", task1, task2], "added": []},
+        # Breadcrumb dest (Bikar Plan): no additions — lines didn't land here
+        {"path": "NaqshCoffee/Plans/Bikar Plan.md",
+         "removed": [], "added": ["## Overview"]},
+        # Actual landing file: lines found here instead
+        {"path": "NaqshCoffee/Plans/Coffee House Design.md",
+         "removed": [], "added": [task1, task2]},
+    ])
+    page_name = _write_page(serve_dir, "js27.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    browser.close()
+
+    assert "rb-went-to" in badge_class, (
+        f"Expected rb-went-to — both lines found in Coffee House Design.md, not Bikar Plan. "
+        f"Got: {badge_class!r}."
+    )
+    assert "rb-move" not in badge_class, "rb-move must NOT appear when lines went to a different file"
+    assert "rb-lost" not in badge_class, "rb-lost must NOT appear when lines are found in diff"
+
+
+# ---------------------------------------------------------------------------
+# JS-28  Mental model invariant: absent badge (#86)
+#         Source lines removed, NOT found in any diff addition anywhere.
+#         Badge must be rb-lost (✗ Absent).
+# ---------------------------------------------------------------------------
+
+def test_js28_absent_not_anywhere(playwright, http_server):
+    """JS-28: Source removed, line not in ANY diff addition → badge must be rb-lost (✗ Absent)."""
+    base_url, serve_dir = http_server
+
+    task1 = "- [ ] A task that simply vanished from all diff additions"
+    task2 = "- [ ] Another task with no trace in any added line"
+
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Work",
+                  "summary": "Missing tasks",
+                  "destination": "[[Notes/Work/Backlog]]"}]
+    diff = _make_diff([
+        # Source: tasks removed from calendar
+        {"path": "Calendar/20260413.md",
+         "removed": ["## Work", task1, task2], "added": []},
+        # Breadcrumb dest: no additions at all
+        {"path": "Notes/Work/Backlog.md",
+         "removed": [], "added": ["## Someday"]},
+        # Other files: completely unrelated additions
+        {"path": "Notes/Work/Projects.md",
+         "removed": [], "added": ["- [ ] Totally unrelated project task here"]},
+    ])
+    page_name = _write_page(serve_dir, "js28.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    browser.close()
+
+    assert "rb-lost" in badge_class, (
+        f"Expected rb-lost — both tasks absent from all diff additions. "
+        f"Got: {badge_class!r}."
+    )
+    assert "rb-went-to" not in badge_class, "rb-went-to must NOT appear when lines are absent from diff"
+    assert "rb-move" not in badge_class, "rb-move must NOT appear when lines didn't arrive"

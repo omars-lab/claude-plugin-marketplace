@@ -550,7 +550,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .nav-tbl th:nth-child(1){{width:28px}}.nav-tbl th:nth-child(2){{width:50px}}.nav-tbl th:nth-child(3){{width:18%}}.nav-tbl th:nth-child(4){{width:22%}}.nav-tbl th:nth-child(5){{width:88px}}.nav-tbl th:nth-child(6){{width:auto}}.nav-tbl th:nth-child(7){{width:44px}}
 .src-col{{color:#58a6ff;font-family:monospace;font-size:11px;white-space:nowrap}}
 .row-badge{{display:inline-block;font-size:11px;min-width:16px;text-align:center;border-radius:3px;padding:1px 4px;font-weight:600}}
-.rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-untraced{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}
+.rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-went-to{{background:#001730;color:#58a6ff}}.rb-untraced{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}
 .nav-tbl td{{padding:5px 10px;border-bottom:1px solid #21262d;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .nav-tbl tr:hover td{{background:#161b22}}
 .nav-tbl .section-col{{color:#e6edf3;font-weight:500}}
@@ -592,7 +592,8 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
   <span style="font-size:11px;color:#484f58;margin-right:2px">Type:</span>
   <button class="type-chip active" data-type="all" onclick="setType('all')" title="Show all rows">All</button>
   <button class="type-chip" data-type="move" onclick="setType('move')" title="Move — all source lines confirmed at destination">→ Move</button>
-  <button class="type-chip" data-type="lost" onclick="setType('lost')" title="Lost — one or more source lines did not arrive">✗ Lost</button>
+  <button class="type-chip" data-type="went-to" onclick="setType('went-to')" title="Went to — source lines found in a different file than the breadcrumb destination">⇢ Went to</button>
+  <button class="type-chip" data-type="lost" onclick="setType('lost')" title="Absent — source lines not found in any diff addition">✗ Absent</button>
   <button class="type-chip" data-type="anomaly" onclick="setType('anomaly')" title="Untraced — destination has additions with no traceable source row">? Untraced</button>
   <button class="type-chip" data-type="empty" onclick="setType('empty')" title="Empty — no source content found or destination file is empty">· Empty</button>
   <button class="toggle-chip" id="empty-toggle" onclick="toggleEmpty()" title="Empty rows have no content to verify — toggle to show/hide them in All view">· Empty: hidden</button>
@@ -861,10 +862,10 @@ function classifyDestLines(removedLines, addedLines) {{
     const matchIdx = removedEntries.findIndex(e => {{
       if (n === e.n) return true;
       const pLen = Math.min(50, Math.min(n.length, e.n.length));
-      if (pLen >= 10 && (n.startsWith(e.n.slice(0, pLen)) || e.n.startsWith(n.slice(0, pLen)))) return true;
+      if (pLen >= 10 && Math.min(n.length, e.n.length) / Math.max(n.length, e.n.length) >= 0.5 && (n.startsWith(e.n.slice(0, pLen)) || e.n.startsWith(n.slice(0, pLen)))) return true;
       if (e.b && e.b.length >= 8 && nb.length >= 8) {{
         const bLen = Math.min(40, Math.min(nb.length, e.b.length));
-        if (nb.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(nb.slice(0, bLen))) return true;
+        if (bLen >= 8 && Math.min(nb.length, e.b.length) / Math.max(nb.length, e.b.length) >= 0.5 && (nb.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(nb.slice(0, bLen)))) return true;
       }}
       // 4th tier: Token Jaccard — handles reworded lines with shared key terms
       const ta = nb.split(' ').filter(w => w.length >= 3);
@@ -916,8 +917,9 @@ function filterValidPairs(moved, movedPairs, removedLines) {{
     const pLen = Math.min(50, Math.min(dn.length, sn.length));
     const bLen = Math.min(40, Math.min(db.length, sb.length));
     if (dn === sn) return true;
-    if (pLen >= 10 && (dn.startsWith(sn.slice(0, pLen)) || sn.startsWith(dn.slice(0, pLen)))) return true;
+    if (pLen >= 10 && Math.min(dn.length, sn.length) / Math.max(dn.length, sn.length) >= 0.5 && (dn.startsWith(sn.slice(0, pLen)) || sn.startsWith(dn.slice(0, pLen)))) return true;
     if (sb.length >= 8 && db.length >= 8 && bLen >= 8 &&
+        Math.min(db.length, sb.length) / Math.max(db.length, sb.length) >= 0.5 &&
         (db.startsWith(sb.slice(0, bLen)) || sb.startsWith(db.slice(0, bLen)))) return true;
     // 4th tier: Token Jaccard
     const _ta = db.split(' ').filter(w => w.length >= 3);
@@ -1116,6 +1118,7 @@ function classifyRow(idx) {{
   // Lazy-init _allAddedEntries once so 90-row background scans don't rebuild it each call.
   let trulyLostLines = lostLines;
   let misroutedCount = 0;
+  let _wentToFilesSet = new Set();
   if (lostLines.length > 0 && allParsedFiles.length > 0) {{
     if (!_allAddedEntries) {{
       _allAddedEntries = [];
@@ -1137,26 +1140,27 @@ function classifyRow(idx) {{
       if (nll.length < 6) return true; // too short to match reliably — keep as lost
       for (const e of _allAddedEntries) {{
         if (normDest(e.filename).normalize('NFC').toLowerCase() === _destNorm) continue; // skip same dest
-        // Same three-tier match as classifyDestLines
-        if (nll === e.n) {{ misroutedCount++; return false; }}
+        // Same three-tier match as classifyDestLines (with length-ratio guard on prefix)
+        if (nll === e.n) {{ misroutedCount++; _wentToFilesSet.add(e.filename); return false; }}
         const pLen = Math.min(50, Math.min(nll.length, e.n.length));
-        if (pLen >= 10 && (nll.startsWith(e.n.slice(0, pLen)) || e.n.startsWith(nll.slice(0, pLen)))) {{
-          misroutedCount++; return false;
+        if (pLen >= 10 && Math.min(nll.length, e.n.length) / Math.max(nll.length, e.n.length) >= 0.5 && (nll.startsWith(e.n.slice(0, pLen)) || e.n.startsWith(nll.slice(0, pLen)))) {{
+          misroutedCount++; _wentToFilesSet.add(e.filename); return false;
         }}
         if (bll.length >= 8 && e.b.length >= 8) {{
           const bLen = Math.min(40, Math.min(bll.length, e.b.length));
-          if (bLen >= 8 && (bll.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(bll.slice(0, bLen)))) {{
-            misroutedCount++; return false;
+          if (bLen >= 8 && Math.min(bll.length, e.b.length) / Math.max(bll.length, e.b.length) >= 0.5 && (bll.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(bll.slice(0, bLen)))) {{
+            misroutedCount++; _wentToFilesSet.add(e.filename); return false;
           }}
         }}
       }}
       return true; // not found in any other diff file — truly lost
     }});
   }}
-  // Re-derive type: if all lost lines were actually misrouted, promote to move.
-  if (misroutedCount > 0 && trulyLostLines.length === 0 && type === 'lost') {{
-    type = 'move';
-    console.debug('V-R6: promoted row', idx, 'from lost→move —', misroutedCount, 'misrouted lines found in other dest files');
+  const _wentToFiles = [...(_wentToFilesSet || [])];
+  // Re-derive type: if all lost lines were found in OTHER files, classify as went-to.
+  if (misroutedCount > 0 && trulyLostLines.length === 0 && movedCount === 0 && type === 'lost') {{
+    type = 'went-to';
+    console.debug('V-R6: promoted row', idx, 'from lost→went-to —', misroutedCount, 'lines found in', _wentToFiles);
   }}
   const adjustedLostCount = trulyLostLines.length;
 
@@ -1169,20 +1173,21 @@ function classifyRow(idx) {{
     if (misroutedCount > 0) blocks.push({{ type: 'misrouted', count: misroutedCount }});
   }}
   const result = {{ type, movedCount, lostCount: adjustedLostCount, newCount: trueNewCount,
-                   misroutedCount, emptyReason, blocks }};
+                   misroutedCount, wentToFiles: _wentToFiles, emptyReason, blocks }};
   _rowClassifications.set(idx, result);
   return result;
 }}
 
-const _badgeLabels   = {{ move: '→', lost: '✗', anomaly: '?', untraced: '?', empty: '·' }};
+const _badgeLabels   = {{ move: '→', 'went-to': '⇢', lost: '✗', anomaly: '?', untraced: '?', empty: '·' }};
 // Internal type 'anomaly' maps to CSS class 'rb-untraced' and label '?'
-const _badgeCls      = {{ anomaly: 'untraced' }};
+const _badgeCls      = {{ anomaly: 'untraced', 'went-to': 'went-to' }};
 const _badgeTitles   = {{
-  move:     'Move — all source lines confirmed at destination',
-  lost:     'Lost — one or more source lines did not arrive at destination',
-  anomaly:  'Untraced — destination has additions with no traceable source row',
-  untraced: 'Untraced — destination has additions with no traceable source row',
-  empty:    'Empty — nothing to verify',
+  move:       'Move — all source lines confirmed at destination',
+  'went-to':  'Went to — source lines found in a different file than the breadcrumb destination',
+  lost:       'Absent — source lines not found in any diff addition',
+  anomaly:    'Untraced — destination has additions with no traceable source row',
+  untraced:   'Untraced — destination has additions with no traceable source row',
+  empty:      'Empty — nothing to verify',
 }};
 
 function updateRowBadge(idx, classification) {{
@@ -1200,7 +1205,7 @@ function updateRowBadge(idx, classification) {{
     badge.textContent = blocks.map(b => (_badgeLabels[b.type] || '?') + b.count).join(' ');
     const moveBlock = blocks.find(b => b.type === 'move');
     const lostBlock = blocks.find(b => b.type === 'lost');
-    badge.title = `Lost — ${{moveBlock?.count ?? 0}} moved, ${{lostBlock?.count ?? 0}} did not arrive`;
+    badge.title = `Absent — ${{moveBlock?.count ?? 0}} moved, ${{lostBlock?.count ?? 0}} absent from diff`;
     badge.style.cursor = 'pointer';
     badge.onclick = (e) => {{ e.stopPropagation(); showSectionModal(idx); }};
     const mbCountCell = tr.querySelector('.count-col');
@@ -1223,19 +1228,27 @@ function updateRowBadge(idx, classification) {{
   const badgeCls = _badgeCls[displayType] || displayType;
   badge.className = `row-badge rb-${{badgeCls}}`;
   badge.textContent = _badgeLabels[displayType] || '?';
+  const misroutedCount = classification.misroutedCount || 0;
   let counts = '';
-  if (type === 'move')    counts = ` (${{movedCount}} line${{movedCount!==1?'s':''}} moved)`;
-  else if (type === 'lost')    counts = ` (${{lostCount}} line${{lostCount!==1?'s':''}} not arrived)`;
+  if (type === 'move')        counts = ` (${{movedCount}} line${{movedCount!==1?'s':''}} moved)`;
+  else if (type === 'went-to') counts = ` (${{misroutedCount}} line${{misroutedCount!==1?'s':''}} found elsewhere)`;
+  else if (type === 'lost')   counts = ` (${{lostCount}} line${{lostCount!==1?'s':''}} absent from diff)`;
   else if (type === 'anomaly') counts = newCount ? ` (${{newCount}} unexpected)` : '';
+  const wentToFiles = classification.wentToFiles || [];
+  const wentToDetail = (type === 'went-to' && wentToFiles.length > 0)
+    ? ' → ' + wentToFiles.map(f => f.split('/').pop().replace(/\.md$/, '')).join(', ') : '';
   const emptyDetail = (displayType === 'empty' && classification.emptyReason)
     ? ` — ${{classification.emptyReason}}` : '';
-  badge.title = (_badgeTitles[displayType] || displayType) + counts + emptyDetail;
-  // Mark destination cell for lost/empty rows — "intended but not confirmed"
+  badge.title = (_badgeTitles[displayType] || displayType) + counts + wentToDetail + emptyDetail;
+  // Mark destination cell for lost/empty rows; went-to keeps full opacity (the dest is context, not verdict)
   const destCell = tr.querySelector('.dest-col');
   if (destCell) {{
     if (type === 'lost' || type === 'empty') {{
       destCell.style.opacity = '0.45';
       destCell.title = 'Intended destination — content was NOT confirmed moved here';
+    }} else if (type === 'went-to') {{
+      destCell.style.opacity = '0.65';
+      destCell.title = 'Breadcrumb destination — content arrived at a different file';
     }} else {{
       destCell.style.opacity = '';
       destCell.title = destCell.querySelector('a')?.textContent || '';
@@ -1244,13 +1257,14 @@ function updateRowBadge(idx, classification) {{
   // Populate count cell
   const countCell = tr.querySelector('.count-col');
   if (countCell) {{
-    if (type === 'move')    {{ countCell.textContent = movedCount; countCell.title = `${{movedCount}} lines moved`; countCell.style.color = '#3fb950'; }}
-    else if (type === 'lost')    {{ countCell.textContent = lostCount; countCell.title = `${{lostCount}} lines not arrived`; countCell.style.color = '#f85149'; }}
+    if (type === 'move')         {{ countCell.textContent = movedCount; countCell.title = `${{movedCount}} lines moved`; countCell.style.color = '#3fb950'; }}
+    else if (type === 'went-to') {{ countCell.textContent = misroutedCount; countCell.title = `${{misroutedCount}} lines found elsewhere`; countCell.style.color = '#58a6ff'; }}
+    else if (type === 'lost')    {{ countCell.textContent = lostCount; countCell.title = `${{lostCount}} lines absent from diff`; countCell.style.color = '#f85149'; }}
     else if (type === 'anomaly') {{ countCell.textContent = newCount ? `+${{newCount}}` : '+?'; countCell.title = `${{newCount}} unexpected lines`; countCell.style.color = '#e3b341'; }}
-    else                         {{ countCell.textContent = '·'; countCell.style.color = '#484f58'; }}
+    else                          {{ countCell.textContent = '·'; countCell.style.color = '#484f58'; }}
   }}
-  // Lost/anomaly/empty badges are clickable — open the modal directly
-  if (displayType === 'lost' || displayType === 'anomaly' || displayType === 'empty') {{
+  // Lost/went-to/anomaly/empty badges are clickable — open the modal directly
+  if (displayType === 'lost' || displayType === 'went-to' || displayType === 'anomaly' || displayType === 'empty') {{
     badge.style.cursor = 'pointer';
     badge.onclick = (e) => {{ e.stopPropagation(); showSectionModal(idx); }};
   }} else {{
@@ -1724,6 +1738,8 @@ function showSectionModal(idx, focusLost = false) {{
     // V-R6 modal banner: uses same prefix/body matching as classifyRow so enriched lines are found.
     // Reuses _allAddedEntries if already built by classifyRow (lazy-shared cache).
     let misrouteHtml = '';
+    let _trulyLostSet = null; // set of lostLines not found elsewhere — used for went-to promotion below
+    let _misrouted = null;    // Map(filename → {{count, lines}}) — also used for went-to promotion
     if (lostLines.length > 0 && allParsedFiles.length > 0) {{
       if (!_allAddedEntries) {{
         _allAddedEntries = [];
@@ -1739,27 +1755,43 @@ function showSectionModal(idx, focusLost = false) {{
         }}
       }}
       const _destNorm = normDest(destRaw).normalize('NFC').toLowerCase();
-      const _misrouted = new Map(); // filename → count
+      _misrouted = new Map(); // filename → {{count, lines: []}}
+      _trulyLostSet = new Set();
       for (const ll of lostLines) {{
         const nll = normLine(ll);
         const bll = bodyText(nll);
-        if (nll.length < 6) continue;
+        if (nll.length < 6) {{ _trulyLostSet.add(ll); continue; }}
+        let _foundElsewhere = false;
         for (const e of _allAddedEntries) {{
           if (normDest(e.filename).normalize('NFC').toLowerCase() === _destNorm) continue;
           let found = (nll === e.n);
-          if (!found) {{ const pLen = Math.min(50, Math.min(nll.length, e.n.length)); found = pLen >= 10 && (nll.startsWith(e.n.slice(0, pLen)) || e.n.startsWith(nll.slice(0, pLen))); }}
-          if (!found && bll.length >= 8 && e.b.length >= 8) {{ const bLen = Math.min(40, Math.min(bll.length, e.b.length)); found = bLen >= 8 && (bll.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(bll.slice(0, bLen))); }}
-          if (found) {{ _misrouted.set(e.filename, (_misrouted.get(e.filename) || 0) + 1); break; }}
+          if (!found) {{
+            const pLen = Math.min(50, Math.min(nll.length, e.n.length));
+            found = pLen >= 10 && Math.min(nll.length, e.n.length) / Math.max(nll.length, e.n.length) >= 0.5 && (nll.startsWith(e.n.slice(0, pLen)) || e.n.startsWith(nll.slice(0, pLen)));
+          }}
+          if (!found && bll.length >= 8 && e.b.length >= 8) {{
+            const bLen = Math.min(40, Math.min(bll.length, e.b.length));
+            found = bLen >= 8 && Math.min(bll.length, e.b.length) / Math.max(bll.length, e.b.length) >= 0.5 && (bll.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(bll.slice(0, bLen)));
+          }}
+          if (found) {{
+            const m = _misrouted.get(e.filename) || {{count: 0, lines: []}};
+            m.count++; m.lines.push(ll);
+            _misrouted.set(e.filename, m);
+            _foundElsewhere = true;
+            break;
+          }}
         }}
+        if (!_foundElsewhere) _trulyLostSet.add(ll);
       }}
       if (_misrouted.size > 0) {{
-        const _items = [..._misrouted.entries()].map(([fname, cnt]) => {{
-          const short = fname.split('/').pop();
-          return `<div style="color:#e3b341;font-family:monospace;font-size:11px;margin-top:3px">${{esc(short)}} — ${{cnt}} line${{cnt!==1?'s':''}} found</div>`;
+        const _items = [..._misrouted.entries()].map(([fname, {{count, lines}}]) => {{
+          const short = fname.split('/').pop().replace(/\.md$/, '');
+          const linesHtml = lines.map(l => `<div class="diff-line" style="font-family:monospace;font-size:10px;color:#8b949e;padding:1px 0 1px 8px">${{esc(l)}}</div>`).join('');
+          return `<details style="margin-top:4px"><summary style="color:#58a6ff;font-family:monospace;font-size:11px;cursor:pointer;list-style:none">${{esc(short)}} — ${{count}} line${{count!==1?'s':''}} found ▸</summary>${{linesHtml}}</details>`;
         }}).join('');
-        misrouteHtml = `<div class="v-r6-banner" style="margin:4px 0 8px;padding:6px 8px;background:#2d1f00;border-left:2px solid #e3b341;border-radius:3px">` +
-          `<div style="color:#e3b341;font-size:11px;font-weight:600">⚠ Breadcrumb destination mismatch</div>` +
-          `<div style="color:#8b949e;font-size:10px;margin-top:2px">These lost lines were found in a different destination. The sweep moved them elsewhere but the breadcrumb still points to <strong>${{esc(_destNorm)}}</strong>.</div>` +
+        misrouteHtml = `<div class="v-r6-banner" style="margin:4px 0 8px;padding:6px 8px;background:#001730;border-left:2px solid #58a6ff;border-radius:3px">` +
+          `<div style="color:#58a6ff;font-size:11px;font-weight:600">⇢ Content arrived at a different destination</div>` +
+          `<div style="color:#8b949e;font-size:10px;margin-top:2px">Source lines were found in a file other than <strong>${{esc(_destNorm)}}</strong>.</div>` +
           _items + `</div>`;
       }}
     }}
@@ -1774,12 +1806,12 @@ function showSectionModal(idx, focusLost = false) {{
         // Mixed row: prominent labeled split between moved and lost blocks
         lostHtml = `<div style="margin-top:10px;border-top:2px solid #e3b341;padding-top:6px">` +
           `<div style="color:#e3b341;font-size:11px;font-weight:600;padding:2px 0 6px">` +
-          `⚡ ✗ Lost (${{lostLines.length}} line${{lostLines.length>1?'s':''}}) — not found at destination — sweep should have split this section</div>` +
+          `⚡ ✗ Absent (${{lostLines.length}} line${{lostLines.length>1?'s':''}}) — not found at destination — sweep should have split this section</div>` +
           misrouteHtml + lostLineHtml + `</div>`;
       }} else {{
         lostHtml = `<div style="margin-top:8px;border-top:1px solid #30363d;padding-top:6px">` +
           misrouteHtml +
-          `<div style="color:#f85149;font-size:10px;padding:2px 0 4px">✗ ${{lostLines.length}} line${{lostLines.length>1?'s':''}} not found at destination</div>` +
+          `<div style="color:#f85149;font-size:10px;padding:2px 0 4px">✗ ${{lostLines.length}} line${{lostLines.length>1?'s':''}} absent from diff additions</div>` +
           lostLineHtml + `</div>`;
       }}
     }}
@@ -1900,7 +1932,7 @@ function showSectionModal(idx, focusLost = false) {{
     </div>`;
   }}
 
-  const titleSuffix = focusLost ? ' — ✗ Lost lines' : ' → ' + normDest(row.destination);
+  const titleSuffix = focusLost ? ' — ✗ Absent lines' : ' → ' + normDest(row.destination);
   document.getElementById('modal-title').textContent = sectionName + titleSuffix;
   // V-47c removed with V-47a (#82): no longer scoping to section, so no header to show
   const scopeEl = document.getElementById('modal-scope');
@@ -1927,19 +1959,30 @@ function showSectionModal(idx, focusLost = false) {{
   if (destNotInDiff || srcNotInDiff) type = 'empty';
   else if (srcTotal === 0 && trueNewCount === 0) type = 'empty';
   else if (srcTotal === 0 && trueNewCount > 0) type = 'anomaly';
-  else if (movedCount === srcTotal) type = 'move';  // all arrived
-  else type = 'lost';                               // any missing → lost
+  else if (movedCount === srcTotal) type = 'move';  // all arrived at breadcrumb dest
+  else type = 'lost';                               // any missing → check V-R6
   const lostCountM = srcTotal - movedCount;
   const _movedNormSetM = new Set(validMoved.map(l => normLine(l)));
   const lostLinesM = countableRemovedM.filter(l => !_movedNormSetM.has(normLine(l)));
+  // V-R6 promotion in modal: if all lost lines were found elsewhere, classify as went-to.
+  // _trulyLostSet contains lines NOT found elsewhere (truly absent). _misrouted tracks lines found elsewhere.
+  const _trulyLostModalLines = (lostLinesM.length > 0 && _trulyLostSet)
+    ? lostLinesM.filter(l => _trulyLostSet.has(l))   // lines in trulyLostSet = truly absent from diff
+    : lostLinesM;
+  const _misroutedCountModal = lostLinesM.length - _trulyLostModalLines.length;
+  const _wentToFilesModal = _misrouted ? [..._misrouted.keys()] : [];
+  if (type === 'lost' && movedCount === 0 && _trulyLostModalLines.length === 0 && lostLinesM.length > 0) {{
+    type = 'went-to';
+  }}
   const blocksM = [];
   if (type === 'anomaly') {{
     if (trueNewCount > 0) blocksM.push({{ type: 'untraced', count: trueNewCount }});
   }} else if (type !== 'empty') {{
     if (movedCount > 0) blocksM.push({{ type: 'move', lines: validMoved, count: movedCount }});
-    if (lostLinesM.length > 0) blocksM.push({{ type: 'lost', lines: lostLinesM, count: lostLinesM.length }});
+    if (_trulyLostModalLines.length > 0) blocksM.push({{ type: 'lost', lines: _trulyLostModalLines, count: _trulyLostModalLines.length }});
   }}
-  const classification = {{ type, movedCount, lostCount: lostCountM, newCount: trueNewCount, blocks: blocksM }};
+  const classification = {{ type, movedCount, lostCount: _trulyLostModalLines.length, newCount: trueNewCount,
+                            misroutedCount: _misroutedCountModal, wentToFiles: _wentToFilesModal, blocks: blocksM }};
   _rowClassifications.set(idx, classification);
   updateRowBadge(idx, classification);
 }}
@@ -2353,6 +2396,7 @@ window.addEventListener('DOMContentLoaded', () => {{
         lostCount:       pc.lost_count  || 0,
         newCount:        0,
         misroutedCount:  pc.misrouted_count || 0,
+        wentToFiles:     pc.went_to_files || [],
         trulyLostLines:  pc.truly_lost_lines || [],
         emptyReason:     (pc.issues || []).join(', '),
         blocks:          [],
@@ -2760,13 +2804,13 @@ def _fuzzy_match(a: str, b: str) -> bool:
     if a == b:
         return True
     p = min(50, min(len(a), len(b)))
-    if p >= 10 and (a.startswith(b[:p]) or b.startswith(a[:p])):
+    if p >= 10 and min(len(a), len(b)) / max(len(a), len(b)) >= 0.5 and (a.startswith(b[:p]) or b.startswith(a[:p])):
         return True
     body_a = re.sub(r'^[-*]\s*\[[x ]\]\s*', '', a, flags=re.I).strip()
     body_b = re.sub(r'^[-*]\s*\[[x ]\]\s*', '', b, flags=re.I).strip()
     if len(body_a) >= 8 and len(body_b) >= 8:
         bl = min(40, min(len(body_a), len(body_b)))
-        if bl >= 8 and (body_a.startswith(body_b[:bl]) or body_b.startswith(body_a[:bl])):
+        if bl >= 8 and min(len(body_a), len(body_b)) / max(len(body_a), len(body_b)) >= 0.5 and (body_a.startswith(body_b[:bl]) or body_b.startswith(body_a[:bl])):
             return True
     return False
 
@@ -3288,17 +3332,18 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             (moved_lines if any(_fuzzy_match(sn, dn) for dn in dest_norms) else lost_lines).append(src_line)
 
         # V-R6: check if lost lines exist elsewhere in the diff
-        misrouted = _misroute_count(lost_lines, dest_raw)
-        truly_lost = lost_lines[misrouted:]  # approximate — good enough for reporting
-        # More precise: filter individually
+        dest_stem_key = _dest_stem(dest_raw)
         truly_lost = []
+        went_to_files_set: set[str] = set()
         for ll in lost_lines:
             nll = _norm_line(ll)
-            dest_stem_key = _dest_stem(dest_raw)
-            found_elsewhere = len(nll) >= 6 and any(
-                _fuzzy_match(nll, en) and _dest_stem(efname) != dest_stem_key
-                for en, efname in all_added_entries
-            )
+            found_elsewhere = False
+            if len(nll) >= 6:
+                for en, efname in all_added_entries:
+                    if _fuzzy_match(nll, en) and _dest_stem(efname) != dest_stem_key:
+                        went_to_files_set.add(_dest_stem(efname))
+                        found_elsewhere = True
+                        break
             if not found_elsewhere:
                 truly_lost.append(ll)
 
@@ -3312,7 +3357,13 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             except OSError:
                 pass
 
-        row_type = 'move' if not truly_lost else ('lost' if not moved_lines else 'lost')
+        misrouted_count = len(lost_lines) - len(truly_lost)
+        if not truly_lost and not moved_lines and misrouted_count > 0:
+            row_type = 'went-to'
+        elif not truly_lost:
+            row_type = 'move'
+        else:
+            row_type = 'lost'
 
         results.append({
             'idx':              modal_idx,
@@ -3320,7 +3371,8 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             'moved_count':      len(moved_lines),
             'lost_count':       len(truly_lost),
             'truly_lost_lines': truly_lost[:20],  # cap at 20 to keep HTML size reasonable
-            'misrouted_count':  len(lost_lines) - len(truly_lost),
+            'misrouted_count':  misrouted_count,
+            'went_to_files':    sorted(went_to_files_set),
             'issues':           issues,
         })
         modal_idx += 1
