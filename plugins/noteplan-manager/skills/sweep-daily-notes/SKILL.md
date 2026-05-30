@@ -1439,6 +1439,26 @@ This ensures the CLI stays complete and the next sweep doesn't re-invent the sam
 
 ## Phase 8.5: Self-Knowledge Capture
 
+### The Dual Mandate — Scribe and Guide
+
+Phase 8.5 holds two roles simultaneously. Both are mandatory on every sweep — for **all three domains** (work, personal, EarlBear). Neither role is optional. Neither domain is skipped if content was swept.
+
+**Scribe** — record faithfully what happened, per domain:
+- 🏢 Work: brag sheet + impact timeline (signal-tagged) + Observations/Gaps/Superpowers
+- 🏡 Personal: personal brag sheet + personal Observations (growth, projects, habits, family, spiritual)
+- 👥 EarlBear: progress log (what was built, decided, validated)
+
+**Guide** — coach toward growth, per domain:
+- 🏢 Work: assess signal tag distribution across the Impact Timeline → identify missing next-level signals → suggest 1–2 concrete work directions for the coming weeks
+- 🏡 Personal: assess personal project momentum, life balance, and spiritual/family commitments → flag what's stalling → suggest where to invest personal energy
+- 👥 EarlBear: assess product progress and customer development pace → identify if the business is stuck in build vs. validate → suggest what to prioritize next
+
+Write each assessment as a direct recommendation (not a question). One note per domain per sweep. Skip a domain's guide note only if zero notes from that domain were swept.
+
+The scribe sees what is. The guide sees what's needed. The sweep assistant must do both, for all three domains.
+
+---
+
 During the sweep you've read many daily notes and observed the user's ideas, collaborators, interests, and patterns. After the final commit, synthesize what you've learned and update three structured files in the user's Reflections directory.
 
 **Target directory:** `$NOTES_ROOT/🏡 Personal/🏡💭 Thoughts/🪞 Reflections/🏡💭💻 GenAI Thoughts/`
@@ -1574,6 +1594,69 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 
 6. Mark all three tasks `completed` after writing.
 
+7. **Trajectory assessments** — one per domain swept
+
+   After writing new entries, read recent history for each domain and write a brief trajectory note. This is a **direct recommendation** — write it, don't ask the user about it.
+
+   **🏢 Work trajectory** — append to `## {YYYY-MM-DD} Career Trajectory Note` in `Observations.md`:
+
+   Read the last 8–12 entries from `🏢📋 Impact Timeline.md`. Assess signal distribution:
+
+   | Pattern | Suggestion |
+   |---|---|
+   | All `[IMPACT]`, no `[SCOPE+]` | Seek a cross-team initiative to own end-to-end |
+   | No `[LEADERSHIP]` in 2+ sweeps | Look for a process, review, or mentoring opportunity to own |
+   | No `[VISIBILITY]` in 3+ sweeps | Present a piece of work externally — demo, Slack post, write-up |
+   | No `[INNOVATION]` in 3+ sweeps | Propose a novel approach to an existing problem |
+   | Heavy `[SCOPE+]`/`[LEADERSHIP]` but no `[IMPACT]` | Focus on shipping something concrete this period |
+   | Well-distributed signals | Healthy profile — note what's working, keep the mix |
+
+   ```markdown
+   ## {YYYY-MM-DD} Career Trajectory Note
+
+   - Signal distribution this quarter: SCOPE+: N, LEADERSHIP: N, INNOVATION: N, VISIBILITY: N, IMPACT: N
+   - Pattern: {e.g. "Strong IMPACT and INNOVATION, limited VISIBILITY"}
+   - Suggestion: {1–2 concrete work directions for the coming weeks}
+   ```
+
+   Skip only if fewer than 3 impact timeline entries exist.
+
+   **🏡 Personal trajectory** — append to `## {YYYY-MM-DD} Personal Growth Note` in `Observations.md`:
+
+   Assess from personal notes swept this session:
+   - Are personal projects moving or stalling? (tasks that keep deferring signal scope overload or low priority)
+   - Is there balance? (work tasks bleeding into personal days, family/health tasks deprioritized repeatedly)
+   - Are spiritual or family commitments being honored? (prayer, family activities, health habits appearing or absent)
+   - Are learning goals progressing? (bookmarked resources and courses — are they being used?)
+
+   ```markdown
+   ## {YYYY-MM-DD} Personal Growth Note
+
+   - Energy investment: {what domains are getting attention — e.g. "heavy EarlBear, light family time"}
+   - Stall detected: {what's being deferred repeatedly — e.g. "fitness tasks accumulating for 3 sweeps"}
+   - Suggestion: {1 concrete focus for personal energy this period}
+   ```
+
+   Skip if no personal notes were swept this session.
+
+   **👥 EarlBear trajectory** — append to `## {YYYY-MM-DD} EarlBear Growth Note` in `Observations.md`:
+
+   Assess from EarlBear notes swept this session:
+   - Build vs. validate balance: Is the work mostly technical (building) or customer-facing (validating)?
+   - Product momentum: Did anything ship, get demoed, or get validated with a real user this period?
+   - Co-founder alignment: Is Saad mentioned alongside progress, or is work happening in isolation?
+   - Scope: Is EarlBear progressing or is it stuck in the same phase across multiple sweeps?
+
+   ```markdown
+   ## {YYYY-MM-DD} EarlBear Growth Note
+
+   - Mode: {Build-heavy / Validate-heavy / Balanced}
+   - Momentum: {shipped / demoed / stalled}
+   - Suggestion: {1 concrete next step for EarlBear — e.g. "Get one user to test the intake flow before building more features"}
+   ```
+
+   Skip if no EarlBear notes were swept this session.
+
 - Commit and push after writing all reflection files and brag sheets:
   ```bash
   git add -A
@@ -1625,8 +1708,10 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Self-knowledge capture | After each sweep's final commit (Phase 8.5), append dated observations to `🪞 Reflections/🏡💭💻 GenAI Thoughts/Observations.md`, `Gaps.md`, and `Superpowers.md`. Only write what's verifiable from the notes read. |
 | Habits tracking in sweep | Phase 8.5 also updates `🏡📋 Habits.md`: scan swept notes for habit signals (observed habits, aspired habits, habit reflections). Update `Last Seen` and frequency on existing rows; add new rows for newly spotted habits. |
 | Brag sheets via tasks | Phase 8.5 updates three brag sheets using TaskCreate: `🏢📋 Brag Sheet.md` (work), `🏡📋 Brag Sheet.md` (personal), `👥📋 Progress Log.md` (EarlBear, if EarlBear content was swept). Create a task per sheet before updating, mark completed after. Only concrete, verifiable achievements from the swept notes. |
+| Scribe and guide | Phase 8.5 plays two roles simultaneously: **scribe** (faithfully record what happened — brag sheet, impact timeline, observations) and **guide** (assess career trajectory, spot missing signals, suggest concrete work directions for the next period). Both roles are mandatory every work sweep. |
 | Next-level signal tagging | Work brag sheet entries MUST be tagged with signal types when applicable: `[SCOPE+]` (cross-team/org decisions), `[LEADERSHIP]` (owned process or guided others), `[INNOVATION]` (frontier/novel technical approach), `[VISIBILITY]` (external recognition, leadership exposure), `[IMPACT]` (unblocked others, shipped, moved milestone). Multiple tags allowed per entry. |
 | Impact Timeline maintained | Phase 8.5 also appends to `🏢📋 Impact Timeline.md` — a structured career-framing table. Only entries with at least one next-level signal qualify. This file is the primary input for `/noteplan-manager:generate-impact-narrative`. |
+| Trajectory assessed for all three domains | Phase 8.5 writes a trajectory note per domain to `Observations.md`: work (signal distribution + suggestion), personal (energy balance + stall detection + suggestion), EarlBear (build-vs-validate + momentum + suggestion). Skip a domain's note only if zero notes from that domain were swept this session. |
 | Git pull before sweep | Phase 2 must run `git pull` before the pre-sweep commit. Stop if pull fails. |
 | Git push after every commit | After every commit in the sweep (pre-sweep, checkpoint, Unsorted re-route, final, reflect), run `git push` immediately. |
 | Tasks are mandatory, not optional | Create ALL phase tasks with dependencies at session start using TaskCreate. Mark `in_progress` before each phase, `completed` after. The task list is the user's primary visibility window. |
