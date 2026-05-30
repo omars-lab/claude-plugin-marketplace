@@ -158,10 +158,12 @@ def scan_plans(notes_root: Path) -> list[dict]:
         open_tasks = len(re.findall(r'^\s*- \[ \]', body, re.MULTILINE))
         done_tasks = len(re.findall(r'^\s*- \[x\]', body, re.MULTILINE | re.IGNORECASE))
 
-        # Build xcallback URL (percent-encode the title)
+        # Build xcallback URL — use filename= (path-exact, no title-matching ambiguity)
+        # Encode each path component but keep literal / separators
         title = fm.get("title", stem)
         from urllib.parse import quote
-        xcb = "noteplan://x-callback-url/openNote?noteTitle=" + quote(title, safe="")
+        _enc_parts = "/".join(quote(part, safe="") for part in rel.split("/"))
+        xcb = "noteplan://x-callback-url/openNote?filename=" + _enc_parts
 
         project = _derive_project(rel, fm)
         workstream = _derive_workstream(rel)
@@ -208,9 +210,10 @@ def _source_xcallback(rel_path: str) -> tuple[str, str]:
         if len(stem) == 8 and stem.isdigit():
             note_date = f"{stem[:4]}-{stem[4:6]}-{stem[6:]}"
             return f"noteplan://x-callback-url/openNote?noteDate={note_date}", "daily"
-        return "noteplan://x-callback-url/openNote?noteTitle=" + quote(stem, safe=""), "daily"
-    stem = rel_path.split("/")[-1].replace(".md", "")
-    return "noteplan://x-callback-url/openNote?noteTitle=" + quote(stem, safe=""), "plan"
+    # filename= format: encode each component, keep literal / separators
+    enc = "/".join(quote(p, safe="") for p in rel_path.split("/"))
+    src_type = "daily" if rel_path.startswith("Calendar/") else "plan"
+    return "noteplan://x-callback-url/openNote?filename=" + enc, src_type
 
 
 def extract_tasks_and_ideas(path: Path, rel_path: str, body: str) -> tuple[list[dict], list[dict]]:
