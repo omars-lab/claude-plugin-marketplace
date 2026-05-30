@@ -720,3 +720,64 @@ Key patterns to follow:
 - `DataStore.newNoteWithContent(title, folder, content)` — creates a note with content in one call; prefer over `newNote` + `Editor.content =` for atomicity
 - `NotePlan.htmlWindows` is only populated when `showWindowWithOptions` is called with `await`; without `await` the array stays empty
 - Makefile handles install/reload
+
+---
+
+## Sweep Review Portal — Troubleshooting
+
+### Architecture in one sentence
+
+`sweep_review.py` compiles a static HTML file that embeds `DIFF_TEXT`, `NARRATIVE`, `MODAL_ROWS`, `PRE_CLASSIFICATION`, and `DEST_FILE_LINES` as JS constants. The browser runs all classification in JS at runtime.
+
+### Data flow for badge vs modal consistency
+
+| Layer | Source | Used by |
+|---|---|---|
+| PRE_CLASSIFICATION | Python (file access, full diff) | Badge pre-seeding at page load |
+| classifyRow() (background scan) | JS (DIFF_TEXT parsing only) | Overwrites badge after page load |
+| showSectionModal() | JS (DIFF_TEXT parsing only) | Modal display, overwrites badge on close |
+
+**The core bug pattern**: Python and JS can disagree. When JS can't reproduce Python's result (B-15 redirect, inferred section, emoji normalization), the badge shows the Python result but the modal shows a different (wrong) JS result.
+
+### When badge says → but modal says "No source lines matched"
+
+1. **B-15 redirect**: breadcrumb dest has `> Migrated: see [[LinkedPlan]]`. Python follows it; JS may fail to match the linked file stem (emoji NFC differences). Fix: `_pyMoveConfirmed` fallback in `showSectionModal` — when `_pyc.moved_count > 0` and JS found nothing, show source lines with "✓ confirmed by sweep engine" note.
+
+2. **Inferred section** (V-R3): section name not a real `## Header` in diff. Python can read files on disk; JS only has the diff. Python finds the lines; `extractSectionLines` in JS returns empty.
+
+3. **PRE_CLASSIFICATION seeded but classifyRow overwrote with empty**: JS `extractSectionLines` fails → `removedLines = []` → `type = empty` → badge changes to `·`. The `focusWentTo` / `focusLost` logic now checks `_pyc.type` from PRE_CLASSIFICATION as a fallback.
+
+### How to validate before shipping
+
+**Run the test suite** — do not ask the user to refresh until tests pass:
+```bash
+cd ~/workspace/oeid-claude-plugin-marketplace/plugins/noteplan-manager/bin
+.venv/bin/python -m pytest noteplan_sweep/tests/ -q
+```
+125 tests as of v3.108.5. All must pass before any compile/push.
+
+**Add a JS-N test for any new failure mode** before fixing it:
+- `test_sweep_review_js.py` uses Playwright + synthetic diffs
+- `_write_page()` accepts `pre_classification=` to seed Python-computed data
+- Tests open the modal and assert text/badge class
+
+**The invariant**: if a badge shows `→` from PRE_CLASSIFICATION, the modal must also show source lines and "confirmed moved". JS-29 tests this for the B-15 fallback. If you see "No source lines matched" on a `→` row, the modal is wrong.
+
+### Recompile command
+
+```bash
+cd ~/workspace/oeid-claude-plugin-marketplace/plugins/noteplan-manager/bin
+./noteplan-sweep sweep-review-compile --date YYYY-MM-DD --run N
+./noteplan-sweep sweep-review-open --date YYYY-MM-DD --run N
+```
+Always reopen (not refresh) after compile — browsers cache `file://` URLs.
+
+### PRE_CLASSIFICATION shape
+
+```json
+{"idx": 7, "type": "move", "moved_count": 1, "lost_count": 0,
+ "truly_lost_lines": [], "misrouted_count": 0, "went_to_files": [],
+ "issues": ["b15_redirect"]}
+```
+
+`idx` = MODAL_ROWS index (non-separator rows only). `went_to_files` = list of dest stems where lines were found in other files (`type = 'went-to'`). `issues` = string tags for known edge cases (`b15_redirect`, `b15_redirect`, etc.).
