@@ -934,18 +934,19 @@ function updateRowBadge(idx, classification) {{
   const badge = tr.querySelector('.row-badge');
   if (!badge) return;
   const {{ type, movedCount, lostCount, newCount, mixed }} = classification;
-  const displayType = mixed ? 'mixed' : type;
+  // Mixed rows: parent always shows → Move (the lost block is owned by the sub-row)
+  const displayType = mixed ? 'move' : type;
   badge.className = `row-badge rb-${{displayType}}`;
   badge.textContent = _badgeLabels[displayType] || '?';
   let counts = '';
-  if (mixed)           counts = ` (${{movedCount}} moved, ${{lostCount}} lost — needs split)`;
+  if (mixed)                   counts = ` (${{movedCount}} moved — ${{lostCount}} lost split below)`;
   else if (type === 'move')    counts = ` (${{movedCount}} line${{movedCount!==1?'s':''}} moved)`;
   else if (type === 'lost')    counts = ` (${{lostCount}} line${{lostCount!==1?'s':''}} not arrived)`;
   else if (type === 'anomaly') counts = newCount ? ` (${{newCount}} unexpected)` : '';
   badge.title = (_badgeTitles[displayType] || displayType) + counts;
   tr.dataset.rowType = displayType;
   if (activeType !== 'all' && displayType !== activeType) tr.style.display = 'none';
-  // Inject a synthetic Lost sub-row below the mixed row so it appears as two table entries
+  // Inject synthetic Lost sub-row (idempotent — guard inside)
   if (mixed) injectMixedLostSubRow(idx, lostCount);
 }}
 
