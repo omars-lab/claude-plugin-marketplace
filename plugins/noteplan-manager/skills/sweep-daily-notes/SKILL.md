@@ -1186,6 +1186,17 @@ For each section confirmed for moving:
   ```
   Where `{TARGET_DATE_ISO}` is `YYYY-MM-DD` (e.g. `[[2026-03-15]]`). Only list destinations where content was actually moved. Skip skipped sections. The breadcrumb is the one exception to "no new content in source" — it is allowed because it is a reference to swept content, not content itself.
 
+  **Summary column — write item-level detail, not just a count.** The sweep review portal reads the Summary column to show what was moved. Write summaries that enumerate the key items:
+  - ✅ `I owe Anna ARB review; I owe Anthropic eval harness; I owe Anna a PRD (5 items)` — lists first 2–3 items + total count
+  - ✅ `ARB governance, security model, diagrams` — comma-separated key topics
+  - ✅ `Langfuse options C/D, config agent, evals` — specific items, not vague
+  - ❌ `ARB tasks (3 items)` — too vague; the portal can't show what was moved without the diff
+  - ❌ `various tasks` — useless; always write actual item text
+
+  For IOU sections, list each person by name: `I owe Anna ARB review; I owe Anthropic eval harness; I owe Jeff goals (5 items)`.
+  For meeting/collaboration sections, name the people and topic: `Arish docs, Anthropic followup`.
+  For reference sections, list the technology/tool names: `React DevTools, Privacy SP, Anthropic glasswing`.
+
   **CRITICAL — one row per section, one destination per row.** Every row must map exactly one section to exactly one destination. Never group multiple sections into a single row (e.g. `Section A + Section B + Section C → [[dest1]] [[dest2]] [[dest3]]`). If 10 sections are swept, write 10 rows. This rule applies equally to the pre-execution routing proposal table shown to the user for confirmation. Grouping obscures the sweep audit trail and makes it impossible to trace individual sections.
 
   **When the source note is swept again on a later date**: check if a breadcrumb table already exists. If so, **append new rows** to the existing table rather than creating a second table. This ensures the full sweep history for a note is visible in one table.
@@ -1217,6 +1228,12 @@ When moving a block, two types of metadata may be appended to **root-level task 
    - **CRITICAL**: NotePlan date format is `>YYYY-MM-DD` (with hyphens), NOT `>YYYYMMDD`. Tags without hyphens are silently ignored by NotePlan and will not surface in the calendar.
    - Use the **target note's date** (next Friday for work, next Sunday for personal)
    - Only on `- [ ]` or `* [ ]` lines at root indentation level
+
+1. **IOU source-date tag** — for lines matching the IOU pattern (`i owe [name]`, case-insensitive), ALSO append the **source note's date** as a second `>YYYY-MM-DD` tag. This stamps when the obligation was first recorded, preserving provenance even after the daily note is swept.
+   - Format: `- [ ] I owe Anna the ARB doc >2026-04-24 >2026-04-13` (target date first, source date second)
+   - Derive the source date from the Calendar filename: `20260413.md` → `>2026-04-13`
+   - Both tags appear on the line: the target date drives NotePlan scheduling, the source date documents when the IOU was written
+   - Apply to **root-level IOU lines only** — do not tag nested sub-tasks
 
 2. **Hash tags** — append relevant `#tag` labels to root-level task lines when a clear categorical tag is warranted (e.g. `#errand`, `#meeting`, `#followup`). Only add tags that are already present in the surrounding plan file or that are clearly implied by the routing destination. Never invent tags.
 
