@@ -478,3 +478,230 @@ def test_js10_noise_lines_excluded_from_new(playwright, http_server):
     assert new_count == 1, f"Expected 1 new line (real task only), got {new_count}"
     assert real_task.replace("- [ ] ", "").strip() in new_text
     assert "```" not in new_text, "Code fence leaked into New tab"
+
+
+# ---------------------------------------------------------------------------
+# JS-11  Move row — badge shows →, modal confirms lines moved (no tabs)
+# ---------------------------------------------------------------------------
+
+def test_js11_move_row_badge_and_modal(playwright, http_server):
+    """JS-11: All source lines arrive in dest → badge → after scan, modal shows ✓ N confirmed."""
+    base_url, serve_dir = http_server
+
+    task = "- [ ] implement feature X"
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Work", "summary": "tasks",
+                  "destination": "[[Calendar/20260421]]"}]
+    diff = _make_diff([
+        # Include section header so extractSectionLines can scope the lines
+        {"path": "Calendar/20260413.md", "removed": ["## Work", task], "added": []},
+        {"path": "Calendar/20260421.md",
+         "added": ["## Work", f"{task} >2026-04-24"], "removed": []},
+    ])
+    page_name = _write_page(serve_dir, "js11.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    # Open modal to trigger classification
+    page.click(".view-btn")
+    page.wait_for_selector("#modal-overlay.open")
+
+    # Badge should now show → (move)
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    modal_text = page.eval_on_selector("#modal-body", "el => el.textContent")
+    browser.close()
+
+    assert "rb-move" in badge_class, f"Expected rb-move badge, got: {badge_class}"
+    assert "confirmed" in modal_text.lower(), (
+        f"Expected 'confirmed' in modal body, got: {modal_text!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# JS-12  Mixed row — badge shows ⚡, modal has moved header + lost section
+# ---------------------------------------------------------------------------
+
+def test_js12_mixed_row_badge_and_modal(playwright, http_server):
+    """JS-12: Some lines moved, some lost → badge ⚡ (mixed), modal shows both sections."""
+    base_url, serve_dir = http_server
+
+    moved_task = "- [ ] task that arrives"
+    lost_task  = "- [ ] task that gets lost"
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Work", "summary": "mixed tasks",
+                  "destination": "[[Calendar/20260421]]"}]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": ["## Work", moved_task, lost_task], "added": []},
+        # Only moved_task arrives in dest
+        {"path": "Calendar/20260421.md",
+         "added": ["## Work", f"{moved_task} >2026-04-24"], "removed": []},
+    ])
+    page_name = _write_page(serve_dir, "js12.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    page.click(".view-btn")
+    page.wait_for_selector("#modal-overlay.open")
+
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    modal_text = page.eval_on_selector("#modal-body", "el => el.textContent")
+    # Mixed rows: parent badge shows → move (lost portion injected as a sub-row)
+    sub_row = page.query_selector("tr[data-mixed-lost-for='0']")
+    browser.close()
+
+    # Parent badge shows → (move) because some lines arrived; sub-row carries ✗ (lost)
+    assert "rb-move" in badge_class, (
+        f"Expected rb-move badge on mixed row parent, got: {badge_class}"
+    )
+    assert sub_row is not None, "Expected mixed-lost sub-row to be injected after modal open"
+    # Modal should show the moved task
+    assert "task that arrives" in modal_text, (
+        f"Expected moved task in modal body, got: {modal_text!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# JS-13  Lost row — badge shows ✗, modal in focusLost single-panel mode
+# ---------------------------------------------------------------------------
+
+def test_js13_lost_row_modal(playwright, http_server):
+    """JS-13: No source lines arrive → badge ✗, modal shows focusLost single panel (no dest panel)."""
+    base_url, serve_dir = http_server
+
+    lost_task = "- [ ] this task never arrives"
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Work", "summary": "lost items",
+                  "destination": "[[Calendar/20260421]]"}]
+    diff = _make_diff([
+        # Section header scopes the removed lines to "Work"
+        {"path": "Calendar/20260413.md", "removed": ["## Work", lost_task], "added": []},
+        # Dest gets unrelated content under a different section — lost_task doesn't arrive
+        {"path": "Calendar/20260421.md",
+         "added": ["## Other", "- [ ] completely different task >2026-04-24"], "removed": []},
+    ])
+    page_name = _write_page(serve_dir, "js13.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    page.click(".view-btn")
+    page.wait_for_selector("#modal-overlay.open")
+
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    # In focusLost mode, modal-body has grid-template-columns: 1fr (single column)
+    grid_cols = page.eval_on_selector(
+        "#modal-body", "el => el.style.gridTemplateColumns"
+    )
+    src_text = page.eval_on_selector("#modal-body", "el => el.textContent")
+    browser.close()
+
+    assert "rb-lost" in badge_class, f"Expected rb-lost badge, got: {badge_class}"
+    assert grid_cols == "1fr", f"Expected single-column focusLost layout, got: {grid_cols!r}"
+    assert "never arrives" in src_text, f"Lost task not shown in source panel: {src_text!r}"
+
+
+# ---------------------------------------------------------------------------
+# JS-14  Anomaly row — badge shows +, anomaly modal shows unexpected additions
+# ---------------------------------------------------------------------------
+
+def test_js14_anomaly_row_modal(playwright, http_server):
+    """JS-14: Dest has additions, source removed nothing → badge +, anomaly modal single panel."""
+    base_url, serve_dir = http_server
+
+    unexpected_line = "- [ ] mystery task appeared in dest"
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Work", "summary": "anomaly",
+                  "destination": "[[Calendar/20260421]]"}]
+    diff = _make_diff([
+        # Source has NO removed lines for this section (in diff only added)
+        {"path": "Calendar/20260413.md", "removed": [], "added": ["- [ ] unrelated addition"]},
+        {"path": "Calendar/20260421.md", "added": [unexpected_line], "removed": []},
+    ])
+    page_name = _write_page(serve_dir, "js14.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    page.click(".view-btn")
+    page.wait_for_selector("#modal-overlay.open")
+
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    grid_cols = page.eval_on_selector(
+        "#modal-body", "el => el.style.gridTemplateColumns"
+    )
+    modal_text = page.eval_on_selector("#modal-body", "el => el.textContent")
+    browser.close()
+
+    assert "rb-anomaly" in badge_class, f"Expected rb-anomaly badge, got: {badge_class}"
+    assert grid_cols == "1fr", f"Expected single-column anomaly layout, got: {grid_cols!r}"
+    assert "mystery task" in modal_text or "unexpected" in modal_text.lower(), (
+        f"Anomaly content not shown in modal: {modal_text!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# JS-15  Background scan — all badges populated without opening modals
+# ---------------------------------------------------------------------------
+
+def test_js15_background_scan_populates_badges(playwright, http_server):
+    """JS-15: requestIdleCallback background scan classifies all rows and updates badges."""
+    base_url, serve_dir = http_server
+
+    moved_task = "- [ ] clean move task"
+    lost_task  = "- [ ] task that is lost"
+    narrative = [
+        {"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+         "section": "Work", "summary": "moves",
+         "destination": "[[Calendar/20260421]]"},
+        {"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+         "section": "Backlog", "summary": "lost items",
+         "destination": "[[Calendar/20260421]]"},
+    ]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": [moved_task, f"## Work", lost_task, "## Backlog"], "added": []},
+        {"path": "Calendar/20260421.md",
+         "added": [f"{moved_task} >2026-04-24"], "removed": []},
+    ])
+    page_name = _write_page(serve_dir, "js15.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    # Wait for background scan to finish — badges should leave rb-pending state
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000
+    )
+
+    badge_classes = page.eval_on_selector_all(
+        "tr[data-row-idx] .row-badge",
+        "els => els.map(e => e.className)"
+    )
+    browser.close()
+
+    assert len(badge_classes) >= 1, "No badges found after background scan"
+    assert all("rb-pending" not in c for c in badge_classes), (
+        f"Some badges still pending after scan: {badge_classes}"
+    )
