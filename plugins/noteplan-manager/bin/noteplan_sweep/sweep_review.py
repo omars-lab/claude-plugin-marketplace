@@ -831,11 +831,23 @@ function showSectionModal(idx) {{
 
   // Re-classify "new" lines against the global removed map — lines found in ANY
   // other source file are "cross-moved", not truly new.
+  // Noise lines (empty tasks, code fences, HRs) are dropped from both buckets.
   const globalMap = getGlobalRemovedMap();
   const srcStem = row.source_file.split('/').pop().replace(/\\.md$/, '');
+
+  const isNoiseLine = line => {{
+    const n = normLine(line);
+    if (n.length <= 3) return true;                    // near-empty after stripping
+    if (/^`+(\\w*)$/.test(n)) return true;              // code fence ``` or ```lang
+    if (/^-{{2,}}$/.test(n) || /^—{{1,}}$/.test(n)) return true; // --- or ———
+    if (/^[-*]\\s*\\[\\s*\\]\\s*$/.test(n)) return true;   // bare empty checkbox - [ ]
+    return false;
+  }};
+
   _modalCrossLines = [];
   _modalNewLines = [];
   for (const line of newContent) {{
+    if (isNoiseLine(line)) continue;
     const n = normLine(line);
     const fromStem = globalMap.get(n);
     if (fromStem && fromStem !== srcStem) {{

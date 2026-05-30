@@ -434,3 +434,47 @@ def test_js09_diff_view_moved_badge(playwright, http_server):
     assert len(moved_badges) >= 1, (
         f"No → moved badge found on moved line. badges={moved_badges}"
     )
+
+
+# ---------------------------------------------------------------------------
+# JS-10  Noise lines excluded from New tab
+# ---------------------------------------------------------------------------
+
+def test_js10_noise_lines_excluded_from_new(playwright, http_server):
+    """JS-10: Code fences, empty checkboxes, and HRs are not shown in New tab."""
+    base_url, serve_dir = http_server
+
+    real_task    = "- [ ] a genuine new task"
+    noise_lines  = ["```", "```python", "---", "- [ ]", "- [ ]  >2026-04-24"]
+
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Work", "summary": "items",
+                  "destination": "[[Calendar/20260421]]"}]
+
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md", "removed": ["- [ ] source task"], "added": []},
+        {"path": "Calendar/20260421.md",
+         "added": [real_task] + noise_lines, "removed": []},
+    ])
+    page_name = _write_page(serve_dir, "js10.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.click(".view-btn")
+    page.wait_for_selector("#modal-overlay.open")
+
+    # Click New tab
+    page.click(".mpanel-tab.new-tab")
+    new_count = page.eval_on_selector(
+        ".mpanel-tab.new-tab",
+        "el => parseInt(el.textContent.match(/\\d+/)[0])"
+    )
+    new_text = page.eval_on_selector("#modal-dest-lines", "el => el.textContent")
+    browser.close()
+
+    # Only the real task should count; noise lines should be absent
+    assert new_count == 1, f"Expected 1 new line (real task only), got {new_count}"
+    assert real_task.replace("- [ ] ", "").strip() in new_text
+    assert "```" not in new_text, "Code fence leaked into New tab"
