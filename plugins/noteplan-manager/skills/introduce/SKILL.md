@@ -148,6 +148,23 @@ Validates and fixes frontmatter across **all note types** (plans, meetings, ques
 
 ---
 
+### sweep-daily-notes — Sweep Daily Notes Forward
+
+**Invocation:** `/noteplan-manager:sweep-daily-notes` (user-invoked only)
+
+Guided sweep of past daily notes — moves whole sections (headers + content, verbatim) forward to the next Friday (work) or next Sunday (personal). Asks what to do with each unclear section. Never modifies content.
+
+| Mode | Scope | Target |
+|---|---|---|
+| Work | Past month, weekdays (Mon–Fri) | Next Friday |
+| Personal | Past 3 months, weekends (Sat–Sun) | Next Sunday |
+
+**Hard requirement:** Commits all NotePlan changes before touching any files.
+
+**When to use:** End of week / start of week cleanup — roll unfinished notes forward rather than letting them go stale.
+
+---
+
 ### manage-filenames — Filename Management
 
 **Invocation:** `/noteplan-manager:manage-filenames`
@@ -243,3 +260,9 @@ Key directories:
 
 **"What templates do I have?" / "I need a new template"**
 → `/noteplan-manager:manage-templates`
+
+**"I have a bunch of unfinished notes from past work days I want to sweep forward"**
+→ `/noteplan-manager:sweep-daily-notes` (work mode → next Friday)
+
+**"I want to clear out my weekend personal notes and roll them into this Sunday"**
+→ `/noteplan-manager:sweep-daily-notes` (personal mode → next Sunday)
