@@ -482,6 +482,13 @@ def build_contributions_html(data: dict) -> str:
 
 <div id="topbar">
   <h1>📦 Contributions</h1>
+  <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
+    <label style="font-size:11px;color:#484f58;white-space:nowrap">From</label>
+    <input type="date" id="date-from" style="background:#21262d;border:1px solid #30363d;border-radius:5px;padding:3px 7px;color:#e6edf3;font-size:12px" oninput="rerender()">
+    <label style="font-size:11px;color:#484f58">To</label>
+    <input type="date" id="date-to" style="background:#21262d;border:1px solid #30363d;border-radius:5px;padding:3px 7px;color:#e6edf3;font-size:12px" oninput="rerender()">
+    <button onclick="resetDateRange()" style="background:none;border:1px solid #30363d;border-radius:5px;padding:3px 8px;color:#8b949e;font-size:11px;cursor:pointer" title="Reset to default range">↺</button>
+  </div>
   <div id="gen-time">Generated {generated_at}</div>
 </div>
 
@@ -569,13 +576,33 @@ const TAB_NAMES = ['heatmap','worklogs','shipped','repos'];
 
 function esc(s) {{ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
 
+// ── Date range helpers ────────────────────────────────────────────────────
+function _defaultFrom() {{
+  const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0,10);
+}}
+function _defaultTo() {{ return new Date().toISOString().slice(0,10); }}
+
+function getDateFrom() {{ return document.getElementById('date-from').value || _defaultFrom(); }}
+function getDateTo()   {{ return document.getElementById('date-to').value   || _defaultTo();   }}
+function inDateRange(iso) {{ return iso >= getDateFrom() && iso <= getDateTo(); }}
+
+function resetDateRange() {{
+  document.getElementById('date-from').value = '';
+  document.getElementById('date-to').value   = '';
+  rerender();
+}}
+
 function rerender() {{ renderHeatmap(); renderWorkLogs(); renderShipped(); renderRepos(); _updateNavTiles(); }}
 
 function _updateNavTiles() {{
   const repos = DATA.repos.filter(r => matchesDomain(r.domain));
+  const hm = DATA.heatmap.filter(h => {{
+    if (activeOrg !== 'all' && !(h.domains||[]).includes(activeOrg)) return false;
+    return inDateRange(h.date);
+  }});
   const map = {{
-    'commits / yr': repos.reduce((s,r) => s + r.commit_count, 0),
-    'AI-assisted':  repos.reduce((s,r) => s + r.ai_commit_count, 0),
+    'commits / yr': hm.reduce((s,h) => s + h.count, 0),
+    'AI-assisted':  hm.reduce((s,h) => s + (h.ai_count||0), 0),
   }};
   document.querySelectorAll('.hub-tile').forEach(tile => {{
     const lbl = tile.querySelector('.hub-tile-lbl');
@@ -608,6 +635,7 @@ function renderHeatmap() {{
   const byDate = {{}};
   DATA.heatmap.forEach(h => {{
     if (activeOrg !== 'all' && !(h.domains||[]).includes(activeOrg)) return;
+    if (!inDateRange(h.date)) return;
     byDate[h.date] = (byDate[h.date] || 0) + h.count;
   }});
 
@@ -729,7 +757,8 @@ function _clearCrossHighlight() {{
 function renderWorkLogs() {{
   const q = (document.getElementById('wlog-search').value||'').toLowerCase();
   const logs = DATA.work_logs.filter(l =>
-    (!q || l.plan.toLowerCase().includes(q) || l.summary.toLowerCase().includes(q))
+    (!q || l.plan.toLowerCase().includes(q) || l.summary.toLowerCase().includes(q)) &&
+    inDateRange(l.date || '')
   );
   document.getElementById('wlog-count').textContent = logs.length + ' entries';
   document.getElementById('n-wlogs').textContent = '(' + logs.length + ')';
@@ -767,7 +796,8 @@ function renderWorkLogs() {{
 function renderShipped() {{
   const q = (document.getElementById('shipped-search').value||'').toLowerCase();
   const items = DATA.shipped.filter(s =>
-    (!q || s.title.toLowerCase().includes(q) || (s.description||'').toLowerCase().includes(q))
+    (!q || s.title.toLowerCase().includes(q) || (s.description||'').toLowerCase().includes(q)) &&
+    inDateRange(s.date || '')
   );
   document.getElementById('shipped-count').textContent = items.length + ' plans';
   document.getElementById('n-shipped').textContent = '(' + items.length + ')';
@@ -787,7 +817,8 @@ function renderRepos() {{
   const q = (document.getElementById('repo-search').value||'').toLowerCase();
   let repos = DATA.repos.filter(r =>
     matchesDomain(r.domain) &&
-    (!q || r.name.toLowerCase().includes(q))
+    (!q || r.name.toLowerCase().includes(q)) &&
+    (!r.last_active || inDateRange(r.last_active))
   );
   repos = repos.sort((a,b) => b.commit_count - a.commit_count);
   document.getElementById('repo-count').textContent = repos.length + ' repos';

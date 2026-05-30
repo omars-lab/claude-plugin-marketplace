@@ -207,9 +207,9 @@ class NoteplanHandler(BaseHTTPRequestHandler):
         try:
             result = {}
             sidecar_keys = {
-                "plans-summary.json":        "plans",
-                "contributions-summary.json": "contributions",
-                "ai-usage.json":              "ai_usage",
+                "plans-summary.json":         "plans",
+                "contributions-summary.json":  "contributions",
+                "ai-usage-summary.json":       "ai_usage",
             }
             for filename, key in sidecar_keys.items():
                 p = self.dashboard_dir / filename

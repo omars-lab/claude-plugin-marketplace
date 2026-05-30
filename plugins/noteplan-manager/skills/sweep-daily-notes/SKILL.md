@@ -1932,13 +1932,17 @@ noteplan-sweep conversation-mine
 ### 9.3 — Dashboard refresh
 
 ```bash
+# Rebuild the conversation knowledge graph (fast: ~0.5s + 0.2s)
+noteplan-sweep graph-extract             # Session/Plan/Repo/Skill/UseCase/App nodes + edges
+noteplan-sweep graph-build               # validate + write embedding_meta to graph.json
+
 # Regenerate Insights Hub (brag, observations, gaps, impact, AI tile, hub nav tiles)
 noteplan-sweep work-board-generate
 
 # Regenerate Contributions dashboard (commit heatmap, work logs, shipped plans)
 noteplan-sweep contributions-generate
 
-# Regenerate AI Usage dashboard (includes repo scan data if available)
+# Regenerate AI Usage dashboard (injects updated graph.json into D3 pane)
 noteplan-sweep ai-usage-generate
 
 # Regenerate Plans Dashboard (uses discovered_ideas.json from step 9.2, --skip-mine)
@@ -1948,19 +1952,15 @@ noteplan-sweep dashboard-generate --skip-mine
 noteplan-sweep work-board-open
 ```
 
-### 9.4 — Repo scan + Graph rebuild (weekly, not every sweep)
+### 9.4 — Repo scan + Embedding (weekly, not every sweep)
 
 Run once per week or after adding a new AI-assisted project:
 
 ```bash
+# Re-scan repos to pick up new AI-assisted projects
 noteplan-sweep repo-scan
 noteplan-sweep ai-usage-generate         # re-generate to include new repo data
 noteplan-sweep contributions-generate    # re-generate to include updated AI commit data
-
-# Rebuild the conversation knowledge graph
-noteplan-sweep graph-extract             # Session/Plan/Repo/Skill/UseCase/App nodes + edges
-noteplan-sweep graph-build               # validate + write embedding_meta to graph.json
-noteplan-sweep ai-usage-generate         # re-generate to inject updated graph.json into D3 pane
 
 # Optional: embed nodes for vector search (requires LM Studio running)
 # noteplan-sweep graph-embed
@@ -1974,12 +1974,13 @@ noteplan-sweep ai-usage-generate         # re-generate to inject updated graph.j
 - [ ] `sweep-review-compile` — compiled review HTML ready
 - [ ] `sweep-review-open` — review opened in browser
 - [ ] `conversation-mine` — transcripts mined, discovered_ideas.json updated
+- [ ] `graph-extract` + `graph-build` — conversation graph rebuilt
 - [ ] `work-board-generate` — Insights Hub HTML refreshed
 - [ ] `contributions-generate` — Contributions HTML refreshed
-- [ ] `ai-usage-generate` — AI Usage HTML refreshed
+- [ ] `ai-usage-generate` — AI Usage HTML refreshed (with fresh graph)
 - [ ] `dashboard-generate --skip-mine` — Plans Dashboard HTML refreshed
 - [ ] `work-board-open` — Insights Hub visible in browser
-- [ ] *(weekly)* `repo-scan` + `graph-extract` + `graph-build` — graph.json rebuilt
+- [ ] *(weekly)* `repo-scan` — repos re-scanned for new AI projects
 
 ---
 

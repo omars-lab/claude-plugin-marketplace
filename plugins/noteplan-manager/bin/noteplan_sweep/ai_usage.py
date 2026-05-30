@@ -1373,6 +1373,18 @@ function initGraphFallback() {{
     out.write_text(html, encoding='utf-8')
     utils.log(f"ai-usage-generate: wrote {out}")
 
+    # Write summary sidecar for insights.html live tiles
+    summary_out = dash_dir / 'ai-usage-summary.json'
+    summary_out.write_text(json.dumps({
+        "generated_at": generated_at,
+        "total_sessions": summary.get("total_sessions", 0),
+        "interactive_sessions": summary.get("total_interactive", 0),
+        "last_30_days": summary.get("last_30_days_interactive", 0),
+        "total_projects": summary.get("total_projects", 0),
+        "top_project": summary.get("top_project", ""),
+        "total_skills": summary.get("total_skills", 0),
+    }, indent=2, ensure_ascii=False), encoding='utf-8')
+
 
 def cmd_ai_usage_open(args):
     path = utils.noteplan_root() / 'dashboard' / 'ai-usage.html'
