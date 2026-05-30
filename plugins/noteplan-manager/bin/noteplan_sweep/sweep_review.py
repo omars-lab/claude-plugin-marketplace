@@ -494,7 +494,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .modal-panel-hdr{{font-size:11px;font-weight:600;color:#8b949e;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #30363d}}
 .modal-empty{{color:#484f58;font-size:12px;padding:16px;text-align:center}}
 .diff-lines{{font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;line-height:18px;overflow-x:auto;flex:1}}
-.diff-line{{padding:1px 8px;white-space:pre}}
+.diff-line{{padding:1px 8px;white-space:pre;font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;line-height:18px}}
 .diff-line.removed{{background:#4a0f1a;color:#ffdcd7}}
 .diff-line.added{{background:#0e4429;color:#aff5b4}}
 .diff-line.new-content{{background:#1f1200;color:#e3b341}}
@@ -1798,7 +1798,7 @@ function showSectionModal(idx, focusLost = false) {{
   }}
   const modalBodyEl = document.getElementById('modal-body');
   // Lost mode: single-column full-width; normal: two-column side-by-side
-  modalBodyEl.style.gridTemplateColumns = focusLost ? '1fr' : '';
+  modalBodyEl.style.gridTemplateColumns = focusLost ? '1fr' : '1fr 1fr';
   modalBodyEl.innerHTML = srcPanel + destPanel;
   // V-P6: src and dest panels should have the same number of paired lines
   if (!focusLost && !focusAnomaly) {{
