@@ -380,13 +380,13 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
   .card .card-meta {{ font-size: 11px; color: #484f58; }}
 
   /* ── Kanban ── */
-  .kanban-board {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; align-items: start; }}
-  .kanban-col {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px; min-height: 120px; }}
+  .kanban-board {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }}
+  .kanban-col {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px; min-height: 120px; min-width: 0; overflow: hidden; }}
   .kanban-col-header {{ font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }}
-  .kanban-card {{ background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 9px 11px; margin-bottom: 6px; }}
+  .kanban-card {{ background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 9px 11px; margin-bottom: 6px; min-width: 0; overflow: hidden; }}
   .kanban-card:hover {{ border-color: #58a6ff; }}
-  .kanban-card .kc-title {{ font-size: 12px; font-weight: 600; color: #e6edf3; margin-bottom: 4px; line-height: 1.4; }}
-  .kanban-card .kc-meta {{ font-size: 11px; color: #484f58; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 4px; }}
+  .kanban-card .kc-title {{ font-size: 12px; font-weight: 600; color: #e6edf3; margin-bottom: 4px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+  .kanban-card .kc-meta {{ font-size: 11px; color: #484f58; display: flex; gap: 6px; flex-wrap: nowrap; align-items: center; margin-top: 4px; overflow: hidden; }}
   .kc-tasks .td {{ color: #3fb950; }} .kc-tasks .to {{ color: #d29922; }}
 
   /* ── Gantt ── */
