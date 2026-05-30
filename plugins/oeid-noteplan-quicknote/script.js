@@ -6,7 +6,7 @@
 // ─── Static config ────────────────────────────────────────────────────────────
 
 const DOMAIN_LABELS = ['Work', 'Personal', 'NaqshCoffee', 'EarlBear']
-const NOTE_DOMAIN_LABELS = ['Work', 'Personal', 'NaqshCoffee']
+const NOTE_DOMAIN_LABELS = ['Work', 'Personal', 'NaqshCoffee', 'EarlBear']
 
 const PLAN_ROOTS = {
   work:     '🏢 ServiceNow/📆 Plans',
@@ -26,6 +26,7 @@ const NOTE_FOLDERS = {
   work:     '🏢 ServiceNow/📝 Notes',
   personal: '🏡 Personal/🏡📝 Notes',
   coffee:   '☕️ NaqshCoffee/📝 Notes',
+  earlbear: '👥 EarlBear/📝 Notes',
 }
 
 const DOMAIN_EMOJIS = {

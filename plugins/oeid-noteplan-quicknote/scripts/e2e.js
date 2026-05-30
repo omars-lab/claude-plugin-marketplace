@@ -232,6 +232,13 @@ async function main() {
     `🏡 Personal/🏡📝 Notes/🏡📝 e2e Test Note.md`,
   )
 
+  await test(
+    'EarlBear note',
+    { domain: 'earlbear', type: 'note', title: 'e2e Test Note' },
+    `👥 EarlBear/📝 Notes/👥📝 e2e Test Note.md`,
+    [{ label: 'namespace: 👥', re: /namespace: 👥/ }]
+  )
+
   // ── Guard clauses ─────────────────────────────────────────────────────────
 
   console.log('\nGuard clauses:')
