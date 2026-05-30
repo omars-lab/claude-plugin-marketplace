@@ -15,6 +15,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import noteplan_sweep.utils as utils
+from noteplan_sweep.nav import hub_nav_html, ORG_CSS, ORG_JS
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +121,17 @@ def _derive_workstream(rel: str) -> str:
     return ""
 
 
+def _infer_domain(rel_path: str) -> str:
+    """Infer domain from a plan's relative path."""
+    if "ServiceNow" in rel_path or "🏢" in rel_path:
+        return "work"
+    if "EarlBear" in rel_path or "👥" in rel_path:
+        return "earlbear"
+    if "Personal" in rel_path or "🏡" in rel_path:
+        return "personal"
+    return "other"
+
+
 def scan_plans(notes_root: Path) -> list[dict]:
     plans = []
     for p in sorted(notes_root.rglob("*.md")):
@@ -153,6 +165,7 @@ def scan_plans(notes_root: Path) -> list[dict]:
 
         project = _derive_project(rel, fm)
         workstream = _derive_workstream(rel)
+        domain = _infer_domain(rel)
 
         plans.append({
             "stem": stem,
@@ -164,6 +177,7 @@ def scan_plans(notes_root: Path) -> list[dict]:
             "initiative": fm.get("initiative", ""),
             "project": project,
             "workstream": workstream,
+            "domain": domain,
             "start_date": start_date or mtime_date(p),
             "end_date": completed or "",
             "mtime": mtime_date(p),
@@ -337,6 +351,13 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
         for p in sorted(gantt_plans + gantt_plans_done[:20], key=lambda x: x["start_date"])
     ], ensure_ascii=False) if (gantt_plans or gantt_plans_done) else "[]"
 
+    # Build nav before entering f-string
+    active_count = len([p for p in plans if p.get("status") == "active"])
+    _nav_html = hub_nav_html("plans", [
+        {"num": str(len(plans)),    "label": "Total Plans",  "title": "All plan files scanned"},
+        {"num": str(active_count),  "label": "Active",       "title": "Plans currently in progress"},
+    ])
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -347,16 +368,14 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; background: #0d1117; color: #e6edf3; }}
 
+  {ORG_CSS}
+
   /* ── Header / facet bar ── */
-  #topbar {{ background: #161b22; border-bottom: 1px solid #30363d; padding: 10px 20px; position: sticky; top: 0; z-index: 100; }}
-  #topbar-row1 {{ display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }}
-  #topbar-row1 h1 {{ font-size: 15px; font-weight: 700; color: #58a6ff; white-space: nowrap; }}
-  #search-global {{ background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 5px 10px; color: #e6edf3; font-size: 13px; width: 200px; }}
+  #topbar {{ background: #0d1117; padding: 6px 16px; position: sticky; top: 48px; z-index: 90; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #21262d; }}
+  #search-global {{ background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 5px 10px; color: #e6edf3; font-size: 13px; width: 220px; }}
   #search-global::placeholder {{ color: #484f58; }}
   #gen-time {{ font-size: 11px; color: #484f58; margin-left: auto; white-space: nowrap; }}
 
-  .facet-row {{ display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }}
-  .facet-label {{ font-size: 11px; color: #484f58; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 2px; white-space: nowrap; }}
   .chip {{ background: #21262d; border-radius: 20px; padding: 2px 10px; font-size: 12px; color: #8b949e; cursor: pointer; border: 1px solid #30363d; user-select: none; transition: background 0.1s; }}
   .chip:hover {{ background: #2d333b; }}
   .chip.active {{ background: #1f4a2a; color: #3fb950; border-color: #3fb950; }}
@@ -368,8 +387,6 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
   .plantype-chip {{ display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; }}
   .pt-label {{ font-size: 11px; color: #8b949e; }}
   .plantype-chip.active .pt-label {{ color: #79c0ff; }}
-  .facet-row + .facet-row {{ margin-top: 4px; }}
-  .facet-sep {{ width: 1px; height: 16px; background: #30363d; margin: 0 4px; flex-shrink: 0; }}
 
   /* ── Tabs ── */
   #tabs {{ background: #161b22; border-bottom: 1px solid #30363d; display: flex; }}
@@ -444,25 +461,28 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
 </head>
 <body>
 
+{_nav_html}
+
 <div id="topbar">
-  <div id="topbar-row1">
-    <h1>💡 Idea Dashboard</h1>
-    <input type="text" id="search-global" placeholder="Search everything…" oninput="rerender()">
-    <div id="gen-time">Generated {generated_at}</div>
+  <input type="text" id="search-global" placeholder="Search everything…" oninput="rerender()">
+  <div id="gen-time">Generated {generated_at}</div>
+</div>
+
+<div id="filter-bars" class="filter-bars">
+  <div class="fbar">
+    <span class="fbar-label">Status</span>
+    <span class="chip active" data-facet="status" data-val="all"    onclick="toggleChip(this)" title="Show plans of all statuses">All</span>
+    <span class="chip"        data-facet="status" data-val="active"  onclick="toggleChip(this)" title="🟢 Active — currently being worked on">🟢 Active</span>
+    <span class="chip"        data-facet="status" data-val="paused"  onclick="toggleChip(this)" title="🟡 Paused — on hold, not currently active">🟡 Paused</span>
+    <span class="chip"        data-facet="status" data-val="backlog" onclick="toggleChip(this)" title="🔵 Backlog — queued, not yet started">🔵 Backlog</span>
+    <span class="chip"        data-facet="status" data-val="done"    onclick="toggleChip(this)" title="✅ Done — completed plans">✅ Done</span>
   </div>
-  <div class="facet-row">
-    <span class="facet-label">Status</span>
-    <span class="chip active" data-facet="status" data-val="all"    onclick="toggleChip(this)" title="All statuses">All</span>
-    <span class="chip"        data-facet="status" data-val="active"  onclick="toggleChip(this)" title="Active">🟢 Active</span>
-    <span class="chip"        data-facet="status" data-val="paused"  onclick="toggleChip(this)" title="Paused">🟡 Paused</span>
-    <span class="chip"        data-facet="status" data-val="backlog" onclick="toggleChip(this)" title="Backlog">🔵 Backlog</span>
-    <span class="chip"        data-facet="status" data-val="done"    onclick="toggleChip(this)" title="Done">✅ Done</span>
-    <div class="facet-sep"></div>
-    <span class="facet-label">Project</span>
+  <div class="fbar">
+    <span class="fbar-label">Project</span>
     {project_chips}
   </div>
-  <div class="facet-row">
-    <span class="facet-label">Type</span>
+  <div class="fbar">
+    <span class="fbar-label">Type</span>
     {plantype_chips}
   </div>
 </div>
@@ -538,6 +558,7 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
 <script>
 const DATA = {data_json};
 const GANTT_DATA = {gantt_json};
+{ORG_JS}
 
 // ── Filter state ──────────────────────────────────────────────────────────
 // Multi-select per facet (empty set = "all")
@@ -584,6 +605,7 @@ function toggleChip(el) {{
 // ── Match helpers ─────────────────────────────────────────────────────────
 function matchesPlan(p) {{
   const q = (document.getElementById('search-global').value || '').toLowerCase();
+  if (!matchesDomain(p.domain)) return false;
   if (sel.status.size && !sel.status.has(p.status)) return false;
   if (sel.project.size && !sel.project.has(p.project)) return false;
   if (sel.plantype.size && !sel.plantype.has(p.plantype)) return false;
@@ -996,17 +1018,18 @@ async function toggleTask(path, lineNum, checked) {{
 }}
 
 window.addEventListener('DOMContentLoaded', () => {{
+  if (!SERVER_MODE) {{
+    document.querySelectorAll('.hub-link[href]').forEach(el => {{
+      el.title = 'Run: noteplan-sweep serve --open';
+      el.removeAttribute('href');
+      el.style.opacity = '0.45';
+      el.style.cursor = 'default';
+    }});
+  }}
+  _applyOrg();
   setInboxFilter('all');
   rerender();
   initGantt();
-  if (SERVER_MODE) {{
-    // Show server-mode indicator in header
-    const ind = document.createElement('span');
-    ind.textContent = '⚡ Live';
-    ind.title = 'Server mode — edits write to NotePlan files';
-    ind.style.cssText = 'font-size:11px;color:#3fb950;background:#1f4a2a;border:1px solid #238636;border-radius:4px;padding:2px 7px;';
-    document.getElementById('topbar-row1').appendChild(ind);
-  }}
 }});
 </script>
 </body>

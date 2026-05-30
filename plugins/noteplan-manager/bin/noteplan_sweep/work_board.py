@@ -17,6 +17,7 @@ from datetime import datetime, date
 from pathlib import Path
 
 import noteplan_sweep.utils as utils
+from noteplan_sweep.nav import hub_nav_html, ORG_CSS, ORG_JS
 from noteplan_sweep.dashboard import (
     scan_plans, scan_tasks_and_ideas, build_html as build_ideas_html,
     parse_frontmatter, _derive_project, _derive_workstream,
@@ -288,6 +289,14 @@ def build_work_board_html(
     _brag_short = last_brag_date[5:] if len(last_brag_date) >= 10 else (last_brag_date or "—")
     _days_label = f"{days_since_commit}d" if days_since_commit >= 0 else "—"
 
+    # Build shared nav HTML before entering the f-string (dicts can't use {{ }} escaping)
+    _nav_html = hub_nav_html("insights", [
+        {"num": str(active_plan_count), "label": "Active Plans",  "title": "Plans currently in progress"},
+        {"num": _brag_short or "—",     "label": "Last Brag",     "title": "Date of most recent brag sheet entry"},
+        {"num": str(ai_sessions_month), "label": "AI / 30d",      "title": "Interactive Claude sessions in the last 30 days"},
+        {"num": _days_label,            "label": "Since Commit",  "title": "Days since last git commit to this NotePlan repo"},
+    ])
+
     project_chips = "".join(
         f'<span class="chip" data-facet="project" data-val="{p}" onclick="toggleChip(this)" title="{p}">{p}</span>'
         for p in projects
@@ -301,10 +310,10 @@ def build_work_board_html(
         for t in plantypes
     )
     period_chips = (
-        '<span class="chip active" data-facet="period" data-val="all"     onclick="toggleChip(this)">All time</span>'
-        '<span class="chip"        data-facet="period" data-val="quarter"  onclick="toggleChip(this)">This quarter</span>'
-        '<span class="chip"        data-facet="period" data-val="month"    onclick="toggleChip(this)">This month</span>'
-        '<span class="chip"        data-facet="period" data-val="week"     onclick="toggleChip(this)">This week</span>'
+        '<span class="chip active" data-facet="period" data-val="all"    onclick="toggleChip(this)" title="Show all plans, no date filter">All time</span>'
+        '<span class="chip"        data-facet="period" data-val="quarter" onclick="toggleChip(this)" title="Plans started or active in the current calendar quarter">This quarter</span>'
+        '<span class="chip"        data-facet="period" data-val="month"   onclick="toggleChip(this)" title="Plans started or active this month">This month</span>'
+        '<span class="chip"        data-facet="period" data-val="week"    onclick="toggleChip(this)" title="Plans started or active in the last 7 days">This week</span>'
     )
 
     return f"""<!DOCTYPE html>
@@ -408,74 +417,39 @@ def build_work_board_html(
   .gantt-ph {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 40px; text-align: center; color: #484f58; }}
   .gantt-ph p {{ margin-top: 8px; font-size: 12px; }}
 
-  /* Hub nav */
-  #hub-nav {{ background: #010409; border-bottom: 1px solid #21262d; padding: 0 20px; }}
-  .hub-inner {{ display: flex; align-items: center; height: 44px; gap: 0; }}
-  .hub-brand {{ font-size: 14px; font-weight: 700; color: #e6edf3; white-space: nowrap; margin-right: 20px; flex-shrink: 0; }}
-  .hub-links {{ display: flex; height: 100%; }}
-  .hub-link {{ display: flex; align-items: center; padding: 0 14px; font-size: 12px; color: #8b949e; text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; transition: color 0.12s; }}
-  .hub-link:hover {{ color: #e6edf3; }}
-  .hub-link.active {{ color: #e6edf3; border-bottom-color: #58a6ff; cursor: default; }}
-  .hub-tiles {{ display: flex; gap: 6px; margin-left: auto; }}
-  .hub-tile {{ background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 3px 12px; text-align: center; min-width: 72px; }}
-  .hub-tile-num {{ font-size: 14px; font-weight: 700; color: #58a6ff; display: block; line-height: 1.5; }}
-  .hub-tile-lbl {{ font-size: 9px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.5px; display: block; }}
+  {ORG_CSS}
 </style>
 </head>
 <body>
 
-<div id="hub-nav">
-  <div class="hub-inner">
-    <span class="hub-brand">🗂 Insights Hub</span>
-    <div class="hub-links">
-      <span class="hub-link active">Insights</span>
-      <a class="hub-link" href="/plans" id="hl-plans">Plans</a>
-      <a class="hub-link" href="/contributions" id="hl-contributions">Contributions</a>
-      <a class="hub-link" href="/ai-usage" id="hl-ai-usage">AI Usage</a>
-    </div>
-    <div class="hub-tiles">
-      <div class="hub-tile">
-        <span class="hub-tile-num">{active_plan_count}</span>
-        <span class="hub-tile-lbl">active plans</span>
-      </div>
-      <div class="hub-tile">
-        <span class="hub-tile-num">{_brag_short}</span>
-        <span class="hub-tile-lbl">last brag</span>
-      </div>
-      <div class="hub-tile">
-        <span class="hub-tile-num">{ai_sessions_month}</span>
-        <span class="hub-tile-lbl">AI / 30d</span>
-      </div>
-      <div class="hub-tile">
-        <span class="hub-tile-num">{_days_label}</span>
-        <span class="hub-tile-lbl">since commit</span>
-      </div>
-    </div>
-  </div>
-</div>
+{_nav_html}
 
 <div id="topbar">
   <div id="topbar-row1">
-    <h1>🗂 Personal Work Board</h1>
     <input type="text" id="search-global" placeholder="Search everything…" oninput="rerender()">
     <div id="gen-time">Generated {generated_at}</div>
   </div>
-  <div class="facet-row">
-    <span class="facet-label">Period</span>
+</div>
+
+<div id="filter-bars" class="filter-bars">
+  <div class="fbar">
+    <span class="fbar-label">Period</span>
     {period_chips}
-    <div class="facet-sep"></div>
-    <span class="facet-label">Status</span>
-    <span class="chip active" data-facet="status" data-val="all"    onclick="toggleChip(this)" title="All statuses">All</span>
-    <span class="chip"        data-facet="status" data-val="active"  onclick="toggleChip(this)" title="Active">🟢 Active</span>
-    <span class="chip"        data-facet="status" data-val="paused"  onclick="toggleChip(this)" title="Paused">🟡 Paused</span>
-    <span class="chip"        data-facet="status" data-val="backlog" onclick="toggleChip(this)" title="Backlog">🔵 Backlog</span>
-    <span class="chip"        data-facet="status" data-val="done"    onclick="toggleChip(this)" title="Done">✅ Done</span>
-    <div class="facet-sep"></div>
-    <span class="facet-label">Project</span>
+  </div>
+  <div class="fbar">
+    <span class="fbar-label">Status</span>
+    <span class="chip active" data-facet="status" data-val="all"    onclick="toggleChip(this)" title="Show plans of all statuses">All</span>
+    <span class="chip"        data-facet="status" data-val="active"  onclick="toggleChip(this)" title="🟢 Active — currently being worked on">🟢 Active</span>
+    <span class="chip"        data-facet="status" data-val="paused"  onclick="toggleChip(this)" title="🟡 Paused — on hold, not currently active">🟡 Paused</span>
+    <span class="chip"        data-facet="status" data-val="backlog" onclick="toggleChip(this)" title="🔵 Backlog — queued, not yet started">🔵 Backlog</span>
+    <span class="chip"        data-facet="status" data-val="done"    onclick="toggleChip(this)" title="✅ Done — completed plans">✅ Done</span>
+  </div>
+  <div class="fbar">
+    <span class="fbar-label">Project</span>
     {project_chips}
   </div>
-  <div class="facet-row">
-    <span class="facet-label">Type</span>
+  <div class="fbar">
+    <span class="fbar-label">Type</span>
     {plantype_chips}
   </div>
 </div>
@@ -574,6 +548,7 @@ def build_work_board_html(
 
 <script>
 const DATA = {data_json};
+{ORG_JS}
 
 // ── Filter state ──────────────────────────────────────────────────────────
 const sel = {{ status: new Set(), project: new Set(), plantype: new Set(), period: new Set() }};
@@ -629,6 +604,7 @@ const sClass = {{active:'s-active',paused:'s-paused',done:'s-done',backlog:'s-ba
 
 function matchesPlan(p) {{
   const q = (document.getElementById('search-global').value||'').toLowerCase();
+  if (!matchesDomain(p.domain)) return false;
   if (sel.status.size  && !sel.status.has(p.status))   return false;
   if (sel.project.size && !sel.project.has(p.project))  return false;
   if (sel.plantype.size&& !sel.plantype.has(p.plantype)) return false;
@@ -799,16 +775,16 @@ function rerender() {{
 }}
 
 window.addEventListener('DOMContentLoaded', () => {{
-  // Disable nav links when not served via localhost
   const SERVER_MODE = window.location.protocol === 'http:' && window.location.hostname === 'localhost';
   if (!SERVER_MODE) {{
     document.querySelectorAll('.hub-link[href]').forEach(el => {{
       el.title = 'Run: noteplan-sweep serve --open';
       el.removeAttribute('href');
-      el.style.opacity = '0.35';
+      el.style.opacity = '0.45';
       el.style.cursor = 'default';
     }});
   }}
+  _applyOrg();
   rerender();
 }});
 </script>
