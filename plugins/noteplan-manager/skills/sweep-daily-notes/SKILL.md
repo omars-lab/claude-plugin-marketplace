@@ -1237,6 +1237,28 @@ After the integrity check passes, review ALL accumulated `# Unsorted` content in
 
 This phase runs whenever there are any Unsorted items in either target note — not only when new plans were created.
 
+### Categorized Unsorted sub-sections
+
+After all individual block routing is complete, **restructure the remaining Unsorted content** into categorized sub-sections. This makes the Unsorted section scannable rather than a flat dump.
+
+**Standard categories** (use only the ones that have content):
+
+| Category | Emoji | What goes here |
+|---|---|---|
+| References & Reading | `## 📋 References & Reading` | URLs, articles, tools to read, learning resources |
+| Comms | `## 💬 Comms` | People to reply to, follow-ups, messages to send |
+| Family & Events | `## 👨‍👩‍👧‍👦 Family & Events` | Family tasks, events, school, social |
+| Home & Admin | `## 🏠 Home & Admin` | Home repairs, bills, accounts, admin tasks |
+| Work Quick Tasks | `## 💼 Work Quick Tasks` | Small work items that don't fit a plan |
+| Ideas | `## 💡 Ideas` | Raw ideas, brainstorms, things to explore |
+
+**Rules:**
+- Only create categories that have ≥1 item — don't add empty sections
+- Items that were routed to plans or deleted are NOT included
+- Items the user chose to "Keep in Unsorted" are categorized
+- Present the restructured Unsorted to the user for confirmation before writing
+- If all items were routed/deleted and nothing remains, remove the `# Unsorted` header entirely
+
 ---
 
 ## Phase 8: Final Commit + Push
@@ -1435,6 +1457,9 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Voice note detection | Lines >200 chars with <3 sentence boundaries, `￼` characters, phonetic misspellings, filler phrases, or run-on connectors are classified as `🎤 Voice note`. Requires 2+ signals. |
 | Voice note processing | Voice notes are cleaned before routing: break into sentences, fix phonetic→technical errors (JSON, byte, base64, Claude), strip filler, structure into tasks/bullets. Present before/after via AskUserQuestion. User confirms cleaned or raw version. |
 | Voice note is the one content edit exception | Voice note cleaning is the only case where content is modified during sweep. The raw transcription is preserved in the breadcrumb table Summary column for traceability. User must explicitly confirm the transformation. |
+| Categorized Unsorted sub-sections | After Phase 7b routing, restructure remaining Unsorted items into categorized sub-sections (📋 References, 💬 Comms, 👨‍👩‍👧‍👦 Family, 🏠 Home, 💼 Work, 💡 Ideas). Only create categories with ≥1 item. Present restructured layout for confirmation. |
+| Self-healing after sweep | After completing a sweep, if gaps/improvements were identified, offer to update the skill source at `~/workspace/oeid-claude-plugin-marketplace/`. Never edit cache files. Workflow: edit SKILL.md → bump version → git push → `make update`. Do not self-heal mid-sweep. |
+| Skill source is the git repo | The authoritative skill source is `~/workspace/oeid-claude-plugin-marketplace/plugins/noteplan-manager/skills/sweep-daily-notes/SKILL.md`. The cache at `~/.claude/plugins/cache/` is read-only and overwritten on reinstall. |
 
 ---
 
@@ -1445,3 +1470,87 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 - Line-level Python diff validation before final commit
 - Offer rollback to pre-sweep snapshot if integrity check fails
 - Use task tracking for full auditability
+
+---
+
+## Self-Healing: Updating This Skill
+
+This skill lives in a git-managed plugin marketplace. When the skill encounters a gap, bug, or feature request during a sweep, it can update itself.
+
+**Source location** (the ONLY place to edit):
+```bash
+PLUGIN_REPO="$HOME/workspace/oeid-claude-plugin-marketplace"
+SKILL_PATH="$PLUGIN_REPO/plugins/noteplan-manager/skills/sweep-daily-notes/SKILL.md"
+VERSION_PATH="$PLUGIN_REPO/plugins/noteplan-manager/.claude-plugin/plugin.json"
+```
+
+**DO NOT edit files under `~/.claude/plugins/cache/`** — cache files are overwritten on reinstall.
+
+### When to self-heal
+
+After completing a sweep, if the assistant identified:
+- A classification gap (section type not handled)
+- A routing UI improvement (missing option, better defaults)
+- A new rule discovered during user interaction
+- A false positive in the integrity check
+- A new domain/category for Unsorted sub-sections
+
+...then offer to update the skill:
+
+```javascript
+AskUserQuestion({
+  questions: [{
+    question: `During this sweep, I identified ${N} potential skill improvements:\n\n${improvements.map(i => `- ${i}`).join('\n')}\n\nShould I update the sweep skill?`,
+    header: "Self-heal",
+    options: [
+      { label: "Update + reinstall", description: "Edit SKILL.md, bump version, push, reinstall" },
+      { label: "Skip for now", description: "Note improvements but don't modify the skill" }
+    ],
+    multiSelect: false
+  }]
+})
+```
+
+### Self-heal workflow
+
+1. **Edit** the source SKILL.md at `$SKILL_PATH` (never the cache)
+2. **Bump the version** in `$VERSION_PATH` (patch for fixes, minor for new features):
+   ```bash
+   cd "$PLUGIN_REPO"
+   # Read current version, increment appropriately
+   python3 -c "
+   import json
+   with open('plugins/noteplan-manager/.claude-plugin/plugin.json') as f:
+       data = json.load(f)
+   v = data['version'].split('.')
+   v[1] = str(int(v[1]) + 1)  # minor bump
+   v[2] = '0'
+   data['version'] = '.'.join(v)
+   with open('plugins/noteplan-manager/.claude-plugin/plugin.json', 'w') as f:
+       json.dump(data, f, indent=2, ensure_ascii=False)
+   print(f'Bumped to {data[\"version\"]}')"
+   ```
+3. **Commit and push** the plugin repo:
+   ```bash
+   cd "$PLUGIN_REPO"
+   git add plugins/noteplan-manager/
+   git commit -m "feat(noteplan-manager): <describe change>"
+   git push
+   ```
+4. **Reinstall** using `make update`:
+   ```bash
+   cd "$PLUGIN_REPO"
+   make update
+   ```
+5. **Verify** the new version is installed:
+   ```bash
+   ls ~/.claude/plugins/cache/oeid-claude-plugins/noteplan-manager/
+   ```
+6. Report: "Skill updated to vX.Y.Z. Restart Claude Code to apply."
+
+### What NOT to self-heal
+
+- Do not modify the skill mid-sweep — finish the sweep first, then update
+- Do not change routing logic without user confirmation
+- Do not remove rules — only add or refine
+- Do not update if the user says "Skip for now"
