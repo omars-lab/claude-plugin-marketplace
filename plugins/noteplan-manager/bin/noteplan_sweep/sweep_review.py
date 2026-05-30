@@ -72,21 +72,33 @@ def _latest_run(sweeps: Path, date_str: str | None = None) -> tuple[str | None, 
 
 def cmd_sweep_commit(args):
     root = _np_root()
-    r = _git(["status", "--porcelain"], cwd=root)
+    # Use -z for NUL-terminated output: paths are unquoted (no octal escaping)
+    r = subprocess.run(
+        ["git", "status", "--porcelain", "-z"],
+        capture_output=True, timeout=30, cwd=str(root)
+    )
     if r.returncode != 0:
-        utils.err(f"git status failed: {r.stderr.strip()}")
+        utils.err(f"git status failed: {r.stderr.decode(errors='replace').strip()}")
         sys.exit(utils.EXIT_VALIDATION_FAILURE)
 
     modified_md = []
     untracked_md = []
-    for line in r.stdout.splitlines():
-        if len(line) < 4:
+    # -z output: each entry is "XY PATH\0" (renames: "XY FROM\0TO\0")
+    entries = r.stdout.decode("utf-8", errors="replace").split("\0")
+    i = 0
+    while i < len(entries):
+        entry = entries[i]
+        i += 1
+        if len(entry) < 4:
             continue
-        xy = line[:2]
-        path_str = line[3:].strip().strip('"')
+        xy = entry[:2]
+        path_str = entry[3:]
+        # Renames have a second NUL-terminated path (TO) already consumed above
+        if xy[0] in ("R", "C"):
+            i += 1  # skip the "from" path
         if not path_str.endswith(".md"):
             continue
-        if "??" in xy:
+        if xy == "??":
             untracked_md.append(path_str)
         else:
             modified_md.append(path_str)
@@ -144,10 +156,14 @@ def cmd_sweep_commit(args):
             utils.log(f"  {line}")
         return
 
-    # Stage all modified + untracked .md files
-    stage_result = _git(["add", "--"] + all_md, cwd=root)
+    # Stage via --pathspec-from-file with NUL separators to handle emoji/space paths
+    nul_paths = "\0".join(all_md).encode("utf-8")
+    stage_result = subprocess.run(
+        ["git", "add", "--pathspec-from-file=-", "--pathspec-file-nul"],
+        input=nul_paths, capture_output=True, timeout=30, cwd=str(root)
+    )
     if stage_result.returncode != 0:
-        utils.err(f"git add failed: {stage_result.stderr.strip()}")
+        utils.err(f"git add failed: {stage_result.stderr.decode(errors='replace').strip()}")
         sys.exit(utils.EXIT_VALIDATION_FAILURE)
 
     commit_result = _git(["commit", "-m", commit_msg], cwd=root)
