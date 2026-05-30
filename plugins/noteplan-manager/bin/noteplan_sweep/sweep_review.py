@@ -3266,6 +3266,63 @@ def cmd_sweep_review_quality(args) -> None:
               f"✓{t.get('move',0)} ✗{t.get('lost',0)} ⚡{t.get('mixed',0)} +{t.get('anomaly',0)} "
               f"open_issues={len(run_open)}")
 
+    # --show-fp-patterns: break down rows by false-positive pattern category
+    if getattr(args, 'show_fp_patterns', False):
+        # Tag → pattern label + description
+        FP_PATTERNS = {
+            'new_file':       ('B-14 new_file',       'Newly created dest — additions are boilerplate'),
+            'b15_redirect':   ('B-15 redirect_stub',  'Dest is a migration stub; content reached linked plan'),
+            'disk_confirmed': ('B-16 retroactive',    'Content swept in prior run; confirmed on disk'),
+            'dest_not_in_diff': ('V-47 scope_miss',   'Section header not in diff hunk; full-file fallback'),
+            'src_not_in_diff':  ('src_missing',       'Source calendar not in diff for this sweep'),
+            'needs_split':    ('mixed_row',            'Row has both moved and lost — should be split'),
+        }
+        # Collect: tag → list of (run_id, source, section, dest)
+        pattern_rows: dict = {k: [] for k in FP_PATTERNS}
+        cross_row_count = 0
+        for e in entries:
+            rid = e['run_id']
+            for i in e.get('issues', []):
+                tags = set(i.get('issue_tags', []))
+                matched = False
+                for tag, (label, _) in FP_PATTERNS.items():
+                    if tag in tags:
+                        pattern_rows[tag].append((rid, i['source'], i['section']))
+                        matched = True
+                # Cross-row: anomaly rows where B-13 subtracted all additions
+                if not matched and i['type'] == 'anomaly':
+                    cross_row_count += 1
+
+        print(f"\n{sep}")
+        print("  False-positive pattern breakdown (--show-fp-patterns):")
+        any_pattern = False
+        for tag, (label, desc) in FP_PATTERNS.items():
+            rows = pattern_rows[tag]
+            if not rows:
+                continue
+            any_pattern = True
+            # Count by run
+            run_hits = Counter(r for r, _, _ in rows)
+            top_runs = ', '.join(f"{r}×{n}" for r, n in run_hits.most_common(3))
+            print(f"\n    [{label}]  {len(rows)} row(s)  —  {desc}")
+            print(f"    Runs: {top_runs}")
+            for _, src, sec in rows[:3]:
+                print(f"      {src.split('/')[-1]}  §  {sec[:60]}")
+            if len(rows) > 3:
+                print(f"      … {len(rows)-3} more")
+        if cross_row_count:
+            print(f"\n    [B-13 cross_row]  {cross_row_count} row(s)  —  Dest additions claimed by sibling rows")
+        if not any_pattern and not cross_row_count:
+            print("    No false-positive patterns found in log.")
+        # Dominant pattern
+        all_counts = {tag: len(rows) for tag, rows in pattern_rows.items() if rows}
+        if cross_row_count:
+            all_counts['B-13 cross_row'] = cross_row_count
+        if all_counts:
+            dominant = max(all_counts, key=all_counts.get)
+            label = FP_PATTERNS.get(dominant, (dominant,))[0] if dominant in FP_PATTERNS else dominant
+            print(f"\n    Dominant pattern: {label} ({all_counts[max(all_counts, key=all_counts.get)]} rows)")
+
     print(f"\n  To mark a row as resolved/intentional, run:")
     print(f"    noteplan-sweep sweep-review-resolve <run_id> <section>")
     print(f"  To remediate open issues:")

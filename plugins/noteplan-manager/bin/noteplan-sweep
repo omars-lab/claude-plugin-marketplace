@@ -427,6 +427,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", "-o", metavar="FILE", help="Write report to FILE instead of stdout")
 
     p = sub.add_parser("sweep-review-quality", help=COMMANDS[65][1])
+    p.add_argument("--show-fp-patterns", action="store_true",
+                   help="Break down by false-positive pattern (B-14/B-15/B-16/V-47/cross_row)")
 
     p = sub.add_parser("sweep-review-resolve", help=COMMANDS[66][1])
     p.add_argument("run_id", help="Run ID (e.g. 2026-04-21-01)")
