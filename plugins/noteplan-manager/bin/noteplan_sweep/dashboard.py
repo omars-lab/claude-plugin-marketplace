@@ -870,6 +870,19 @@ function rerender() {{
   renderIdeas();
   renderInbox();
   renderInitiatives();
+  _updateNavTiles();
+}}
+
+function _updateNavTiles() {{
+  const filtered = DATA.plans.filter(p => matchesDomain(p.domain));
+  const active   = filtered.filter(p => p.status === 'active').length;
+  const map = {{ 'Total Plans': filtered.length, 'Active': active }};
+  document.querySelectorAll('.hub-tile').forEach(tile => {{
+    const lbl = tile.querySelector('.hub-tile-lbl');
+    const num = tile.querySelector('.hub-tile-num');
+    if (lbl && num && map[lbl.textContent] !== undefined)
+      num.textContent = map[lbl.textContent].toLocaleString();
+  }});
 }}
 
 // ── Server mode (interactive write-back when served via noteplan-sweep serve) ──

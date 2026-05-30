@@ -569,7 +569,21 @@ const TAB_NAMES = ['heatmap','worklogs','shipped','repos'];
 
 function esc(s) {{ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
 
-function rerender() {{ renderHeatmap(); renderWorkLogs(); renderShipped(); renderRepos(); }}
+function rerender() {{ renderHeatmap(); renderWorkLogs(); renderShipped(); renderRepos(); _updateNavTiles(); }}
+
+function _updateNavTiles() {{
+  const repos = DATA.repos.filter(r => matchesDomain(r.domain));
+  const map = {{
+    'commits / yr': repos.reduce((s,r) => s + r.commit_count, 0),
+    'AI-assisted':  repos.reduce((s,r) => s + r.ai_commit_count, 0),
+  }};
+  document.querySelectorAll('.hub-tile').forEach(tile => {{
+    const lbl = tile.querySelector('.hub-tile-lbl');
+    const num = tile.querySelector('.hub-tile-num');
+    if (lbl && num && map[lbl.textContent] !== undefined)
+      num.textContent = map[lbl.textContent].toLocaleString();
+  }});
+}}
 
 function showTab(tab) {{
   document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', TAB_NAMES[i] === tab));

@@ -782,6 +782,17 @@ function renderAI() {{
 
 function rerender() {{
   renderPlans(); renderBrag(); renderObs(); renderGaps(); renderImpact(); renderTasks(); renderAI();
+  _updateNavTiles();
+}}
+
+function _updateNavTiles() {{
+  const active = DATA.plans.filter(p => matchesDomain(p.domain) && p.status === 'active').length;
+  document.querySelectorAll('.hub-tile').forEach(tile => {{
+    const lbl = tile.querySelector('.hub-tile-lbl');
+    const num = tile.querySelector('.hub-tile-num');
+    if (lbl && num && lbl.textContent === 'Active Plans')
+      num.textContent = active.toLocaleString();
+  }});
 }}
 
 function _refreshHubTiles(summary) {{
