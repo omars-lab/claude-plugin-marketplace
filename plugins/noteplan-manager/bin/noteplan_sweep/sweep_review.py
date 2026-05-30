@@ -617,6 +617,7 @@ const CHANGED_CALENDAR_FILES = {changed_cal_json};
 const DEST_FILE_LINES = {dest_file_lines_json};
 
 let allParsedFiles = [];
+let _allAddedEntries = null; // lazy: array of {{filename,n,b}} for all + lines — built once, reused across classifyRow calls
 const MODAL_ROWS = [];
 
 // ── xcallback links ────────────────────────────────────────────────────────
@@ -1102,14 +1103,67 @@ function classifyRow(idx) {{
   // Dest additions in non-anomaly rows are NOT classified as separate blocks.
   const _movedNormSet = new Set(validMoved.map(l => normLine(l)));
   const lostLines = countableRemoved.filter(l => !_movedNormSet.has(normLine(l)));
+
+  // V-R6 (badge layer): validate every reported-lost line against the full diff.
+  // Uses the same prefix/body matching as classifyDestLines so enriched lines
+  // (e.g. bare URL → [text](url) after link enrichment) are still found.
+  // Lazy-init _allAddedEntries once so 90-row background scans don't rebuild it each call.
+  let trulyLostLines = lostLines;
+  let misroutedCount = 0;
+  if (lostLines.length > 0 && allParsedFiles.length > 0) {{
+    if (!_allAddedEntries) {{
+      _allAddedEntries = [];
+      for (const f of allParsedFiles) {{
+        for (const hunk of f.hunks) {{
+          for (const r of hunk.right) {{
+            const n = normLine(r.c);
+            if (n.length > 2 && !isNoiseLine(r.c)) {{
+              _allAddedEntries.push({{ filename: f.filename, n, b: bodyText(n) }});
+            }}
+          }}
+        }}
+      }}
+    }}
+    const _destNorm = normDest(destRaw);
+    trulyLostLines = lostLines.filter(ll => {{
+      const nll = normLine(ll);
+      const bll = bodyText(nll);
+      if (nll.length < 6) return true; // too short to match reliably — keep as lost
+      for (const e of _allAddedEntries) {{
+        if (normDest(e.filename) === _destNorm) continue; // skip same dest
+        // Same three-tier match as classifyDestLines
+        if (nll === e.n) {{ misroutedCount++; return false; }}
+        const pLen = Math.min(50, Math.min(nll.length, e.n.length));
+        if (pLen >= 10 && (nll.startsWith(e.n.slice(0, pLen)) || e.n.startsWith(nll.slice(0, pLen)))) {{
+          misroutedCount++; return false;
+        }}
+        if (bll.length >= 8 && e.b.length >= 8) {{
+          const bLen = Math.min(40, Math.min(bll.length, e.b.length));
+          if (bLen >= 8 && (bll.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(bll.slice(0, bLen)))) {{
+            misroutedCount++; return false;
+          }}
+        }}
+      }}
+      return true; // not found in any other diff file — truly lost
+    }});
+  }}
+  // Re-derive type: if all lost lines were actually misrouted, promote to move.
+  if (misroutedCount > 0 && trulyLostLines.length === 0 && type === 'lost') {{
+    type = 'move';
+    console.debug('V-R6: promoted row', idx, 'from lost→move —', misroutedCount, 'misrouted lines found in other dest files');
+  }}
+  const adjustedLostCount = trulyLostLines.length;
+
   const blocks = [];
   if (type === 'anomaly') {{
     if (trueNewCount > 0) blocks.push({{ type: 'untraced', count: trueNewCount }});
   }} else if (type !== 'empty') {{
     if (movedCount > 0) blocks.push({{ type: 'move', lines: validMoved, count: movedCount }});
-    if (lostLines.length > 0) blocks.push({{ type: 'lost', lines: lostLines, count: lostLines.length }});
+    if (trulyLostLines.length > 0) blocks.push({{ type: 'lost', lines: trulyLostLines, count: trulyLostLines.length }});
+    if (misroutedCount > 0) blocks.push({{ type: 'misrouted', count: misroutedCount }});
   }}
-  const result = {{ type, movedCount, lostCount, newCount: trueNewCount, emptyReason,
+  const result = {{ type, movedCount, lostCount: adjustedLostCount, newCount: trueNewCount,
+                   misroutedCount, emptyReason,
                    v47Fallback: destSectionResult.v47Fallback && !b15Applied, blocks }};
   _rowClassifications.set(idx, result);
   return result;
@@ -1667,6 +1721,48 @@ function showSectionModal(idx, focusLost = false) {{
     const matchedSrcSet = new Set(_validMovedForLost.map(dl => movedPairs.get(dl)).filter(Boolean));
     const lostLines = removedLines.filter(l => !matchedSrcSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l));
     const isMixed = lostLines.length > 0 && moved.length > 0;
+    // V-R6 modal banner: uses same prefix/body matching as classifyRow so enriched lines are found.
+    // Reuses _allAddedEntries if already built by classifyRow (lazy-shared cache).
+    let misrouteHtml = '';
+    if (lostLines.length > 0 && allParsedFiles.length > 0) {{
+      if (!_allAddedEntries) {{
+        _allAddedEntries = [];
+        for (const f of allParsedFiles) {{
+          for (const hunk of f.hunks) {{
+            for (const r of hunk.right) {{
+              const n = normLine(r.c);
+              if (n.length > 2 && !isNoiseLine(r.c)) {{
+                _allAddedEntries.push({{ filename: f.filename, n, b: bodyText(n) }});
+              }}
+            }}
+          }}
+        }}
+      }}
+      const _destNorm = normDest(destRaw);
+      const _misrouted = new Map(); // filename → count
+      for (const ll of lostLines) {{
+        const nll = normLine(ll);
+        const bll = bodyText(nll);
+        if (nll.length < 6) continue;
+        for (const e of _allAddedEntries) {{
+          if (normDest(e.filename) === _destNorm) continue;
+          let found = (nll === e.n);
+          if (!found) {{ const pLen = Math.min(50, Math.min(nll.length, e.n.length)); found = pLen >= 10 && (nll.startsWith(e.n.slice(0, pLen)) || e.n.startsWith(nll.slice(0, pLen))); }}
+          if (!found && bll.length >= 8 && e.b.length >= 8) {{ const bLen = Math.min(40, Math.min(bll.length, e.b.length)); found = bLen >= 8 && (bll.startsWith(e.b.slice(0, bLen)) || e.b.startsWith(bll.slice(0, bLen))); }}
+          if (found) {{ _misrouted.set(e.filename, (_misrouted.get(e.filename) || 0) + 1); break; }}
+        }}
+      }}
+      if (_misrouted.size > 0) {{
+        const _items = [..._misrouted.entries()].map(([fname, cnt]) => {{
+          const short = fname.split('/').pop();
+          return `<div style="color:#e3b341;font-family:monospace;font-size:11px;margin-top:3px">${{esc(short)}} — ${{cnt}} line${{cnt!==1?'s':''}} found</div>`;
+        }}).join('');
+        misrouteHtml = `<div class="v-r6-banner" style="margin:4px 0 8px;padding:6px 8px;background:#2d1f00;border-left:2px solid #e3b341;border-radius:3px">` +
+          `<div style="color:#e3b341;font-size:11px;font-weight:600">⚠ Breadcrumb destination mismatch</div>` +
+          `<div style="color:#8b949e;font-size:10px;margin-top:2px">These lost lines were found in a different destination. The sweep moved them elsewhere but the breadcrumb still points to <strong>${{esc(_destNorm)}}</strong>.</div>` +
+          _items + `</div>`;
+      }}
+    }}
     let lostHtml = '';
     if (lostLines.length > 0) {{
       const lostLineHtml = lostLines.map(l => {{
@@ -1679,9 +1775,10 @@ function showSectionModal(idx, focusLost = false) {{
         lostHtml = `<div style="margin-top:10px;border-top:2px solid #e3b341;padding-top:6px">` +
           `<div style="color:#e3b341;font-size:11px;font-weight:600;padding:2px 0 6px">` +
           `⚡ ✗ Lost (${{lostLines.length}} line${{lostLines.length>1?'s':''}}) — not found at destination — sweep should have split this section</div>` +
-          lostLineHtml + `</div>`;
+          misrouteHtml + lostLineHtml + `</div>`;
       }} else {{
         lostHtml = `<div style="margin-top:8px;border-top:1px solid #30363d;padding-top:6px">` +
+          misrouteHtml +
           `<div style="color:#f85149;font-size:10px;padding:2px 0 4px">✗ ${{lostLines.length}} line${{lostLines.length>1?'s':''}} not found at destination</div>` +
           lostLineHtml + `</div>`;
       }}
@@ -1708,7 +1805,7 @@ function showSectionModal(idx, focusLost = false) {{
         const lostFocusHtml = lostLines.length > 0
           ? lostLineHtmlClean
           : '<div class="modal-empty" style="color:#6e7681">No unmatched lines found — these lines may already be in the destination file from a prior sweep.</div>';
-        srcBody = `${{srcTabBar}}<div class="diff-lines">${{lostFocusHtml}}</div>`;
+        srcBody = `${{srcTabBar}}<div class="diff-lines">${{misrouteHtml}}${{lostFocusHtml}}</div>`;
       }}
     }} else {{
       srcBody = `${{srcTabBar}}<div class="diff-lines">${{movedHeader}}${{srcGrouped}}${{lostHtml}}</div>`;
@@ -2250,6 +2347,7 @@ window.addEventListener('DOMContentLoaded', () => {{
   renderNarrative();
 
   allParsedFiles = parseDiff(DIFF_TEXT);
+  _allAddedEntries = null; // reset lazy cache whenever diff is (re)parsed
   renderDiffFiles(allParsedFiles);
 
   // Background scan: classify all rows in idle time, 10 per frame
@@ -3084,14 +3182,16 @@ def cmd_sweep_review_audit(args):
                         truly_lost.append(l)
                 lost = truly_lost
 
-        mixed = bool(moved and lost)
-        row_type = 'move' if (moved and not lost) else 'mixed' if mixed else 'lost'
+        row_type = 'move' if (moved and not lost) else 'lost'
         if not lost and not moved and already_present: row_type = 'move'  # all present on disk
-        if mixed: issues.append('needs_split')
         if already_present: issues.append(f'{len(already_present)} line(s) already in dest file')
 
-        return {'type': row_type, 'issues': issues, 'moved': moved, 'lost': lost,
-                'already_present': already_present, 'new': []}
+        blocks = []
+        if moved: blocks.append({'type': 'move', 'lines': moved, 'count': len(moved)})
+        if lost:  blocks.append({'type': 'lost', 'lines': lost,  'count': len(lost)})
+
+        return {'type': row_type, 'issues': issues, 'blocks': blocks,
+                'moved': moved, 'lost': lost, 'already_present': already_present, 'new': []}
 
     # Run audit
     sep = lambda: '─' * 60
@@ -3100,7 +3200,7 @@ def cmd_sweep_review_audit(args):
     isSep = lambda r: re.match(r'^-+$', (r.get('section') or '').strip())
     rows = [r for r in (narrative or []) if not isSep(r)]
 
-    counts: dict = {'move': 0, 'lost': 0, 'mixed': 0, 'anomaly': 0, 'empty': 0}
+    counts: dict = {'move': 0, 'lost': 0, 'anomaly': 0, 'empty': 0}
     problems = []
 
     for row in rows:
@@ -3108,11 +3208,11 @@ def cmd_sweep_review_audit(args):
         t = result['type']
         counts[t] = counts.get(t, 0) + 1
 
-        if result['issues'] or result['lost'] or result['new'] or result['type'] == 'mixed' or result.get('already_present'):
+        if result['issues'] or result['lost'] or result['new'] or result.get('already_present'):
             problems.append((row, result))
 
     total = sum(counts.values())
-    lines_out.append(f"  {total} rows — ✓ {counts.get('move',0)} moved  ✗ {counts.get('lost',0)} lost  ⚡ {counts.get('mixed',0)} mixed  + {counts.get('anomaly',0)} anomaly  · {counts.get('empty',0)} empty")
+    lines_out.append(f"  {total} rows — ✓ {counts.get('move',0)} moved  ✗ {counts.get('lost',0)} lost  + {counts.get('anomaly',0)} anomaly  · {counts.get('empty',0)} empty")
     lines_out.append(sep())
 
     if not problems:
@@ -3122,11 +3222,15 @@ def cmd_sweep_review_audit(args):
             src  = row.get('source_file', '?').split('/')[-1]
             dest = re.sub(r'\[\[([^\]]+)\]\]', r'\1', row.get('destination', '?')).strip()
             sect = row.get('section', '?')
-            type_label = '⚡ MIXED' if result['type'] == 'mixed' else result['type'].upper()
+            blocks = result.get('blocks', [])
+            if len(blocks) > 1:
+                type_label = '⚡ ' + ' '.join(('→' if b['type']=='move' else '✗') + str(b['count']) for b in blocks)
+            else:
+                type_label = result['type'].upper()
             lines_out.append(f"\n  {type_label}  {sect}  →  {dest}  [{src}]")
             for issue in result['issues']:
                 lines_out.append(f"    ⚠  {issue.replace('_', ' ')}")
-            if result['type'] == 'mixed':
+            if result['moved'] and result['lost']:
                 for l in result['moved'][:3]:
                     lines_out.append(f"    →  {l[:80]}")
                 if len(result['moved']) > 3:
@@ -3255,7 +3359,7 @@ def cmd_sweep_review_quality(args) -> None:
     # Top recurring anomaly destinations
     anomaly_dests  = Counter(i['dest'] for i in open_issues if i['type'] == 'anomaly')
     # Top recurring lost sections
-    lost_sections  = Counter(i['section'] for i in open_issues if i['type'] in ('lost', 'mixed'))
+    lost_sections  = Counter(i['section'] for i in open_issues if i['type'] == 'lost')
     # Sections where dest_not_in_diff — likely sectionHeaderMatches false match
     fp_sections    = Counter(
         i['section'] for i in open_issues if 'dest_not_in_diff' in i.get('issue_tags', [])
@@ -3307,7 +3411,7 @@ def cmd_sweep_review_quality(args) -> None:
         run_open = [i for i in e.get('issues', [])
                     if (i['source'], i['section'], i['dest']) not in resolutions]
         print(f"    {e['run_id']}  total={e['total']}  "
-              f"✓{t.get('move',0)} ✗{t.get('lost',0)} ⚡{t.get('mixed',0)} +{t.get('anomaly',0)} "
+              f"✓{t.get('move',0)} ✗{t.get('lost',0)} +{t.get('anomaly',0)} "
               f"open_issues={len(run_open)}")
 
     # --show-fp-patterns: break down rows by false-positive pattern category
@@ -3319,7 +3423,6 @@ def cmd_sweep_review_quality(args) -> None:
             'disk_confirmed': ('B-16 retroactive',    'Content swept in prior run; confirmed on disk'),
             'dest_not_in_diff': ('V-47 scope_miss',   'Section header not in diff hunk; full-file fallback'),
             'src_not_in_diff':  ('src_missing',       'Source calendar not in diff for this sweep'),
-            'needs_split':    ('mixed_row',            'Row has both moved and lost — should be split'),
         }
         # Collect: tag → list of (run_id, source, section, dest)
         pattern_rows: dict = {k: [] for k in FP_PATTERNS}
