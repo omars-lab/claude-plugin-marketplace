@@ -665,15 +665,27 @@ function extractSectionLines(filename, sectionName, lineType) {{
 
 // Classify destination added lines as "moved" (matches source) or "new" (no match)
 function classifyDestLines(removedLines, addedLines) {{
-  const norm = s => s.replace(/>\\d{{4}}-\\d{{2}}-\\d{{2}}/g, '').replace(/\\s+/g, ' ').trim().toLowerCase();
+  const norm = s => s.replace(/>\\d{{4}}-\\d{{2}}-\\d{{2}}/g, '').replace(/#\\w+/g, '').replace(/\\s+/g, ' ').trim().toLowerCase();
+  const body = s => s.replace(/^[-*]\\s*\\[[x ]\\]\\s*/i, '').trim();  // strip task checkbox prefix
   const removedNorms = removedLines.map(norm).filter(s => s.length > 3);
+  const removedBodies = removedNorms.map(body);
   const moved = [], newContent = [];
   for (const line of addedLines) {{
     const n = norm(line);
     if (!n || n.length <= 2) {{ moved.push(line); continue; }}
-    const isMatch = removedNorms.some(r => r && (n === r ||
-      n.includes(r.slice(0, Math.min(r.length, 28))) ||
-      r.includes(n.slice(0, Math.min(n.length, 28)))));
+    const nb = body(n);
+    const isMatch = removedNorms.some((r, i) => {{
+      if (!r) return false;
+      if (n === r) return true;
+      // Prefix match using startsWith (more precise than includes)
+      const pLen = Math.min(50, Math.min(n.length, r.length));
+      if (pLen >= 10 && (n.startsWith(r.slice(0, pLen)) || r.startsWith(n.slice(0, pLen)))) return true;
+      // Body-text match: compare after stripping "- [ ] " prefix
+      const rb = removedBodies[i];
+      if (!rb || rb.length < 8 || nb.length < 8) return false;
+      const bLen = Math.min(40, Math.min(nb.length, rb.length));
+      return nb.startsWith(rb.slice(0, bLen)) || rb.startsWith(nb.slice(0, bLen));
+    }});
     (isMatch ? moved : newContent).push(line);
   }}
   return {{ moved, newContent }};
