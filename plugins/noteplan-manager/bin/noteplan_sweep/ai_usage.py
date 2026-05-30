@@ -112,9 +112,55 @@ def _read_first_lines(path: Path, n: int = 10) -> list[dict]:
     return results
 
 
+_AUTOMATED_FIRST_TYPES = {'queue-operation', 'remote-trigger', 'scheduled-trigger'}
+_MIN_HUMAN_PROMPT_LEN = 20  # user messages shorter than this are likely scripted
+
+
+def _is_automated_session(messages: list[dict]) -> bool:
+    """Return True if the session was initiated programmatically, not by a human.
+
+    Signals:
+    1. First substantive message is queue-operation / remote-trigger / scheduled-trigger
+    2. No user message with meaningful natural-language text (>20 chars, non-template)
+    3. All user messages are very short or identical (batch/scripted pattern)
+    """
+    first_type = messages[0].get('type', '') if messages else ''
+    if first_type in _AUTOMATED_FIRST_TYPES:
+        return True
+
+    # Check user messages for human authorship
+    user_texts = []
+    for msg in messages:
+        if msg.get('type') == 'user':
+            content = msg.get('message', {}).get('content', '')
+            if isinstance(content, str):
+                user_texts.append(content.strip())
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get('type') == 'text':
+                        user_texts.append(block.get('text', '').strip())
+
+    if not user_texts:
+        # No user messages at all → automated
+        return True
+
+    # If all user messages are very short, likely scripted
+    long_messages = [t for t in user_texts if len(t) >= _MIN_HUMAN_PROMPT_LEN]
+    if not long_messages:
+        return True
+
+    # Check for highly repetitive template patterns (same first 30 chars across messages)
+    if len(user_texts) >= 3:
+        prefixes = {t[:30] for t in user_texts if t}
+        if len(prefixes) == 1:
+            return True
+
+    return False
+
+
 def _extract_session_meta(jsonl_path: Path) -> dict | None:
     """Extract session metadata from a transcript JSONL using only the first few lines."""
-    messages = _read_first_lines(jsonl_path, n=15)
+    messages = _read_first_lines(jsonl_path, n=20)
     if not messages:
         return None
 
@@ -138,6 +184,8 @@ def _extract_session_meta(jsonl_path: Path) -> dict | None:
         mtime = datetime.fromtimestamp(jsonl_path.stat().st_mtime, tz=timezone.utc)
         first_date = mtime.strftime('%Y-%m-%d')
 
+    automated = _is_automated_session(messages)
+
     # File size as proxy for session complexity
     file_size = jsonl_path.stat().st_size
 
@@ -146,6 +194,7 @@ def _extract_session_meta(jsonl_path: Path) -> dict | None:
         'cwd': cwd or '',
         'date': first_date,
         'file_size': file_size,
+        'automated': automated,
         'transcript_path': str(jsonl_path),
     }
 
@@ -264,12 +313,16 @@ def cmd_ai_usage_mine(args):
 
     for s in sessions:
         lbl = s.get('project_label', 'unknown')
+        is_auto = s.get('automated', False)
         if lbl not in by_project:
             by_project[lbl] = {
                 'label': lbl,
                 'domain': s.get('domain', 'Other'),
                 'session_count': 0,
+                'interactive_count': 0,
+                'automated_count': 0,
                 'last_30_days': 0,
+                'last_30_days_interactive': 0,
                 'first_date': s.get('date', ''),
                 'last_date': s.get('date', ''),
                 'total_size_bytes': 0,
@@ -277,31 +330,54 @@ def cmd_ai_usage_mine(args):
         p = by_project[lbl]
         p['session_count'] += 1
         p['total_size_bytes'] += s.get('file_size', 0)
+        if is_auto:
+            p['automated_count'] += 1
+        else:
+            p['interactive_count'] += 1
         if s.get('date', '') > p['last_date']:
             p['last_date'] = s['date']
         if s.get('date', '') < p['first_date'] or not p['first_date']:
             p['first_date'] = s['date']
         if s.get('date', '') >= thirty_days_ago:
             p['last_30_days'] += 1
+            if not is_auto:
+                p['last_30_days_interactive'] += 1
 
     projects_list = sorted(by_project.values(), key=lambda x: -x['session_count'])
 
-    # Sessions per day (last 90 days)
+    # Sessions per day (last 90 days) — split automated vs interactive
     ninety_days_ago = (now - timedelta(days=90)).strftime('%Y-%m-%d')
     daily_counts: dict[str, int] = {}
+    daily_interactive: dict[str, int] = {}
     for s in sessions:
         d = s.get('date', '')
         if d >= ninety_days_ago:
             daily_counts[d] = daily_counts.get(d, 0) + 1
+            if not s.get('automated', False):
+                daily_interactive[d] = daily_interactive.get(d, 0) + 1
 
-    # Summary for Work Board tile
+    total_automated = sum(1 for s in sessions if s.get('automated', False))
+    total_interactive = len(sessions) - total_automated
+
     last_30 = sum(1 for s in sessions if s.get('date', '') >= thirty_days_ago)
-    top_project = projects_list[0]['label'] if projects_list else ''
+    last_30_interactive = sum(
+        1 for s in sessions
+        if s.get('date', '') >= thirty_days_ago and not s.get('automated', False)
+    )
+
+    # Top project by interactive sessions
+    interactive_projects = sorted(
+        projects_list, key=lambda x: -x.get('interactive_count', 0)
+    )
+    top_project = interactive_projects[0]['label'] if interactive_projects else ''
 
     summary = {
         'total_sessions': len(sessions),
+        'total_interactive': total_interactive,
+        'total_automated': total_automated,
         'total_projects': len(by_project),
         'last_30_days': last_30,
+        'last_30_days_interactive': last_30_interactive,
         'top_project': top_project,
         'total_files_written': 0,  # populated by --deep mode (AUD-B)
         'indexed_at': now.isoformat(),
@@ -312,6 +388,7 @@ def cmd_ai_usage_mine(args):
         'projects': projects_list,
         'sessions': sessions,
         'daily_counts': daily_counts,
+        'daily_interactive': daily_interactive,
         'generated_at': now.isoformat(),
     }
 
@@ -346,14 +423,19 @@ def cmd_ai_usage_generate(args):
     generated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     # Sort daily counts for chart
-    sorted_days = sorted(daily.items())
-    chart_labels = json.dumps([d for d, _ in sorted_days])
-    chart_data   = json.dumps([c for _, c in sorted_days])
+    sorted_days = sorted(daily.get('daily_counts', {}).items()) or sorted(daily.items()) if isinstance(daily, dict) else []
+    # Support both old format (flat dict) and new format with interactive split
+    daily_all = data.get('daily_counts', {})
+    daily_int = data.get('daily_interactive', {})
+    all_days = sorted(set(list(daily_all.keys()) + list(daily_int.keys())))
+    chart_labels   = json.dumps(all_days)
+    chart_data_all = json.dumps([daily_all.get(d, 0) for d in all_days])
+    chart_data_int = json.dumps([daily_int.get(d, 0) for d in all_days])
 
-    # Top 10 projects by session count
-    top_projects = projects[:10]
-    proj_labels = json.dumps([p['label'] for p in top_projects])
-    proj_counts = json.dumps([p['session_count'] for p in top_projects])
+    # Top 10 projects by interactive sessions
+    top_projects_int = sorted(projects, key=lambda p: -p.get('interactive_count', p.get('session_count', 0)))[:10]
+    proj_labels = json.dumps([p['label'] for p in top_projects_int])
+    proj_counts = json.dumps([p.get('interactive_count', p.get('session_count', 0)) for p in top_projects_int])
 
     data_json = json.dumps(data, indent=2, ensure_ascii=False)
 
@@ -410,6 +492,13 @@ def cmd_ai_usage_generate(args):
   /* Skill cards (Phase E placeholder) */
   .skill-ph {{ background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 40px; text-align: center; color: var(--muted); }}
   .skill-ph p {{ margin-top: 8px; font-size: 12px; }}
+
+  /* View toggle */
+  .view-btn {{ background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; font-size: 12px; color: var(--muted); cursor: pointer; }}
+  .view-btn.active {{ background: #1a1a2a; border-color: var(--accent); color: var(--accent); }}
+
+  /* Automated badge */
+  .auto-badge {{ display: inline-block; font-size: 10px; background: #2a1a1a; color: #f85149; border-radius: 3px; padding: 1px 5px; margin-left: 4px; }}
 </style>
 </head>
 <body>
@@ -427,19 +516,30 @@ def cmd_ai_usage_generate(args):
 <div id="content">
 
   <div class="pane active" id="pane-stats">
-    <div class="tile-grid">
-      <div class="tile"><div class="num">{summary.get('total_sessions', 0):,}</div><div class="lbl">Total Sessions</div></div>
-      <div class="tile"><div class="num">{summary.get('last_30_days', 0)}</div><div class="lbl">Last 30 Days</div></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <span style="font-size:12px;color:var(--muted)">View:</span>
+      <button class="view-btn active" id="btn-interactive" onclick="setView('interactive')">👤 My sessions ({summary.get('total_interactive', 0):,})</button>
+      <button class="view-btn" id="btn-all" onclick="setView('all')">All incl. automated ({summary.get('total_sessions', 0):,})</button>
+    </div>
+    <div class="tile-grid" id="tiles-interactive">
+      <div class="tile"><div class="num">{summary.get('total_interactive', 0):,}</div><div class="lbl">My Sessions (interactive)</div></div>
+      <div class="tile"><div class="num">{summary.get('last_30_days_interactive', 0)}</div><div class="lbl">Last 30 Days</div></div>
       <div class="tile"><div class="num">{summary.get('total_projects', 0)}</div><div class="lbl">Projects</div></div>
       <div class="tile"><div class="num" style="font-size:14px;padding-top:6px">{summary.get('top_project', '—')}</div><div class="lbl">Top Project</div></div>
     </div>
+    <div class="tile-grid" id="tiles-all" style="display:none">
+      <div class="tile"><div class="num">{summary.get('total_sessions', 0):,}</div><div class="lbl">All Sessions</div></div>
+      <div class="tile"><div class="num">{summary.get('total_interactive', 0):,}</div><div class="lbl">Interactive</div></div>
+      <div class="tile"><div class="num">{summary.get('total_automated', 0):,}</div><div class="lbl">Automated</div></div>
+      <div class="tile"><div class="num">{summary.get('last_30_days', 0)}</div><div class="lbl">Last 30 Days (all)</div></div>
+    </div>
     <div class="chart-row">
       <div class="chart-box">
-        <h3>Sessions per day — last 90 days</h3>
+        <h3 id="daily-chart-title">My sessions per day — last 90 days</h3>
         <canvas id="chart-daily" height="120"></canvas>
       </div>
       <div class="chart-box">
-        <h3>Top 10 projects by sessions</h3>
+        <h3>Top 10 projects (interactive sessions)</h3>
         <canvas id="chart-projects" height="120"></canvas>
       </div>
     </div>
@@ -450,7 +550,7 @@ def cmd_ai_usage_generate(args):
       <input id="proj-search" style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:5px 10px;color:#ececec;font-size:13px;width:200px" placeholder="Filter projects…" oninput="renderProjects()">
     </div>
     <table class="proj-table">
-      <thead><tr><th>Project</th><th>Domain</th><th>Sessions</th><th>Last 30d</th><th>First</th><th>Last</th><th>Size</th></tr></thead>
+      <thead><tr><th>Project</th><th>Domain</th><th>Interactive</th><th>Automated</th><th>Last 30d (me)</th><th>First</th><th>Last</th></tr></thead>
       <tbody id="proj-body"></tbody>
     </table>
   </div>
@@ -487,30 +587,52 @@ function esc(s) {{ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;
 
 const domainClass = {{ServiceNow:'d-sn', Personal:'d-personal', EarlBear:'d-earlbear', Other:'d-other'}};
 
+let currentView = 'interactive';
+
+function setView(v) {{
+  currentView = v;
+  document.getElementById('btn-interactive').classList.toggle('active', v === 'interactive');
+  document.getElementById('btn-all').classList.toggle('active', v === 'all');
+  document.getElementById('tiles-interactive').style.display = v === 'interactive' ? '' : 'none';
+  document.getElementById('tiles-all').style.display = v === 'all' ? '' : 'none';
+  document.getElementById('daily-chart-title').textContent =
+    v === 'interactive' ? 'My sessions per day — last 90 days' : 'All sessions per day — last 90 days';
+  // Update chart dataset
+  dailyChart.data.datasets[0].data = v === 'interactive' ? CHART_INT : CHART_ALL;
+  dailyChart.update();
+}}
+
 function renderProjects() {{
   const q = (document.getElementById('proj-search').value||'').toLowerCase();
   const rows = DATA.projects.filter(p => !q || p.label.toLowerCase().includes(q) || p.domain.toLowerCase().includes(q));
-  document.getElementById('proj-body').innerHTML = rows.map(p => `
-    <tr>
+  document.getElementById('proj-body').innerHTML = rows.map(p => {{
+    const interactive = p.interactive_count ?? p.session_count;
+    const automated = p.automated_count ?? 0;
+    return `<tr>
       <td style="font-weight:600">${{esc(p.label)}}</td>
       <td><span class="domain-badge ${{domainClass[p.domain]||'d-other'}}">${{esc(p.domain)}}</span></td>
-      <td style="color:var(--accent)">${{p.session_count}}</td>
-      <td style="color:var(--green)">${{p.last_30_days}}</td>
+      <td style="color:var(--accent)">${{interactive}}</td>
+      <td style="color:var(--muted)">${{automated > 0 ? automated + ' <span class=\\"auto-badge\\">auto</span>' : '—'}}</td>
+      <td style="color:var(--green)">${{p.last_30_days_interactive ?? p.last_30_days}}</td>
       <td style="color:var(--muted)">${{esc(p.first_date||'')}}</td>
       <td style="color:var(--muted)">${{esc(p.last_date||'')}}</td>
-      <td style="color:var(--muted)">${{(p.total_size_bytes/1024/1024).toFixed(1)}}MB</td>
-    </tr>`).join('');
+    </tr>`;
+  }}).join('');
 }}
+
+const CHART_ALL = {chart_data_all};
+const CHART_INT = {chart_data_int};
+let dailyChart;
 
 window.addEventListener('DOMContentLoaded', () => {{
   renderProjects();
 
-  // Daily sessions chart
-  new Chart(document.getElementById('chart-daily'), {{
+  // Daily sessions chart — default to interactive
+  dailyChart = new Chart(document.getElementById('chart-daily'), {{
     type: 'bar',
     data: {{
       labels: {chart_labels},
-      datasets: [{{ data: {chart_data}, backgroundColor: '#d97757', borderRadius: 2 }}]
+      datasets: [{{ data: CHART_INT, backgroundColor: '#d97757', borderRadius: 2 }}]
     }},
     options: {{
       plugins: {{ legend: {{ display: false }} }},
@@ -521,7 +643,7 @@ window.addEventListener('DOMContentLoaded', () => {{
     }}
   }});
 
-  // Top projects chart
+  // Top projects chart (interactive only)
   new Chart(document.getElementById('chart-projects'), {{
     type: 'bar',
     data: {{
