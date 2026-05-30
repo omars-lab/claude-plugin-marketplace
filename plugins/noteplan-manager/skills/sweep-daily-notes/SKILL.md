@@ -1,15 +1,18 @@
 ---
 name: sweep-daily-notes
-description: Guided sweep of past daily notes — build a plan index from recently-touched plans, then move sections forward to the next Friday (work) or next Sunday (personal) organized under # [[PlanName]] wikilink headers
+description: Guided day-by-day sweep of past daily notes — builds a plan index from recently-touched plans, proposes a full mapping plan per day, optionally creates new plan files, and moves sections verbatim under # [[PlanName]] wikilink headers in the target note
 disable-model-invocation: true
 ---
 
 # Sweep Daily Notes
 
 You are a guided sweep assistant for NotePlan daily notes. Your job is to:
+
 1. Build a live index of recently-touched plan files for the chosen mode
 2. Enrich any plans missing a `description` in their frontmatter
-3. Review past daily notes section by section and forward their content — **verbatim, unchanged** — to the appropriate future daily note, organized under `# [[PlanName]]` wikilink section headers
+3. Work **one day at a time** — announce the earliest date with sweepable content, propose a complete section mapping for that day, confirm with the user, then execute before moving to the next day
+4. Optionally create new plan files (from template) when a section deserves its own plan
+5. Move content **verbatim** under `# [[PlanName]]` wikilink headers in the target note
 
 You never modify note content. You ask before acting when intent is unclear.
 
@@ -25,11 +28,11 @@ NOTES_ROOT="$NOTEPLAN_ROOT/Notes"
 CALENDAR_ROOT="$NOTEPLAN_ROOT/Calendar"
 ```
 
-**Plan directory roots** — derived at runtime based on mode, then traversed recursively:
+**Plan directory roots** — derived from mode, traversed recursively:
 - Work: `$NOTES_ROOT/🏢 ServiceNow/📆 Plans/`
 - Personal: `$NOTES_ROOT/🏡 Personal/🏡📆 Plans/`
 
-Do not hardcode subdirectory names within these roots. Discover them with `find`.
+Discover subdirectories with `find` — never hardcode subdir names.
 
 ---
 
@@ -37,12 +40,12 @@ Do not hardcode subdirectory names within these roots. Discover them with `find`
 
 Use `TaskCreate` and `TaskUpdate` to track all phases with dependencies:
 
-1. Ask mode (work or personal)
+1. Ask mode
 2. Pre-sweep git commit (blocked by 1) — **HARD MUST**
-3. Build plan index from recently-touched plans (blocked by 2)
-4. Enrich plans missing `description` in frontmatter (blocked by 3)
+3. Build plan index (blocked by 2)
+4. Enrich missing descriptions (blocked by 3)
 5. Discover daily notes in scope (blocked by 4)
-6. Guided sweep — one note at a time (blocked by 5)
+6. Day-by-day guided sweep (blocked by 5) — one task per day
 7. Validate via git diff (blocked by 6)
 8. Final commit (blocked by 7)
 
@@ -72,25 +75,23 @@ AskUserQuestion({
 })
 ```
 
-Based on the answer, set:
+Set based on answer:
 
-| Mode | Daily date range | Days of week | Plans directory | Plan lookback | Target note |
-|---|---|---|---|---|---|
-| Work | Past 1 month | Mon–Fri | `🏢 ServiceNow/📆 Plans/` | 60 days | Next Friday |
-| Personal | Past 3 months | Sat–Sun | `🏡 Personal/🏡📆 Plans/` | 90 days | Next Sunday |
+| Mode | Daily date range | Days of week | Plans dir | Plan lookback | New plan subdir | Target note |
+|---|---|---|---|---|---|---|
+| Work | Past 1 month | Mon–Fri | `🏢 ServiceNow/📆 Plans/` | 60 days | `{workstream}/` | Next Friday |
+| Personal | Past 3 months | Sat–Sun | `🏡 Personal/🏡📆 Plans/` | 90 days | `Present/{plantype}/` | Next Sunday |
 
-### Calculating target date (bash):
+### Calculating target date:
 
 ```bash
 TODAY=$(date +%Y-%m-%d)
-DAY_OF_WEEK=$(date +%u)  # 1=Mon ... 7=Sun
+DAY_OF_WEEK=$(date +%u)
 
-# Next Friday (work mode)
 DAYS_TO_FRI=$(( (5 - DAY_OF_WEEK + 7) % 7 ))
 [ "$DAYS_TO_FRI" -eq 0 ] && DAYS_TO_FRI=7
 NEXT_FRIDAY=$(date -v +${DAYS_TO_FRI}d +%Y%m%d)
 
-# Next Sunday (personal mode)
 DAYS_TO_SUN=$(( (7 - DAY_OF_WEEK + 7) % 7 ))
 [ "$DAYS_TO_SUN" -eq 0 ] && DAYS_TO_SUN=7
 NEXT_SUNDAY=$(date -v +${DAYS_TO_SUN}d +%Y%m%d)
@@ -102,266 +103,446 @@ The target note is `$CALENDAR_ROOT/<TARGET_DATE>.md`. Create it if it doesn't ex
 
 ## Phase 2: Pre-Sweep Git Commit — HARD MUST
 
-**Non-negotiable. Do not proceed to Phase 3 if this fails.**
+**Non-negotiable. Do not proceed if this fails.**
 
 ```bash
 cd "$NOTEPLAN_ROOT"
 git status
 ```
 
-If there are **any** uncommitted changes:
+If there are any uncommitted changes:
 
 ```bash
 git add -A
 git commit -m "Pre-sweep snapshot ($(date +%Y-%m-%d))"
 ```
 
-If the commit fails for any reason, **stop and report**. Do not proceed.
-
-Confirm working tree is clean:
-
-```bash
-git status  # must show "nothing to commit, working tree clean"
-```
+If the commit fails, **stop and report**. Confirm the tree is clean before continuing.
 
 ---
 
 ## Phase 3: Build Plan Index
 
-Discover all recently-touched plan files for the chosen mode. This is done fresh every run — do not cache or hardcode plan names.
-
 ### Context window hygiene — CRITICAL
 
-**Never read full plan bodies into context.** Plans can be large; loading them would exhaust the context window across dozens of files. Extract only what is needed for routing:
-
-- **For index building**: read only the frontmatter block + the `# H1` line (first ~15 lines of each file is sufficient)
-- **For description inference** (Phase 4): read only the frontmatter + H1 + the first 5 non-empty body lines
-- **Never** load plan body content for any other purpose during the sweep
-
-Use a targeted bash extraction rather than reading entire files:
+**Never read full plan bodies into context.** Extract only:
+- For index building: first 15 lines of each file (frontmatter + H1)
+- For description inference: first 20 lines (frontmatter + H1 + opening body lines)
+- Process one daily note at a time during the sweep — discard after processing
 
 ```bash
 PLAN_ROOT="$NOTES_ROOT/<mode-plans-directory>"
 LOOKBACK_DAYS=60   # 60 for work, 90 for personal
 
-# Find all .md plan files modified within the lookback window
 find "$PLAN_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} | sort
 
-# For each file, extract only frontmatter + H1 (first 15 lines is enough)
+# Extract only frontmatter + H1 per plan
 head -15 "$plan_file"
 ```
 
-For each plan file found:
+For each plan file:
+1. Parse frontmatter between `---` delimiters
+2. Extract `status` — skip 🔴 and 🏁; include 🟢, 🟡, unset
+3. Extract `workstream` (work) or `plantype` (personal) — the emoji category
+4. Extract `description` if present (may be absent → `description_missing: true`)
+5. Extract display name from `# H1`; preserve exact filename stem for wikilinks
 
-1. **Parse frontmatter** from the extracted header (lines between `---` delimiters)
-2. **Extract**:
-   - `status` — skip 🔴 (cancelled) and 🏁 (done); include 🟢 (active), 🟡 (at-risk), unset
-   - `workstream` — the emoji category (e.g. `🧑🏻‍💻`, `🎯`)
-   - `description` — one-sentence intent (may be absent → `description_missing: true`)
-3. **Extract display name** from the `# H1` heading; preserve exact filename stem for wikilinks
-
-Build a **plan index** — a compact in-memory list. Store only metadata, not plan content:
+Build a compact plan index (metadata only, no content):
 
 ```
 [
   {
     "filename_stem": "🏢260302🧑🏻‍💻 POC Establishing A2A Poc",
     "path": "/full/path/to/file.md",
-    "workstream": "🧑🏻‍💻",
+    "workstream_or_plantype": "🧑🏻‍💻",
     "status": "🟢",
     "description": "...",
     "description_missing": true/false
-  },
-  ...
+  }
 ]
 ```
 
-Report to the user: "Found N recently-touched plans for [mode]." List them with workstream and description (or "no description yet").
+Report: "Found N recently-touched plans." List with workstream and description.
 
 ---
 
 ## Phase 4: Enrich Plans Missing Descriptions
 
-For each plan in the index where `description_missing = true`:
+For each plan where `description_missing = true`:
 
-1. **Read only the first 20 lines** of the plan file (frontmatter + H1 + opening lines) — do not load the full plan
-2. **Infer a one-sentence description** from the H1 title and the first 3–5 non-empty body lines (what is this plan about?)
-3. **Confirm with the user** before writing:
+1. Read only the first 20 lines of the plan
+2. Infer a one-sentence description from H1 + first 3–5 non-empty body lines
+3. Confirm before writing:
 
 ```javascript
 AskUserQuestion({
   questions: [{
-    question: `Plan "${planName}" has no description in its frontmatter.\n\nProposed: "${inferredDescription}"\n\nApprove this description or provide your own?`,
+    question: `Plan "${planName}" has no description.\n\nProposed: "${inferredDescription}"\n\nApprove or provide your own?`,
     header: `Enrich: ${planName}`,
     options: [
-      { label: "Use proposed description", description: inferredDescription },
+      { label: "Use proposed", description: inferredDescription },
       { label: "Enter my own", description: "I'll type a better one" },
-      { label: "Skip — leave this plan without a description", description: "Won't affect the sweep" }
+      { label: "Skip", description: "Leave without description" }
     ],
     multiSelect: false
   }]
 })
 ```
 
-If the user approves or provides a description, **write it back to the plan's frontmatter**:
-- Add `description: "<value>"` as a new field in the existing `---` block
-- Do NOT reorder or modify other frontmatter fields
-- Do NOT touch the plan body
-
-Update the plan index entry with the confirmed description.
-
-After enrichment is complete, commit the frontmatter changes:
+Write confirmed descriptions back to frontmatter (`description:` field, no other changes). Commit separately if any plans were enriched:
 
 ```bash
 git add -A
 git commit -m "chore(plans): add description frontmatter to ${N} plan(s)"
 ```
 
-Only commit if at least one plan was actually enriched.
-
 ---
 
 ## Phase 5: Discover Daily Notes in Scope
 
-Find all daily note files matching the mode's date range and day-of-week filter:
+Find all daily note files in the date range and day-of-week filter:
 
 ```bash
 for f in "$CALENDAR_ROOT"/????????.md; do
   filename=$(basename "$f" .md)
   file_date=$(date -j -f "%Y%m%d" "$filename" +%Y-%m-%d 2>/dev/null) || continue
   day_of_week=$(date -j -f "%Y%m%d" "$filename" +%u)
-  # Work mode: day 1-5; Personal mode: day 6-7
-  # Date range: within past 30 days (work) or 90 days (personal)
+  # Work: day 1–5, past 30 days; Personal: day 6–7, past 90 days
 done
 ```
 
-Sort **oldest first**. Skip:
-- The target note itself
-- Today's note (still active)
-- Completely empty files
+Sort **oldest first**. Skip: target note itself, today's note, empty files.
 
-Report how many files are in scope.
+Report: "Found N daily notes in scope. Earliest: {date}, Latest: {date}."
 
 ---
 
-## Phase 6: Guided Sweep — One Note at a Time
+## Phase 6: Day-by-Day Guided Sweep
 
-Process each daily note sequentially, oldest first.
+Process one daily note at a time, oldest first. **Complete each day fully before moving to the next.**
 
-### Step 6a — Read and parse sections
+### Step 6a — Announce the day
 
-**Context hygiene:** Read and process one daily note at a time. Do not load multiple daily notes into context simultaneously. After processing a note and recording decisions, you no longer need its content — discard it before loading the next.
+Open each daily note and scan for sweepable content (any section with at least one non-completed line):
 
-Read the file and identify all content blocks by markdown header:
-- `# Header`, `## Header`, `### Header` + their content
-- Leading content before any header = implicit "Unsorted" section
+```
+📅 Earliest date with sweepable content: {fileDate}
 
-### Step 6b — Skip completed-only sections
+Found {n} section(s) with incomplete content:
+  • "{sectionHeader1}" — {lineCount} lines
+  • "{sectionHeader2}" — {lineCount} lines
+  • ...
+```
 
-Sections consisting entirely of `* [x]` / `- [x]` tasks stay as historical record. Never move them.
+### Step 6b — Build the day's proposed sweep plan
 
-If all sections are completed-only, mark the note as "nothing to sweep" and continue to the next.
+For each sweepable section, determine the best destination using the plan index.
 
-### Step 6c — Match sections to plans
+**Match signals (try in order):**
+1. Section content contains `[[PlanName]]` wikilink matching a plan in the index → confident match
+2. Section header text closely matches a plan name → confident match
+3. Section's workstream emoji matches a plan's workstream → suggested match
+4. No signal → present as "needs routing"
 
-For each sweepable section, attempt to identify the relevant plan from the plan index:
+**For sections that seem substantial** (more than 3 lines, contain tasks, describe a distinct topic), also consider whether they warrant a **new plan file** — flag these as "could be new plan."
 
-**Automatic match signals (try in order):**
-1. The section content contains a `[[PlanName]]` wikilink that matches a plan in the index
-2. The section header text matches or closely resembles a plan name
-3. The section's workstream emoji matches a plan's workstream
+Compose a proposed plan for the whole day:
 
-**For confident matches** (signal 1 or 2): propose the match without asking, but confirm before moving:
+```
+📋 Proposed sweep plan for {fileDate}:
+
+  ✅ "{sectionHeader1}"  →  [[🏢260302🧑🏻‍💻 POC Establishing A2A Poc]]
+     Reason: contains [[wikilink]] to this plan
+  ✅ "{sectionHeader2}"  →  [[🏢260220🧑🏻‍💻 Building an ATF Creation POC]]
+     Reason: header matches plan name
+  ❓ "{sectionHeader3}"  →  ? (no matching plan found)
+     Suggestion: create new plan "XYZ" OR route to Unsorted
+  ⏭️  "{sectionHeader4}"  →  (skip — completed-only)
+```
+
+### Step 6c — Confirm the day's plan
+
+Present the proposed plan and ask for confirmation:
 
 ```javascript
 AskUserQuestion({
   questions: [{
-    question: `Section "${sectionHeader}" from ${fileDate} looks like it belongs to:\n\n📎 [[${matchedPlanName}]]\n"${planDescription}"\n\nMove it there?`,
-    header: `Sweep: ${fileDate} → ${matchedPlanName}`,
+    question: `Here's the proposed sweep plan for ${fileDate}:\n\n${proposedPlanSummary}\n\nHow would you like to proceed?`,
+    header: `Confirm sweep: ${fileDate}`,
     options: [
-      { label: "Yes — move under [[" + matchedPlanName + "]]", description: "Append verbatim under this plan's section in the target note" },
-      { label: "Different plan", description: "Choose from the plan index" },
-      { label: "Skip", description: "Leave in source note" }
+      { label: "Looks good — execute this plan", description: "Move all confirmed sections as proposed" },
+      { label: "Adjust routing for some sections", description: "I'll route the unclear ones individually" },
+      { label: "Skip this day entirely", description: "Leave all sections in this note as-is" }
     ],
     multiSelect: false
   }]
 })
 ```
 
-**For unclear sections** (no signal): show the plan index as options:
+If "Adjust routing": for each section marked ❓ or flagged "could be new plan", ask individually (see Step 6d below). Re-present the updated plan after all adjustments, then confirm before executing.
+
+### Step 6d — Route unclear and new-plan-candidate sections
+
+For each section that needs routing:
 
 ```javascript
 AskUserQuestion({
   questions: [{
-    question: `Section "${sectionHeader}" from ${fileDate}:\n\n${sectionPreview}\n\nWhich plan does this belong to?`,
-    header: `Where does this go?`,
+    question: `Section "${sectionHeader}" from ${fileDate}:\n\n${sectionPreview}\n\nWhere should this go?`,
+    header: `Route: "${sectionHeader}"`,
     options: [
       ...planIndex.map(p => ({
-        label: p.filename_stem,
-        description: p.description || `(${p.workstream} — no description)`
+        label: `[[${p.filename_stem}]]`,
+        description: p.description || `(${p.workstream_or_plantype} — no description)`
       })),
-      { label: "Unsorted — no specific plan", description: "Place under # Unsorted in the target note" },
-      { label: "Skip — leave it here", description: "Don't move this section" }
+      { label: "🆕 Create a new plan for this", description: "This section deserves its own plan file" },
+      { label: "📥 Unsorted", description: "Place under # Unsorted in the target note" },
+      { label: "⏭️ Skip — leave it here", description: "Don't move this section" }
     ],
     multiSelect: false
   }]
 })
 ```
 
-### Step 6d — Move the section
+If **"🆕 Create a new plan"** is selected → go to **Step 6e: Create New Plan**.
 
-When a plan (or Unsorted) is confirmed:
+### Step 6e — Create New Plan (optional sub-flow)
 
-**Target note section header:** `# [[<filename_stem>]]`
-Example: `# [[🏢260302🧑🏻‍💻 POC Establishing A2A Poc]]`
-
-- If that `# [[PlanName]]` header already exists in the target note → append the content block under it (do not duplicate the header)
-- If it doesn't exist yet → append `# [[PlanName]]` followed by the content block at the end of the target note
-- For "Unsorted" → use `# Unsorted` as the section header
-- **Content is copied verbatim — zero modifications**
-- Remove the section from the source daily note (keep completed-task-only blocks)
-
-### Step 6e — Note-level ask (before processing each note)
-
-Before stepping through sections individually, offer a note-level choice:
+When a section should become its own plan, gather the needed inputs:
 
 ```javascript
 AskUserQuestion({
-  questions: [{
-    question: `Daily note ${fileDate} has ${n} sweepable section(s). How would you like to proceed?`,
-    header: `Sweep: ${fileDate}`,
-    options: [
-      { label: "Review each section", description: "I'll ask about each one individually" },
-      { label: "Auto-match and confirm", description: "Propose plan matches automatically; ask only for unclear ones" },
-      { label: "Skip this note", description: "Leave it as-is" }
-    ],
-    multiSelect: false
-  }]
+  questions: [
+    {
+      question: "What should this plan be called?",
+      header: "New plan: title",
+      freeText: true
+    },
+    {
+      // Work mode:
+      question: "Which workstream does this belong to?",
+      header: "New plan: workstream",
+      options: [
+        // Discover by listing subdirs of the plans root:
+        // ls "$PLAN_ROOT" → each subdir is a workstream
+        // Present as options dynamically
+      ]
+    },
+    // OR for personal mode:
+    {
+      question: "What kind of plan is this?",
+      header: "New plan: plan type",
+      options: [
+        { label: "⚙️ Automating" }, { label: "✈️ Traveling" }, { label: "❓ Questioning" },
+        { label: "🌱 Growth" }, { label: "🎉 Celebration" }, { label: "🎒 Activities" },
+        { label: "🏃🏻 Health" }, { label: "🏠 Home" }, { label: "🏢 Career" },
+        { label: "👨🏻‍💻 Development" }, { label: "👨🏻‍💼 Entrepreneurship" }, { label: "💰 Assets" },
+        { label: "📝 Authoring" }, { label: "📚 Learning" }, { label: "🧎🏻 Spirituality" },
+        { label: "🧑‍🧑‍🧒‍🧒 Family" }, { label: "🪵 Backlogs" }
+      ]
+    },
+    {
+      question: "What is the current status?",
+      header: "New plan: status",
+      options: [
+        { label: "🟢 Started" }, { label: "🚦 Ready" }, { label: "🔮 Future" }
+      ]
+    }
+  ]
 })
 ```
 
+**Compute the filename** following the template naming convention:
+
+```bash
+TODAY_YYMMDD=$(date +%y%m%d)   # e.g. 260313
+WEEK_NUM=$(date +%-V | xargs printf "%02d")
+YEAR=$(date +%Y)
+
+# Work plan:
+# filename_stem = "🏢{YYMMDD}{workstream_emoji} {title}"
+# e.g. "🏢260313🧑🏻‍💻 My New POC"
+
+# Personal plan:
+# filename_stem = "🏡{YYMMDD}{plantype_emoji} {title}"
+# e.g. "🏡260313👨🏻‍💻 My New Initiative"
+```
+
+**Write the new plan file** following the template output format exactly:
+
+*Work plan:*
+```markdown
+---
+doctype: 📆
+status: {status_emoji}
+started: {YYYY-MM-DD}
+namespace: 🏢
+workstream: {workstream_emoji}
+---
+# 🏢{YYMMDD}{workstream_emoji} {title}
+* [ ] Is [[🏢{YYMMDD}{workstream_emoji} {title}]] done? >{YEAR}-W{WW}
+* [ ]
+```
+
+*Personal plan:*
+```markdown
+---
+doctype: 📆
+status: {status_emoji}
+started: {YYMMDD}
+namespace: 🏡
+plantype: {plantype_emoji}
+---
+# 🏡{YYMMDD}{plantype_emoji} {title}
+* [ ] Is [[🏡{YYMMDD}{plantype_emoji} {title}]] done? >{YEAR}-W{WW}
+* [ ]
+```
+
+**Place the file** in the correct subdirectory:
+- Work: `$PLAN_ROOT/{workstream_dir}/` (match the existing subdir for that workstream emoji)
+- Personal: `$PLAN_ROOT/Present/{plantype_dir}/` (match the existing subdir for that plantype emoji)
+
+Discover the correct subdir by listing `$PLAN_ROOT` — never hardcode.
+
+**Add to plan index** so it's available for the rest of the sweep.
+
+Confirm creation to the user: "Created `[[{filename_stem}]]` at `{path}`."
+
+The section's content will be swept into this new plan file directly (not the target daily note) — place it after the `* [ ]` task line in the new plan. This is the one case where content goes to a plan file rather than the target daily note.
+
+### Step 6f — Execute the confirmed plan
+
+After the user confirms the day's routing plan:
+
+For each section confirmed for moving:
+- **To target daily note**: append verbatim under `# [[PlanName]]` header in `$CALENDAR_ROOT/<TARGET_DATE>.md`
+  - Merge under existing header if already present; create if not
+- **To new plan file**: append verbatim after the opening `* [ ]` line in the new plan
+- **Unsorted**: append under `# Unsorted` in the target note
+- **Remove** the section from the source daily note — keep completed-task-only blocks
+
+**No content modification rule:** Copy every line exactly as-is. Preserve all leading whitespace / indentation. The only new text introduced is:
+- `# [[PlanName]]` headers in the target note
+- `# Unsorted` header (if needed)
+- The plan file boilerplate when creating a new plan
+
+### Step 6g — Checkpoint commit and advance to the next day
+
+After executing a day's sweep:
+
+```bash
+git add -A
+git commit -m "sweep(daily): process ${fileDate} → ${TARGET_DATE} (${n} sections moved)"
+```
+
+This creates a granular, recoverable history — each day is independently revertable.
+
+Then **announce progression** before loading the next day:
+
+```
+✅ Done with {fileDate}. ({n} sections moved, {k} skipped)
+
+Moving to the next applicable day: {nextFileDate}...
+```
+
+If there are no more days in scope:
+
+```
+✅ All {N} days in scope have been processed.
+Proceeding to final validation.
+```
+
+Continue this loop until all days in scope are exhausted.
+
 ---
 
-## Phase 7: Validate via Git Diff
+## Phase 7: Validate via Git Diff — Line-Level Integrity Check
 
-After all notes are processed:
+After all days are processed, run a final integrity check:
 
 ```bash
 cd "$NOTEPLAN_ROOT"
-git diff
+git diff HEAD~N   # diff against pre-sweep-snapshot commit
 ```
 
-Verify:
-- [ ] **No content was modified** — only moves (source deletions = target additions)
-- [ ] **Completed tasks were not moved** — `[x]` tasks remain in source files
-- [ ] **Target note sections use `# [[PlanName]]` headers** — not raw section names
-- [ ] **No files were accidentally deleted**
-- [ ] **Line counts consistent** — removed ≈ added (minus merged headers)
+**Line-level checks (each must pass):**
 
-If any check fails, **do not commit**. Report and offer rollback:
+1. **Every removed line must appear as an added line somewhere**
+   - Extract all `-` lines from the diff (excluding `---` markers)
+   - For each, find an exact match among `+` lines (same content, same leading whitespace)
+   - Any `-` line without a matching `+` line = content loss → FAIL
+
+2. **The only purely new `+` lines allowed are:**
+   - `# [[...]]` wikilink section headers
+   - `# Unsorted`
+   - Plan file boilerplate lines (only in newly-created plan files)
+   - Blank lines used as separators between sections
+   - Any other new `+` line without a matching `-` line = content creation → FAIL
+
+3. **No indentation changes on moved lines:**
+   - For each matched `-`/`+` pair, assert leading whitespace is identical
+   - A line gaining or losing spaces/tabs = indentation modified → FAIL
+
+4. **Completed tasks stayed in source files:**
+   - No `[x]` or `- [x]` lines appear as `-` removals from daily note files → FAIL if any found
+
+5. **No daily note files deleted** — only modified
+
+Run this check as a bash script for reliability:
 
 ```bash
-git checkout -- .   # only if user confirms
+cd "$NOTEPLAN_ROOT"
+
+# Get the diff
+git diff HEAD~${DAYS_PROCESSED} --unified=0 > /tmp/sweep_diff.txt
+
+# Check for content loss: lines removed but not added
+python3 - <<'PYEOF'
+import re, sys
+
+with open('/tmp/sweep_diff.txt') as f:
+    lines = f.readlines()
+
+removed = set()
+added = set()
+
+for line in lines:
+    if line.startswith('--- ') or line.startswith('+++ ') or line.startswith('@@'):
+        continue
+    if line.startswith('-'):
+        removed.add(line[1:].rstrip('\n'))
+    elif line.startswith('+'):
+        added.add(line[1:].rstrip('\n'))
+
+lost = removed - added
+new = added - removed
+
+# Only allowed new lines
+allowed_new = [l for l in new if (
+    re.match(r'^# \[\[', l) or          # wikilink headers
+    l.strip() == '# Unsorted' or
+    l.strip() == '' or                   # blank lines
+    re.match(r'^\* \[ \] Is \[\[', l) or # plan boilerplate
+    re.match(r'^---$', l) or             # frontmatter delimiters
+    re.match(r'^doctype:|^status:|^started:|^namespace:|^workstream:|^plantype:', l)
+)]
+disallowed_new = [l for l in new if l not in allowed_new]
+
+if lost:
+    print("FAIL: Lines removed but not found in additions (content loss):")
+    for l in sorted(lost): print(f"  - {repr(l)}")
+if disallowed_new:
+    print("FAIL: New lines added that are not section headers or boilerplate:")
+    for l in sorted(disallowed_new): print(f"  + {repr(l)}")
+if not lost and not disallowed_new:
+    print("PASS: All line-level integrity checks passed.")
+PYEOF
+```
+
+If **any check fails**, do not proceed. Report the failure to the user and offer rollback to the pre-sweep snapshot:
+
+```bash
+git reset --hard <pre-sweep-commit-hash>   # only if user confirms
 ```
 
 ---
@@ -371,14 +552,15 @@ git checkout -- .   # only if user confirms
 ```bash
 cd "$NOTEPLAN_ROOT"
 git add -A
-git commit -m "sweep(daily): forward sections to ${TARGET_DATE} (${MODE} mode)
+git commit -m "sweep(daily): complete ${MODE} sweep → ${TARGET_DATE}
 
 - Processed ${N_NOTES} daily note(s) in scope
 - Swept ${N_SECTIONS} section(s) to ${TARGET_DATE}.md
 - Plans referenced: ${PLAN_NAMES}
+- New plans created: ${N_NEW_PLANS}
 - Unsorted sections: ${N_UNSORTED}
 - Skipped ${N_SKIPPED} section(s) (user choice or completed-only)
-- Source notes cleaned: ${N_CLEANED} files modified"
+- Line integrity check: PASSED"
 ```
 
 ---
@@ -388,23 +570,24 @@ git commit -m "sweep(daily): forward sections to ${TARGET_DATE} (${MODE} mode)
 | Rule | Detail |
 |---|---|
 | Pre-commit is mandatory | Never skip Phase 2. Fail loudly if not clean after commit. |
+| Day-by-day execution | Announce the earliest day, propose a full plan, confirm, execute, checkpoint commit, then next day. |
 | Plans are discovered dynamically | Use `find -mtime` every run. Never hardcode plan names or paths. |
-| Context window hygiene | Read only frontmatter + H1 from plan files (first 15 lines). Read daily notes one at a time. Never load plan bodies. |
-| No content changes | Copy section content verbatim. Zero edits to wording, tasks, formatting. |
+| Context window hygiene | Read only frontmatter + H1 from plans (first 15 lines). One daily note in context at a time. |
+| No content changes | Copy every line verbatim. Zero edits to wording, tasks, or formatting. |
+| Indentation is immutable | Leading whitespace on every moved line must be preserved exactly. |
 | Completed tasks never move | `[x]` tasks are historical record. Skip unconditionally. |
-| Target sections use wikilinks | Always `# [[PlanName]]` (filename stem), never a raw string. |
-| Ask when intent is unclear | Never guess silently. Show the plan index as options. |
-| Today's note is off-limits | Never sweep today's daily note — it is still active. |
-| Target note is off-limits as source | Never sweep the target into itself. |
-| One mode at a time | Work OR personal per run. Run again for the other. |
+| Target sections use wikilinks | Always `# [[filename_stem]]` (exact), never a raw string. |
+| New plans follow the template | Use the computed filename convention and frontmatter structure exactly. |
+| New plan subdirs are discovered | `ls $PLAN_ROOT` to find the right workstream/plantype subdir. Never hardcode. |
+| Checkpoint commits per day | Commit after each day's sweep for granular recoverability. |
+| Line-level integrity check | Run the Python diff validation script before the final commit. |
 
 ---
 
 ## Safety
 
-- Always operate inside the git repository
 - Pre-commit snapshot before any file changes
-- Commit plan description enrichments separately from the sweep
-- Validate via git diff before the final commit
-- Offer git rollback if validation fails
+- Checkpoint commit after each day
+- Line-level Python diff validation before final commit
+- Offer rollback to pre-sweep snapshot if integrity check fails
 - Use task tracking for full auditability
