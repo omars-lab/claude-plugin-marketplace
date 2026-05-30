@@ -147,6 +147,7 @@ When you encounter a bare URL, use this table to decide how to handle it. Apply 
 | **Product homepage** | `emeraldlawns.com`, `withodyssey.com` | **Use page title** — homepage titles are accurate | `[Emerald Lawns — Austin Lawn Care](url)` |
 | **LinkedIn job** | `linkedin.com/jobs/view/` | **Use page title** (job title + company) | `[Staff Software Engineer — ServiceNow](url)` |
 | **Map / address query** | `maps.google.com`, `wrm.capitol.texas.gov/map?address=` | **Auto-format** from address param or use title | `[Map: 600 C-Bar Ranch Trail, Cedar Park TX](url)` |
+| **Real estate listing** | `redfin.com`, `zillow.com`, `realtor.com` path contains address | **Auto-format** from URL path segments — state/city/address/zip already encoded | `[Redfin: 3900 Avery Woods Ln, Cedar Park TX 78613](url)` |
 
 **Rule of thumb:**
 - If the URL type gives you enough info without a network call → auto-format
