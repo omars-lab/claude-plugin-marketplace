@@ -1308,12 +1308,13 @@ function switchDestTab(type, btn) {{
 function showSectionModal(idx, focusLost = false) {{
   const row = MODAL_ROWS[idx];
   if (!row) return;
-  // Auto-enable focusLost for pure Lost rows (not mixed — mixed sub-row already passes true explicitly)
-  // Also use single-panel mode for empty rows — nothing useful to show on dest side
+  // Auto-mode flags: lost → focusLost single panel; anomaly → focusAnomaly single panel
+  let focusAnomaly = false;
   if (!focusLost) {{
     const cached = _rowClassifications.get(idx);
     if (cached && cached.type === 'lost' && !cached.mixed) focusLost = true;
     if (cached && cached.type === 'empty') focusLost = true;
+    if (cached && cached.type === 'anomaly') focusAnomaly = true;
   }}
 
   const sectionName = row.section.replace(/^#+\\s*/, '').trim();
@@ -1505,6 +1506,30 @@ function showSectionModal(idx, focusLost = false) {{
       <div class="diff-lines" style="margin-top:6px">${{allHtml}}</div>
     </details>`;
   }}
+  // ── Anomaly modal — single panel showing unexpected additions at destination ──
+  if (focusAnomaly) {{
+    const destName = destFile ? destFile.filename.split('/').pop() : destRaw;
+    const anomalyLines = _modalNewLines.length > 0 ? _modalNewLines : addedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l));
+    const anomalyHtml = anomalyLines.length > 0
+      ? anomalyLines.map(l => `<div class="diff-line new-content">${{esc(l)}}</div>`).join('')
+      : '<div class="modal-empty" style="color:#6e7681">No traceable additions — lines may be noise or already classified by another row.</div>';
+    const anomalyPanel = `<div>
+      <div class="modal-panel-hdr">Unexpected additions in destination — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(destName)}}</span></div>
+      <div style="color:#e3b341;font-size:10px;padding:2px 0 6px">
+        + ${{anomalyLines.length}} line${{anomalyLines.length!==1?'s':''}} added with no matching source section — not from this sweep's breadcrumb.
+        May be from another row, a manual edit, or a missed breadcrumb.
+      </div>
+      <div class="diff-lines" id="modal-dest-lines">${{anomalyHtml}}</div>
+    </div>`;
+    document.getElementById('modal-title').textContent = sectionName + ' → ' + normDest(row.destination) + ' — + Anomaly';
+    const modalBodyEl = document.getElementById('modal-body');
+    modalBodyEl.style.gridTemplateColumns = '1fr';
+    modalBodyEl.innerHTML = anomalyPanel;
+    document.getElementById('modal-overlay').classList.add('open');
+    updateRowBadge(idx);
+    return;
+  }}
+
   const srcPanel = `<div><div class="modal-panel-hdr">Removed from source — ${{srcName}}</div>${{srcBody}}</div>`;
 
   // Destination panel — PURE migration view. Only shows lines confirmed moved from
@@ -1566,7 +1591,7 @@ function showSectionModal(idx, focusLost = false) {{
   modalBodyEl.style.gridTemplateColumns = focusLost ? '1fr' : '';
   modalBodyEl.innerHTML = srcPanel + destPanel;
   // V-P6: src and dest panels should have the same number of paired lines
-  if (!focusLost) {{
+  if (!focusLost && !focusAnomaly) {{
     const srcPaired  = modalBodyEl.querySelectorAll('#modal-src-lines [data-pair-id]').length;
     const destPaired = modalBodyEl.querySelectorAll('#modal-dest-lines [data-pair-id]').length;
     if (srcPaired !== destPaired) console.warn('V-P6: panel pair count mismatch', {{idx, srcPaired, destPaired}});

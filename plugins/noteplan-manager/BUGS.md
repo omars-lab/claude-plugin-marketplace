@@ -1,0 +1,51 @@
+# Bugs — noteplan-manager
+
+Tracked issues in the sweep review portal and related tools.
+Auto-updated when new issues are found during development.
+
+---
+
+## Open
+
+<!-- BUGS:OPEN -->
+
+*(No open bugs)*
+
+<!-- /BUGS:OPEN -->
+
+---
+
+## Fixed
+
+<!-- BUGS:FIXED -->
+
+| ID | Component | Description | Fixed in |
+|---|---|---|---|
+| B-01 | `classifyDestLines` | Index-skew: filtered `removedNorms` array used wrong index to look up `removedLines`. Section headers like `# EarlBear` normalized to empty, shifting all subsequent indices. Fixed by preserving `origIdx` through the filter. | 3.87.0 |
+| B-02 | `isNoiseLine` (JS) | `SyntaxWarning \s` in f-string: `/^#+\s/` in JS template needed `\\s` inside Python f-string. | 3.88.0 |
+| B-03 | `classifyRow` | `destPairIds` declared with `const` inside `if` block, referenced outside — block-scope bug. Hoisted to `let`. | 3.89.0 |
+| B-04 | `classifyRow` | `movedCount > total` → `lostCount = -1`. Section headers passed `removedEntries` filter (normLine.length > 3) but excluded from `countableRemoved` by `isNoiseLine`. Fixed by adding `!isNoiseLine(e.line)` to `removedEntries` filter. | 3.90.0 |
+| B-05 | `isLineInDestFile` | Lines moved by THIS sweep are present in dest file → `countableRemoved = 0` → classified as `anomaly` instead of `move`. Fixed by removing `isLineInDestFile` from denominator filters; kept only in `lostLines` filter. | 3.91.0 |
+| B-06 | Empty file detection | Checked `b/${destRaw}.md\nnew file` but actual diff path has `b/Calendar/20260424.md` prefix. Fixed to `/${destRaw}.md\nnew file`. | 3.92.0 |
+| B-07 | `sectionHeaderMatches` | Parent-section false match: "config agent" matched "config agent arb" via prefix check. Fixed by rejecting when `nameLower.startsWith(stripped + ' ')`. | 3.93.0 |
+| B-08 | `sectionHeaderMatches` | Short-token miss: "arb" (3 chars) filtered by `length > 3` → never matched `## ARB & Governance`. Fixed with last-token word-boundary check. | 3.94.0 |
+| B-09 | `injectMixedLostSubRow` | ⚡ badge persisting after sub-row injection — early-return guard skipped badge upgrade on repeat calls. Fixed by setting `displayType='move'` in `updateRowBadge` for mixed rows directly. | 3.95.0 |
+| B-10 | `showSectionModal` | focusLost amber header repeated in source panel when row was mixed. Fixed with clean `lostLineHtmlClean` without section header for focusLost path. | 3.95.1 |
+| B-11 | `showSectionModal` | "No lost lines detected" — `isLineInDestFile` filtered all lost lines in `showSectionModal`'s panel. Fixed by removing from `lostLines` filter in modal (dest-file check only belongs in classification, not display). | 3.96.0 |
+| B-12 | `renderNarrative` | `day-sep-row` used `colspan="6"` in a 7-column table. Fixed to `colspan="7"`. | 3.97.0 |
+
+<!-- /BUGS:FIXED -->
+
+---
+
+## How to add a bug
+
+When a bug is found during development or remediation, append to the Open section:
+
+```markdown
+| B-NN | Component | Short description of the bug and its root cause | — |
+```
+
+When fixed, move the row to Fixed and fill in the version.
+
+Hooks auto-update this file when issues are logged via `quality-log.jsonl`.

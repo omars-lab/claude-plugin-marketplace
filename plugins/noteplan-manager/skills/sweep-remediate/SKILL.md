@@ -254,7 +254,7 @@ After each action, confirm with the user before continuing to the next issue.
 
 After all issues are processed, generate a data quality report and use it to improve the portal.
 
-### 4a. Write quality log
+### 4a. Write quality log + update BUGS.md
 
 Write findings to `NOTEPLAN_ROOT/sweeps/quality-log.jsonl` (append):
 
@@ -274,6 +274,16 @@ Write findings to `NOTEPLAN_ROOT/sweeps/quality-log.jsonl` (append):
   "intentional": 1
 }
 ```
+
+After writing the quality log, **update `BUGS.md`** in the plugin repo for every confirmed false positive or new bug found:
+
+```
+BUGS_MD="$HOME/workspace/oeid-claude-plugin-marketplace/plugins/noteplan-manager/BUGS.md"
+```
+
+- For each `false_positive` row where the root cause is a portal bug: add a new row to `## Open` section with the next `B-NN` ID, component, and description.
+- For each confirmed-real issue that reveals a data quality gap (e.g. sweep wrote a bad breadcrumb): log in quality-log.jsonl only — not a portal bug.
+- After editing BUGS.md, commit it alongside any portal fixes in Phase 4c.
 
 ### 4b. Identify false positive patterns
 
