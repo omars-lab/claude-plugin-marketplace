@@ -59,11 +59,19 @@ _SKIP_DOMAIN_RE = re.compile(
     r'https?://[^/\s]*(?:'
     r'service-now\.com|servicenow\.com|sharepoint\.com|okta\.com'
     r'|code\.devsnc\.com'                        # ServiceNow internal GitHub (Okta)
+    r'|sage\.amazon\.dev'                        # Amazon internal wiki/Q&A
+    r'|code\.amazon\.com'                        # Amazon internal GitHub (CodeBrazil)
+    r'|w\.amazon\.com'                           # Amazon internal wiki
+    r'|talent\.amazon\.dev'                      # Amazon internal transfer tool
+    r'|amazon\.jobs/en/internal/'               # Amazon internal job postings (path-based)
+    r'|\.a2z\.com(?:[:/]|$)'                     # Amazon internal *.a2z.com services
+    r'|\.ts\.net(?:[:/]|$)'                      # Tailscale hostnames (*.ts.net)
     r'|localhost|attlocal\.net|\.local(?:[:/]|$)'
     r')',
     re.IGNORECASE,
 )
-_PRIVATE_IP_RE = re.compile(r'https?://(?:192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)')
+# Private IP ranges: 127.x (loopback), 192.168.x.x, 10.x.x.x, 172.16-31.x.x, 100.64-127.x.x (Tailscale CGNAT)
+_PRIVATE_IP_RE = re.compile(r'https?://(?:127\.|192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.|100\.(?:6[4-9]|[7-9]\d|1(?:0\d|1\d|2[0-7]))\.)')
 _OAUTH_PARAM_RE = re.compile(r'[?&](?:code|state|auth_callback|access_token|id_token)=', re.IGNORECASE)
 _IMAGE_EXT_RE = re.compile(r'\.(jpe?g|png|gif|webp|svg|ico|bmp|tiff?|mp4|mov|pdf|zip|tar|gz)(\?|$)', re.IGNORECASE)
 _UUID_RE = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', re.IGNORECASE)
