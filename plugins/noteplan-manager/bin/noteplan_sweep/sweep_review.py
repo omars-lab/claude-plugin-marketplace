@@ -1137,16 +1137,30 @@ function showSectionModal(idx) {{
     // Lost lines: source lines that are countable but didn't arrive at destination
     const matchedSrcSet = new Set([...movedPairs.values()]);
     const lostLines = removedLines.filter(l => !matchedSrcSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l));
-    const lostHtml = lostLines.length > 0
-      ? `<div style="margin-top:8px;border-top:1px solid #30363d;padding-top:6px">` +
-        `<div style="color:#f85149;font-size:10px;padding:2px 0 4px">✗ ${{lostLines.length}} line${{lostLines.length>1?'s':''}} not found at destination</div>` +
-        lostLines.map(l => {{
-          const lno = srcLineNos?.get(l);
-          const lnoHtml = lno ? `<span class="line-no">${{lno}}</span>` : '';
-          return `<div class="diff-line removed" style="opacity:0.45">${{lnoHtml}}${{esc(l)}}</div>`;
-        }}).join('') + `</div>`
+    const isMixed = lostLines.length > 0 && moved.length > 0;
+    let lostHtml = '';
+    if (lostLines.length > 0) {{
+      const lostLineHtml = lostLines.map(l => {{
+        const lno = srcLineNos?.get(l);
+        const lnoHtml = lno ? `<span class="line-no">${{lno}}</span>` : '';
+        return `<div class="diff-line removed">${{lnoHtml}}${{esc(l)}}</div>`;
+      }}).join('');
+      if (isMixed) {{
+        // Mixed row: prominent labeled split between moved and lost blocks
+        lostHtml = `<div style="margin-top:10px;border-top:2px solid #e3b341;padding-top:6px">` +
+          `<div style="color:#e3b341;font-size:11px;font-weight:600;padding:2px 0 6px">` +
+          `⚡ ✗ Lost (${{lostLines.length}} line${{lostLines.length>1?'s':''}}) — not found at destination — sweep should have split this section</div>` +
+          lostLineHtml + `</div>`;
+      }} else {{
+        lostHtml = `<div style="margin-top:8px;border-top:1px solid #30363d;padding-top:6px">` +
+          `<div style="color:#f85149;font-size:10px;padding:2px 0 4px">✗ ${{lostLines.length}} line${{lostLines.length>1?'s':''}} not found at destination</div>` +
+          lostLineHtml + `</div>`;
+      }}
+    }}
+    const movedHeader = isMixed
+      ? `<div style="color:#3fb950;font-size:11px;font-weight:600;padding:2px 0 6px">✓ Moved (${{moved.length}} line${{moved.length!==1?'s':''}}) — arrived at destination</div>`
       : '';
-    srcBody = `${{srcTabBar}}<div class="diff-lines">${{srcGrouped}}${{lostHtml}}</div>`;
+    srcBody = `${{srcTabBar}}<div class="diff-lines">${{movedHeader}}${{srcGrouped}}${{lostHtml}}</div>`;
   }} else {{
     // No lines found — show collapsed fallback
     const allRemoved = extractSectionLines(row.source_file, null, '-').lines;
