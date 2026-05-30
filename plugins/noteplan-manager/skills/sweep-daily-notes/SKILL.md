@@ -946,16 +946,17 @@ AskUserQuestion({
       ]
     },
     // OR for personal mode:
+    // Discover live: noteplan-sweep list-workstreams --mode personal
+    // Source of truth: ls "$NOTES_ROOT/🏡 Personal/🏡📆 Plans/Present/"
     {
       question: "What kind of plan is this?",
       header: "New plan: plan type",
       options: [
-        { label: "⚙️ Automating" }, { label: "✈️ Traveling" }, { label: "❓ Questioning" },
-        { label: "🌱 Growth" }, { label: "🎉 Celebration" }, { label: "🎒 Activities" },
-        { label: "🏃🏻 Health" }, { label: "🏠 Home" }, { label: "🏢 Career" },
-        { label: "👨🏻‍💻 Development" }, { label: "👨🏻‍💼 Entrepreneurship" }, { label: "💰 Assets" },
-        { label: "📝 Authoring" }, { label: "📚 Learning" }, { label: "🧎🏻 Spirituality" },
-        { label: "🧑‍🧑‍🧒‍🧒 Family" }, { label: "🪵 Backlogs" }
+        { label: "📝 Authoring" }, { label: "⚙️ Automating" }, { label: "🏢 Career" },
+        { label: "🧰 Craftsmanship" }, { label: "👨🏻‍💻 Development" }, { label: "🔍 Discovering" },
+        { label: "👨🏻‍💼 Entrepreneurship" }, { label: "🌱 Growth" }, { label: "🏃🏻 Health" },
+        { label: "📚 Learning" }, { label: "🧮 Managing" }, { label: "🗑️ Organizing" },
+        { label: "🧎🏻 Spirituality" }, { label: "📊 Tracking" }
       ]
     },
     {
