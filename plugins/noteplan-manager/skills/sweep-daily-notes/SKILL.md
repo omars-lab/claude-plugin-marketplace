@@ -1,7 +1,6 @@
 ---
 name: sweep-daily-notes
 description: Guided day-by-day sweep of past daily notes — builds a plan index from recently-touched plans, proposes a full mapping plan per day, optionally creates new plan files, and moves sections verbatim under # [[PlanName]] wikilink headers in the target note
-disable-model-invocation: true
 ---
 
 # Sweep Daily Notes
@@ -168,6 +167,22 @@ Report: "Found N recently-touched plans." List with workstream and description.
 
 ## Phase 4: Enrich Plans Missing Descriptions
 
+### Bulk path (preferred when N > 5 plans missing descriptions)
+
+When many plans are missing descriptions, the one-by-one approach is impractical. Use the bulk path instead:
+
+1. **Read first 20 lines of ALL missing-description plans** in a single Python pass — extract H1 + first 3–5 non-empty body lines for each
+2. **Infer descriptions** from H1 + body preview for all plans at once
+3. **Present ALL inferred descriptions** grouped by workstream in a single conversation message for review
+4. **Ask for bulk approval** with a single `AskUserQuestion`:
+   ```javascript
+   AskUserQuestion({ questions: [{ question: "The N proposed descriptions are listed above. Approve all and commit, or skip?", header: "Bulk approve", options: [{ label: "Approve all — write + commit" }, { label: "Skip description enrichment" }] }] })
+   ```
+5. **Write all approved descriptions** to frontmatter in one Python pass (no other changes)
+6. **Commit** with: `git commit -m "chore(plans): add description frontmatter to ${N} plan(s)"`
+
+### One-by-one path (only when N ≤ 5)
+
 For each plan where `description_missing = true`:
 
 1. Read only the first 20 lines of the plan
@@ -246,18 +261,38 @@ For each sweepable section, determine the best destination using the plan index.
 
 **For sections that seem substantial** (more than 3 lines, contain tasks, describe a distinct topic), also consider whether they warrant a **new plan file** — flag these as "could be new plan."
 
-Compose a proposed plan for the whole day:
+Compose a proposed plan for the whole day. For each entry show:
+- The routing decision and reason
+- A code block with the **exact lines being moved** (verbatim from the source)
+- A note on where content is going: `→ 20XXXXXX.md (target note)` or `→ new plan file`
+
+**Sections may be split by line** when individual items within a section reference different plans (e.g. a `# POCs` block containing two different `[[PlanName]]` wikilinks). In that case, show each line as a separate routing entry.
+
+**Same-plan entries are merged in the target** — multiple sections routing to the same plan get merged under one `# [[PlanName]]` header.
 
 ```
 📋 Proposed sweep plan for {fileDate}:
 
-  ✅ "{sectionHeader1}"  →  [[🏢260302🧑🏻‍💻 POC Establishing A2A Poc]]
-     Reason: contains [[wikilink]] to this plan
-  ✅ "{sectionHeader2}"  →  [[🏢260220🧑🏻‍💻 Building an ATF Creation POC]]
-     Reason: header matches plan name
-  ❓ "{sectionHeader3}"  →  ? (no matching plan found)
+  ✅ "# Servicenow"  →  [[🏢260302🧑🏻‍💻 Understanding Servicenow Agentic AI Landscape]]
+     Reason: content about AI features matches plan scope
+     Destination: 20XXXXXX.md (target note)
+     ```
+     - [ ] I Need to make a AI Feature Catalog ...
+     	- [ ] Map out all servicenow agentic features
+     ```
+
+  ✅ "# POCs" line 1  →  [[🏢260302🧑🏻‍💻 POC Experimenting with Servicenow MCP]]
+     Reason: exact wikilink match
+     Destination: 20XXXXXX.md (target note)
+     ```
+     - [ ] [[🏢260302🧑🏻‍💻 POC: Experimenting with Servicenow MCP]]
+     ```
+
+  ❓ "# Research"  →  ? (no matching plan found)
      Suggestion: create new plan "XYZ" OR route to Unsorted
-  ⏭️  "{sectionHeader4}"  →  (skip — completed-only)
+
+  ⏭️  "# Completed Items"  →  (skip — completed-only)
+  ⏭️  "# Shopping"  →  (skip — personal content / 🏡 namespace)
 ```
 
 ### Step 6c — Confirm the day's plan
@@ -417,9 +452,15 @@ After the user confirms the day's routing plan:
 For each section confirmed for moving:
 - **To target daily note**: append verbatim under `# [[PlanName]]` header in `$CALENDAR_ROOT/<TARGET_DATE>.md`
   - Merge under existing header if already present; create if not
+  - **Same-plan sections from different parts of the source day get merged** under one header
 - **To new plan file**: append verbatim after the opening `* [ ]` line in the new plan
 - **Unsorted**: append under `# Unsorted` in the target note
-- **Remove** the section from the source daily note — keep completed-task-only blocks
+- **Remove** from source: all content lines AND their section header (`# SectionName`). Do NOT move the original section header to the target — the target gets `# [[PlanName]]` instead.
+- **Split sections**: when individual lines within a section go to different plans, remove the section header and each line individually, routing each line to its designated plan header.
+
+**Wikilink todos are ordinary content:** Tasks whose body is a wikilink (e.g. `- [ ] [[PlanName]]`) are moved verbatim exactly like any other task line. The wikilink in the body is the routing signal, but the full line (including `- [ ]` prefix) is preserved as-is.
+
+**Personal content in work mode:** Sections that are clearly personal (shopping, errands, `[[🏡...]]` namespace wikilinks, personal names unrelated to work) should be flagged as `⏭️ skip — personal content` and left in the source. Do not ask the user about them unless the content is ambiguous.
 
 **No content modification rule:** Copy every line exactly as-is. Preserve all leading whitespace / indentation. The only new text introduced is:
 - `# [[PlanName]]` headers in the target note
@@ -576,11 +617,18 @@ git commit -m "sweep(daily): complete ${MODE} sweep → ${TARGET_DATE}
 | No content changes | Copy every line verbatim. Zero edits to wording, tasks, or formatting. |
 | Indentation is immutable | Leading whitespace on every moved line must be preserved exactly. |
 | Completed tasks never move | `[x]` tasks are historical record. Skip unconditionally. |
+| Wikilink todos are content | `- [ ] [[PlanName]]` tasks are ordinary content — move verbatim, use the wikilink as routing signal. |
 | Target sections use wikilinks | Always `# [[filename_stem]]` (exact), never a raw string. |
+| Section headers are NOT moved | Remove original `# SectionName` from source; the target gets `# [[PlanName]]` instead. |
+| Split sections allowed | When one section has items for different plans, split by line and route individually. |
+| Same-plan entries merge | Multiple source sections routing to the same plan merge under one target header. |
+| Bulk description enrichment | When N > 5 plans missing descriptions, use bulk path: batch-infer all, present grouped, single approve. |
+| Personal content skipped silently | In work mode, sections with personal signals (`🏡` wikilinks, "Shopping", etc.) are flagged skip without asking. |
 | New plans follow the template | Use the computed filename convention and frontmatter structure exactly. |
 | New plan subdirs are discovered | `ls $PLAN_ROOT` to find the right workstream/plantype subdir. Never hardcode. |
 | Checkpoint commits per day | Commit after each day's sweep for granular recoverability. |
 | Line-level integrity check | Run the Python diff validation script before the final commit. |
+| Proposal includes exact lines | Each routing entry in the proposal shows the exact lines being moved in a code block, plus destination note. |
 
 ---
 
