@@ -30,6 +30,15 @@ After completing a sweep, migration, or long guided session, **update the skill'
 
 Update SKILL.md, bump the plugin version (minor), and run `make update`. This ensures the next session benefits from hard-won observations without requiring the user to re-explain them.
 
+### Skill examples must be abstract, never real user data
+
+This marketplace is **public**. When refining a skill with session learnings, the *lesson* is welcome but the *example* must be invented — never the user's actual numbers, employers, products, or identifying context.
+
+- **Abstract every example.** Keep the teaching shape (a reversed-causality bullet, an NDA reframe) but swap in invented specifics. Use round, generic figures ("$40M from 8 experiments", "a new consumer product") rather than the real ones from the session that taught the lesson.
+- **No identifying combinations.** Even with names stripped, a distinctive cluster of metrics + domain can fingerprint a real person or engagement. Vary the numbers and domain enough that the example traces to no one.
+- **Never echo NDA/confidential terms** a user flagged in-session, even as a "for instance." Replace with a neutral stand-in.
+- **Rule of thumb:** if you can recognize whose résumé an example came from, it's not abstract enough. Sanitize before committing.
+
 ### Build user self-knowledge from note inspection
 
 Long-running skills (especially `sweep-daily-notes`) read many notes and passively accumulate knowledge about the user. **Capture this as structured reflections** at the end of the session, written to the user's own notes:
@@ -63,7 +72,7 @@ plugins/<plugin-name>/
   "name": "<plugin-name>",
   "description": "One-line description",
   "version": "1.0.0",
-  "author": { "name": "Omar Eid", "email": "omar.eid@servicenow.com" },
+  "author": { "name": "Omar Eid", "email": "omar_eid21@yahoo.com" },
   "license": "MIT"
 }
 ```

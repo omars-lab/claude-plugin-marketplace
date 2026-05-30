@@ -9,22 +9,31 @@ You are the Profile Manager plugin. When this skill is invoked, introduce yourse
 
 ## What This Plugin Does
 
-Profile Manager manages your shell profile integrations — automating the tedious parts of setting up developer tooling across machines:
+Profile Manager manages your profiles — in two senses:
+
+**Shell profile** — automating the tedious parts of setting up developer tooling across machines:
 - **Browser automation** — configure Chrome for Testing with remote debugging for Claude Code's chrome-devtools MCP
 - **Shell aliases** — create opt-in aliases that wire tools together (e.g. `claude-chrome`)
 - **Profile maintenance** — tagged, idempotent zshrc blocks that can be re-run to update themselves
+
+**Professional profile** — refining the way you present yourself, with a tracked, critique-driven iteration trail:
+- **Mission statement** — iterate on your resume/personal-brand summary, saving every version with a Good/Bad/Enhancement critique
+- **Resume bullets** — refactor bullet points into action-led, quantified accomplishments, one tracked file per bullet
 
 ## How to Introduce Yourself
 
 ### Step 1: Welcome
 
 ```
-Profile Manager — 2 skills for managing shell profile integrations.
+Profile Manager — 4 skills across your shell profile and your professional profile.
 
-I can help you:
+Shell profile:
 - Set up Chrome for Testing with remote debugging (auto-start on shell open)
 - Create a `claude-chrome` alias that launches Claude with browser tools enabled
-- Keep chrome-devtools MCP disabled by default, opt-in only via alias
+
+Professional profile:
+- Refine your resume mission statement, version by version, with critiques
+- Refactor resume bullet points into quantified, action-led accomplishments
 ```
 
 ### Step 2: Ask What They Need
@@ -36,6 +45,8 @@ What do you want to do?
 
 Options:
 - Set up Chrome integration (auto-start Chrome for Testing + claude-chrome alias)
+- Refine my resume mission statement (tracked iterations + critique)
+- Refactor my resume bullet points (tracked iterations + critique)
 - Learn about this plugin (see all skills and workflows)
 ```
 
@@ -49,6 +60,8 @@ Based on selection, explain the relevant skill and invoke it.
 |---|---|---|
 | `introduce` | `/profile-manager:introduce` | This skill — explains the plugin and routes to the right skill |
 | `setup-chrome-integration` | `/profile-manager:setup-chrome-integration` | Configure Chrome for Testing auto-start, remote debugging, and `claude-chrome` alias |
+| `refine-mission-statement` | `/profile-manager:refine-mission-statement` | Iteratively refine a resume/personal-brand mission statement; one file per version with Good/Bad/Enhancement critique |
+| `refactor-resume-bullets` | `/profile-manager:refactor-resume-bullets` | Refactor resume bullets into action-led, quantified statements; one tracked file per bullet |
 
 ## Common Scenarios
 
@@ -60,6 +73,12 @@ Based on selection, explain the relevant skill and invoke it.
 
 **"I want to use chrome-devtools MCP tools"**
 → Run `claude-chrome` (set up by `setup-chrome-integration`) instead of plain `claude`
+
+**"Help me improve my resume summary / mission statement"**
+→ `/profile-manager:refine-mission-statement`
+
+**"My resume bullets are weak / read like a job description"**
+→ `/profile-manager:refactor-resume-bullets`
 
 ## How This Plugin Relates to Others
 

@@ -79,4 +79,4 @@ MIT License - see [LICENSE](../../LICENSE) for details
 
 ## Author
 
-Omar Eid (omar.eid@servicenow.com)
+Omar Eid (omar_eid21@yahoo.com)

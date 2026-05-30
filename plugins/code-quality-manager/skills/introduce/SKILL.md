@@ -11,9 +11,10 @@ You are the code-quality-manager plugin. When this skill is invoked, explain wha
 
 Code Quality Manager improves the experience of working in a repository. It does this by treating documentation as a product — something that should be maintained, validated, and improved the same way you'd maintain code.
 
-The plugin has three skills:
+The plugin has four skills:
 - **manage-docs** — audit, consolidate, and enhance repository documentation
 - **manage-makefiles** — create or enhance Makefiles following CEG standards
+- **manage-repo-security** — install git hooks, secret scanning, and test gates on any repo
 - **poke-holes** — critically analyze code changes, surface implicit assumptions, and identify real gaps
 
 ## The Problem This Solves
@@ -99,12 +100,13 @@ The skill asks for user approval at two points (Tasks 3 and 5). It maintains a p
 ### Step 1: Explain
 
 ```
-Code Quality Manager — 3 skills for making repositories easier to work in.
+Code Quality Manager — 4 skills for making repositories easier to work in.
 
 I improve developer experience by fixing documentation that's overwhelming,
 redundant, or disorganized. I generate Makefiles that are clear and actionable.
-I also poke holes in code changes — surfacing implicit assumptions and real
-gaps before they reach production.
+I secure repos with git hooks that block secrets and untested code from being
+pushed. I also poke holes in code changes — surfacing implicit assumptions
+and real gaps before they reach production.
 ```
 
 ### Step 2: Ask What They Need
@@ -119,7 +121,8 @@ AskUserQuestion({
     options: [
       { label: "Improve documentation", description: "Audit, consolidate, and enhance repo docs — reduce overwhelm, eliminate redundancy, generate diagrams" },
       { label: "Generate or enhance a Makefile", description: "Create actionable Makefiles following CEG standards — help target, test/install/validate targets, status indicators" },
-      { label: "Poke holes in code changes", description: "Surface implicit assumptions and real gaps in recent changes before they reach production" }
+      { label: "Poke holes in code changes", description: "Surface implicit assumptions and real gaps in recent changes before they reach production" },
+      { label: "Secure the repo", description: "Install git hooks for secret scanning (gitleaks) and test gates — block secrets and untested code from being pushed" }
     ],
     multiSelect: false
   }]
@@ -139,6 +142,10 @@ AskUserQuestion({
 | Review code changes for gaps | poke-holes | `/code-quality-manager:poke-holes` |
 | Find implicit assumptions | poke-holes | `/code-quality-manager:poke-holes` |
 | Stress-test recent changes | poke-holes | `/code-quality-manager:poke-holes` |
+| Install git hooks | manage-repo-security | `/code-quality-manager:manage-repo-security` |
+| Add secret scanning | manage-repo-security | `/code-quality-manager:manage-repo-security` |
+| Add test gates to pushes | manage-repo-security | `/code-quality-manager:manage-repo-security` |
+| Audit repo security | manage-repo-security | `/code-quality-manager:manage-repo-security` |
 
 ## Design Principles
 
@@ -154,9 +161,10 @@ These principles guide every decision the plugin makes:
 
 ```
 code-quality-manager (this plugin)
-  ├── manage-docs       → audits and fixes documentation quality
-  ├── manage-makefiles  → creates actionable Makefiles
-  └── poke-holes        → surfaces assumptions and gaps in code changes
+  ├── manage-docs           → audits and fixes documentation quality
+  ├── manage-makefiles      → creates actionable Makefiles
+  ├── manage-repo-security  → installs hooks, secret scanning, and test gates
+  └── poke-holes            → surfaces assumptions and gaps in code changes
 
 version-manager
   └── version-bump   → determines version bumps (code-quality-manager handles the docs side)

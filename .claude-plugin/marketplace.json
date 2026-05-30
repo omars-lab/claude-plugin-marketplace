@@ -140,10 +140,10 @@
     {
       "name": "profile-manager",
       "source": "./plugins/profile-manager",
-      "description": "Manage shell profile integrations — browser automation, aliases, and environment setup across machines",
-      "version": "1.0.0",
+      "description": "Manage your profiles — shell environment (browser automation, aliases, setup) and professional profile (resume mission statement, bullet points)",
+      "version": "1.5.0",
       "category": "utilities",
-      "keywords": ["shell", "profile", "zshrc", "chrome", "browser-automation", "aliases", "mcp", "setup"]
+      "keywords": ["shell", "profile", "zshrc", "chrome", "browser-automation", "aliases", "mcp", "setup", "resume", "mission-statement", "personal-brand"]
     },
     {
       "name": "code-repository-manager",
