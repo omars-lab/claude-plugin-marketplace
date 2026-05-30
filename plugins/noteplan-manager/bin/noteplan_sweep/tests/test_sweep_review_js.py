@@ -819,3 +819,70 @@ def test_js17_cross_row_anomaly_cleared_by_sibling(playwright, http_server):
         f"B-13: Row B's dest additions claimed by Row A — should NOT be anomaly. "
         f"Got: {row_b_badge}"
     )
+
+
+# ---------------------------------------------------------------------------
+# JS-19  V-47a: fuzzy section name matching scopes dest additions correctly
+# ---------------------------------------------------------------------------
+
+def test_js19_v47a_fuzzy_section_scoping(playwright, http_server):
+    """JS-19 (V-47a): When the breadcrumb section name ('Anthropic GitHub refs') doesn't
+    exactly match any ## header in the dest file's diff, V-47a fuzzy matching should find
+    '## References' (score >= 0.5 via de-plural stem: 'refs' → 'ref' matches 'references').
+
+    The dest file has:
+      ## References   (context — no additions under it)
+      ## Other Work   (context — has an added task below it)
+
+    Without V-47a: addedLines = full-file fallback = ['- some other task'] → anomaly.
+    With V-47a:    addedLines scoped to '## References' = [] → empty (section found but empty).
+
+    The row should be classified as 'empty', NOT 'anomaly'.
+    """
+    base_url, serve_dir = http_server
+
+    narrative = [{"date": "2026-04-16", "source_file": "Calendar/20260416.md",
+                  "section": "## Anthropic GitHub refs", "summary": "github refs section",
+                  "destination": "[[plan]]"}]
+
+    # Diff: source calendar has no removed lines (section is only a context line).
+    # Dest plan.md has ## References (no additions) and ## Other Work (one addition).
+    # The context-line headers allow proper section boundary detection in the fuzzy pass.
+    diff = textwrap.dedent("""\
+        diff --git a/Calendar/20260416.md b/Calendar/20260416.md
+        index 000000..abc123 100644
+        --- a/Calendar/20260416.md
+        +++ b/Calendar/20260416.md
+        @@ -1,1 +1,1 @@
+         ## Anthropic GitHub refs
+        diff --git a/Notes/plan.md b/Notes/plan.md
+        index 000000..def456 100644
+        --- a/Notes/plan.md
+        +++ b/Notes/plan.md
+        @@ -1,2 +1,3 @@
+         ## References
+         ## Other Work
+        +- some other task
+    """)
+
+    page_name = _write_page(serve_dir, "js19.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    browser.close()
+
+    assert "rb-anomaly" not in badge_class, (
+        f"V-47a: fuzzy match 'Anthropic GitHub refs' → '## References' should scope "
+        f"dest additions to empty References section → NOT anomaly. Badge: {badge_class}"
+    )

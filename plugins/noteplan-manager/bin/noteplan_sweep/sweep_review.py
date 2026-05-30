@@ -704,61 +704,127 @@ function sectionHeaderMatches(content, nameLower) {{
   return hits >= Math.max(1, Math.ceil(words.length * 0.6));
 }}
 
+// V-47a: score a candidate header against the query nameLower for fuzzy section matching.
+// Uses existing sectionHeaderMatches as a first pass, then token-level prefix overlap.
+// Returns a numeric score — accept the best header if score >= 0.5.
+function v47aScore(hdr, nameLower) {{
+  if (sectionHeaderMatches(hdr, nameLower)) return 999;
+  const hdrNorm = normSectionStr(hdr);
+  const qToks = nameLower.split(/[\\s\\/\\-,\\.]+/).filter(w => w.length >= 3);
+  const hToks = hdrNorm.split(/[\\s\\/\\-,\\.]+/).filter(w => w.length >= 3);
+  if (!qToks.length || !hToks.length) return 0;
+  let score = 0;
+  for (const qt of qToks) {{
+    // Strip trailing 's' for de-plural stem comparison ("refs" → "ref")
+    const qtS = qt.length > 3 && qt.endsWith('s') ? qt.slice(0, -1) : qt;
+    let best = 0;
+    for (const ht of hToks) {{
+      const htS = ht.length > 3 && ht.endsWith('s') ? ht.slice(0, -1) : ht;
+      let s = 0;
+      if (qt === ht || qtS === htS) {{ s = 1.0; }}
+      else if (qtS.length >= 3 && ht.startsWith(qtS)) {{ s = 0.7; }}
+      else if (htS.length >= 3 && qt.startsWith(htS)) {{ s = 0.7; }}
+      if (s > best) best = s;
+    }}
+    score += best;
+  }}
+  return score;
+}}
+
 // Extract + or - lines for a section from DIFF_TEXT.
 // sectionName=null → accept all lines (destination "all added" mode).
-// Returns {{ lines, fallback }} — fallback=true when section not found; all file lines returned instead.
+// Returns {{ lines, lineNos, matched, sectionFound, fuzzyHeader, v47Fallback, flatFile }}.
+//   sectionFound:  true if a section header was located in diff (exact OR fuzzy)
+//   fuzzyHeader:   the header string that was fuzzy-matched (V-47a), or null
+//   v47Fallback:   true when V-47a attempted but found no qualifying header
+//   flatFile:      true when the file has no ## headers in its diff block at all
 function extractSectionLines(filename, sectionName, lineType) {{
   const rawLines = DIFF_TEXT.split('\\n');
   const baseName = filename.split('/').pop().toLowerCase();
   const nameLower = sectionName ? normSectionStr(sectionName) : null;
-  let inFile = false;
-  let inSection = sectionName === null;
-  let sectionLevel = 0;
-  const result = [], lineNos = [];
-  let curLineNo = 0;
+  const seenHeaders = []; // V-47a: headers collected from this file's diff block
 
-  for (const line of rawLines) {{
-    if (line.startsWith('diff --git ')) {{
-      inFile = line.toLowerCase().includes(baseName);
-      inSection = sectionName === null;
-      sectionLevel = 0;
-      continue;
-    }}
-    if (!inFile || line.startsWith('+++') || line.startsWith('---') || line.startsWith('index')) continue;
-    if (line.startsWith('@@')) {{
-      const m = line.match(/@@ -(\\d+)(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/);
-      if (m) curLineNo = lineType === '-' ? parseInt(m[1], 10) - 1 : parseInt(m[2], 10) - 1;
-      continue;
-    }}
-    const type = line.length ? line[0] : ' ';
-    if (type !== '+' && type !== '-' && type !== ' ') continue;
-    const content = line.slice(1);
-
-    // Advance line counter: context advances both sides; each typed line advances its own side
-    if (type === ' ' || type === lineType) curLineNo++;
-
-    if (sectionName !== null) {{
+  // strictBoundary: when true, any same-level header (including '+') closes the current section.
+  // Used in the V-47a second pass so a fuzzy-matched section is properly bounded in
+  // fully-added files where the original guard (type !== '+') would keep it open forever.
+  function doExtract(activeName, strictBoundary) {{
+    let inFile = false;
+    let inSection = activeName === null;
+    let sectionLevel = 0;
+    let sectionEntered = false;
+    const res = [], nos = [];
+    let curLineNo = 0;
+    for (const line of rawLines) {{
+      if (line.startsWith('diff --git ')) {{
+        inFile = line.toLowerCase().includes(baseName);
+        inSection = activeName === null;
+        sectionLevel = 0;
+        continue;
+      }}
+      if (!inFile || line.startsWith('+++') || line.startsWith('---') || line.startsWith('index')) continue;
+      if (line.startsWith('@@')) {{
+        const m = line.match(/@@ -(\\d+)(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/);
+        if (m) curLineNo = lineType === '-' ? parseInt(m[1], 10) - 1 : parseInt(m[2], 10) - 1;
+        continue;
+      }}
+      const type = line.length ? line[0] : ' ';
+      if (type !== '+' && type !== '-' && type !== ' ') continue;
+      const content = line.slice(1);
+      if (type === ' ' || type === lineType) curLineNo++;
       const headerDepth = (content.match(/^(#+)\\s/) || [])[1]?.length ?? 0;
-      if (headerDepth > 0 && sectionHeaderMatches(content, nameLower)) {{
-        inSection = true;
-        sectionLevel = headerDepth;
-      }} else if (inSection && headerDepth > 0 && headerDepth <= sectionLevel && type !== '+') {{
-        inSection = false;
+      // Collect section headers for V-47a on first pass; skip removed headers (gone from file)
+      if (activeName === nameLower && inFile && headerDepth >= 2 && type !== '-') {{
+        seenHeaders.push(content);
+      }}
+      if (activeName !== null) {{
+        if (headerDepth > 0 && sectionHeaderMatches(content, activeName)) {{
+          inSection = true; sectionLevel = headerDepth; sectionEntered = true;
+        }} else if (inSection && headerDepth > 0 && headerDepth <= sectionLevel && (strictBoundary || type !== '+')) {{
+          inSection = false;
+        }}
+      }}
+      if (inSection && type === lineType) {{ res.push(content); nos.push(curLineNo); }}
+    }}
+    return {{ result: res, lineNos: nos, sectionEntered }};
+  }}
+
+  let result, lineNos, sectionEntered;
+  ({{ result, lineNos, sectionEntered }} = doExtract(nameLower, false));
+
+  // V-47a: fuzzy section name matching — only when exact match found nothing AND section was never entered
+  let fuzzyHeader = null, v47Fallback = false, flatFile = false;
+  if (result.length === 0 && sectionName !== null && !sectionEntered) {{
+    const uniqueHeaders = [...new Set(seenHeaders)];
+    if (uniqueHeaders.length === 0) {{
+      flatFile = true; // no ## headers in this file's diff block — can't scope to a section
+    }} else {{
+      let bestScore = 0, bestHdr = null;
+      for (const hdr of uniqueHeaders) {{
+        const sc = v47aScore(hdr, nameLower);
+        if (sc > bestScore) {{ bestScore = sc; bestHdr = hdr; }}
+      }}
+      if (bestHdr !== null && bestScore >= 0.5) {{
+        fuzzyHeader = bestHdr;
+        const fuzzyNameLower = normSectionStr(bestHdr);
+        // strictBoundary=true: allow +/- headers to close sections in the fuzzy pass
+        ({{ result, lineNos, sectionEntered }} = doExtract(fuzzyNameLower, true));
+        console.debug('V-47a: fuzzy match', {{ sectionName, matchedHeader: bestHdr, score: bestScore }});
+      }} else {{
+        v47Fallback = true;
+        console.warn('V-47a: no fuzzy match for section', sectionName, 'in', filename, '(headers:', uniqueHeaders, ')');
       }}
     }}
-
-    if (inSection && type === lineType) {{
-      result.push(content);
-      lineNos.push(curLineNo);
-    }}
   }}
+
   // V-P (duplicate detection): warn if the same content line appears more than once
   const _seenContents = new Map();
   result.forEach((l, i) => {{ const n = normLine(l); _seenContents.set(n, (_seenContents.get(n) || 0) + 1); }});
   const _dupCount = [..._seenContents.values()].filter(c => c > 1).length;
   if (_dupCount > 0) console.warn('V-P (dup): duplicate lines in section extract', {{ filename, sectionName, dupCount: _dupCount }});
 
-  return {{ lines: result, lineNos, matched: result.length > 0 }};
+  return {{ lines: result, lineNos, matched: result.length > 0,
+           sectionFound: sectionEntered || fuzzyHeader !== null,
+           fuzzyHeader, v47Fallback, flatFile }};
 }}
 
 // Classify destination added lines as "moved" (matches source) or "new" (no match)
@@ -864,10 +930,12 @@ function classifyRow(idx) {{
     return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
   }});
   const destGroups = destFile ? extractDestWithContext(destFile.filename) : [];
-  // V-47: scope added lines to the matching section in dest first; fall back to full file
+  // V-47: scope added lines to the matching section in dest first; fall back to full file.
+  // V-47a: sectionFound=true when the section was located (exact or fuzzy) — don't fall back
+  //        even if the section was empty; an empty scoped result is correct (not anomalous).
   const destFilenameC = destFile ? destFile.filename : (destRaw + '.md');
   const destSectionResult = extractSectionLines(destFilenameC, sectionName, '+');
-  let addedLines = destSectionResult.lines.length > 0
+  let addedLines = (destSectionResult.lines.length > 0 || destSectionResult.sectionFound)
     ? destSectionResult.lines
     : destGroups.flatMap(g => g.lines);
 
@@ -1387,10 +1455,11 @@ function showSectionModal(idx, focusLost = false) {{
     return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
   }});
   _modalDestGroups = destFile ? extractDestWithContext(destFile.filename) : [];
-  // V-47: scope added lines to the matching section in dest first; fall back to full file
+  // V-47: scope added lines to the matching section in dest first; fall back to full file.
+  // V-47a: sectionFound=true when section was located (exact or fuzzy) — empty scoped result is correct.
   const _destFilenameM = destFile ? destFile.filename : (destRaw + '.md');
   const _destSectionM = extractSectionLines(_destFilenameM, sectionName, '+');
-  const addedLines = _destSectionM.lines.length > 0
+  const addedLines = (_destSectionM.lines.length > 0 || _destSectionM.sectionFound)
     ? _destSectionM.lines
     : _modalDestGroups.flatMap(g => g.lines);
 
