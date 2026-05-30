@@ -309,8 +309,13 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
         f'<span class="chip" data-facet="project" data-val="{p}" onclick="toggleChip(this)">{p}</span>'
         for p in projects
     )
+    from noteplan_sweep.work_board import _PLANTYPE_NAMES
     plantype_chips = "".join(
-        f'<span class="chip" data-facet="plantype" data-val="{t}" onclick="toggleChip(this)" style="font-size:16px">{t}</span>'
+        f'<span class="chip plantype-chip" data-facet="plantype" data-val="{t}" '
+        f'onclick="toggleChip(this)" title="{_PLANTYPE_NAMES.get(t, t)}">'
+        f'<span style="font-size:14px">{t}</span>'
+        f'<span class="pt-label">{_PLANTYPE_NAMES.get(t, "")}</span>'
+        f'</span>'
         for t in plantypes
     )
 
@@ -360,6 +365,10 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
   .chip[data-facet="status"][data-val="backlog"].active {{ background: #1f2d4a; color: #79c0ff; border-color: #79c0ff; }}
   .chip[data-facet="project"].active {{ background: #2d1f4a; color: #d2a8ff; border-color: #d2a8ff; }}
   .chip[data-facet="plantype"].active {{ background: #1f3a4a; color: #79c0ff; border-color: #79c0ff; }}
+  .plantype-chip {{ display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; }}
+  .pt-label {{ font-size: 11px; color: #8b949e; }}
+  .plantype-chip.active .pt-label {{ color: #79c0ff; }}
+  .facet-row + .facet-row {{ margin-top: 4px; }}
   .facet-sep {{ width: 1px; height: 16px; background: #30363d; margin: 0 4px; flex-shrink: 0; }}
 
   /* ── Tabs ── */
@@ -443,15 +452,16 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
   </div>
   <div class="facet-row">
     <span class="facet-label">Status</span>
-    <span class="chip active" data-facet="status" data-val="all"   onclick="toggleChip(this)">All</span>
-    <span class="chip"        data-facet="status" data-val="active" onclick="toggleChip(this)">🟢 Active</span>
-    <span class="chip"        data-facet="status" data-val="paused" onclick="toggleChip(this)">🟡 Paused</span>
-    <span class="chip"        data-facet="status" data-val="backlog" onclick="toggleChip(this)">🔵 Backlog</span>
-    <span class="chip"        data-facet="status" data-val="done"   onclick="toggleChip(this)">✅ Done</span>
+    <span class="chip active" data-facet="status" data-val="all"    onclick="toggleChip(this)" title="All statuses">All</span>
+    <span class="chip"        data-facet="status" data-val="active"  onclick="toggleChip(this)" title="Active">🟢 Active</span>
+    <span class="chip"        data-facet="status" data-val="paused"  onclick="toggleChip(this)" title="Paused">🟡 Paused</span>
+    <span class="chip"        data-facet="status" data-val="backlog" onclick="toggleChip(this)" title="Backlog">🔵 Backlog</span>
+    <span class="chip"        data-facet="status" data-val="done"    onclick="toggleChip(this)" title="Done">✅ Done</span>
     <div class="facet-sep"></div>
     <span class="facet-label">Project</span>
     {project_chips}
-    <div class="facet-sep"></div>
+  </div>
+  <div class="facet-row">
     <span class="facet-label">Type</span>
     {plantype_chips}
   </div>
