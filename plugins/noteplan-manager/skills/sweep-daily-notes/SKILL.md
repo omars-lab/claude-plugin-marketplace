@@ -449,6 +449,16 @@ AskUserQuestion({
 
 **User notes in AskUserQuestion answers are authoritative context.** When the user provides a free-text note alongside their answer (e.g. "this is billing for Lana's daycare" or "this is part of me understanding servicenow"), treat it as a clarification that should immediately inform your interpretation of the content. If the note suggests a different category or plan than you had scored, re-score the plan index against the user's description and present better-matched options in the next follow-up question. Never ignore user notes.
 
+**Search before asking — resolve ambiguity with web context:** Before presenting a routing question for an uncertain section, if the section contains a URL, person name, or topic you can't confidently identify, **use WebSearch to look it up first**. For example:
+- A URL like `dotenvx.com` → WebSearch "dotenvx" → identifies it as a dotenv encryption tool → route to `References[Software]` confidently
+- A person's name like "Sebastian Raschka" → WebSearch → identifies as ML/LLM researcher → route to `References[AI]` confidently
+- A project name like "cloudhead.io" → WebSearch → identifies as an open-source developer portfolio → route to `References[Software]` confidently
+
+If the search gives a **clear, confident answer** → route it directly without asking the user.
+If the search produces **ambiguous or multiple valid routings** → include the search findings in the routing question so the user has full context.
+
+**Capture clarifications in descriptions:** When the user routes a section and explains why (via a user note or direct answer), update that destination's `description:` frontmatter to reflect the new context. This prevents the same ambiguity from arising in future sweeps. For example: if the user says "this belongs in the A2A POC because it's about external agent hookup", update the A2A plan's description to mention external agent hookup if it doesn't already. Write the description update inline when executing the section move — do not defer.
+
 Show a **progress counter** in the header (`1/3`, `2/3`, etc.) so the user knows how many uncertain sections remain.
 
 If **"🆕 Create a new plan"** is selected → go to **Step 6d: Create New Plan**, then return to routing.
@@ -637,17 +647,21 @@ For each section confirmed for moving:
 - **Unsorted**: append under `# Unsorted` in the target note (no date sub-header needed in Unsorted)
 - **Remove** from source: all content lines AND their section header (`# SectionName`). Do NOT move the original section header to the target — the target gets `# [[PlanName]]` instead.
 - **Split sections**: when individual lines within a section go to different plans, remove the section header and each line individually, routing each line to its designated plan header.
-- **Leave a swept breadcrumb in the source note**: after all sections for a day are moved, append a brief sweep-log block at the end of the source daily note so the user can see where things went. Use `[[YYYY-MM-DD]]` wikilinks for daily note references so they're clickable in NotePlan. Format:
+- **Leave a swept breadcrumb in the source note**: after all sections for a day are moved, append a markdown table at the end of the source daily note so the user can trace where content went. Use `[[YYYY-MM-DD]]` wikilinks for daily note references and `[[PlanName]]` wikilinks for plan references so they're clickable in NotePlan. Format:
   ```
   ---
-  *Swept {YYYY-MM-DD}:*
-  - → [[PlanName1]]: {section1 name}, {section2 name}
-  - → [[PlanName2]]: {section3 name}
-  - → [[{TARGET_DATE_ISO}]] Errands: {count} errand task(s)
-  - → [[{TARGET_DATE_ISO}]] Unsorted: {section name}
-  - → [[{MEETING_DATE_ISO}]]: {meeting/1-1 section name}
+  | Swept | Section | Summary | Destination |
+  |-------|---------|---------|-------------|
+  | {YYYY-MM-DD} | # PlanName | {section1 name}, {section2 name} | [[PlanName1]] |
+  | {YYYY-MM-DD} | # Errands | {count} errand tasks | [[{TARGET_DATE_ISO}]] Errands |
+  | {YYYY-MM-DD} | # Unsorted | {section name} | [[{TARGET_DATE_ISO}]] Unsorted |
+  | {YYYY-MM-DD} | # 1-1 Notes | meeting notes | [[{MEETING_DATE_ISO}]] |
   ```
-  Where `{TARGET_DATE_ISO}` is `YYYY-MM-DD` (e.g. `[[2026-03-15]]`). Only list destinations where content was actually moved. Skip skipped sections. The breadcrumb is the one exception to "no new content in source" — it is allowed because it is a reference to swept content, not content itself. Update the `is_allowed_new` check in Phase 7 to permit lines matching `^- → ` and `^\*Swept ` patterns.
+  Where `{TARGET_DATE_ISO}` is `YYYY-MM-DD` (e.g. `[[2026-03-15]]`). Only list destinations where content was actually moved. Skip skipped sections. The breadcrumb is the one exception to "no new content in source" — it is allowed because it is a reference to swept content, not content itself.
+
+  **When the source note is swept again on a later date**: check if a breadcrumb table already exists. If so, **append new rows** to the existing table rather than creating a second table. This ensures the full sweep history for a note is visible in one table.
+
+  Update the `is_allowed_new` check in Phase 7 to permit lines matching `^\| ` (table rows) and `^\| Swept ` (table header).
 
 **Wikilink todos are ordinary content:** Tasks whose body is a wikilink (e.g. `- [ ] [[PlanName]]`) are moved verbatim exactly like any other task line. The wikilink in the body is the routing signal, but the full line (including `- [ ]` prefix) is preserved as-is.
 
@@ -780,13 +794,12 @@ for line in lines:
         continue
 
     content = line[1:].rstrip()  # strip trailing whitespace for comparison
+    # Normalize permitted task annotations (trailing date tags + hashtags) on BOTH sides
+    # so date-forwarding (e.g. >2026-03-16 → >2026-03-20) doesn't cause false "content loss" failures
+    normalized = re.sub(r'(\s+(>\d{4}-\d{2}-\d{2}|>\d{8}|#\w+))+$', '', content)
     if line.startswith('-'):
-        removed.add(content)
+        removed.add(normalized)
     elif line.startswith('+'):
-        # Normalize permitted task annotations before comparison:
-        # strip trailing >YYYY-MM-DD or >YYYYMMDD date tags and #hashtags appended during the move
-        # so these additions don't falsely trigger "content loss" failures
-        normalized = re.sub(r'(\s+(>\d{4}-\d{2}-\d{2}|>\d{8}|#\w+))+$', '', content)
         added.add(normalized)
 
 # today_date = current date as YYYYMMDD string, exclude from diff
@@ -811,8 +824,9 @@ def is_allowed_new(l):
         re.match(r'^## From \d{4}', l) or   # date annotation sub-headers
         re.match(r'^## \d{4}-\d{2}-\d{2}', l) or  # meeting date headers
         re.match(r'^#', l.strip()) or        # any section header in Unsorted context
-        re.match(r'^\- → ', l) or            # swept breadcrumb destination lines
-        re.match(r'^\*Swept \d{4}-\d{2}-\d{2}', l)  # swept breadcrumb header
+        re.match(r'^\| ', l) or              # swept breadcrumb table rows
+        re.match(r'^\- → ', l) or            # swept breadcrumb destination lines (legacy)
+        re.match(r'^\*Swept \d{4}-\d{2}-\d{2}', l)  # swept breadcrumb header (legacy)
     )
 
 disallowed_new = [l for l in new if l.strip() and not is_allowed_new(l)]
@@ -936,7 +950,17 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 - Only write what's verifiable from the notes you actually read — no speculation
 - Keep entries concise: 3–7 bullets per file per sweep
 - Create the file if it doesn't exist yet (plain markdown, no frontmatter needed)
-- Commit after writing: `git commit -m "reflect(sweep): add {YYYY-MM-DD} self-knowledge observations"`
+
+**Also update `🏡📋 Habits.md`** in `$NOTES_ROOT/🏡 Personal/🏡📋 Lists/`:
+
+1. Read the current `🏡📋 Habits.md` file
+2. Scan notes read during this sweep for habit signals:
+   - **Observed habits**: tasks done repeatedly, check-ins with habit trackers, routine references (prayer, exercise, journaling) → update the `## ✅ Current Habits (Observed)` table with the `Last Seen` date and a frequency estimate
+   - **Aspired habits**: tasks phrased as "I want to…", "Start doing…", or explicit habit goals not yet consistent → add rows to `## 🌱 Habits I Want to Build` if not already present
+   - **Habit reflections**: self-commentary about habits, scope overload signals, seasonal resets (Ramadan, New Year, etc.) → append to `## 💡 Habit Reflection Notes`
+3. Write the updated file back (preserve existing entries — only add new rows or update `Last Seen` / frequency on existing ones)
+
+- Commit after writing: `git commit -m "reflect(sweep): add {YYYY-MM-DD} self-knowledge observations + habits update"`
 
 ---
 
@@ -979,7 +1003,10 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Thoughts directory indexed | Index `🏡💭 Thoughts/💡 Ideas/` alongside plans and lists. Present as routing option for raw ideas, braindumps, and speculative product/startup thinking. |
 | Meeting planning → next business day | When routing unscheduled meeting tasks from Unsorted (e.g. "Figure out meetings — Jeff, Khusbha, etc."), place them in the **next business day's daily note** (create it if needed), not in a general backlog. |
 | Self-knowledge capture | After each sweep's final commit (Phase 8.5), append dated observations to `🪞 Reflections/🏡💭💻 GenAI Thoughts/Observations.md`, `Gaps.md`, and `Superpowers.md`. Only write what's verifiable from the notes read. |
-| Swept breadcrumbs in source | After sweeping a daily note, append a `---` separator and a brief `*Swept YYYY-MM-DD:*` log at the end of the source file listing each destination wikilink and the section names routed there. This lets the user trace where content went without opening the target files. Update the Phase 7 `is_allowed_new` check to permit `^- → ` and `^\*Swept ` patterns. |
+| Habits tracking in sweep | Phase 8.5 also updates `🏡📋 Habits.md`: scan swept notes for habit signals (observed habits, aspired habits, habit reflections). Update `Last Seen` and frequency on existing rows; add new rows for newly spotted habits. |
+| Swept breadcrumbs in source | After sweeping a daily note, append a markdown table (`| Swept | Section | Summary | Destination |`) at the end of the source file so the user can trace where content went. If a breadcrumb table already exists (note swept before), append new rows to it — do not create a second table. `is_allowed_new` allows `^\| ` (table rows). |
+| Search before asking | Before presenting a routing question for an uncertain section, use WebSearch to identify unknown URLs, names, or topics. If the search gives a confident answer, route directly. If ambiguous, include findings in the routing question. After the user decides, update the destination's `description:` frontmatter to capture the clarification for future sweeps. |
+| Integrity check — normalize both sides | The `removed` and `added` sets in the Phase 7 integrity check must both be normalized (strip trailing `>YYYY-MM-DD` tags and `#hashtags`) before comparison. Date-forwarding during sweeps (e.g. `>2026-03-16` → `>2026-03-20`) should not cause false "content loss" failures. |
 | NotePlan date format is `>YYYY-MM-DD` | Date scheduling tags MUST use hyphens (`>2026-03-20`), never compact (`>20260320`). Tags without hyphens are silently ignored by NotePlan. Step 6f runs a repair pass after each day to fix any broken tags in touched files. |
 | Raw links are routing signals | Inspect URL domains during classification. ServiceNow instance/docs links route to matching work plans. Learning/reference URLs route to `📋 Lists/References[...]` when standalone. Standalone raw links are `❓ Uncertain` — present with domain context. |
 
