@@ -26,7 +26,7 @@ if os.path.isfile(_VENV_PYTHON) and not sys.executable.startswith(_SCRIPT_DIR):
 sys.path.insert(0, os.path.dirname(__file__))
 
 import noteplan_sweep.utils as utils
-from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair
+from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair, sweep_review
 
 VERSION = "0.1.0"
 
@@ -77,6 +77,13 @@ COMMANDS = [
     # Group 7: Link Repair
     ("enrich-links",            "Enrich bare URLs in file; --use-chrome for Okta-protected internal URLs"),
     ("fix-links",               "Repair [[wikilinks]] and [[Stem#Heading]] anchors after file renames"),
+    # Group 8: Sweep Review
+    ("sweep-commit",            "Stage modified .md files and create a structured sweep(YYYY-MM-DD) commit"),
+    ("sweep-review-generate",   "Generate immutable snapshot HTML from the sweep commit diff"),
+    ("sweep-review-compile",    "Merge snapshot + all rN.comments.jsonl rounds → review.html"),
+    ("sweep-review-squash",     "Squash all rN comment files for a run into r1.comments.jsonl"),
+    ("sweep-review-list",       "List all sweep runs grouped by date with comment + compile status"),
+    ("sweep-review-open",       "Open compiled review (or snapshot) in browser"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -265,6 +272,31 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("notes_root", nargs="?",
                    help="Notes root directory to scan (default: cwd)")
 
+    # ── Group 8: Sweep Review ──────────────────────────────────────────────
+    p = sub.add_parser("sweep-commit", help=COMMANDS[36][1])
+    p.add_argument("--dry-run", action="store_true", help="Print what would be committed without writing")
+
+    p = sub.add_parser("sweep-review-generate", help=COMMANDS[37][1])
+    p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
+    p.add_argument("--no-carry-comments", action="store_true",
+                   help="Start fresh — do not inject existing comments into new snapshot")
+
+    p = sub.add_parser("sweep-review-compile", help=COMMANDS[38][1])
+    p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
+    p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
+
+    p = sub.add_parser("sweep-review-squash", help=COMMANDS[39][1])
+    p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
+    p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
+
+    p = sub.add_parser("sweep-review-list", help=COMMANDS[40][1])
+    p.add_argument("--date", help="Filter to a specific YYYY-MM-DD")
+
+    p = sub.add_parser("sweep-review-open", help=COMMANDS[41][1])
+    p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
+    p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
+    p.add_argument("--snapshot", action="store_true", help="Open raw snapshot instead of compiled review")
+
     return parser
 
 # ---------------------------------------------------------------------------
@@ -307,6 +339,12 @@ DISPATCH = {
     "archive-url":              url_enrichment.cmd_archive_url,
     "enrich-links":             url_enrichment.cmd_enrich_links,
     "fix-links":                link_repair.cmd_fix_links,
+    "sweep-commit":             sweep_review.cmd_sweep_commit,
+    "sweep-review-generate":    sweep_review.cmd_sweep_review_generate,
+    "sweep-review-compile":     sweep_review.cmd_sweep_review_compile,
+    "sweep-review-squash":      sweep_review.cmd_sweep_review_squash,
+    "sweep-review-list":        sweep_review.cmd_sweep_review_list,
+    "sweep-review-open":        sweep_review.cmd_sweep_review_open,
 }
 
 def cmd_list_commands(_args=None):
