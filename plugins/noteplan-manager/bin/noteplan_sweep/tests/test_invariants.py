@@ -37,10 +37,11 @@ from noteplan_sweep.sweep_review import (
     _norm_line,
     _py_classify_all_rows,
     _py_cross_row_issues,
+    _py_dest_outcomes,
     _py_invariant_violations,
 )
 
-VALID_KINDS = {"move", "went-to", "lost", "anomaly", "empty"}
+VALID_KINDS = {"move", "went-to", "lost", "empty"}
 
 
 # ---------------------------------------------------------------------------
@@ -161,9 +162,9 @@ def assert_outcomes_shape(results: list[dict]) -> None:
 
     - outcomes is a list of dicts
     - each entry has keys: kind, dest, dest_stem, lines
-    - kind ∈ {move, went-to, lost, anomaly, empty}
+    - kind ∈ {move, went-to, lost, empty}  (anomaly removed in #101)
     - lost outcomes have dest=None AND dest_stem=None
-    - non-lost outcomes have dest_stem != None (move/anomaly/empty/went-to)
+    - non-lost outcomes have dest_stem != None (move/empty/went-to)
     """
     for r in results:
         outcomes = r.get("outcomes")
@@ -710,4 +711,134 @@ def test_py_invariant_violations_catches_breadcrumb_idx_mismatch():
     violations = _py_invariant_violations(bad, [])
     assert any(v["inv"] == "INV-8" for v in violations), (
         f"INV-8 must catch breadcrumb_idx mismatch, got: {violations}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# #101 — Reframed portal: no anomaly outcomes; per-dest dropped/new
+# ---------------------------------------------------------------------------
+
+def test_inv4_anomaly_kind_is_invalid_post_101():
+    """After #101, 'anomaly' is no longer a valid outcome kind. INV-4 must reject it."""
+    bad = [{
+        "idx": 0, "breadcrumb_idx": 0, "type": "anomaly",
+        "moved_lines": [], "dest_lines": [], "truly_lost_lines": [],
+        "went_to_details": {}, "line_statuses": {}, "issues": [], "dest_stem": "x",
+        "outcomes": [{"kind": "anomaly", "dest": "x", "dest_stem": "x", "lines": []}],
+    }]
+    violations = _py_invariant_violations(bad, [])
+    assert any(v["inv"] == "INV-4" for v in violations), (
+        f"INV-4 must reject 'anomaly' as an invalid kind post-#101. Got: {violations}"
+    )
+
+
+def test_classifier_no_longer_emits_anomaly_outcomes():
+    """Source has no `-` lines for the section but dest has unattributed `+` lines.
+    Pre-#101 this produced a row with type='anomaly' and outcomes[0].kind='anomaly'.
+    Post-#101: row is type='empty' and the unattributed `+` lines surface in
+    _py_dest_outcomes (separate per-dest list), NOT in row outcomes.
+    """
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md", "removed": [], "added": []},
+        {"path": "Plans/Bikar.md", "removed": [],
+         "added": ["- [ ] orphan dest line not from this sweep"]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Goals",
+                  "destination": "[[Plans/Bikar]]", "date": "2026-04-13", "summary": ""}]
+    results = _classify(diff, narrative)
+    for r in results:
+        assert r.get("type") != "anomaly", (
+            f"Row should not have type='anomaly' post-#101: {r!r}"
+        )
+        for o in (r.get("outcomes") or []):
+            assert o.get("kind") != "anomaly", (
+                f"Outcome should not have kind='anomaly' post-#101: {o!r}"
+            )
+
+
+def test_dest_outcomes_surfaces_new_for_unattributed_dest_addition():
+    """Dest has a `+` line that doesn't trace to any source `-` → routes to dest_outcomes.new."""
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md", "removed": [], "added": []},
+        {"path": "Plans/Bikar.md", "removed": [],
+         "added": ["- [ ] orphan dest line not from this sweep"]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Goals",
+                  "destination": "[[Plans/Bikar]]", "date": "2026-04-13", "summary": ""}]
+    results = _classify(diff, narrative)
+    dest = _py_dest_outcomes(diff, narrative, results)
+    bikar = next((d for d in dest if d["stem"] == "bikar"), None)
+    assert bikar is not None, f"Expected an entry for stem='bikar', got: {dest!r}"
+    assert any("orphan dest line" in l for l in (bikar.get("new") or [])), (
+        f"Unattributed dest addition should surface in dest_outcomes.new: {bikar!r}"
+    )
+
+
+def test_dest_outcomes_surfaces_dropped_for_dest_minus_lines():
+    """Dest has a `-` line (collateral deletion) → routes to dest_outcomes.dropped.
+    Sweep is supposed to ADD content to dests, so any `-` is collateral worth flagging.
+    """
+    moved = "- [ ] real moved task one"
+    dest_was_dropped = "- [ ] previously existing dest line that got dropped"
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md", "removed": ["## Goals", moved], "added": []},
+        {"path": "Plans/Bikar.md", "removed": [dest_was_dropped],
+         "added": ["## Goals", moved]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Goals",
+                  "destination": "[[Plans/Bikar]]", "date": "2026-04-13", "summary": ""}]
+    results = _classify(diff, narrative)
+    dest = _py_dest_outcomes(diff, narrative, results)
+    bikar = next((d for d in dest if d["stem"] == "bikar"), None)
+    assert bikar is not None, f"Expected an entry for stem='bikar', got: {dest!r}"
+    assert any("previously existing" in l for l in (bikar.get("dropped") or [])), (
+        f"Dest `-` line should surface in dest_outcomes.dropped: {bikar!r}"
+    )
+    # The `+` line that arrived from the sweep should NOT appear in `new`
+    new_lines = bikar.get("new") or []
+    assert not any("real moved task" in l for l in new_lines), (
+        f"Move-attributed `+` line must not appear in dest_outcomes.new: {bikar!r}"
+    )
+
+
+def test_dest_outcomes_separates_dropped_and_new_for_same_dest():
+    """A dest with both unattributed `+` AND `-` lines yields BOTH `new` and `dropped`."""
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md", "removed": [], "added": []},
+        {"path": "Plans/Bikar.md",
+         "removed": ["- [ ] dest-side dropped line collateral"],
+         "added": ["- [ ] new content not from sweep"]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Goals",
+                  "destination": "[[Plans/Bikar]]", "date": "2026-04-13", "summary": ""}]
+    results = _classify(diff, narrative)
+    dest = _py_dest_outcomes(diff, narrative, results)
+    bikar = next((d for d in dest if d["stem"] == "bikar"), None)
+    assert bikar is not None, f"Expected entry for stem='bikar', got: {dest!r}"
+    assert any("dropped line" in l for l in (bikar.get("dropped") or [])), (
+        f"Expected dropped line, got: {bikar!r}"
+    )
+    assert any("new content" in l for l in (bikar.get("new") or [])), (
+        f"Expected new line, got: {bikar!r}"
+    )
+
+
+def test_dest_outcomes_ignores_files_outside_swept_set():
+    """Diff contains a file that no breadcrumb names → it must NOT appear in dest_outcomes.
+    Scope boundary: portal looks ONLY at swept-files set.
+    """
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md", "removed": [], "added": []},
+        {"path": "Plans/Bikar.md", "removed": [], "added": []},
+        # Out-of-scope: someone else edited this file in the same commit window
+        {"path": "Notes/Unrelated.md", "removed": ["- [ ] old line"],
+         "added": ["- [ ] new line in unrelated file"]},
+    ])
+    narrative = [{"source_file": "Calendar/20260413.md", "section": "Goals",
+                  "destination": "[[Plans/Bikar]]", "date": "2026-04-13", "summary": ""}]
+    results = _classify(diff, narrative)
+    dest = _py_dest_outcomes(diff, narrative, results)
+    stems = {d["stem"] for d in dest}
+    assert "unrelated" not in stems, (
+        f"Out-of-scope file 'unrelated' must not appear in dest_outcomes. Got stems: {stems}"
     )

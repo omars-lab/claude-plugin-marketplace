@@ -49,7 +49,7 @@ import pytest
 _BIN = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_BIN))
 
-from noteplan_sweep.sweep_review import _build_snapshot_html, _py_classify_all_rows, _py_cross_row_issues
+from noteplan_sweep.sweep_review import _build_snapshot_html, _py_classify_all_rows, _py_cross_row_issues, _py_dest_outcomes
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -76,7 +76,8 @@ def http_server(tmp_path_factory) -> Generator[str, None, None]:
 
 def _write_page(serve_dir: Path, name: str, diff: str, narrative: list,
                 stat: str = "1 file changed", pre_classification: list | None = None,
-                cross_row_issues: list | None = None) -> str:
+                cross_row_issues: list | None = None,
+                dest_outcomes: list | None = None) -> str:
     """Build + write a review HTML page, return its filename.
 
     If pre_classification is not provided and a narrative exists, auto-generate
@@ -87,6 +88,8 @@ def _write_page(serve_dir: Path, name: str, diff: str, narrative: list,
         pre_classification = _py_classify_all_rows(diff, narrative, Path("/nonexistent"))
     if cross_row_issues is None and pre_classification:
         cross_row_issues = _py_cross_row_issues(pre_classification)
+    if dest_outcomes is None and pre_classification is not None:
+        dest_outcomes = _py_dest_outcomes(diff, narrative or [], pre_classification)
 
     html = _build_snapshot_html(
         run_id="test-01",
@@ -99,6 +102,7 @@ def _write_page(serve_dir: Path, name: str, diff: str, narrative: list,
         changed_calendar_files=[f for f in re.findall(r'b/(Calendar/\S+\.md)', diff)],
         pre_classification=pre_classification,
         cross_row_issues=cross_row_issues,
+        dest_outcomes=dest_outcomes,
     )
     path = serve_dir / name
     path.write_text(html, encoding="utf-8")
@@ -678,16 +682,18 @@ def test_js13_lost_row_modal(playwright, http_server):
 # JS-14  Anomaly row — badge shows +, anomaly modal shows unexpected additions
 # ---------------------------------------------------------------------------
 
-def test_js14_anomaly_row_modal(playwright, http_server):
-    """JS-14: Dest has additions, source removed nothing → badge +, anomaly modal single panel."""
+def test_js14_unattributed_dest_addition_routes_to_dest_outcomes(playwright, http_server):
+    """JS-14 (revised #101): source removed nothing for this section but dest has a `+`
+    with no source attribution. Under the new mental model, the breadcrumb row is `empty`
+    (no warning) and the unattributed line surfaces in DEST_OUTCOMES under the `new` pool
+    for that destination — to be rendered in a collapsible info section, NOT as a warning."""
     base_url, serve_dir = http_server
 
     unexpected_line = "- [ ] mystery task appeared in dest"
     narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
-                  "section": "Work", "summary": "anomaly",
+                  "section": "Work", "summary": "unattributed dest addition",
                   "destination": "[[Calendar/20260421]]"}]
     diff = _make_diff([
-        # Source has NO removed lines for this section (in diff only added)
         {"path": "Calendar/20260413.md", "removed": [], "added": ["- [ ] unrelated addition"]},
         {"path": "Calendar/20260421.md", "added": [unexpected_line], "removed": []},
     ])
@@ -698,22 +704,23 @@ def test_js14_anomaly_row_modal(playwright, http_server):
     page.goto(f"{base_url}/{page_name}")
     page.wait_for_selector(".nav-tbl")
 
-    page.click(".view-btn")
-    page.wait_for_selector("#modal-overlay.open")
-
     badge_class = page.eval_on_selector(
         "tr[data-row-idx='0'] .row-badge", "el => el.className"
     )
-    grid_cols = page.eval_on_selector(
-        "#modal-body", "el => el.style.gridTemplateColumns"
-    )
-    modal_text = page.eval_on_selector("#modal-body", "el => el.textContent")
+    dest_outcomes = page.evaluate("DEST_OUTCOMES")
     browser.close()
 
-    assert "rb-untraced" in badge_class, f"Expected rb-untraced badge (Track C rename), got: {badge_class}"
-    assert grid_cols == "1fr", f"Expected single-column anomaly layout, got: {grid_cols!r}"
-    assert "mystery task" in modal_text or "unexpected" in modal_text.lower(), (
-        f"Anomaly content not shown in modal: {modal_text!r}"
+    assert "rb-empty" in badge_class, (
+        f"Row should be empty under new model (no anomaly warning), got: {badge_class!r}"
+    )
+    new_lines = []
+    for entry in dest_outcomes:
+        if entry.get("stem") == "20260421":
+            new_lines = entry.get("new") or []
+            break
+    assert any("mystery task" in l for l in new_lines), (
+        f"Unattributed dest line should surface in DEST_OUTCOMES.new for dest '20260421'. "
+        f"DEST_OUTCOMES={dest_outcomes!r}"
     )
 
 
@@ -962,15 +969,11 @@ def test_js18_redirect_stub_fp(playwright, http_server):
 # JS-19  Full-file: source-empty + dest has unrelated additions → anomaly
 # ---------------------------------------------------------------------------
 
-def test_js19_source_empty_dest_has_additions_is_anomaly(playwright, http_server):
-    """JS-19 (post V-47a removal, #82): Source section has no removed lines.
-    Dest file has an addition under a different section ('## Other Work').
-
-    With full-file (V-47a removed): addedLines includes '- some other task'.
-    Source empty → newContent not attributable to any sweep → trueNewCount=1 → anomaly.
-
-    This is the correct classification: something appeared in dest with no corresponding
-    breadcrumb row — a genuine anomaly.
+def test_js19_source_empty_dest_has_additions_routes_to_dest_outcomes(playwright, http_server):
+    """JS-19 (revised #101): Source section is empty; dest has an addition under a different
+    section. Under the new mental model this is NOT an anomaly warning — the breadcrumb row
+    is `empty` and the unrelated `+` line surfaces under DEST_OUTCOMES.new for the dest, to
+    be rendered in a collapsible info section.
     """
     base_url, serve_dir = http_server
 
@@ -1002,19 +1005,23 @@ def test_js19_source_empty_dest_has_additions_is_anomaly(playwright, http_server
     page.goto(f"{base_url}/{page_name}")
     page.wait_for_selector(".nav-tbl")
 
-    page.wait_for_function(
-        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
-        timeout=10_000,
-    )
-
     badge_class = page.eval_on_selector(
         "tr[data-row-idx='0'] .row-badge", "el => el.className"
     )
+    dest_outcomes = page.evaluate("DEST_OUTCOMES")
     browser.close()
 
-    assert "rb-untraced" in badge_class, (
-        f"V-47a removed: source-empty + dest has unrelated addition → should be rb-untraced (anomaly). "
-        f"Got: {badge_class!r}"
+    assert "rb-empty" in badge_class, (
+        f"Row should be empty (no anomaly warning) under new mental model. Got: {badge_class!r}"
+    )
+    new_lines = []
+    for entry in dest_outcomes:
+        if entry.get("stem") == "plan":
+            new_lines = entry.get("new") or []
+            break
+    assert any("some other task" in l for l in new_lines), (
+        f"Unrelated dest addition should appear in DEST_OUTCOMES.new for dest 'plan'. "
+        f"DEST_OUTCOMES={dest_outcomes!r}"
     )
 
 

@@ -433,12 +433,14 @@ def _build_snapshot_html(
     base_commit: str | None = None,
     pre_classification: list | None = None,
     cross_row_issues: list | None = None,
+    dest_outcomes: list | None = None,
 ) -> str:
     seed_json = json.dumps(seed_comments, indent=2)
     narrative_json = json.dumps(narrative or [], indent=2)
     changed_cal_json = json.dumps(changed_calendar_files or [], indent=2)
     pre_classification_json = json.dumps(pre_classification or [], indent=2)
     cross_row_issues_json = json.dumps(cross_row_issues or [], indent=2)
+    dest_outcomes_json = json.dumps(dest_outcomes or [], indent=2)
     base_commit_comment = f"<!-- base_commit: {base_commit} -->" if base_commit else ""
     return f"""<!DOCTYPE html>
 {base_commit_comment}
@@ -536,7 +538,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .nav-tbl th:nth-child(1){{width:28px}}.nav-tbl th:nth-child(2){{width:50px}}.nav-tbl th:nth-child(3){{width:18%}}.nav-tbl th:nth-child(4){{width:22%}}.nav-tbl th:nth-child(5){{width:88px}}.nav-tbl th:nth-child(6){{width:auto}}.nav-tbl th:nth-child(7){{width:44px}}
 .src-col{{color:#58a6ff;font-family:monospace;font-size:11px;white-space:nowrap}}
 .row-badge{{display:inline-block;font-size:11px;min-width:16px;text-align:center;border-radius:3px;padding:1px 4px;font-weight:600}}
-.rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-went-to{{background:#001730;color:#58a6ff}}.rb-untraced{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}
+.rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-went-to{{background:#001730;color:#58a6ff}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}.rb-dropped{{background:#2a1a0a;color:#d29922}}.rb-new{{background:#1a1a00;color:#e3b341}}
 .nav-tbl td{{padding:5px 10px;border-bottom:1px solid #21262d;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .nav-tbl tr:hover td{{background:#161b22}}
 .nav-tbl .section-col{{color:#e6edf3;font-weight:500}}
@@ -580,7 +582,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
   <button class="type-chip" data-type="move" onclick="setType('move')" title="Move — all source lines confirmed at destination">→ Move</button>
   <button class="type-chip" data-type="went-to" onclick="setType('went-to')" title="Went to — source lines found in a different file than the breadcrumb destination">⇢ Went to</button>
   <button class="type-chip" data-type="lost" onclick="setType('lost')" title="Absent — source lines not found in any diff addition">✗ Absent</button>
-  <button class="type-chip" data-type="anomaly" onclick="setType('anomaly')" title="Untraced — destination has additions with no traceable source row">? Untraced</button>
+  <button class="type-chip" data-type="dropped" onclick="setType('dropped')" title="Dropped — `-` lines in a swept destination (collateral, sweep only adds)">− Dropped</button>
   <button class="type-chip" data-type="empty" onclick="setType('empty')" title="Empty — no source content found or destination file is empty">· Empty</button>
   <button class="toggle-chip" id="empty-toggle" onclick="toggleEmpty()" title="Empty rows have no content to verify — toggle to show/hide them in All view">· Empty: hidden</button>
   <button class="copy-btn" id="copy-btn" onclick="copyNarrative()">📋 Copy</button>
@@ -603,6 +605,7 @@ const NARRATIVE = {narrative_json};
 const CHANGED_CALENDAR_FILES = {changed_cal_json};
 const PRE_CLASSIFICATION = {pre_classification_json};
 const CROSS_ROW_ISSUES = {cross_row_issues_json};
+const DEST_OUTCOMES = {dest_outcomes_json};
 
 let allParsedFiles = [];
 const MODAL_ROWS = [];
@@ -678,6 +681,38 @@ function toggleSectionItems(rowIdx, btn, outcomeIdx) {{
   }}
 }}
 
+// #101: Per-dest outcome toggle (`dropped` rows). Mirrors toggleSectionItems but
+// pulls lines from DEST_OUTCOMES rather than PRE_CLASSIFICATION.
+function toggleDestOutcome(rowKey, btn, kind, destIdx) {{
+  const parentKey = rowKey;
+  const existing = document.querySelectorAll(`tr.item-row[data-parent="${{parentKey}}"]`);
+  if (existing.length) {{
+    existing.forEach(r => r.remove());
+    btn.textContent = '▶';
+    return;
+  }}
+  const dest = (DEST_OUTCOMES || [])[destIdx];
+  if (!dest) return;
+  const lines = (kind === 'dropped' ? dest.dropped : dest.new) || [];
+  if (!lines.length) {{ btn.textContent = '○'; return; }}
+  btn.textContent = '▼';
+  const parentRow = btn.closest('tr');
+  if (!parentRow) return;
+  let insertAfter = parentRow;
+  const glyph = kind === 'dropped' ? '−' : '+';
+  const color = kind === 'dropped' ? '#d29922' : '#e3b341';
+  for (const line of lines) {{
+    const clean = line.replace(/^-\\s*\\[[x ]\\]\\s*/i, '').replace(/^-\\s+/, '').trim();
+    if (!clean) continue;
+    const tr = document.createElement('tr');
+    tr.className = 'item-row';
+    tr.dataset.parent = parentKey;
+    tr.innerHTML = `<td class="sec-toggle" style="color:#30363d;text-align:right">↳</td><td></td><td class="item-text" colspan="3" style="color:${{color}};opacity:0.85"><span style="font-size:9px;margin-right:4px">${{glyph}}</span>${{esc(clean)}}</td><td></td><td></td>`;
+    insertAfter.insertAdjacentElement('afterend', tr);
+    insertAfter = tr;
+  }}
+}}
+
 function closeModal() {{
   document.getElementById('modal-overlay').classList.remove('open');
   const scopeEl = document.getElementById('modal-scope');
@@ -709,16 +744,15 @@ const _rowValidation = new Map(); // idx → [issue strings]
 // Layer 4: cross-row issues
 const _crossRowIssues = [];
 
-const _badgeLabels   = {{ move: '→', 'went-to': '⇢', lost: '✗', anomaly: '?', untraced: '?', empty: '·' }};
-// Internal type 'anomaly' maps to CSS class 'rb-untraced' and label '?'
-const _badgeCls      = {{ anomaly: 'untraced', 'went-to': 'went-to' }};
+const _badgeLabels   = {{ move: '→', 'went-to': '⇢', lost: '✗', empty: '·', dropped: '−', new: '+' }};
+const _badgeCls      = {{ 'went-to': 'went-to' }};
 const _badgeTitles   = {{
   move:       'Move — all source lines confirmed at destination',
   'went-to':  'Went to — source lines found in a different file than the breadcrumb destination',
   lost:       'Absent — source lines not found in any diff addition',
-  anomaly:    'Untraced — destination has additions with no traceable source row',
-  untraced:   'Untraced — destination has additions with no traceable source row',
   empty:      'Empty — nothing to verify',
+  dropped:    'Dropped — `-` lines in a swept destination (sweep only adds, so any removal is collateral)',
+  new:        'New — `+` lines in a swept destination not attributed to any source breadcrumb',
 }};
 
 function updateRowBadge(idx, classification) {{
@@ -767,7 +801,6 @@ function updateRowBadge(idx, classification) {{
   if (type === 'move')        counts = ` (${{movedCount}} line${{movedCount!==1?'s':''}} moved)`;
   else if (type === 'went-to') counts = ` (${{misroutedCount}} line${{misroutedCount!==1?'s':''}} found elsewhere)`;
   else if (type === 'lost')   counts = ` (${{lostCount}} line${{lostCount!==1?'s':''}} absent from diff)`;
-  else if (type === 'anomaly') counts = newCount ? ` (${{newCount}} unexpected)` : '';
   const wentToFiles = classification.wentToFiles || [];
   const wentToDetail = (type === 'went-to' && wentToFiles.length > 0)
     ? ' → ' + wentToFiles.map(f => f.split('/').pop().replace(/\.md$/, '')).join(', ') : '';
@@ -794,11 +827,10 @@ function updateRowBadge(idx, classification) {{
     if (type === 'move')         {{ countCell.textContent = movedCount; countCell.title = `${{movedCount}} lines moved`; countCell.style.color = '#3fb950'; }}
     else if (type === 'went-to') {{ countCell.textContent = misroutedCount; countCell.title = `${{misroutedCount}} lines found elsewhere`; countCell.style.color = '#58a6ff'; }}
     else if (type === 'lost')    {{ countCell.textContent = lostCount; countCell.title = `${{lostCount}} lines absent from diff`; countCell.style.color = '#f85149'; }}
-    else if (type === 'anomaly') {{ countCell.textContent = newCount ? `+${{newCount}}` : '+?'; countCell.title = `${{newCount}} unexpected lines`; countCell.style.color = '#e3b341'; }}
     else                          {{ countCell.textContent = '·'; countCell.style.color = '#484f58'; }}
   }}
-  // Lost/went-to/anomaly/empty badges are clickable — open the modal directly
-  if (displayType === 'lost' || displayType === 'went-to' || displayType === 'anomaly' || displayType === 'empty') {{
+  // Lost/went-to/empty badges are clickable — open the modal directly
+  if (displayType === 'lost' || displayType === 'went-to' || displayType === 'empty') {{
     badge.style.cursor = 'pointer';
     badge.onclick = (e) => {{ e.stopPropagation(); showSectionModal(idx); }};
   }} else {{
@@ -834,13 +866,15 @@ function updateValidationBanner() {{
   const crossCount = CROSS_ROW_ISSUES.length;
 
   // Outcome summary across all rows (derived from PRE_CLASSIFICATION outcomes).
-  const outcomeCounts = {{move: 0, 'went-to': 0, lost: 0, anomaly: 0, empty: 0}};
+  const outcomeCounts = {{move: 0, 'went-to': 0, lost: 0, empty: 0}};
   for (const pc of (PRE_CLASSIFICATION || [])) {{
     for (const o of (pc.outcomes || [])) {{
       if (o.kind in outcomeCounts) outcomeCounts[o.kind]++;
     }}
   }}
-  const summary = `→${{outcomeCounts.move}} ⇢${{outcomeCounts['went-to']}} ⌀${{outcomeCounts.lost}} ?${{outcomeCounts.anomaly}}`;
+  // #101: -N dropped counter — count dest_outcomes entries with at least one dropped line.
+  const droppedDestCount = (DEST_OUTCOMES || []).filter(d => (d.dropped || []).length > 0).length;
+  const summary = `→${{outcomeCounts.move}} ⇢${{outcomeCounts['went-to']}} ⌀${{outcomeCounts.lost}} −${{droppedDestCount}} dropped`;
 
   if (rowWarnCount === 0 && crossCount === 0) {{
     banner.className = 'ok';
@@ -876,24 +910,16 @@ function _showSectionModalFromPython(idx, row, _pyc, focusLost) {{
   const rowType        = _pyc.type || 'empty';
   const issues         = _pyc.issues || [];
   const isMixed        = movedLines.length > 0 && trulyLostLines.length > 0;
-  const isFocusAnomaly = (rowType === 'anomaly');
   const isFocusWentTo  = (rowType === 'went-to');
   // Mixed rows (some moved, some lost) need two-panel mode to show both — focusLost only
   // for explicit user request OR pure-lost rows OR empty rows.
-  const isFocusLost    = !isFocusAnomaly && !isMixed && (focusLost || rowType === 'lost' || rowType === 'empty');
+  const isFocusLost    = !isMixed && (focusLost || rowType === 'lost' || rowType === 'empty');
 
   // ── Source panel ──────────────────────────────────────────────────────────
   let srcBody;
   if (rowType === 'empty') {{
     const reason = issues.join(', ') || 'no content found';
     srcBody = `<div class="diff-lines"><div style="color:#e3b341;padding:12px 0">⚠ ${{esc(reason)}}<br><br>Cannot verify this row — open the source file to inspect manually.</div></div>`;
-  }} else if (isFocusAnomaly) {{
-    // Anomaly: dest additions with no traceable source — single-column display
-    const anomalyHtml = destLines.map(l => `<div class="diff-line new-content">${{esc(l)}}</div>`).join('')
-      || `<div class="modal-empty" style="color:#6e7681">No unexpected lines.</div>`;
-    srcBody = `<div class="diff-lines">` +
-      `<div style="color:#e3b341;font-size:11px;font-weight:600;padding:2px 0 6px">? ${{destLines.length}} unexpected line${{destLines.length !== 1 ? 's' : ''}} — appeared in destination without a matching source row</div>` +
-      anomalyHtml + `</div>`;
   }} else {{
     // ⇢ Went-to banner (from went_to_details)
     let wentToHtml = '';
@@ -947,14 +973,12 @@ function _showSectionModalFromPython(idx, row, _pyc, focusLost) {{
       srcBody = `<div class="diff-lines">${{movedHeader}}${{movedHtml}}${{absentSection}}</div>`;
     }}
   }}
-  const srcPanelHdr = isFocusAnomaly
-    ? `Untraced additions — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(destShort)}}</span>`
-    : `Removed from source — ${{srcName}}`;
+  const srcPanelHdr = `Removed from source — ${{srcName}}`;
   const srcPanel = `<div><div class="modal-panel-hdr">${{srcPanelHdr}}</div>${{srcBody}}</div>`;
 
   // ── Dest panel ─────────────────────────────────────────────────────────────
   let destPanel = '';
-  if (!isFocusLost && !isFocusWentTo && !isFocusAnomaly && rowType !== 'empty') {{
+  if (!isFocusLost && !isFocusWentTo && rowType !== 'empty') {{
     const destHdr   = `Added to destination — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(destShort)}}</span>`;
     const destHtml  = destLines.map(l => `<div class="diff-line new-content">${{esc(l)}}</div>`).join('')
       || `<div class="modal-empty" style="color:#6e7681">No matching additions in destination.</div>`;
@@ -966,15 +990,14 @@ function _showSectionModalFromPython(idx, row, _pyc, focusLost) {{
   }}
 
   // ── Render + badge ─────────────────────────────────────────────────────────
-  const titleSuffix = isFocusAnomaly ? ' — ? Untraced additions'
-    : isFocusLost   ? ' — ✗ Absent (⌀ no destination)'
+  const titleSuffix = isFocusLost   ? ' — ✗ Absent (⌀ no destination)'
     : isFocusWentTo ? ' ⇢ Arrived elsewhere'
     : ' → ' + normDest(row.destination);
   document.getElementById('modal-title').textContent = sectionName + titleSuffix;
   const scopeEl = document.getElementById('modal-scope');
   if (scopeEl) scopeEl.style.display = 'none';
   const modalBodyEl = document.getElementById('modal-body');
-  modalBodyEl.style.gridTemplateColumns = (isFocusLost || isFocusWentTo || isFocusAnomaly) ? '1fr' : '1fr 1fr';
+  modalBodyEl.style.gridTemplateColumns = (isFocusLost || isFocusWentTo) ? '1fr' : '1fr 1fr';
   modalBodyEl.innerHTML = srcPanel + destPanel;
   document.getElementById('modal-overlay').classList.add('open');
 
@@ -1177,9 +1200,6 @@ function renderNarrative() {{
           if ((lines || []).length) out.push({{ kind: 'went-to', dest: stem, dest_stem: stem.toLowerCase(), lines }});
         }}
         if ((pc.truly_lost_lines || []).length) out.push({{ kind: 'lost', dest: null, dest_stem: null, lines: pc.truly_lost_lines }});
-        if (pc.type === 'anomaly' && (pc.dest_lines || []).length) {{
-          out.push({{ kind: 'anomaly', dest: r.destination, dest_stem: null, lines: pc.dest_lines }});
-        }}
         return out;
       }};
       const _outcomes = (_pyc && _pyc.outcomes && _pyc.outcomes.length)
@@ -1187,14 +1207,13 @@ function renderNarrative() {{
         : (_synthOutcomes(_pyc).length
             ? _synthOutcomes(_pyc)
             : [{{ kind: 'empty', dest: r.destination, dest_stem: null, lines: [] }}]);
-      const _badgeStem = {{ move: 'move', 'went-to': 'went-to', lost: 'lost', anomaly: 'untraced', empty: 'empty' }};
-      const _badgeGlyph = {{ move: '→', 'went-to': '⇢', lost: '✗', anomaly: '?', empty: '·' }};
-      const _countColor = {{ move: '#3fb950', 'went-to': '#58a6ff', lost: '#f85149', anomaly: '#e3b341', empty: '#484f58' }};
+      const _badgeStem = {{ move: 'move', 'went-to': 'went-to', lost: 'lost', empty: 'empty' }};
+      const _badgeGlyph = {{ move: '→', 'went-to': '⇢', lost: '✗', empty: '·' }};
+      const _countColor = {{ move: '#3fb950', 'went-to': '#58a6ff', lost: '#f85149', empty: '#484f58' }};
       const _kindTitle = {{
         move:      'Move — lines confirmed at the breadcrumb destination',
         'went-to': 'Went to — lines found at a different file than the breadcrumb claimed',
         lost:      'Absent — lines not found in any diff addition',
-        anomaly:   'Untraced — destination has additions with no traceable source',
         empty:     'Empty — nothing to verify for this outcome'
       }};
       // Render N <tr> rows — one per outcome. First row owns the section/source
@@ -1213,7 +1232,7 @@ function renderNarrative() {{
           const stem = o.dest || normDest(r.destination);
           destCellHtml = `<a class="dest-link" href="${{xcallbackUrl('[[' + stem + ']]')}}" style="color:#58a6ff" title="Lines arrived at ${{esc(stem)}} (breadcrumb claimed ${{esc(normDest(r.destination))}})">⇢ ${{esc(stem)}}</a>`;
         }} else {{
-          // move / anomaly / empty — show breadcrumb dest
+          // move / empty — show breadcrumb dest
           destCellHtml = `<a class="dest-link" href="${{xcallbackUrl(r.destination)}}">${{esc(normDest(r.destination))}}</a>`;
         }}
         const countCellTxt = (kind === 'empty') ? '·' : (lineN || 0);
@@ -1253,6 +1272,33 @@ function renderNarrative() {{
     }}).join('');
   }}
 
+  // #101: per-dest `dropped` rows — `-` lines in swept destinations (collateral).
+  // These are not breadcrumb-attached; they live at the bottom of the table as
+  // their own group, filterable by the "− Dropped" chip.
+  const droppedDests = (DEST_OUTCOMES || []).filter(d => {{
+    if (!(d.dropped || []).length) return false;
+    if (activeDomain === 'all') return true;
+    return inferDomain(d.dest || '') === activeDomain;
+  }});
+  if (droppedDests.length) {{
+    tbody += `<tr class="day-sep-row"><td colspan="7">🚧 Dropped lines — ${{droppedDests.length}} dest${{droppedDests.length !== 1 ? 's' : ''}} (collateral, sweep only adds)</td></tr>`;
+    droppedDests.forEach((d, di) => {{
+      const origIdx = (DEST_OUTCOMES || []).indexOf(d);
+      const lineN = (d.dropped || []).length;
+      const destShort = (d.dest || '').split('/').pop().replace(/\\.md$/, '');
+      const rowKey = `drop-${{origIdx}}`;
+      tbody += `<tr data-row-idx="${{rowKey}}" data-row-type="dropped" data-outcome-rendered="true" data-outcome-kind="dropped">
+        <td style="padding:3px 6px;text-align:center"><span class="row-badge rb-dropped" title="Dropped — ${{lineN}} line${{lineN !== 1 ? 's' : ''}} removed from this swept dest">−</span></td>
+        <td class="count-col" style="width:48px;text-align:center;font-size:10px;color:#d29922;font-family:monospace" title="${{lineN}} dropped line${{lineN !== 1 ? 's' : ''}}">${{lineN}}</td>
+        <td class="section-col"><button class="sec-toggle" onclick="toggleDestOutcome('${{rowKey}}',this,'dropped',${{origIdx}})" title="Expand dropped lines">▶</button>Dropped at ${{esc(destShort)}}</td>
+        <td class="summary-col" style="color:#484f58;font-style:italic">${{lineN}} line${{lineN !== 1 ? 's' : ''}} removed from a swept destination</td>
+        <td class="src-col" style="color:#484f58">—</td>
+        <td class="dest-col"><a class="dest-link" href="${{xcallbackUrl(d.dest)}}">${{esc(destShort)}}</a></td>
+        <td></td>
+      </tr>`;
+    }});
+  }}
+
   let html = `<table class="nav-tbl">
     <thead><tr><th></th><th style="width:48px;text-align:center">#</th><th>Section</th><th>Summary</th><th>Source</th><th>Destination</th><th></th></tr></thead>
     <tbody>${{tbody}}</tbody>
@@ -1273,6 +1319,32 @@ function renderNarrative() {{
       <div class="orphaned-hdr">⚠️ ${{orphaned.length}} swept file${{orphaned.length !== 1 ? 's' : ''}} with no breadcrumb rows</div>
       <ul>${{orphaned.map(f => `<li>${{esc(f.split('/').pop())}}</li>`).join('')}}</ul>
     </div>`;
+  }}
+
+  // #101: Collapsible `new` section — `+` lines in swept dests not attributed
+  // to any source breadcrumb. Informational; default collapsed.
+  const newDests = (DEST_OUTCOMES || []).filter(d => {{
+    if (!(d.new || []).length) return false;
+    if (activeDomain === 'all') return true;
+    return inferDomain(d.dest || '') === activeDomain;
+  }});
+  if (newDests.length) {{
+    const totalNew = newDests.reduce((s, d) => s + (d.new || []).length, 0);
+    const blocks = newDests.map(d => {{
+      const destShort = (d.dest || '').split('/').pop().replace(/\\.md$/, '');
+      const linesHtml = (d.new || []).map(l => {{
+        const clean = l.replace(/^-\\s*\\[[x ]\\]\\s*/i, '').replace(/^-\\s+/, '').replace(/^\\+\\s*/, '').trim();
+        return `<div class="diff-line" style="font-family:monospace;font-size:10.5px;color:#e3b341;opacity:0.85;padding:1px 8px">+ ${{esc(clean)}}</div>`;
+      }}).join('');
+      return `<details style="margin:6px 0;border:1px solid #2a2a0a;border-radius:4px;background:#0d1117">
+        <summary style="padding:6px 10px;cursor:pointer;font-size:11px;color:#e3b341;font-family:monospace">+ ${{(d.new || []).length}} new line${{(d.new || []).length !== 1 ? 's' : ''}} in <a href="${{xcallbackUrl(d.dest)}}" style="color:#79c0ff;text-decoration:none">${{esc(destShort)}}</a></summary>
+        <div style="padding:4px 8px 8px">${{linesHtml}}</div>
+      </details>`;
+    }}).join('');
+    html += `<details class="new-block" style="margin-top:16px;border:1px solid #2a2a0a;border-radius:8px;background:#1a1a00">
+      <summary style="padding:10px 16px;cursor:pointer;font-size:12px;color:#e3b341;font-weight:600">+ ${{totalNew}} new line${{totalNew !== 1 ? 's' : ''}} across ${{newDests.length}} swept dest${{newDests.length !== 1 ? 's' : ''}} <span style="color:#8b949e;font-weight:400;font-size:11px">— informational, not attributed to any breadcrumb</span></summary>
+      <div style="padding:8px 16px 16px">${{blocks}}</div>
+    </details>`;
   }}
 
   el.innerHTML = html;
@@ -1665,6 +1737,7 @@ def cmd_sweep_review_compile(args):
     # Embedded as PRE_CLASSIFICATION / CROSS_ROW_ISSUES so the portal has instant badges
     # and inspectable data without waiting for the JS background scan.
     pre_classification = _py_classify_all_rows(diff_text, narrative or [], _np_root())
+    dest_outcomes      = _py_dest_outcomes(diff_text, narrative or [], pre_classification)
     cross_row_issues   = _py_cross_row_issues(pre_classification)
 
     # #86 production invariant monitoring — surface mental-model violations
@@ -1690,7 +1763,8 @@ def cmd_sweep_review_compile(args):
 
     new_html = _build_snapshot_html(run_id, date_str, sha, stat_text, diff_text, merged_comments, narrative, changed_cal,
                                     pre_classification=pre_classification,
-                                    cross_row_issues=cross_row_issues)
+                                    cross_row_issues=cross_row_issues,
+                                    dest_outcomes=dest_outcomes)
     review_path.write_text(new_html, encoding="utf-8")
     cmt_note = f"{len(merged_comments)} comment(s) from {len(comment_rounds)} round(s)" if merged_comments else "no comments"
     utils.log(f"sweep-review-compile: wrote {review_path} ({cmt_note})")
@@ -2434,22 +2508,20 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
 
         removed = [l for l in raw_removed if not _is_noise(l) and len(_norm_line(l)) > 2]
         if not removed:
-            # Anomaly: source contributed nothing for this section, but dest still has
-            # additions — content arrived without a traceable source row.
-            _anom_dest = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
-            _anom_lines = [l for l in _anom_dest if not _is_noise(l) and len(_norm_line(l)) > 4]
-            _anom_type = 'anomaly' if _anom_lines else 'empty'
+            # Source contributed nothing for this section — row is empty. Any `+`
+            # lines in the dest with no source attribution surface in `dest_outcomes`
+            # (#101) under the per-dest `new` pool, not as anomaly warning rows.
             _ds = _dest_stem(dest_raw)
             _outcomes = [{
-                'kind': _anom_type,
+                'kind': 'empty',
                 'dest': dest_raw,
                 'dest_stem': _ds,
-                'lines': _anom_lines[:20] if _anom_type == 'anomaly' else [],
+                'lines': [],
             }]
             results.append({'idx': modal_idx, 'breadcrumb_idx': modal_idx,
-                            'type': _anom_type, 'moved_count': 0,
+                            'type': 'empty', 'moved_count': 0,
                             'lost_count': 0, 'truly_lost_lines': [], 'moved_lines': [],
-                            'dest_lines': _anom_lines[:20] if _anom_type == 'anomaly' else [],
+                            'dest_lines': [],
                             'went_to_details': {}, 'line_statuses': {},
                             'misrouted_count': 0, 'went_to_files': [],
                             'inferred': inferred, 'dest_stem': _ds,
@@ -2685,10 +2757,7 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             if 'dedupe_demoted' not in loser.get('issues', []):
                 loser.setdefault('issues', []).append('dedupe_demoted')
             # Recompute type if counts changed
-            if loser['type'] == 'anomaly':
-                if not loser['dest_lines']:
-                    loser['type'] = 'empty'
-            elif loser.get('moved_count', 0) == 0:
+            if loser.get('moved_count', 0) == 0:
                 loser['type'] = 'lost' if loser.get('lost_count', 0) > 0 else 'empty'
 
     # Rebuild `outcomes` for any row touched by dedupe so the per-outcome view
@@ -2719,13 +2788,6 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
                 'dest':      None,
                 'dest_stem': None,
                 'lines':     list(r['truly_lost_lines']),
-            })
-        if r.get('type') == 'anomaly' and r.get('dest_lines'):
-            new_outcomes.append({
-                'kind':      'anomaly',
-                'dest':      None,
-                'dest_stem': r.get('dest_stem'),
-                'lines':     list(r['dest_lines']),
             })
         # Fill the `dest` field for non-lost outcomes by reading the original
         # outcomes' dest (preserves the human-readable destination string)
@@ -2759,7 +2821,7 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
                                  for k, v in (r.get('went_to_details') or {}).items()}
         for o in r.get('outcomes') or []:
             kind = o.get('kind')
-            if kind == 'move' or kind == 'anomaly':
+            if kind == 'move':
                 o['lines'] = o.get('lines', [])[:_MOVE_CAP]
             elif kind == 'went-to':
                 o['lines'] = o.get('lines', [])[:_WT_CAP]
@@ -2767,6 +2829,74 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
                 o['lines'] = o.get('lines', [])[:_LOST_CAP]
 
     return results
+
+
+def _py_dest_outcomes(diff_text: str, narrative: list, results: list[dict]) -> list[dict]:
+    """Per-destination outcomes for swept dests (#101).
+
+    For each destination file named by a breadcrumb in the narrative:
+      - `new`     = `+` lines in the dest's diff that no `move`/`went-to` outcome claims.
+      - `dropped` = `-` lines in the dest's diff (sweep only adds, so any `-` is collateral).
+
+    Returns: [{'stem': lower-cased stem, 'dest': raw dest string, 'dropped': [lines], 'new': [lines]}]
+    Empty `dropped` AND empty `new` entries are pruned. Display caps: 20 lines each.
+    """
+    diff_index = _parse_diff_sections(diff_text)
+    diff_lower = {k.lower(): v for k, v in diff_index.items()}
+
+    # Collect attributed (dest_stem, normLine) pairs from move/went-to outcomes
+    claimed_add: set[tuple[str, str]] = set()
+    for r in results:
+        for o in (r.get('outcomes') or []):
+            kind = o.get('kind')
+            if kind not in ('move', 'went-to'):
+                continue
+            stem = (o.get('dest_stem') or '').lower()
+            if not stem:
+                continue
+            for line in o.get('lines', []):
+                claimed_add.add((stem, _norm_line(line)))
+
+    # Swept dest files: union of breadcrumb destinations
+    swept_dests: dict[str, str] = {}  # dest_stem (lowercased) → raw dest string
+    isSep = lambda r: re.match(r'^-+$', (r.get('section') or '').strip())
+    for row in narrative:
+        if isSep(row):
+            continue
+        dest_raw = re.sub(r'\[\[([^\]]+)\]\]', r'\1', row.get('destination', '')).strip()
+        dest_raw = re.sub(r'\.md$', '', dest_raw).strip()
+        if not dest_raw:
+            continue
+        stem = dest_raw.split('/')[-1].lower()
+        swept_dests.setdefault(stem, dest_raw)
+
+    out: list[dict] = []
+    for stem, dest_raw in sorted(swept_dests.items()):
+        # Locate the diff entry for this dest
+        target = stem + '.md'
+        match_data = None
+        for fname_lower, fdata in diff_lower.items():
+            if fname_lower.endswith('/' + target) or fname_lower == target or fname_lower.endswith(target):
+                match_data = fdata
+                break
+        if not match_data:
+            continue
+        added_raw = match_data.get('added') or []
+        removed_raw = match_data.get('removed') or []
+        added = [l for l in added_raw if not _is_noise(l) and len(_norm_line(l)) > 4]
+        removed = [l for l in removed_raw if not _is_noise(l) and len(_norm_line(l)) > 4]
+
+        new_lines = [l for l in added if (stem, _norm_line(l)) not in claimed_add]
+        dropped_lines = list(removed)
+
+        if new_lines or dropped_lines:
+            out.append({
+                'stem':    stem,
+                'dest':    dest_raw,
+                'dropped': dropped_lines[:20],
+                'new':     new_lines[:20],
+            })
+    return out
 
 
 def _py_invariant_violations(results: list[dict], cross_row_issues: list[str]) -> list[dict]:
@@ -2778,7 +2908,7 @@ def _py_invariant_violations(results: list[dict], cross_row_issues: list[str]) -
     (kept independent to avoid making tests a runtime dep).
     """
     violations: list[dict] = []
-    valid_kinds = {'move', 'went-to', 'lost', 'anomaly', 'empty'}
+    valid_kinds = {'move', 'went-to', 'lost', 'empty'}
 
     # INV-4 — outcomes shape
     for r in results:
