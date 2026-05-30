@@ -2467,13 +2467,16 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
         # Went-to: lines actually at a different file (one outcome per other-file stem).
         # Lost: lines absent from the diff (no destination — semantic null).
         # Empty: row produced no lines at all (placeholder for completeness).
+        # NOTE: full lists kept here. Dedupe (#98) needs to see the unabridged
+        # claims to detect cross-row duplicates beyond the first 20. A final
+        # truncation pass applies display caps after dedupe runs.
         outcomes: list[dict] = []
         if moved_lines:
             outcomes.append({
                 'kind':      'move',
                 'dest':      dest_raw,
                 'dest_stem': dest_stem_key,
-                'lines':     moved_lines[:20],
+                'lines':     list(moved_lines),
             })
         for stem, lines in went_to_details.items():
             if lines:
@@ -2481,14 +2484,14 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
                     'kind':      'went-to',
                     'dest':      stem,
                     'dest_stem': stem.lower(),
-                    'lines':     lines[:10],
+                    'lines':     list(lines),
                 })
         if truly_lost:
             outcomes.append({
                 'kind':      'lost',
                 'dest':      None,
                 'dest_stem': None,
-                'lines':     truly_lost[:20],
+                'lines':     list(truly_lost),
             })
         if not outcomes:
             outcomes.append({
@@ -2504,10 +2507,10 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             'type':             row_type,
             'moved_count':      len(moved_lines),
             'lost_count':       len(truly_lost),
-            'truly_lost_lines': truly_lost[:20],
-            'moved_lines':      moved_lines[:20],
-            'dest_lines':       dest_lines[:20],
-            'went_to_details':  {k: v[:10] for k, v in went_to_details.items()},
+            'truly_lost_lines': list(truly_lost),
+            'moved_lines':      list(moved_lines),
+            'dest_lines':       list(dest_lines),
+            'went_to_details':  {k: list(v) for k, v in went_to_details.items()},
             'line_statuses':    line_statuses,
             'misrouted_count':  misrouted_count,
             'went_to_files':    sorted(went_to_files_set),
@@ -2555,9 +2558,14 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             loser = by_idx[li]
             loser['dest_lines'] = [dl for dl in loser.get('dest_lines', [])
                                    if _norm_line(dl) != norm]
+            # Demote ALL source lines that fuzzy-match this dest norm — not
+            # just the first. With near-prefix lines (e.g. option-c vs option-d)
+            # the loser may have multiple source lines all fuzzy-pointing to
+            # this single dest claim; if their only attribution was via this
+            # collided dest, leaving any behind creates phantom moves.
             new_moved, demoted = [], []
             for sl in loser.get('moved_lines', []):
-                if not demoted and _fuzzy_match(_norm_line(sl), norm):
+                if _fuzzy_match(_norm_line(sl), norm):
                     demoted.append(sl)
                 else:
                     new_moved.append(sl)
@@ -2578,7 +2586,8 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
                 loser['type'] = 'lost' if loser.get('lost_count', 0) > 0 else 'empty'
 
     # Rebuild `outcomes` for any row touched by dedupe so the per-outcome view
-    # stays in sync with the legacy fields after demotion.
+    # stays in sync with the legacy fields after demotion. Lines stay full here;
+    # the final truncation pass below caps them for display.
     for r in results:
         if 'dedupe_demoted' not in r.get('issues', []):
             continue
@@ -2588,7 +2597,7 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
                 'kind':      'move',
                 'dest':      None,  # filled below
                 'dest_stem': r.get('dest_stem'),
-                'lines':     r['moved_lines'][:20],
+                'lines':     list(r['moved_lines']),
             })
         for stem, lines in (r.get('went_to_details') or {}).items():
             if lines:
@@ -2596,21 +2605,21 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
                     'kind':      'went-to',
                     'dest':      stem,
                     'dest_stem': stem.lower(),
-                    'lines':     lines[:10],
+                    'lines':     list(lines),
                 })
         if r.get('truly_lost_lines'):
             new_outcomes.append({
                 'kind':      'lost',
                 'dest':      None,
                 'dest_stem': None,
-                'lines':     r['truly_lost_lines'][:20],
+                'lines':     list(r['truly_lost_lines']),
             })
         if r.get('type') == 'anomaly' and r.get('dest_lines'):
             new_outcomes.append({
                 'kind':      'anomaly',
                 'dest':      None,
                 'dest_stem': r.get('dest_stem'),
-                'lines':     r['dest_lines'][:20],
+                'lines':     list(r['dest_lines']),
             })
         # Fill the `dest` field for non-lost outcomes by reading the original
         # outcomes' dest (preserves the human-readable destination string)
@@ -2628,6 +2637,28 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
                 'lines':     [],
             })
         r['outcomes'] = new_outcomes
+
+    # #98 — Final display-cap pass. Dedupe ran on full lists so cross-row
+    # duplicates beyond the first 20 lines are caught; now apply truncation
+    # to keep portal payload size bounded.
+    _MOVE_CAP = 20
+    _WT_CAP = 10
+    _LOST_CAP = 20
+    _DEST_CAP = 20
+    for r in results:
+        r['moved_lines']      = r.get('moved_lines', [])[:_MOVE_CAP]
+        r['dest_lines']       = r.get('dest_lines', [])[:_DEST_CAP]
+        r['truly_lost_lines'] = r.get('truly_lost_lines', [])[:_LOST_CAP]
+        r['went_to_details']  = {k: v[:_WT_CAP]
+                                 for k, v in (r.get('went_to_details') or {}).items()}
+        for o in r.get('outcomes') or []:
+            kind = o.get('kind')
+            if kind == 'move' or kind == 'anomaly':
+                o['lines'] = o.get('lines', [])[:_MOVE_CAP]
+            elif kind == 'went-to':
+                o['lines'] = o.get('lines', [])[:_WT_CAP]
+            elif kind == 'lost':
+                o['lines'] = o.get('lines', [])[:_LOST_CAP]
 
     return results
 

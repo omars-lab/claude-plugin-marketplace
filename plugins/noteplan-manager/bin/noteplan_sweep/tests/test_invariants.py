@@ -461,6 +461,82 @@ def test_inv6_dedupe_non_duplication_when_one_row_inferred():
     assert_dedupe_non_duplication(results)
 
 
+def test_inv6_dedupe_handles_25_line_collision_past_truncation_cap():
+    """INV-6 / #98 regression: when a row has >20 conflicting dest lines, dedupe
+    must still detect collisions on lines past the [:20] display cap. Prior to
+    the fix, dedupe operated on already-truncated lists so lines at index 20+
+    leaked duplicates through.
+    """
+    # 25 unique tasks shared between two breadcrumbs claiming the same dest.
+    tasks = [f"- [ ] shared task number {i} for collision past cap" for i in range(25)]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md", "removed": tasks, "added": []},
+        {"path": "Plans/Design.md",      "removed": [],    "added": tasks},
+    ])
+    # Both rows inferred (no section header in diff) so dedupe is allowed to fire.
+    narrative = [
+        {"source_file": "Calendar/20260413.md", "section": "Section A",
+         "destination": "[[Plans/Design]]", "date": "2026-04-13", "summary": ""},
+        {"source_file": "Calendar/20260413.md", "section": "Section B",
+         "destination": "[[Plans/Design]]", "date": "2026-04-13", "summary": ""},
+    ]
+    results = _classify(diff, narrative)
+    assert_dedupe_non_duplication(results)
+    # Loser must be drained completely — every shared line was demoted.
+    loser = results[1]
+    assert "dedupe_demoted" in (loser.get("issues") or [])
+    assert loser.get("moved_count", -1) == 0, \
+        f"loser must lose all 25 claims, not just first 20 (caught by #98): " \
+        f"moved_count={loser.get('moved_count')}"
+
+
+def test_inv6_dedupe_demotes_all_fuzzy_matches_not_just_first():
+    """INV-6 / #98 regression: when a loser has multiple source lines that all
+    fuzzy-match the same dest line (e.g. similar prefixes like option-c vs
+    option-d), dedupe must demote ALL of them, not just the first. Prior to
+    the fix, the demote loop early-exited after the first match, leaving
+    phantom moves attributed to a dest the loser no longer claims.
+    """
+    # Two source lines with near-identical prefixes — the fuzzy matcher will
+    # treat them as matching the same dest norm.
+    src_c = ('/ralph-loop:ralph-loop "Read the plan at .claude/plans/'
+             'langfuse-option-c.md for full implementation details. Work through '
+             'each phase in order: run its validation first, skip if passing, '
+             'implement if failing." --completion-promise "c" --max-iterations 7')
+    src_d = ('/ralph-loop:ralph-loop "Read the plan at .claude/plans/'
+             'langfuse-option-d.md for full implementation details. Work through '
+             'each phase in order: run its validation first, skip if passing, '
+             'implement if failing." --completion-promise "d" --max-iterations 7')
+    # Winner row: real header, claims dest with src_c only.
+    # Loser row: inferred, has both src_c and src_d in its source lines but only
+    # src_c in dest_lines (because src_d fuzzy-matched src_c via prefix).
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md", "removed": [src_c, src_d], "added": []},
+        {"path": "Plans/Design.md",      "removed": [],             "added": [src_c]},
+    ])
+    narrative = [
+        {"source_file": "Calendar/20260413.md", "section": "Section A",
+         "destination": "[[Plans/Design]]", "date": "2026-04-13", "summary": ""},
+        {"source_file": "Calendar/20260413.md", "section": "Section B",
+         "destination": "[[Plans/Design]]", "date": "2026-04-13", "summary": ""},
+    ]
+    results = _classify(diff, narrative)
+    loser = results[1]
+    # After dedupe: the loser must have NO moved lines that fuzzy-match the
+    # winner's only dest line. Both src_c and src_d were fuzzy-matching src_c
+    # (the only dest claim), so both should be demoted.
+    winner_dest_norm = _norm_line(src_c)
+    from noteplan_sweep.sweep_review import _fuzzy_match
+    surviving_fuzzy = [
+        sl for sl in (loser.get("moved_lines") or [])
+        if _fuzzy_match(_norm_line(sl), winner_dest_norm)
+    ]
+    assert not surviving_fuzzy, (
+        f"INV-6 (#98): loser still has source lines that fuzzy-match the "
+        f"winner's dest (phantom moves): {surviving_fuzzy}"
+    )
+
+
 def test_inv7_no_phantom_losses_after_dedupe_demotion():
     """INV-7: after dedupe (regression for #96), the demoted row's line_statuses
     must not contain a 'lost' status for a line not in truly_lost_lines.
