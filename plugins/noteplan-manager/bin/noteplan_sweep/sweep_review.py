@@ -538,7 +538,8 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .day-hdr{{font-size:14px;font-weight:600;color:#58a6ff;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #30363d}}
 .nav-tbl{{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}}
 .nav-tbl th{{background:#161b22;padding:6px 10px;text-align:left;color:#8b949e;font-weight:500;border-bottom:2px solid #30363d;position:sticky;top:0;z-index:1}}
-.nav-tbl th:nth-child(1){{width:28px}}.nav-tbl th:nth-child(2){{width:50px}}.nav-tbl th:nth-child(3){{width:22%}}.nav-tbl th:nth-child(4){{width:28%}}.nav-tbl th:nth-child(5){{width:auto}}.nav-tbl th:nth-child(6){{width:44px}}
+.nav-tbl th:nth-child(1){{width:28px}}.nav-tbl th:nth-child(2){{width:50px}}.nav-tbl th:nth-child(3){{width:18%}}.nav-tbl th:nth-child(4){{width:22%}}.nav-tbl th:nth-child(5){{width:88px}}.nav-tbl th:nth-child(6){{width:auto}}.nav-tbl th:nth-child(7){{width:44px}}
+.src-col{{color:#58a6ff;font-family:monospace;font-size:11px;white-space:nowrap}}
 .row-badge{{display:inline-block;font-size:11px;min-width:16px;text-align:center;border-radius:3px;padding:1px 4px;font-weight:600}}
 .rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-anomaly{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}.rb-mixed{{background:#2d1f00;color:#e3b341;border:1px solid #e3b341}}
 .mixed-lost-sub-row td{{background:#1a0a0a;border-left:2px solid #f85149;padding-left:10px!important;color:#8b949e;font-size:11px;cursor:pointer}}
@@ -657,7 +658,7 @@ function toggleSectionItems(rowIdx, btn) {{
       ? `<span style="color:#3fb950;font-size:9px;margin-right:4px">→</span>`
       : `<span style="color:#f85149;font-size:9px;margin-right:4px">✗</span>`;
     const color = inDest ? '' : 'color:#f85149;opacity:0.8;';
-    tr.innerHTML = `<td class="sec-toggle" style="color:#30363d;text-align:right">↳</td><td></td><td class="item-text" colspan="2" style="${{color}}">${{badge}}${{esc(clean)}}</td><td></td>`;
+    tr.innerHTML = `<td class="sec-toggle" style="color:#30363d;text-align:right">↳</td><td></td><td class="item-text" colspan="3" style="${{color}}">${{badge}}${{esc(clean)}}</td><td></td><td></td>`;
     insertAfter.insertAdjacentElement('afterend', tr);
     insertAfter = tr;
   }}
@@ -951,6 +952,7 @@ function injectMixedLostSubRow(idx, lostCount) {{
     <td class="count-col" style="width:48px;text-align:center;font-size:10px;color:#f85149;font-family:monospace">${{lostCount}}</td>
     <td class="section-col" style="color:#f85149">↳ Lost (${{lostCount}} line${{lostCount!==1?'s':''}}) — not found at destination</td>
     <td class="summary-col" style="color:#6e7681">Needs separate row — split this section during sweep</td>
+    <td class="src-col" style="color:#6e7681">—</td>
     <td class="dest-col" style="color:#6e7681">?? unknown</td>
     <td style="padding:3px 6px;text-align:center"><button class="view-btn" onclick="event.stopPropagation();showSectionModal(${{idx}}, true)">⌕</button></td>
   `;
@@ -1655,15 +1657,18 @@ function renderNarrative() {{
       label = `${{d}} (${{dow}})`;
     }} catch(e) {{}}
 
-    tbody += `<tr class="day-sep-row"><td colspan="5">📅 ${{esc(label)}} — ${{dayRows.length}} section${{dayRows.length !== 1 ? 's' : ''}} swept</td></tr>`;
+    tbody += `<tr class="day-sep-row"><td colspan="6">📅 ${{esc(label)}} — ${{dayRows.length}} section${{dayRows.length !== 1 ? 's' : ''}} swept</td></tr>`;
 
     tbody += dayRows.map(r => {{
       const idx = MODAL_ROWS.push(r) - 1;
+      const srcStem = r.source_file.split('/').pop().replace(/\\.md$/, '');
+      const srcUrl = `noteplan://x-callback-url/openNote?filename=${{srcStem}}`;
       return `<tr data-row-idx="${{idx}}">
         <td style="padding:3px 6px;text-align:center"><span class="row-badge rb-pending" title="Not yet classified">·</span></td>
         <td class="count-col" style="width:48px;text-align:center;font-size:10px;color:#484f58;font-family:monospace">—</td>
         <td class="section-col"><button class="sec-toggle" onclick="toggleSectionItems(${{idx}},this)" title="Expand items">▶</button>${{esc(r.section)}}</td>
         <td class="summary-col">${{esc(r.summary)}}</td>
+        <td class="src-col"><a class="dest-link" href="${{srcUrl}}" title="${{esc(r.source_file)}}">${{srcStem}}</a></td>
         <td class="dest-col" title="${{esc(r.destination)}}"><a class="dest-link" href="${{xcallbackUrl(r.destination)}}">${{esc(normDest(r.destination))}}</a></td>
         <td style="padding:3px 6px;text-align:center"><button class="view-btn" onclick="showSectionModal(${{idx}})">⌕</button></td>
       </tr>`;
@@ -1671,7 +1676,7 @@ function renderNarrative() {{
   }}
 
   let html = `<table class="nav-tbl">
-    <thead><tr><th></th><th style="width:48px;text-align:center">#</th><th>Section</th><th>Summary</th><th>Destination</th><th></th></tr></thead>
+    <thead><tr><th></th><th style="width:48px;text-align:center">#</th><th>Section</th><th>Summary</th><th>Source</th><th>Destination</th><th></th></tr></thead>
     <tbody>${{tbody}}</tbody>
   </table>`;
 
