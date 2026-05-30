@@ -793,3 +793,158 @@ def cmd_ai_usage_open(args):
     import subprocess as sp
     sp.run(['open', str(path)])
     utils.log(f"ai-usage-open: opened {path}")
+
+
+# ---------------------------------------------------------------------------
+# Repo AI artifact scanner (AUD-C)
+# ---------------------------------------------------------------------------
+
+import subprocess as _sp
+
+_AI_ARTIFACT_FILES = {'SKILL.md', 'AGENT.md', 'AGENTS.md', 'CLAUDE.md'}
+_AI_ARTIFACT_DIRS  = {'.claude', 'prompts', 'skills'}
+_CLAUDE_CO_AUTHOR_PAT = re.compile(r'co-authored-by:\s*claude', re.IGNORECASE)
+
+
+def _is_git_repo(path: Path) -> bool:
+    return (path / '.git').is_dir()
+
+
+def _git_count(cwd: Path, extra_args: list[str]) -> int:
+    try:
+        r = _sp.run(
+            ['git', 'log', '--oneline'] + extra_args,
+            cwd=str(cwd), capture_output=True, text=True, timeout=15
+        )
+        return len(r.stdout.strip().splitlines()) if r.returncode == 0 else 0
+    except Exception:
+        return 0
+
+
+def _git_total_commits(cwd: Path) -> int:
+    try:
+        r = _sp.run(
+            ['git', 'rev-list', '--count', 'HEAD'],
+            cwd=str(cwd), capture_output=True, text=True, timeout=10
+        )
+        return int(r.stdout.strip()) if r.returncode == 0 else 0
+    except Exception:
+        return 0
+
+
+def _scan_repo(repo_path: Path) -> dict | None:
+    """Scan a git repo for AI artifact files + Co-Authored-By: Claude commits."""
+    if not _is_git_repo(repo_path):
+        return None
+
+    artifacts: list[str] = []
+    for name in _AI_ARTIFACT_FILES:
+        if (repo_path / name).exists():
+            artifacts.append(name)
+    try:
+        for child in repo_path.iterdir():
+            if child.is_dir() and child.name in _AI_ARTIFACT_DIRS:
+                artifacts.append(child.name + '/')
+    except Exception:
+        pass
+
+    # Walk one level deeper for nested SKILL.md files
+    skill_count = 0
+    try:
+        for p in repo_path.rglob('SKILL.md'):
+            if '.git' not in str(p):
+                skill_count += 1
+    except Exception:
+        pass
+
+    ai_commits = _git_count(repo_path, ['--grep=Co-Authored-By: Claude', '--regexp-ignore-case'])
+    total_commits = _git_total_commits(repo_path)
+
+    # Only include repos with any AI signal
+    if not artifacts and not skill_count and ai_commits == 0:
+        return None
+
+    ai_pct = round(ai_commits / total_commits * 100, 1) if total_commits else 0.0
+
+    return {
+        'name': repo_path.name,
+        'path': str(repo_path),
+        'artifacts': artifacts,
+        'skill_count': skill_count,
+        'ai_commits': ai_commits,
+        'total_commits': total_commits,
+        'ai_commit_pct': ai_pct,
+        'has_claude_md': 'CLAUDE.md' in artifacts,
+        'has_skills': skill_count > 0 or '.claude/' in artifacts,
+    }
+
+
+def cmd_repo_scan(args):
+    root = utils.noteplan_root()
+    dash_dir = root / 'dashboard'
+    dash_dir.mkdir(exist_ok=True)
+
+    workspace_dirs = _workspace_dirs()
+    if hasattr(args, 'repos_root') and args.repos_root:
+        extra = Path(args.repos_root).expanduser()
+        if extra.exists():
+            workspace_dirs = [extra] + workspace_dirs
+
+    repos: list[dict] = []
+    scanned = 0
+
+    for ws in workspace_dirs:
+        utils.log(f"Scanning {ws} ...")
+        try:
+            for child in sorted(ws.iterdir()):
+                if not child.is_dir():
+                    continue
+                scanned += 1
+                result = _scan_repo(child)
+                if result:
+                    repos.append(result)
+        except Exception as e:
+            utils.verbose(f"  Error scanning {ws}: {e}")
+
+    repos.sort(key=lambda r: -(r['ai_commits'] + r['skill_count'] * 5))
+
+    total_ai_commits = sum(r['ai_commits'] for r in repos)
+    total_commits_all = sum(r['total_commits'] for r in repos)
+
+    audit = {
+        'repos': repos,
+        'summary': {
+            'repos_scanned': scanned,
+            'repos_with_ai_signal': len(repos),
+            'total_ai_commits': total_ai_commits,
+            'total_commits': total_commits_all,
+            'ai_commit_pct': round(total_ai_commits / total_commits_all * 100, 1) if total_commits_all else 0.0,
+            'repos_with_skills': sum(1 for r in repos if r['has_skills']),
+            'repos_with_claude_md': sum(1 for r in repos if r['has_claude_md']),
+        },
+        'generated_at': datetime.now().isoformat(),
+    }
+
+    if utils.DRY_RUN:
+        utils.log(f"[dry-run] Would write repo-audit.json ({len(repos)} repos with AI signal)")
+        for r in repos[:10]:
+            utils.log(f"  {r['name']}: {r['ai_commits']} AI commits, artifacts={r['artifacts']}")
+        return
+
+    audit_path = dash_dir / 'repo-audit.json'
+    audit_path.write_text(json.dumps(audit, indent=2, ensure_ascii=False), encoding='utf-8')
+    utils.log(f"repo-scan: wrote {audit_path}")
+    utils.log(f"  {len(repos)} repos with AI signal / {scanned} scanned")
+    utils.log(f"  {total_ai_commits} AI-assisted commits across {total_commits_all} total")
+
+    # Merge into ai-usage.json if it exists
+    usage_path = dash_dir / 'ai-usage.json'
+    if usage_path.exists():
+        try:
+            usage = json.loads(usage_path.read_text(encoding='utf-8'))
+            usage['repos'] = audit['repos']
+            usage['repo_summary'] = audit['summary']
+            usage_path.write_text(json.dumps(usage, indent=2, ensure_ascii=False), encoding='utf-8')
+            utils.log(f"  Merged repo audit into ai-usage.json")
+        except Exception as e:
+            utils.verbose(f"  Could not merge into ai-usage.json: {e}")

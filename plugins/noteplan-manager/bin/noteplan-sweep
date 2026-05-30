@@ -89,6 +89,7 @@ COMMANDS = [
     ("ai-usage-mine",           "Index all Claude transcripts across projects → dashboard/ai-usage.json (--deep for tool counts)"),
     ("ai-usage-generate",       "Read ai-usage.json → write dashboard/ai-usage.html (Anthropic theme)"),
     ("ai-usage-open",           "Open dashboard/ai-usage.html in browser"),
+    ("repo-scan",               "Scan workspace repos for AI artifacts (SKILL.md, CLAUDE.md, Co-Authored-By commits) → dashboard/repo-audit.json"),
     # Group 12: Sweep Review
     ("sweep-commit",            "Stage modified .md files and create a structured sweep(YYYY-MM-DD) commit"),
     ("sweep-review-generate",   "Generate immutable snapshot HTML from the sweep commit diff"),
@@ -313,27 +314,30 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("ai-usage-generate", help=COMMANDS[42][1])
     sub.add_parser("ai-usage-open",     help=COMMANDS[43][1])
 
+    p = sub.add_parser("repo-scan", help=COMMANDS[44][1])
+    p.add_argument("--repos-root", metavar="PATH", help="Workspace root override (default: ~/workspace)")
+
     # ── Group 12: Sweep Review ────────────────────────────────────────────
-    p = sub.add_parser("sweep-commit", help=COMMANDS[44][1])
+    p = sub.add_parser("sweep-commit", help=COMMANDS[45][1])
     p.add_argument("--dry-run", action="store_true", help="Print what would be committed without writing")
 
-    p = sub.add_parser("sweep-review-generate", help=COMMANDS[45][1])
+    p = sub.add_parser("sweep-review-generate", help=COMMANDS[46][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--no-carry-comments", action="store_true",
                    help="Start fresh — do not inject existing comments into new snapshot")
 
-    p = sub.add_parser("sweep-review-compile", help=COMMANDS[46][1])
+    p = sub.add_parser("sweep-review-compile", help=COMMANDS[47][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-squash", help=COMMANDS[47][1])
+    p = sub.add_parser("sweep-review-squash", help=COMMANDS[48][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-list", help=COMMANDS[48][1])
+    p = sub.add_parser("sweep-review-list", help=COMMANDS[49][1])
     p.add_argument("--date", help="Filter to a specific YYYY-MM-DD")
 
-    p = sub.add_parser("sweep-review-open", help=COMMANDS[49][1])
+    p = sub.add_parser("sweep-review-open", help=COMMANDS[50][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
     p.add_argument("--snapshot", action="store_true", help="Open raw snapshot instead of compiled review")
@@ -388,6 +392,7 @@ DISPATCH = {
     "ai-usage-mine":            ai_usage.cmd_ai_usage_mine,
     "ai-usage-generate":        ai_usage.cmd_ai_usage_generate,
     "ai-usage-open":            ai_usage.cmd_ai_usage_open,
+    "repo-scan":                ai_usage.cmd_repo_scan,
     "sweep-commit":             sweep_review.cmd_sweep_commit,
     "sweep-review-generate":    sweep_review.cmd_sweep_review_generate,
     "sweep-review-compile":     sweep_review.cmd_sweep_review_compile,

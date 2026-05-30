@@ -84,7 +84,14 @@ _IMPERATIVE_RE = re.compile(
     re.IGNORECASE
 )
 _IDEA_TRIGGER_RE = re.compile(
-    r'\b(?:idea[:\s]|what if\b|i want to\b|we should\b|could we\b|let\'s\b)',
+    r'\b(?:'
+    r'idea[:\s]|what if\b|i want to\b|we should\b|could we\b|let\'s\b'
+    r'|i\'m thinking\b|imagine if\b|what about\b|how about\b'
+    r'|wouldn\'t it be\b|it would be (?:cool|great|nice|awesome)\b'
+    r'|someday\b|eventually we\b|we could\b|maybe we\b'
+    r'|feature(?:\s+request)?\b|wishlist\b'
+    r'|(?:^|\s)IDEA\b|(?:^|\s)FUTURE\b'
+    r')',
     re.IGNORECASE
 )
 
@@ -302,6 +309,72 @@ def build_plan_sessions_map(sessions: list[dict], plan_index: list[dict]) -> dic
 
 
 # ---------------------------------------------------------------------------
+# Idea dedup helpers (CM-C+D)
+# ---------------------------------------------------------------------------
+
+import hashlib
+
+
+def _fingerprint(text: str) -> str:
+    """Stable 12-char fingerprint for dedup: sorted normalized tokens."""
+    normalized = re.sub(r'[^\w]', ' ', text.lower())
+    tokens = sorted(normalized.split())
+    return hashlib.md5(' '.join(tokens).encode()).hexdigest()[:12]
+
+
+def extract_notefile_ideas(notes_root: Path, calendar_root: Path) -> list[dict]:
+    """Extract idea lines from NotePlan markdown files using dashboard scanner."""
+    from noteplan_sweep.dashboard import scan_tasks_and_ideas
+    _, raw_ideas = scan_tasks_and_ideas(notes_root, calendar_root)
+    result = []
+    for idea in raw_ideas:
+        text = idea.get("text", "").strip()
+        if len(text) < 8:
+            continue
+        result.append({
+            "text": text,
+            "fingerprint": _fingerprint(text),
+            "source_type": "notefile",
+            "source": idea.get("source", ""),
+            "section": idea.get("section", ""),
+            "xcallback": idea.get("xcallback", ""),
+            "date": "",
+            "tagged": idea.get("tagged", False),
+            "matched_plan": None,
+        })
+    return result
+
+
+def build_discovered_ideas(
+    transcript_ideas: list[dict],
+    notefile_ideas: list[dict],
+    plan_index: list[dict],
+) -> list[dict]:
+    """Merge transcript + notefile ideas, dedup by fingerprint, cross-map plans."""
+    seen_fps: set = set()
+    merged: list[dict] = []
+
+    def _cross_map_idea(text: str) -> str | None:
+        for plan in plan_index:
+            if _keyword_overlap(text, f"{plan['norm_title']} {plan['description']}") >= 0.28:
+                return plan["stem"]
+        return None
+
+    for idea in transcript_ideas + notefile_ideas:
+        fp = idea.get("fingerprint") or _fingerprint(idea.get("text", ""))
+        if fp in seen_fps:
+            continue
+        seen_fps.add(fp)
+        if not idea.get("matched_plan"):
+            idea = {**idea, "matched_plan": _cross_map_idea(idea.get("text", ""))}
+        merged.append(idea)
+
+    # Sort: notefile ideas first (they have cleaner text), then by date desc
+    merged.sort(key=lambda x: (0 if x.get("source_type") == "notefile" else 1, x.get("date", ""), x.get("text", "")))
+    return merged
+
+
+# ---------------------------------------------------------------------------
 # Cursor (incremental mode)
 # ---------------------------------------------------------------------------
 
@@ -442,7 +515,7 @@ def cmd_conversation_mine(args):
     )
     utils.log(f"  Cross-mapped {len(plan_sessions_rich)} plan(s) to sessions")
 
-    # Write ideas.json: surfaced idea lines (dedup by text fingerprint)
+    # Write ideas.json: transcript-derived idea lines (dedup by fingerprint)
     existing_ideas_path = dash_dir / "ideas.json"
     existing_ideas: list[dict] = []
     if existing_ideas_path.exists():
@@ -451,21 +524,13 @@ def cmd_conversation_mine(args):
         except Exception:
             pass
 
-    def _fingerprint(text: str) -> str:
-        import hashlib
-        normalized = re.sub(r'[^\w]', ' ', text.lower())
-        tokens = sorted(normalized.split())
-        return hashlib.md5(' '.join(tokens).encode()).hexdigest()[:12]
-
     existing_fps = {i.get("fingerprint") for i in existing_ideas if i.get("fingerprint")}
     new_ideas: list[dict] = []
-    plan_norm_map = {p["norm_stem"]: p["stem"] for p in plan_index}
     for s in new_sessions:
         session_plans = s.get("plans_touched", [])
         for line in s.get("idea_lines", []):
             fp_hash = _fingerprint(line)
             if fp_hash not in existing_fps:
-                # Try to match idea to a plan
                 matched_plan = session_plans[0] if session_plans else None
                 if not matched_plan:
                     for plan in plan_index:
@@ -475,17 +540,32 @@ def cmd_conversation_mine(args):
                 new_ideas.append({
                     "text": line,
                     "fingerprint": fp_hash,
+                    "source_type": "transcript",
                     "session_id": s["session_id"],
                     "date": s["date"],
                     "matched_plan": matched_plan,
                 })
                 existing_fps.add(fp_hash)
 
-    all_ideas = existing_ideas + new_ideas
+    all_transcript_ideas = existing_ideas + new_ideas
     existing_ideas_path.write_text(
-        json.dumps(all_ideas, indent=2, ensure_ascii=False),
+        json.dumps(all_transcript_ideas, indent=2, ensure_ascii=False),
         encoding="utf-8"
     )
+
+    # CM-D: Build discovered_ideas.json — merge transcript + notefile ideas, dedup
+    utils.verbose("Scanning NotePlan files for idea lines...")
+    calendar_root = root / "Calendar"
+    notefile_ideas = extract_notefile_ideas(notes_root, calendar_root)
+    utils.verbose(f"  Found {len(notefile_ideas)} ideas in NotePlan files")
+
+    discovered = build_discovered_ideas(all_transcript_ideas, notefile_ideas, plan_index)
+    discovered_path = dash_dir / "discovered_ideas.json"
+    discovered_path.write_text(
+        json.dumps(discovered, indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
+    utils.log(f"  discovered_ideas: {len(discovered)} total ({len(notefile_ideas)} from files, {len(all_transcript_ideas)} from transcripts)")
 
     # Update cursor
     new_cursor = {
