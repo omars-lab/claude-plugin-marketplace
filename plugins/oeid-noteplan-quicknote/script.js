@@ -222,14 +222,13 @@ namespace: ${ns}
 // ─── HTML form ────────────────────────────────────────────────────────────────
 
 function buildFormHTML(initialType, allWorkstreams) {
+  const todayISO = formatDate(0, 'iso')
   const data = JSON.stringify({
     workstreams: allWorkstreams,
     statusOptions: STATUS_OPTIONS,
-    daysAgoOptions: DAYS_AGO_OPTIONS,
     devProjects: DEV_PROJECT_OPTIONS.filter(p => p !== '— none —'),
-    meetingTitlePrefill: MEETING_TITLE_PREFILL,
-    planTitlePrefill: PLAN_TITLE_PREFILL,
     domainEmojis: DOMAIN_EMOJIS,
+    todayISO,
   })
 
   return `<!DOCTYPE html>
@@ -241,48 +240,51 @@ function buildFormHTML(initialType, allWorkstreams) {
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
     --bg: #ffffff; --surface: #f2f2f7; --border: #e0e0e5;
-    --text: #000000; --text2: #6e6e73; --accent: #007AFF;
-    --radius: 10px;
+    --text: #000000; --text2: #6e6e73; --accent: #007AFF; --accent-dim: #cce0ff;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #1c1c1e; --surface: #2c2c2e; --border: #3a3a3c;
-            --text: #ffffff; --text2: #8e8e93; }
+            --text: #ffffff; --text2: #8e8e93; --accent-dim: #0a3060; }
   }
   body { font-family: -apple-system, BlinkMacSystemFont, sans-serif;
          background: var(--bg); color: var(--text);
-         padding: 20px 20px 16px; font-size: 14px; line-height: 1.4; }
-  h2 { font-size: 17px; font-weight: 600; margin-bottom: 16px; }
-  .field { margin-bottom: 14px; }
-  label { display: block; font-size: 11px; font-weight: 600;
-          color: var(--text2); text-transform: uppercase; letter-spacing: .5px;
-          margin-bottom: 6px; }
-  .pills { display: flex; gap: 6px; flex-wrap: wrap; }
-  .pill { height: 32px; padding: 0 13px; border-radius: 99px;
+         padding: 18px 18px 14px; font-size: 14px; line-height: 1.4; }
+  h2 { font-size: 16px; font-weight: 600; margin-bottom: 14px; }
+  .field { margin-bottom: 12px; }
+  label { display: block; font-size: 11px; font-weight: 600; color: var(--text2);
+          text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
+  .pills { display: flex; gap: 5px; flex-wrap: wrap; }
+  .pill { height: 30px; padding: 0 12px; border-radius: 99px;
           border: 1.5px solid var(--border); background: var(--surface);
           color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer;
-          transition: all .12s; display: flex; align-items: center; gap: 4px;
+          transition: all .1s; display: flex; align-items: center; gap: 3px;
           white-space: nowrap; }
   .pill:hover { border-color: var(--accent); color: var(--accent); }
   .pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-  select, input[type=text] {
-    width: 100%; height: 36px; padding: 0 10px;
+  select, input[type=text], input[type=date] {
+    width: 100%; height: 34px; padding: 0 10px;
     background: var(--surface); border: 1.5px solid var(--border);
     border-radius: 8px; color: var(--text); font-size: 14px;
     font-family: inherit; appearance: none; -webkit-appearance: none; outline: none; }
   select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238e8e93' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-            background-repeat: no-repeat; background-position: right 10px center;
-            padding-right: 28px; }
-  input[type=text]:focus, select:focus { border-color: var(--accent); }
+            background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+  input[type=text]:focus, select:focus, input[type=date]:focus { border-color: var(--accent); }
   .row { display: flex; gap: 10px; }
   .row .field { flex: 1; }
-  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
-  .btn { height: 36px; padding: 0 18px; border-radius: 8px; border: none;
+  /* Filename preview */
+  .preview-wrap { margin-top: 6px; padding: 7px 10px; background: var(--accent-dim);
+                  border-radius: 7px; font-size: 12px; word-break: break-all; line-height: 1.5; }
+  .preview-prefix { color: var(--accent); font-weight: 500; }
+  .preview-suffix { color: var(--text); }
+  .preview-placeholder { color: var(--text2); }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .btn { height: 34px; padding: 0 16px; border-radius: 8px; border: none;
          font-size: 14px; font-weight: 500; cursor: pointer; font-family: inherit; }
   .btn-cancel { background: var(--surface); color: var(--text); border: 1.5px solid var(--border); }
-  .btn-create { background: var(--accent); color: #fff; min-width: 80px; }
+  .btn-create { background: var(--accent); color: #fff; min-width: 76px; }
   .btn-create:disabled { opacity: .4; cursor: not-allowed; }
   .hidden { display: none !important; }
-  #err { font-size: 12px; color: #ff3b30; margin-top: 8px; min-height: 16px; }
+  #err { font-size: 12px; color: #ff3b30; margin-top: 6px; min-height: 14px; }
 </style>
 </head>
 <body>
@@ -317,19 +319,22 @@ function buildFormHTML(initialType, allWorkstreams) {
   <select id="proj-select"></select>
 </div>
 
-<div class="field">
-  <label>Title</label>
-  <input type="text" id="title" placeholder="Note title" autocomplete="off" spellcheck="false">
-</div>
-
 <div class="row">
   <div class="field hidden" id="status-field">
     <label>Status</label>
     <select id="status-select"></select>
   </div>
-  <div class="field hidden" id="days-field">
-    <label>Days ago</label>
-    <select id="days-select"></select>
+  <div class="field hidden" id="date-field">
+    <label>Meeting date</label>
+    <input type="date" id="meeting-date">
+  </div>
+</div>
+
+<div class="field">
+  <label>Title</label>
+  <input type="text" id="title" placeholder="Descriptive title…" autocomplete="off" spellcheck="false">
+  <div class="preview-wrap" id="preview">
+    <span class="preview-prefix" id="preview-prefix"></span><span class="preview-placeholder" id="preview-ph">your title here</span>
   </div>
 </div>
 
@@ -343,20 +348,58 @@ function buildFormHTML(initialType, allWorkstreams) {
 <script>
 const C = ${data};
 let type = 'plan', domain = 'work';
-
 const $ = id => document.getElementById(id);
 
 function setOptions(sel, opts, defaultIdx) {
   sel.innerHTML = opts.map((o,i) =>
-    '<option value="' + o + '"' + (i === defaultIdx ? ' selected' : '') + '>' + o + '</option>'
+    '<option value="' + o + '"' + (i===defaultIdx?' selected':'') + '>' + o + '</option>'
   ).join('');
 }
 
 function activatePill(groupId, val) {
-  document.querySelectorAll('#' + groupId + ' .pill').forEach(p => {
-    p.classList.toggle('active', p.dataset.val === val);
-  });
+  document.querySelectorAll('#' + groupId + ' .pill').forEach(p =>
+    p.classList.toggle('active', p.dataset.val === val));
 }
+
+// ── Prefix computation ──────────────────────────────────────────────────────
+
+function dateFromISO(iso) {
+  // Parse YYYY-MM-DD without timezone shift
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function toYYMMDD(d) {
+  const yy = String(d.getFullYear()).slice(2);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return yy + mm + dd;
+}
+
+function computePrefix() {
+  const de = C.domainEmojis[domain];
+  if (type === 'note') return de + '📝 ';
+  const wsVal = $('ws-select').value || '';
+  const projVal = $('proj-select').value || '';
+  const useProj = projVal && projVal !== '— no project —';
+  const wsEmoji = (useProj ? projVal : wsVal).split(' ')[0];
+  if (type === 'meeting') {
+    const iso = ($('meeting-date') && $('meeting-date').value) ? $('meeting-date').value : C.todayISO;
+    return de + ' ' + toYYMMDD(dateFromISO(iso)) + ' ';
+  }
+  return de + toYYMMDD(dateFromISO(C.todayISO)) + wsEmoji + ' ';
+}
+
+function updatePreview() {
+  const prefix = computePrefix();
+  const suffix = $('title').value;
+  $('preview-prefix').textContent = prefix;
+  const ph = $('preview-ph');
+  if (suffix) { ph.className = 'preview-suffix'; ph.textContent = suffix; }
+  else        { ph.className = 'preview-placeholder'; ph.textContent = 'your title here'; }
+}
+
+// ── Field visibility ────────────────────────────────────────────────────────
 
 function updateWsField() {
   const ws = C.workstreams[domain] || [];
@@ -372,8 +415,9 @@ function updateWsField() {
 }
 
 function updateProjField() {
-  const wsEmoji = ($('ws-select').value || '').split(' ')[0];
-  const show = type === 'plan' && wsEmoji === '\\u{1F9D1}\\u200D\\u{1F4BB}' && (domain === 'work' || domain === 'earlbear');
+  const wsVal = $('ws-select').value || '';
+  const isDev = wsVal.includes('Development');
+  const show = type === 'plan' && isDev && (domain === 'work' || domain === 'earlbear');
   if (show) {
     setOptions($('proj-select'), ['— no project —'].concat(C.devProjects), 0);
     $('proj-field').classList.remove('hidden');
@@ -382,23 +426,14 @@ function updateProjField() {
   }
 }
 
-function updateTitlePrefill() {
-  const t = $('title');
-  if (t.value) return;
-  const wsEmoji = ($('ws-select').value || '').split(' ')[0];
-  const pre = type === 'meeting'
-    ? (C.meetingTitlePrefill[domain] || '')
-    : (C.planTitlePrefill[wsEmoji] || '');
-  t.value = pre;
-  t.setSelectionRange(pre.length, pre.length);
-}
-
 function refresh() {
   $('status-field').classList.toggle('hidden', type !== 'plan');
-  $('days-field').classList.toggle('hidden', type !== 'meeting');
+  $('date-field').classList.toggle('hidden', type !== 'meeting');
   updateWsField();
-  updateTitlePrefill();
+  updatePreview();
 }
+
+// ── Event wiring ─────────────────────────────────────────────────────────────
 
 function pillGroup(id, setter) {
   document.getElementById(id).addEventListener('click', e => {
@@ -410,18 +445,49 @@ function pillGroup(id, setter) {
   });
 }
 
+pillGroup('type-pills', v => { type = v; });
+pillGroup('domain-pills', v => { domain = v; });
+$('ws-select').addEventListener('change', () => { updateProjField(); updatePreview(); });
+$('proj-select').addEventListener('change', updatePreview);
+$('meeting-date').addEventListener('change', updatePreview);
+$('title').addEventListener('input', updatePreview);
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+setOptions($('status-select'), C.statusOptions, 2);
+$('meeting-date').value = C.todayISO;
+
+type = '${initialType}';
+domain = 'work';
+activatePill('type-pills', type);
+activatePill('domain-pills', domain);
+refresh();
+
+setTimeout(() => $('title').focus(), 60);
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+  if (e.key === 'Escape') cancel();
+});
+
+// ── Submit ────────────────────────────────────────────────────────────────────
+
 function submit() {
   const title = $('title').value.trim();
   if (!title) { $('title').focus(); return; }
   const wsVal = $('ws-select').value || '';
   const projVal = $('proj-select').value || '';
-  const workstream = (projVal && projVal !== '\\u2014 no project \\u2014') ? projVal : wsVal;
-  const params = {
-    domain, type, title,
-    workstream,
-    status: $('status-select').value || C.statusOptions[2],
-    daysAgo: Number($('days-select').value || 0),
-  };
+  const workstream = (projVal && projVal !== '— no project —') ? projVal : wsVal;
+  // Compute daysAgo from calendar date for meetings
+  let daysAgo = 0;
+  if (type === 'meeting') {
+    const sel = $('meeting-date').value || C.todayISO;
+    const selDate = dateFromISO(sel);
+    const today = dateFromISO(C.todayISO);
+    daysAgo = Math.max(0, Math.round((today - selDate) / 86400000));
+  }
+  const params = { domain, type, title, workstream,
+    status: $('status-select').value || C.statusOptions[2], daysAgo };
   $('create-btn').disabled = true;
   $('err').textContent = '';
   const code = JSON.stringify(
@@ -436,27 +502,6 @@ function onCreated(result) {
 }
 
 function cancel() { window.close(); }
-
-// Init
-pillGroup('type-pills', v => { type = v; });
-pillGroup('domain-pills', v => { domain = v; });
-$('ws-select').addEventListener('change', () => { updateProjField(); updateTitlePrefill(); });
-setOptions($('status-select'), C.statusOptions, 2);
-setOptions($('days-select'), C.daysAgoOptions, 0);
-
-// Set initial type + domain
-type = '${initialType}';
-domain = 'work';
-activatePill('type-pills', type);
-activatePill('domain-pills', domain);
-refresh();
-
-setTimeout(() => { $('title').focus(); }, 60);
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
-  if (e.key === 'Escape') cancel();
-});
 </script>
 </body>
 </html>`
