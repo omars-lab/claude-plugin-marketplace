@@ -867,9 +867,15 @@ function classifyRow(idx) {{
   // V-47: scope added lines to the matching section in dest first; fall back to full file
   const destFilenameC = destFile ? destFile.filename : (destRaw + '.md');
   const destSectionResult = extractSectionLines(destFilenameC, sectionName, '+');
-  const addedLines = destSectionResult.lines.length > 0
+  let addedLines = destSectionResult.lines.length > 0
     ? destSectionResult.lines
     : destGroups.flatMap(g => g.lines);
+  // B-14: newly created files show frontmatter as additions — filter them out so they
+  // don't trigger anomaly scoring. A new file's content is all portal-generated noise.
+  if (destFile && destFile.isNewFile) {{
+    const _isFrontmatter = l => /^---$/.test(l.trim()) || /^(doctype|status|started|namespace|workstream|plantype|description|title|contributors|initiative)\s*:/.test(l.trim());
+    addedLines = addedLines.filter(l => !_isFrontmatter(l));
+  }}
 
   if (!srcResult.matched && addedLines.length > 0) {{
     const allSrc = extractSectionLines(row.source_file, null, '-').lines;
@@ -1862,7 +1868,8 @@ function parseDiff(text) {{
       }}
       continue;
     }}
-    if (l.startsWith('index ') || l.startsWith('new file') || l.startsWith('deleted file') || l.startsWith('old mode') || l.startsWith('new mode')) continue;
+    if (l.startsWith('new file')) {{ cur.isNewFile = true; continue; }}
+    if (l.startsWith('index ') || l.startsWith('deleted file') || l.startsWith('old mode') || l.startsWith('new mode')) continue;
     if (l.startsWith('@@')) {{
       const m = l.match(/@@ -(\\d+)(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/);
       if (m) {{ leftN = parseInt(m[1]); rightN = parseInt(m[2]); }}

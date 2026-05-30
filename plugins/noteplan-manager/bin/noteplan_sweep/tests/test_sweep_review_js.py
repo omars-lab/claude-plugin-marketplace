@@ -705,3 +705,60 @@ def test_js15_background_scan_populates_badges(playwright, http_server):
     assert all("rb-pending" not in c for c in badge_classes), (
         f"Some badges still pending after scan: {badge_classes}"
     )
+
+
+# ---------------------------------------------------------------------------
+# JS-16  B-14: new-file dest — frontmatter not classified as anomaly
+# ---------------------------------------------------------------------------
+
+def test_js16_new_file_frontmatter_not_anomaly(playwright, http_server):
+    """JS-16 (B-14): When dest file is 'new file mode', its frontmatter lines
+    (---, doctype:, status:, started:, etc.) must NOT trigger an anomaly badge.
+    The row should be classified as 'empty' (source had no countable removed lines)
+    rather than 'anomaly' (dest has untraced additions)."""
+    base_url, serve_dir = http_server
+
+    frontmatter_lines = [
+        "---",
+        "doctype: 📆",
+        "status: 🟢",
+        "started: 2026-04-21",
+        "namespace: 🏡",
+        "plantype: 👨🏻‍💻",
+        "description: A brand-new plan file created during the sweep.",
+        "---",
+        "# 🏡260421👨🏻‍💻 My New Plan",
+    ]
+    narrative = [{"date": "2026-04-21", "source_file": "Calendar/20260421.md",
+                  "section": "New Plan Section", "summary": "created new plan",
+                  "destination": "[[🏡260421👨🏻‍💻 My New Plan]]"}]
+    diff = _make_diff([
+        # Source: a breadcrumb section with a task that moved
+        {"path": "Calendar/20260421.md",
+         "removed": ["- [ ] ## New Plan Section", "- [ ] plan task here"],
+         "added": []},
+        # Dest: newly created file (new file mode) with only frontmatter + H1
+        {"path": "Notes/🏡 Personal/🏡📆 Plans/Present/👨🏻‍💻 Development/🏡260421👨🏻‍💻 My New Plan.md",
+         "added": frontmatter_lines,
+         "new": True},
+    ])
+    page_name = _write_page(serve_dir, "js16.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    browser.close()
+
+    assert "rb-anomaly" not in badge_class, (
+        f"B-14: new-file frontmatter should NOT be classified as anomaly. Badge: {badge_class}"
+    )
