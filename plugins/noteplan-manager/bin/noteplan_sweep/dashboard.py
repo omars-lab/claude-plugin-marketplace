@@ -765,13 +765,38 @@ def cmd_dashboard_generate(args):
     if not gitkeep.exists() and not utils.DRY_RUN:
         gitkeep.touch()
 
+    # CM-E: run conversation-mine as pre-step unless --skip-mine passed
+    if not getattr(args, 'skip_mine', False):
+        utils.verbose("Running conversation-mine pre-step...")
+        try:
+            from noteplan_sweep import conversation_mine as cm
+            import types
+            mine_args = types.SimpleNamespace(
+                since=None, full=False, projects=None, no_writeback=True
+            )
+            cm.cmd_conversation_mine(mine_args)
+        except Exception as e:
+            utils.verbose(f"  conversation-mine pre-step skipped: {e}")
+
     utils.verbose("Scanning plans...")
     plans = scan_plans(notes)
     utils.verbose(f"Found {len(plans)} plan files")
 
     utils.verbose("Extracting tasks and ideas...")
-    tasks, ideas = scan_tasks_and_ideas(notes, calendar)
-    utils.verbose(f"Found {len(tasks)} open tasks, {len(ideas)} ideas")
+    tasks, _ = scan_tasks_and_ideas(notes, calendar)
+
+    # Use discovered_ideas.json if available (enriched by conversation-mine)
+    discovered_path = dash_dir / "discovered_ideas.json"
+    if discovered_path.exists():
+        try:
+            ideas = json.loads(discovered_path.read_text(encoding="utf-8"))
+            utils.verbose(f"Found {len(tasks)} open tasks, {len(ideas)} ideas (from discovered_ideas.json)")
+        except Exception:
+            _, ideas = scan_tasks_and_ideas(notes, calendar)
+            utils.verbose(f"Found {len(tasks)} open tasks, {len(ideas)} ideas")
+    else:
+        _, ideas = scan_tasks_and_ideas(notes, calendar)
+        utils.verbose(f"Found {len(tasks)} open tasks, {len(ideas)} ideas")
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
     html = build_html(plans, tasks, ideas, generated_at)

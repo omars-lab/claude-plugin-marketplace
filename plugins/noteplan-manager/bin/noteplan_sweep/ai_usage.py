@@ -297,6 +297,63 @@ def _save_cursor(dashboard_dir: Path, cursor: dict):
 
 
 # ---------------------------------------------------------------------------
+# Skill scanner (AUD-E)
+# ---------------------------------------------------------------------------
+
+def _scan_skills() -> list[dict]:
+    """Collect all SKILL.md files from noteplan-manager plugin."""
+    skill_roots = [
+        Path.home() / 'workspace' / 'oeid-claude-plugin-marketplace'
+        / 'plugins' / 'noteplan-manager' / 'skills',
+        Path.home() / 'Library' / 'CloudStorage' / 'OneDrive-ServiceNow' / 'workspace'
+        / 'oeid-claude-plugin-marketplace' / 'plugins' / 'noteplan-manager' / 'skills',
+    ]
+    skills: list[dict] = []
+    seen_names: set = set()
+    for root in skill_roots:
+        if not root.exists():
+            continue
+        for skill_file in sorted(root.rglob('SKILL.md')):
+            # Derive hierarchy: skills/<group>[/<subskill>]/SKILL.md
+            rel = skill_file.relative_to(root)
+            parts = [p for p in rel.parts if p != 'SKILL.md']
+            name = parts[-1] if parts else 'unknown'
+            group = parts[0] if parts else name
+            is_subskill = len(parts) > 1
+            # Dedup by name (prefer workspace over OneDrive copy)
+            if name in seen_names:
+                continue
+            seen_names.add(name)
+            try:
+                content = skill_file.read_text(encoding='utf-8')
+            except Exception:
+                continue
+            # Extract description: first non-header line after frontmatter
+            body = content
+            if content.startswith('---'):
+                end = content.find('\n---', 3)
+                if end != -1:
+                    body = content[end + 4:].lstrip('\n')
+            description = ''
+            for line in body.splitlines():
+                stripped = line.strip()
+                if stripped and not stripped.startswith('#'):
+                    description = stripped[:200]
+                    break
+            skills.append({
+                'name': name,
+                'group': group,
+                'is_subskill': is_subskill,
+                'path': str(skill_file),
+                'description': description,
+                'content': content,
+                'size': len(content),
+            })
+        break  # use first found root; don't double-load
+    return skills
+
+
+# ---------------------------------------------------------------------------
 # ai-usage-mine
 # ---------------------------------------------------------------------------
 
@@ -535,6 +592,15 @@ def cmd_ai_usage_generate(args):
     daily = data.get('daily_counts', {})
     generated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
 
+    # AUD-E: scan SKILL.md files for Prompt Library
+    skills = _scan_skills()
+    utils.verbose(f"Found {len(skills)} SKILL.md files for Prompt Library")
+    # Strip content for the card list (include content separately for Monaco)
+    skills_meta = [{k: v for k, v in s.items() if k != 'content'} for s in skills]
+    skills_content = {s['path']: s['content'] for s in skills}
+    skills_meta_json = json.dumps(skills_meta, ensure_ascii=False)
+    skills_content_json = json.dumps(skills_content, ensure_ascii=False)
+
     # Sort daily counts for chart
     sorted_days = sorted(daily.get('daily_counts', {}).items()) or sorted(daily.items()) if isinstance(daily, dict) else []
     # Support both old format (flat dict) and new format with interactive split
@@ -558,6 +624,7 @@ def cmd_ai_usage_generate(args):
 <meta charset="utf-8">
 <title>AI Usage Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
 <style>
   :root {{
     --bg: #0f0f0f; --surface: #1a1a1a; --border: #2a2a2a;
@@ -669,10 +736,23 @@ def cmd_ai_usage_generate(args):
   </div>
 
   <div class="pane" id="pane-skills">
-    <div class="skill-ph">
-      <div style="font-size:32px">📚</div>
-      <strong>Prompt Library — coming in AUD-E</strong>
-      <p>Monaco Editor viewer for all SKILL.md files across<br><code>~/workspace/oeid-claude-plugin-marketplace</code></p>
+    <div style="display:flex;gap:0;height:calc(100vh - 130px)">
+      <!-- Left: skill card list -->
+      <div style="width:260px;flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="padding:10px 12px;border-bottom:1px solid var(--border)">
+          <input id="skill-search" style="width:100%;background:#111;border:1px solid var(--border);border-radius:5px;padding:5px 8px;color:var(--text);font-size:12px" placeholder="Filter skills…" oninput="renderSkillCards()">
+          <div style="font-size:11px;color:var(--muted);margin-top:6px" id="skill-count"></div>
+        </div>
+        <div id="skill-cards" style="overflow-y:auto;flex:1"></div>
+      </div>
+      <!-- Right: Monaco editor -->
+      <div style="flex:1;display:flex;flex-direction:column;margin-left:16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-shrink:0">
+          <span id="skill-editor-title" style="font-size:13px;color:var(--muted)">Select a skill →</span>
+          <button id="btn-copy-prompt" onclick="copyPrompt()" style="margin-left:auto;background:var(--accent);border:none;border-radius:5px;padding:5px 14px;color:#fff;font-size:12px;cursor:pointer;display:none">Copy as prompt</button>
+        </div>
+        <div id="monaco-container" style="flex:1;border:1px solid var(--border);border-radius:8px;overflow:hidden"></div>
+      </div>
     </div>
   </div>
 
@@ -773,6 +853,93 @@ window.addEventListener('DOMContentLoaded', () => {{
     }}
   }});
 }});
+
+// ── Prompt Library (AUD-E) ────────────────────────────────────────────────
+const SKILLS_META = {skills_meta_json};
+const SKILLS_CONTENT = {skills_content_json};
+let monacoEditor = null;
+let monacoReady = false;
+let pendingContent = null;
+
+require.config({{ paths: {{ vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' }} }});
+require(['vs/editor/editor.main'], function() {{
+  monacoReady = true;
+  monacoEditor = monaco.editor.create(document.getElementById('monaco-container'), {{
+    value: '',
+    language: 'markdown',
+    theme: 'vs-dark',
+    readOnly: false,
+    automaticLayout: true,
+    fontSize: 13,
+    lineNumbers: 'on',
+    minimap: {{ enabled: false }},
+    wordWrap: 'on',
+    scrollBeyondLastLine: false,
+    padding: {{ top: 12, bottom: 12 }},
+  }});
+  if (pendingContent !== null) {{
+    monacoEditor.setValue(pendingContent);
+    pendingContent = null;
+  }}
+}});
+
+function renderSkillCards() {{
+  const q = (document.getElementById('skill-search').value || '').toLowerCase();
+  const filtered = SKILLS_META.filter(s =>
+    !q || s.name.toLowerCase().includes(q) || (s.group || '').toLowerCase().includes(q) ||
+    (s.description || '').toLowerCase().includes(q)
+  );
+  document.getElementById('skill-count').textContent = filtered.length + ' skills';
+  const groups = {{}};
+  filtered.forEach(s => {{
+    const g = s.group || s.name;
+    groups[g] = groups[g] || [];
+    groups[g].push(s);
+  }});
+  document.getElementById('skill-cards').innerHTML = Object.entries(groups).map(([group, skills]) => `
+    <div style="padding:6px 10px 2px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;border-top:1px solid var(--border)">${{esc(group)}}</div>
+    ${{skills.map(s => `
+      <div class="skill-card" data-path="${{esc(s.path)}}" onclick="openSkill(this)" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #1a1a1a">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">${{esc(s.name)}}${{s.is_subskill ? ' <span style=\\"color:var(--muted);font-weight:400\\">↳</span>' : ''}}</div>
+        ${{s.description ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${{esc(s.description.slice(0,80))}}</div>` : ''}}
+      </div>`).join('')}}
+  `).join('');
+}}
+
+function openSkill(el) {{
+  document.querySelectorAll('.skill-card').forEach(c => c.style.background = '');
+  el.style.background = '#1a1a2a';
+  const path = el.dataset.path;
+  const content = SKILLS_CONTENT[path] || '# Not found';
+  const meta = SKILLS_META.find(s => s.path === path) || {{}};
+  document.getElementById('skill-editor-title').textContent = meta.name || path;
+  document.getElementById('btn-copy-prompt').style.display = '';
+  if (monacoReady && monacoEditor) {{
+    monacoEditor.setValue(content);
+    monacoEditor.setScrollPosition({{ scrollTop: 0 }});
+  }} else {{
+    pendingContent = content;
+  }}
+}}
+
+function copyPrompt() {{
+  const content = monacoEditor ? monacoEditor.getValue() : '';
+  if (!content) return;
+  navigator.clipboard.writeText(content).then(() => {{
+    const btn = document.getElementById('btn-copy-prompt');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy as prompt', 1500);
+  }});
+}}
+
+// Init skill cards when pane becomes visible
+const _origShowTab = showTab;
+function showTab(tab) {{
+  _origShowTab(tab);
+  if (tab === 'skills' && !document.getElementById('skill-count').textContent) {{
+    renderSkillCards();
+  }}
+}}
 </script>
 </body>
 </html>"""
