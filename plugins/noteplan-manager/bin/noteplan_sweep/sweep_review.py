@@ -550,6 +550,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .nav-tbl .section-col{{color:#e6edf3;font-weight:500}}
 .nav-tbl .summary-col{{color:#8b949e}}
 .day-sep-row td{{background:#0d1117;padding:14px 10px 5px;font-size:13px;font-weight:600;color:#58a6ff;border-bottom:1px solid #30363d;white-space:normal;overflow:visible}}
+.src-sep-row td{{background:#0a0f1a;padding:4px 10px 3px;font-size:10px;font-weight:500;color:#3d6a9e;border-bottom:1px solid #1c2128;font-family:monospace;white-space:nowrap;overflow:visible}}
 .item-row td{{background:#0a0d12;padding:3px 10px;border-bottom:1px solid #161b22;font-size:11px}}
 .item-row:hover td{{background:#0d1117}}
 .item-row .item-text{{color:#c9d1d9;font-family:'SF Mono','Fira Code',monospace;padding-left:20px}}
@@ -1608,6 +1609,16 @@ function setType(t) {{
     let next = sep.nextElementSibling;
     let anyVisible = false;
     while (next && !next.classList.contains('day-sep-row')) {{
+      if (next.style.display !== 'none' && !next.classList.contains('mixed-lost-sub-row') && !next.classList.contains('src-sep-row')) anyVisible = true;
+      next = next.nextElementSibling;
+    }}
+    sep.style.display = anyVisible ? '' : 'none';
+  }});
+  // Also hide/show src-sep-row — hide if all following rows (until next sep) are hidden
+  document.querySelectorAll('tr.src-sep-row').forEach(sep => {{
+    let next = sep.nextElementSibling;
+    let anyVisible = false;
+    while (next && !next.classList.contains('day-sep-row') && !next.classList.contains('src-sep-row')) {{
       if (next.style.display !== 'none' && !next.classList.contains('mixed-lost-sub-row')) anyVisible = true;
       next = next.nextElementSibling;
     }}
@@ -1657,13 +1668,29 @@ function renderNarrative() {{
       label = `${{d}} (${{dow}})`;
     }} catch(e) {{}}
 
-    tbody += `<tr class="day-sep-row"><td colspan="6">📅 ${{esc(label)}} — ${{dayRows.length}} section${{dayRows.length !== 1 ? 's' : ''}} swept</td></tr>`;
+    tbody += `<tr class="day-sep-row"><td colspan="7">📅 ${{esc(label)}} — ${{dayRows.length}} section${{dayRows.length !== 1 ? 's' : ''}} swept</td></tr>`;
 
-    tbody += dayRows.map(r => {{
+    // Sort within day by source file so rows from the same file are adjacent
+    const sortedDayRows = [...dayRows].sort((a, b) => {{
+      const sa = a.source_file || '';
+      const sb = b.source_file || '';
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    }});
+
+    let lastSrcStem = null;
+    tbody += sortedDayRows.map(r => {{
       const idx = MODAL_ROWS.push(r) - 1;
       const srcStem = r.source_file.split('/').pop().replace(/\\.md$/, '');
       const srcUrl = `noteplan://x-callback-url/openNote?filename=${{srcStem}}`;
-      return `<tr data-row-idx="${{idx}}">
+      let sepRow = '';
+      if (srcStem !== lastSrcStem) {{
+        if (lastSrcStem !== null) {{
+          // thin visual break between source files within the same day
+          sepRow = `<tr class="src-sep-row"><td colspan="7">📄 ${{esc(srcStem)}}</td></tr>`;
+        }}
+        lastSrcStem = srcStem;
+      }}
+      return sepRow + `<tr data-row-idx="${{idx}}">
         <td style="padding:3px 6px;text-align:center"><span class="row-badge rb-pending" title="Not yet classified">·</span></td>
         <td class="count-col" style="width:48px;text-align:center;font-size:10px;color:#484f58;font-family:monospace">—</td>
         <td class="section-col"><button class="sec-toggle" onclick="toggleSectionItems(${{idx}},this)" title="Expand items">▶</button>${{esc(r.section)}}</td>
