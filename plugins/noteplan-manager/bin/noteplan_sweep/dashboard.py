@@ -408,6 +408,17 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
   .kanban-card .kc-meta {{ font-size: 11px; color: #484f58; display: flex; gap: 6px; flex-wrap: nowrap; align-items: center; margin-top: 4px; overflow: hidden; }}
   .kc-tasks .td {{ color: #3fb950; }} .kc-tasks .to {{ color: #d29922; }}
 
+  /* ── Initiatives ── */
+  .initiative-group {{ margin-bottom: 20px; }}
+  .initiative-header {{ display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; }}
+  .initiative-header h3 {{ font-size: 13px; font-weight: 700; color: #d2a8ff; }}
+  .initiative-header .init-count {{ font-size: 11px; color: #484f58; }}
+  .initiative-cards {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }}
+  .init-card {{ background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 9px 11px; text-decoration: none; display: block; }}
+  .init-card:hover {{ border-color: #d2a8ff; }}
+  .init-card .ic-title {{ font-size: 12px; font-weight: 600; color: #e6edf3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+  .init-card .ic-meta {{ font-size: 11px; color: #484f58; margin-top: 3px; display: flex; gap: 6px; align-items: center; }}
+
   /* ── Gantt ── */
   .gantt-wrap {{ overflow-x: auto; border-radius: 8px; background: #0d1117; padding: 12px; }}
   .gantt .bar {{ fill: #1f6feb; }} .gantt .bar-progress {{ fill: #58a6ff; }}
@@ -452,6 +463,7 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
   <div class="tab"        onclick="showTab('tasks')">Tasks <span id="tab-tasks-n"></span></div>
   <div class="tab"        onclick="showTab('ideas')">Ideas <span id="tab-ideas-n"></span></div>
   <div class="tab"        onclick="showTab('inbox')">Inbox <span id="tab-inbox-n"></span></div>
+  <div class="tab"        onclick="showTab('initiatives')">Initiatives <span id="tab-init-n"></span></div>
 </div>
 
 <div id="content">
@@ -487,6 +499,14 @@ def build_html(plans: list, tasks: list, ideas: list, generated_at: str) -> str:
       <span class="count-badge" id="idea-count"></span>
     </div>
     <div class="card-list" id="idea-list"></div>
+  </div>
+
+  <div class="pane" id="pane-initiatives">
+    <div class="filter-bar">
+      <input type="text" id="init-search" placeholder="Filter initiatives…" oninput="renderInitiatives()">
+      <span class="count-badge" id="init-count"></span>
+    </div>
+    <div id="initiatives-list"></div>
   </div>
 
   <div class="pane" id="pane-inbox">
@@ -572,7 +592,7 @@ function matchesCard(item) {{
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 function showTab(tab) {{
-  const names = ['plans','gantt','tasks','ideas','inbox'];
+  const names = ['plans','gantt','tasks','ideas','inbox','initiatives'];
   document.querySelectorAll('.tab').forEach((el, i) => el.classList.toggle('active', names[i] === tab));
   document.querySelectorAll('.pane').forEach(el => el.classList.remove('active'));
   document.getElementById('pane-' + tab).classList.add('active');
@@ -732,11 +752,72 @@ function renderInbox() {{
   }}).join('');
 }}
 
+function renderInitiatives() {{
+  const q = (document.getElementById('init-search').value || '').toLowerCase();
+  const qg = (document.getElementById('search-global').value || '').toLowerCase();
+
+  let plans = DATA.plans.filter(p => matchesPlan(p));
+  if (q) plans = plans.filter(p =>
+    p.title.toLowerCase().includes(q) ||
+    (p.initiative||'').toLowerCase().includes(q) ||
+    (p.project||'').toLowerCase().includes(q)
+  );
+  if (qg) plans = plans.filter(p =>
+    p.title.toLowerCase().includes(qg) ||
+    (p.initiative||'').toLowerCase().includes(qg)
+  );
+
+  // Group by initiative (fallback to project)
+  const groups = {{}};
+  plans.forEach(p => {{
+    const key = (p.initiative || p.project || 'Uncategorized').trim() || 'Uncategorized';
+    groups[key] = groups[key] || [];
+    groups[key].push(p);
+  }});
+
+  // Sort groups: those with explicit initiative: first, then by size
+  const sorted = Object.entries(groups).sort((a, b) => {{
+    const aHasInit = a[1].some(p => p.initiative);
+    const bHasInit = b[1].some(p => p.initiative);
+    if (aHasInit !== bHasInit) return aHasInit ? -1 : 1;
+    return b[1].length - a[1].length;
+  }});
+
+  document.getElementById('init-count').textContent = plans.length + ' plans in ' + sorted.length + ' initiatives';
+  document.getElementById('tab-init-n').textContent = '(' + sorted.length + ')';
+
+  const sClass = {{active:'s-active',paused:'s-paused',done:'s-done',backlog:'s-backlog'}};
+
+  document.getElementById('initiatives-list').innerHTML = sorted.map(([group, gPlans]) => {{
+    const hasInit = gPlans.some(p => p.initiative);
+    return `<div class="initiative-group">
+      <div class="initiative-header">
+        <h3>${{hasInit ? '🎯 ' : ''}}${{esc(group)}}</h3>
+        <span class="init-count">${{gPlans.length}} plan${{gPlans.length === 1 ? '' : 's'}}</span>
+      </div>
+      <div class="initiative-cards">
+        ${{gPlans.map(p => `
+          <a class="init-card" href="${{esc(p.xcallback)}}">
+            <div class="ic-title">${{esc(p.title)}}</div>
+            <div class="ic-meta">
+              <span class="status-dot ${{sClass[p.status]||'s-unknown'}}"></span>
+              <span style="color:#8b949e">${{esc(p.workstream||p.project||'')}}</span>
+              <span style="font-size:14px">${{esc(p.plantype||'')}}</span>
+              <span style="color:#3fb950;margin-left:auto">✓${{p.done_tasks}}</span>
+              <span style="color:#d29922">◦${{p.open_tasks}}</span>
+            </div>
+          </a>`).join('')}}
+      </div>
+    </div>`;
+  }}).join('');
+}}
+
 function rerender() {{
   renderPlans();
   renderTasks();
   renderIdeas();
   renderInbox();
+  renderInitiatives();
 }}
 
 window.addEventListener('DOMContentLoaded', () => {{

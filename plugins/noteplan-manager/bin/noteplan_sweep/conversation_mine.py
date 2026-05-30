@@ -375,6 +375,88 @@ def build_discovered_ideas(
 
 
 # ---------------------------------------------------------------------------
+# Write-back helpers (CM-G)
+# ---------------------------------------------------------------------------
+
+_WORK_LOG_HEADER = "## Work Log"
+_WORK_LOG_TABLE_HEADER = "| Date | Session | Use Case | Files Written | Notes |\n|---|---|---|---|---|"
+
+
+def _ensure_work_log_section(content: str) -> str:
+    """Append a ## Work Log section if not present."""
+    if _WORK_LOG_HEADER in content:
+        return content
+    sep = "\n\n" if not content.endswith("\n\n") else ""
+    return content + sep + _WORK_LOG_HEADER + "\n\n" + _WORK_LOG_TABLE_HEADER + "\n"
+
+
+def _work_log_row_id(session_id: str) -> str:
+    return session_id[:8]
+
+
+def write_work_log(plan_path: Path, session: dict) -> bool:
+    """Append a work log row to a plan file for a given session.
+
+    Returns True if a row was added, False if already present or skipped.
+    """
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except Exception:
+        return False
+
+    row_id = _work_log_row_id(session.get("session_id", ""))
+    if not row_id:
+        return False
+
+    # Skip if already logged
+    if row_id in content:
+        return False
+
+    content = _ensure_work_log_section(content)
+
+    date = session.get("date", "")
+    use_case = session.get("use_case", "")
+    files = session.get("files_written", [])
+    file_count = len(files)
+    files_str = f"{file_count} file{'s' if file_count != 1 else ''}" if file_count else "—"
+    notes = ""
+    if session.get("imperative_phrases"):
+        notes = session["imperative_phrases"][0][:60]
+
+    row = f"| {date} | `{row_id}` | {use_case or '—'} | {files_str} | {notes} |"
+
+    # Insert row after table header
+    table_header = _WORK_LOG_TABLE_HEADER.split('\n')[1]  # the |---|...| line
+    if table_header in content:
+        content = content.replace(
+            table_header + "\n",
+            table_header + "\n" + row + "\n",
+            1,
+        )
+    else:
+        content += "\n" + row + "\n"
+
+    try:
+        plan_path.write_text(content, encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
+def detect_plan_completion(plan_path: Path) -> bool | None:
+    """Return True if plan has 0 open tasks and >0 done tasks; None if indeterminate."""
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+    open_count = len(re.findall(r'^\s*- \[ \]', content, re.MULTILINE))
+    done_count = len(re.findall(r'^\s*- \[x\]', content, re.MULTILINE | re.IGNORECASE))
+    if done_count > 0 and open_count == 0:
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Cursor (incremental mode)
 # ---------------------------------------------------------------------------
 
@@ -567,6 +649,24 @@ def cmd_conversation_mine(args):
     )
     utils.log(f"  discovered_ideas: {len(discovered)} total ({len(notefile_ideas)} from files, {len(all_transcript_ideas)} from transcripts)")
 
+    # CM-G: Write-back work logs to touched plan files
+    if not getattr(args, 'no_writeback', False):
+        utils.verbose("Writing work logs to touched plan files...")
+        stem_to_path = {p["stem"]: Path(p["path"]) for p in plan_index}
+        logs_written = 0
+        completions: list[str] = []
+        for session in new_sessions:
+            for stem in session.get("plans_touched", []):
+                plan_path = stem_to_path.get(stem)
+                if plan_path and plan_path.exists():
+                    if write_work_log(plan_path, session):
+                        logs_written += 1
+                    if detect_plan_completion(plan_path):
+                        completions.append(stem)
+        utils.log(f"  write-back: {logs_written} work log row(s) appended")
+        if completions:
+            utils.log(f"  SUGGEST: {len(completions)} plan(s) may be complete (all tasks done): {', '.join(completions[:5])}")
+
     # Update cursor
     new_cursor = {
         "last_ts": datetime.now(tz=timezone.utc).isoformat(),
@@ -574,4 +674,96 @@ def cmd_conversation_mine(args):
     }
     save_cursor(dash_dir, new_cursor)
 
-    utils.log(f"  sessions: {len(merged_sessions)} total | plan-sessions: {len(plan_sessions_rich)} plans | ideas: {len(all_ideas)} ({len(new_ideas)} new)")
+    utils.log(f"  sessions: {len(merged_sessions)} total | plan-sessions: {len(plan_sessions_rich)} plans | ideas: {len(all_transcript_ideas)} ({len(new_ideas)} new)")
+
+
+def cmd_mine_commit(args):
+    """Stage dashboard outputs + write-back plan changes and create a structured commit."""
+    import subprocess
+    root = utils.noteplan_root()
+    dash_dir = root / "dashboard"
+
+    if utils.DRY_RUN:
+        utils.log("[dry-run] Would stage dashboard/*.json and modified plan files, then commit")
+        return
+
+    # Stage dashboard JSON outputs (not HTML — those are gitignored)
+    json_files = list(dash_dir.glob("*.json"))
+    gitkeep = dash_dir / ".gitkeep"
+    if gitkeep.exists():
+        json_files.append(gitkeep)
+
+    if not json_files:
+        utils.log("mine-commit: nothing to commit in dashboard/")
+        return
+
+    # Also detect modified plan files with work log additions
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "-z"],
+            cwd=str(root), capture_output=True, text=True
+        )
+        modified_plans = []
+        for entry in result.stdout.split('\0'):
+            entry = entry.strip()
+            if not entry:
+                continue
+            status, _, path = entry.partition(' ')
+            path = path.strip()
+            if path.endswith('.md') and 'Notes/' in path:
+                modified_plans.append(path)
+    except Exception:
+        modified_plans = []
+
+    # Stage all files
+    stage_paths = [str(f) for f in json_files] + modified_plans
+    try:
+        subprocess.run(["git", "add", "--"] + stage_paths, cwd=str(root), check=True)
+    except subprocess.CalledProcessError as e:
+        utils.err(f"mine-commit: git add failed: {e}")
+        return
+
+    # Build commit message
+    today = date.today().isoformat()
+    sessions_path = dash_dir / "sessions.json"
+    n_sessions = 0
+    if sessions_path.exists():
+        try:
+            n_sessions = len(json.loads(sessions_path.read_text()))
+        except Exception:
+            pass
+    plan_sessions_path = dash_dir / "plan-sessions.json"
+    n_plans = 0
+    if plan_sessions_path.exists():
+        try:
+            n_plans = len(json.loads(plan_sessions_path.read_text()))
+        except Exception:
+            pass
+    discovered_path = dash_dir / "discovered_ideas.json"
+    n_ideas = 0
+    if discovered_path.exists():
+        try:
+            n_ideas = len(json.loads(discovered_path.read_text()))
+        except Exception:
+            pass
+
+    msg = (
+        f"mine({today}): {n_sessions} sessions → {n_plans} plans, {n_ideas} ideas"
+    )
+    if modified_plans:
+        msg += f"\n\nWork logs written to {len(modified_plans)} plan file(s)"
+
+    try:
+        result = subprocess.run(
+            ["git", "commit", "-m", msg],
+            cwd=str(root), capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            utils.log(f"mine-commit: {msg}")
+        else:
+            if "nothing to commit" in result.stdout + result.stderr:
+                utils.log("mine-commit: nothing to commit (already clean)")
+            else:
+                utils.err(f"mine-commit: git commit failed: {result.stderr.strip()}")
+    except Exception as e:
+        utils.err(f"mine-commit: {e}")
