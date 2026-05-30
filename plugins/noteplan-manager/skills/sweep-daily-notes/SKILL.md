@@ -190,15 +190,17 @@ For each plan file:
 4. Extract `description` if present (may be absent → `description_missing: true`)
 5. Extract display name from `# H1`; preserve exact filename stem for wikilinks
 6. Extract `contributors` if present in frontmatter — used as a routing signal (see Step 6b)
+7. Extract `project` from the file's path — if the plan lives in a **project subfolder** (e.g. `🧑🏻‍💻 Development/🤖 Config Agent/`), record the project subfolder name. Project subfolders are subdirectories within a workstream dir that group related plans. Plans in project subfolders use the **project emoji** in their filename (e.g. `🏢260302🤖 Title.md`) instead of the parent workstream emoji.
 
 Build a compact plan index (metadata only, no content):
 
 ```
 [
   {
-    "filename_stem": "🏢260302🧑🏻‍💻 POC Establishing A2A Poc",
+    "filename_stem": "🏢260302🤖 POC Establishing A2A Poc",
     "path": "/full/path/to/file.md",
     "workstream_or_plantype": "🧑🏻‍💻",
+    "project": "🤖 Config Agent",          // optional — set when plan is in a project subfolder
     "status": "🟢",
     "description": "...",
     "description_missing": true/false,
@@ -904,12 +906,13 @@ namespace: 🏢
 
 **Place the file** in the correct subdirectory:
 - Work plan: `$PLAN_ROOT/{workstream_dir}/` (match the existing subdir for that workstream emoji)
+- Work plan in a project subfolder: `$PLAN_ROOT/{workstream_dir}/{project_dir}/` — when a plan clearly belongs to an existing project subfolder (e.g. `🤖 Config Agent/`, `⚗️ Experiments/`, `💡 esgenius/` under `🧑🏻‍💻 Development/`), place it there and use the **project emoji** in the filename instead of the workstream emoji
 - Personal plan: `$PLAN_ROOT/Present/{plantype_dir}/` (match the existing subdir for that plantype emoji)
 - EarlBear plan: `$NOTES_ROOT/👥 EarlBear/📆 Plans/{workstream_dir}/` (create subdir if needed)
 - EarlBear meeting: `$NOTES_ROOT/👥 EarlBear/👥👤 Meetings/`
 - Work meeting: `$NOTES_ROOT/🏢 ServiceNow/👤 Meetings/` (root or `1-1s/` subdir as appropriate)
 
-Discover the correct subdir by listing the directory — never hardcode.
+Discover the correct subdir by listing the directory — never hardcode. When a workstream dir has project subfolders, list those too and present them as placement options when creating a new plan.
 
 **Add to plan/meetings index** so it's available for the rest of the sweep.
 
@@ -1462,6 +1465,7 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Voice note processing | Voice notes are cleaned before routing: break into sentences, fix phonetic→technical errors (JSON, byte, base64, Claude), strip filler, structure into tasks/bullets. Present before/after via AskUserQuestion. User confirms cleaned or raw version. |
 | Voice note is the one content edit exception | Voice note cleaning is the only case where content is modified during sweep. The raw transcription is preserved in the breadcrumb table Summary column for traceability. User must explicitly confirm the transformation. |
 | Categorized Unsorted sub-sections | After Phase 7b routing, restructure remaining Unsorted items into categorized sub-sections (📋 References, 💬 Comms, 👨‍👩‍👧‍👦 Family, 🏠 Home, 💼 Work, 💡 Ideas). Only create categories with ≥1 item. Present restructured layout for confirmation. |
+| Project subfolders supported | Workstream dirs can contain **project subfolders** (e.g. `🧑🏻‍💻 Development/🤖 Config Agent/`) to group related plans. Plans in project subfolders use the **project emoji** in their filename (e.g. `🏢260302🤖 Title.md`) instead of the parent workstream emoji. The `workstream` frontmatter still reflects the parent workstream (`🧑🏻‍💻`). When routing content, prefer project subfolder matches when the section's content/wikilinks clearly relate to a specific project. When creating new plans, list project subfolders as placement options. Discover project subfolders dynamically — never hardcode. |
 | Self-healing after sweep | After completing a sweep, if gaps/improvements were identified, offer to update the skill source at `~/workspace/oeid-claude-plugin-marketplace/`. Never edit cache files. Workflow: edit SKILL.md → bump version → git push → `make update`. Do not self-heal mid-sweep. |
 | Skill source is the git repo | The authoritative skill source is `~/workspace/oeid-claude-plugin-marketplace/plugins/noteplan-manager/skills/sweep-daily-notes/SKILL.md`. The cache at `~/.claude/plugins/cache/` is read-only and overwritten on reinstall. |
 
