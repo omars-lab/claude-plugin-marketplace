@@ -1261,8 +1261,16 @@ function showSectionModal(idx, focusLost = false) {{
       ? `<div style="color:#3fb950;font-size:11px;font-weight:600;padding:2px 0 6px">✓ Moved (${{moved.length}} line${{moved.length!==1?'s':''}}) — arrived at destination</div>`
       : '';
     if (focusLost) {{
-      // Lost-focus mode: show ONLY the lost lines, hide moved content entirely
-      srcBody = `${{srcTabBar}}<div class="diff-lines">${{lostHtml || '<div class="modal-empty">No lost lines detected</div>'}}</div>`;
+      // Lost-focus mode: render lost lines directly — no mixed-row header, no moved content
+      const lostLineHtmlClean = lostLines.map(l => {{
+        const lno = srcLineNos?.get(l);
+        const lnoHtml = lno ? `<span class="line-no">${{lno}}</span>` : '';
+        return `<div class="diff-line removed">${{lnoHtml}}${{esc(l)}}</div>`;
+      }}).join('');
+      const lostFocusHtml = lostLines.length > 0
+        ? lostLineHtmlClean
+        : '<div class="modal-empty" style="color:#6e7681">No unmatched lines found — these lines may already be in the destination file from a prior sweep.</div>';
+      srcBody = `${{srcTabBar}}<div class="diff-lines">${{lostFocusHtml}}</div>`;
     }} else {{
       srcBody = `${{srcTabBar}}<div class="diff-lines">${{movedHeader}}${{srcGrouped}}${{lostHtml}}</div>`;
     }}
