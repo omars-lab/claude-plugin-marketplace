@@ -24,6 +24,14 @@ Bug index:
          full-file additions → ARB lines found → type=move, not lost)
   JS-23  V-47a: de-pluralized stem match ("eval checks"→"## For Evals", score=1.0) must not
          lock dest for 2-token query (threshold 2×0.6=1.2 > 1.0 → fallback → type=move)
+  JS-24  V-R6: breadcrumb destination mismatch — lost lines found in a different dest file
+         (breadcrumb says →20260426 but lines landed in Coffee House Site.md) → modal shows
+         amber "⚠ Breadcrumb destination mismatch" banner with the correct filename
+  JS-25  V-R6 badge promotion: all lost lines found in other diff files → badge must be
+         rb-move (not rb-lost). Only lines absent from entire diff count as truly lost.
+  JS-26  V-47a removal (#82): section name matches wrong section in dest (1 line) but
+         source has N tasks. Full-file must find all tasks → rb-move, not rb-lost.
+         (Regression for "Home (Yara)" row where count dropped 102→1 on modal open.)
 """
 
 import http.server
@@ -930,22 +938,18 @@ def test_js18_redirect_stub_fp(playwright, http_server):
 
 
 # ---------------------------------------------------------------------------
-# JS-19  V-47a: fuzzy section name matching scopes dest additions correctly
+# JS-19  Full-file: source-empty + dest has unrelated additions → anomaly
 # ---------------------------------------------------------------------------
 
-def test_js19_v47a_fuzzy_section_scoping(playwright, http_server):
-    """JS-19 (V-47a): When the breadcrumb section name ('Anthropic GitHub refs') doesn't
-    exactly match any ## header in the dest file's diff, V-47a fuzzy matching should find
-    '## References' (score >= 0.5 via de-plural stem: 'refs' → 'ref' matches 'references').
+def test_js19_source_empty_dest_has_additions_is_anomaly(playwright, http_server):
+    """JS-19 (post V-47a removal, #82): Source section has no removed lines.
+    Dest file has an addition under a different section ('## Other Work').
 
-    The dest file has:
-      ## References   (context — no additions under it)
-      ## Other Work   (context — has an added task below it)
+    With full-file (V-47a removed): addedLines includes '- some other task'.
+    Source empty → newContent not attributable to any sweep → trueNewCount=1 → anomaly.
 
-    Without V-47a: addedLines = full-file fallback = ['- some other task'] → anomaly.
-    With V-47a:    addedLines scoped to '## References' = [] → empty (section found but empty).
-
-    The row should be classified as 'empty', NOT 'anomaly'.
+    This is the correct classification: something appeared in dest with no corresponding
+    breadcrumb row — a genuine anomaly.
     """
     base_url, serve_dir = http_server
 
@@ -953,9 +957,6 @@ def test_js19_v47a_fuzzy_section_scoping(playwright, http_server):
                   "section": "## Anthropic GitHub refs", "summary": "github refs section",
                   "destination": "[[plan]]"}]
 
-    # Diff: source calendar has no removed lines (section is only a context line).
-    # Dest plan.md has ## References (no additions) and ## Other Work (one addition).
-    # The context-line headers allow proper section boundary detection in the fuzzy pass.
     diff = textwrap.dedent("""\
         diff --git a/Calendar/20260416.md b/Calendar/20260416.md
         index 000000..abc123 100644
@@ -990,9 +991,9 @@ def test_js19_v47a_fuzzy_section_scoping(playwright, http_server):
     )
     browser.close()
 
-    assert "rb-anomaly" not in badge_class, (
-        f"V-47a: fuzzy match 'Anthropic GitHub refs' → '## References' should scope "
-        f"dest additions to empty References section → NOT anomaly. Badge: {badge_class}"
+    assert "rb-untraced" in badge_class, (
+        f"V-47a removed: source-empty + dest has unrelated addition → should be rb-untraced (anomaly). "
+        f"Got: {badge_class!r}"
     )
 
 
@@ -1220,4 +1221,203 @@ def test_js23_v47a_deplural_stem_match_fallback(playwright, http_server):
     assert "rb-move" in badge_class, (
         f"Expected rb-move (eval lines in ## Collaborators, full-file fallback) but got: {badge_class!r}. "
         "V-47a likely locked to '## For Evals' via de-plural stem match (score=1.0 ≥ old threshold 0.5)."
+    )
+
+
+# JS-24  V-R6: breadcrumb destination mismatch banner.
+#        Breadcrumb says destination=20260426 but source lines were added to a plan file instead.
+#        Portal should show rb-lost (lines not in the breadcrumb dest) AND an amber
+#        "⚠ Breadcrumb destination mismatch" banner naming the file where the lines landed.
+# ---------------------------------------------------------------------------
+
+def test_js24_v_r6_breadcrumb_destination_mismatch(playwright, http_server):
+    """JS-24: Lost lines found in a different destination file → V-R6 banner shown in modal.
+    Scenario mirrors the real 20260414 Coffee House row: breadcrumb points to 20260426
+    but lines landed in the NaqshCoffee Coffee House Site plan instead."""
+    base_url, serve_dir = http_server
+
+    line1 = "https://coffee-house.bytesofpurpose.com/ needs a lot of work"
+    line2 = "Omar@naqshcoffee.com"
+    line3 = "Make a coffee cup animation"
+
+    narrative = [{"date": "2026-04-14", "source_file": "Calendar/20260414.md",
+                  "section": "NaqshCoffee site + emails + Facebook dashboard",
+                  "summary": "Coffee House tasks",
+                  "destination": "[[20260426]]"}]
+    diff = _make_diff([
+        # Source: calendar removes the section header + three lines
+        {"path": "Calendar/20260414.md",
+         "removed": ["## NaqshCoffee site + emails + Facebook dashboard", line1, line2, line3],
+         "added": []},
+        # Breadcrumb destination (20260426): no additions — lines didn't land here
+        {"path": "Calendar/20260426.md",
+         "removed": [],
+         "added": ["## Rolled-over tasks"]},
+        # Actual landing file: the plan file got the lines (sweep routed here instead)
+        {"path": "Notes/NaqshCoffee/Plans/Coffee House Site.md",
+         "removed": [],
+         "added": [line1 + " >2026-04-26", line2, line3 + " >2026-04-26"]},
+    ])
+    page_name = _write_page(serve_dir, "js24.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    # Row should be rb-move: all 3 lines are in another diff file (misrouted, not truly lost).
+    # V-R6 badge promotion demotes ✗ → → when every lost line is found elsewhere in the diff.
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    assert "rb-move" in badge_class, (
+        f"Expected rb-move (all lines found in Coffee House Site.md — misrouted not lost) "
+        f"but got: {badge_class!r}. V-R6 badge promotion not firing."
+    )
+
+    # Open modal — V-R6 banner should still appear explaining the mismatch
+    page.click("tr[data-row-idx='0'] button.view-btn")
+    page.wait_for_selector(".v-r6-banner")
+
+    banner_text = page.eval_on_selector(".v-r6-banner", "el => el.textContent")
+    assert "Coffee House Site.md" in banner_text, (
+        f"V-R6 banner should name the file where lines landed. Got: {banner_text!r}"
+    )
+    assert "Breadcrumb destination mismatch" in banner_text, (
+        f"V-R6 banner should say 'Breadcrumb destination mismatch'. Got: {banner_text!r}"
+    )
+    browser.close()
+
+
+# JS-25  V-R6 badge promotion: all lost lines found in other diff files → rb-move.
+#        Scenario: "References" breadcrumb says →20260424, but lines landed in
+#        References[AI-Tools].md and Policies.md. Portal must show rb-move, not rb-lost.
+# ---------------------------------------------------------------------------
+
+def test_js25_v_r6_badge_promotion_misrouted_all_found(playwright, http_server):
+    """JS-25: When ALL reported-lost lines are found in other diff files, the badge
+    must be promoted from rb-lost to rb-move. Only lines absent from the entire
+    diff count as genuinely lost."""
+    base_url, serve_dir = http_server
+
+    line1 = "React DevTools: https://reactjs.org/link/react-devtools"
+    line2 = "Privacy by Design SP: https://rustici.nowlearning.servicenow.com/policy.pdf"
+    line3 = "https://www.anthropic.com/glasswing"
+
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "References",
+                  "summary": "React DevTools, Privacy SP, Anthropic glasswing",
+                  "destination": "[[20260424]]"}]
+    diff = _make_diff([
+        # Source: calendar removes 3 reference lines under ## References
+        {"path": "Calendar/20260413.md",
+         "removed": ["## References", line1, line2, line3],
+         "added": []},
+        # Breadcrumb destination (20260424): no relevant additions — lines didn't land here
+        {"path": "Calendar/20260424.md",
+         "removed": [],
+         "added": ["## Rolled over tasks"]},
+        # Lines actually landed in two reference files
+        {"path": "Notes/ServiceNow/Lists/References-AI-Tools.md",
+         "removed": [],
+         "added": [line1]},
+        {"path": "Notes/ServiceNow/Lists/Policies.md",
+         "removed": [],
+         "added": [line2]},
+        {"path": "Notes/ServiceNow/Lists/References-AI.md",
+         "removed": [],
+         "added": [line3]},
+    ])
+    page_name = _write_page(serve_dir, "js25.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    browser.close()
+
+    assert "rb-move" in badge_class, (
+        f"Expected rb-move — all 3 lost lines found in other diff files (misrouted, not truly lost). "
+        f"Got: {badge_class!r}. V-R6 badge promotion likely not firing in classifyRow."
+    )
+
+
+# JS-26  V-47a removal (#82): wrong-section lock caused count to drop N→1 on badge.
+#        Source removes N tasks under "Home (Yara)". Dest file has:
+#          - ## Home  (1 added line — would trap V-47a via "home" token match)
+#          - ## Planning (all N tasks land here)
+#        Full-file (post V-47a removal): finds all N tasks → rb-move.
+# ---------------------------------------------------------------------------
+
+def test_js26_v47a_removal_wrong_section_lock(playwright, http_server):
+    """JS-26: 'Home (Yara)' section name could match '## Home' via single-token overlap.
+    V-47a would lock addedLines to ## Home (1 task) and miss the 5 tasks under ## Planning,
+    producing lostCount=4 and badge rb-lost. After V-47a removal, full-file is always used
+    → all 5 tasks found → rb-move.
+
+    Regression test for the real portal bug where row count dropped 102→1 on modal open.
+    """
+    base_url, serve_dir = http_server
+
+    task1 = "- [ ] Withdraw Yara from ballet class next term is quite long"
+    task2 = "- [ ] Book dentist appointment for Yara in the spring"
+    task3 = "- [ ] Organise play date with Sofia and Yara is happening"
+    task4 = "- [ ] Buy school supplies for Yara upcoming year starts soon"
+    task5 = "- [ ] Review afterschool schedule for Yara this semester long"
+
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Home (Yara)", "summary": "Yara home tasks",
+                  "destination": "[[Family Planning]]"}]
+
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": ["## Home (Yara)", task1, task2, task3, task4, task5],
+         "added": []},
+        {"path": "Family Planning.md",
+         "added": [
+             # Trap section: V-47a would lock here via "home" token match (1 task only)
+             "## Home",
+             "- [ ] Unrelated home maintenance task goes here",
+             # Actual destination: all 5 Yara tasks land here
+             "## Planning",
+             task1 + " >2026-04-30",
+             task2 + " >2026-04-30",
+             task3 + " >2026-04-30",
+             task4 + " >2026-04-30",
+             task5 + " >2026-04-30",
+         ],
+         "removed": []},
+    ])
+
+    page_name = _write_page(serve_dir, "js26.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    browser.close()
+
+    assert "rb-move" in badge_class, (
+        f"Expected rb-move — all 5 Yara tasks found under ## Planning (full-file). "
+        f"Got: {badge_class!r}. V-47a may still be locking dest to '## Home' (1 task)."
     )

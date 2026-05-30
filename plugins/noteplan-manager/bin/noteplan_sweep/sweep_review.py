@@ -1948,6 +1948,7 @@ function showSectionModal(idx, focusLost = false) {{
     _rowClassifications.set(idx, classification);
     updateRowBadge(idx, classification);
   }}
+}}
 
 // ── Tab switching ──────────────────────────────────────────────────────────
 function showTab(name) {{
