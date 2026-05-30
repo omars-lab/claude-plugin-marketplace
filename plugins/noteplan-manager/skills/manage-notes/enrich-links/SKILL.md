@@ -162,6 +162,7 @@ When you encounter a bare URL, use this table to decide how to handle it. Apply 
 | **arXiv HTML paper** | `arxiv.org/html/<id>` | **Use page title** — HTML rendering has correct paper title in `<title>` tag | `[Evaluating AGENTS.md: whether repo-level context files help coding agents](url)` |
 | **Private GitHub repo/org** | `github.com/<org>/<repo>` returns "Sign in to [Org] · GitHub" title | **Label from URL path segments** + `(private, login required)` suffix — no stable title from bot-accessible metadata | `[sn-dt-devx/dna-gtmcust-aia-sn-agents: ServiceNow DT AI agents repo (private, login required)](url)` |
 | **State/government portal** | `*.gov` or `*.texas.gov` with generic page title | **Use domain context** — if page title is too generic (e.g. "School Finder"), infer from domain + URL path + surrounding note context | `[Texas Education Freedom Act school finder: locate ESA-eligible schools near you](url)` |
+| **GeoGebra shared applet** | `geogebra.org/classic/<short-id>` (short alphanumeric ID, not a UUID) | **Use surrounding note context** — page title is always generic "GeoGebra Classic - GeoGebra"; the applet content is only visible in-browser | `[GeoGebra Classic: Rhombic Rosette construction](url)` |
 
 **Rule of thumb:**
 - If the URL type gives you enough info without a network call → auto-format
