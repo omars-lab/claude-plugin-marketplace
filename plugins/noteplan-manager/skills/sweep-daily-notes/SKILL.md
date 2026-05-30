@@ -1443,15 +1443,55 @@ This ensures the CLI stays complete and the next sweep doesn't re-invent the sam
 
 Phase 8.5 holds two roles simultaneously. Both are mandatory on every sweep — for **all three domains** (work, personal, EarlBear). Neither role is optional. Neither domain is skipped if content was swept.
 
+---
+
+#### Context: Who This Is For
+
+Omar is running a **deliberate dual track**:
+
+- **🏢 Work (ServiceNow)**: Staff / Senior Staff IC is the target level. The path is through scope expansion — owning architecture-level decisions, governance processes, cross-team coordination, and Anthropic-adjacent frontier work. No current role friction; this is a high-energy window. Use it.
+- **👥 EarlBear**: A real business bet with a long time horizon, not a hobby. The goal is EarlBear becoming the primary focus — but the timeline depends on co-founder (Saad) commitment calibration and first revenue validation. The trigger for prioritization shift is not yet defined.
+- **🏡 Personal**: Family (Yara, wife), spiritual practice, health. These ground the system — they should not be perpetually deprioritized in favor of the two tracks above.
+
+**What Omar has asked AI to help with (in his own words):**
+1. Stay sharp on the frontier — never caught off guard by a new AI capability
+2. Build the career case systematically — consolidate evidence, flag next-level work, articulate it when it counts
+3. Keep EarlBear moving when ServiceNow is intense — maintain momentum even during busy weeks
+4. Help with hard prioritization calls — say no to the right things, yes to what compounds
+
+These four mandates shape what the guide writes every sweep.
+
+---
+
 **Scribe** — record faithfully what happened, per domain:
 - 🏢 Work: brag sheet + impact timeline (signal-tagged) + Observations/Gaps/Superpowers
 - 🏡 Personal: personal brag sheet + personal Observations (growth, projects, habits, family, spiritual)
-- 👥 EarlBear: progress log (what was built, decided, validated)
+- 👥 EarlBear: progress log (what was built, decided, validated with Saad or customers)
 
-**Guide** — coach toward growth, per domain:
-- 🏢 Work: assess signal tag distribution across the Impact Timeline → identify missing next-level signals → suggest 1–2 concrete work directions for the coming weeks
-- 🏡 Personal: assess personal project momentum, life balance, and spiritual/family commitments → flag what's stalling → suggest where to invest personal energy
-- 👥 EarlBear: assess product progress and customer development pace → identify if the business is stuck in build vs. validate → suggest what to prioritize next
+**Guide** — coach toward growth, per domain, using the context above:
+
+**🏢 Work guide lens:**
+- Track the Staff IC signal pattern: ARB ownership, architecture decisions, cross-team coordination, frontier-adjacent work → reinforce when in that mode, flag when it's been absent
+- Surface the energy window: no-friction periods are finite → encourage visibility and credibility asset building (external demos, Anthropic relationship, precedent-setting governance work)
+- Check frontier exposure: is Omar staying ahead of what's changing in AI, or is the week all execution with no learning signal?
+- Career case: flag which brag sheet entries this sweep are genuinely Staff-level vs. routine IC work
+
+**🏡 Personal guide lens:**
+- Flag when personal/family commitments are repeatedly deferred — especially Yara, health, spiritual practice
+- Note when EarlBear work is bleeding into personal time without producing EarlBear progress
+- Flag when personal energy seems low (sparse notes, deferred everything, no habits visible)
+- Suggest one personal investment per sweep if the balance is off
+
+**👥 EarlBear guide lens:**
+- Watch the build-vs-validate ratio: building features without customer validation is the primary EarlBear risk
+- Flag when EarlBear has been absent for 2+ sweeps — momentum loss is the co-founder alignment risk
+- Saad check: is Saad mentioned in recent EarlBear progress? If not, flag co-founder alignment as the next step, not more building
+- Suggest one concrete EarlBear action per sweep even during heavy ServiceNow periods — even small moves keep the flywheel turning
+
+**🔀 Prioritization guide lens (cross-domain):**
+- When both ServiceNow and EarlBear are active and intense, flag scope overload explicitly
+- Identify which track is getting underserved this week and name it directly
+- If personal is repeatedly taking the hit, name that too
 
 Write each assessment as a direct recommendation (not a question). One note per domain per sweep. Skip a domain's guide note only if zero notes from that domain were swept.
 
