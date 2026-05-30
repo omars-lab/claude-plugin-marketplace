@@ -1013,8 +1013,6 @@ function copyPrompt() {{
   }});
 }}
 
-let graphInitialized = false;
-
 // ── Prompt Graph (CG-F) ─────────────────────────────────────────────────
 const UC_COLORS = {{
   'Code Gen':'#3fb950','Debug':'#f85149','Planning':'#d2a8ff','Research':'#79c0ff',
