@@ -266,6 +266,32 @@ function buildFormHTML(initialType, allWorkstreams) {
     background: var(--surface); border: 1.5px solid var(--border);
     border-radius: 8px; color: var(--text); font-size: 14px;
     font-family: inherit; appearance: none; -webkit-appearance: none; outline: none; }
+  .cal-trigger { height: 48px; padding: 0 14px; display: flex; align-items: center;
+    background: var(--surface); border: 1.5px solid var(--border); border-radius: 10px;
+    cursor: pointer; font-size: 17px; color: var(--text); user-select: none; }
+  .cal-trigger:hover { border-color: var(--accent); color: var(--accent); }
+  .cal-wrap { position: relative; }
+  .cal { position: absolute; top: calc(48px + 6px); left: 0; right: 0;
+    background: var(--bg); border: 1.5px solid var(--border); border-radius: 12px;
+    padding: 12px; z-index: 20; box-shadow: 0 4px 24px rgba(0,0,0,.18); }
+  .cal.hidden { display: none; }
+  .cal-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .cal-hdr span { font-size: 15px; font-weight: 600; }
+  .cal-hdr button { width: 30px; height: 30px; border-radius: 7px;
+    border: 1.5px solid var(--border); background: var(--surface);
+    cursor: pointer; font-size: 16px; color: var(--text); line-height: 1; }
+  .cal-hdr button:hover { border-color: var(--accent); color: var(--accent); }
+  .cal-dow { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; margin-bottom: 4px; }
+  .cal-dow span { text-align: center; font-size: 11px; font-weight: 600; color: var(--text2); padding: 3px 0; }
+  .cal-days { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; }
+  .cd { height: 36px; border-radius: 7px; border: none; background: none;
+    cursor: pointer; font-size: 13px; color: var(--text);
+    display: flex; align-items: center; justify-content: center; }
+  .cd:hover:not(.cd-future):not(.cd-empty) { background: var(--accent-dim); color: var(--accent); }
+  .cd.cd-today { font-weight: 700; color: var(--accent); }
+  .cd.cd-sel { background: var(--accent) !important; color: #fff !important; border-radius: 7px; }
+  .cd.cd-future { color: var(--text2); opacity: .3; cursor: not-allowed; }
+  .cd.cd-empty { cursor: default; }
   select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238e8e93' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
             background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
   input[type=text]:focus, select:focus, input[type=date]:focus { border-color: var(--accent); }
@@ -326,7 +352,19 @@ function buildFormHTML(initialType, allWorkstreams) {
   </div>
   <div class="field hidden" id="date-field">
     <label>Meeting date</label>
-    <input type="date" id="meeting-date">
+    <input type="date" id="meeting-date" style="display:none">
+    <div class="cal-wrap">
+      <div class="cal-trigger" id="cal-trigger" onclick="toggleCal()">—</div>
+      <div class="cal hidden" id="cal">
+        <div class="cal-hdr">
+          <button type="button" onclick="calNav(-1)">&#8249;</button>
+          <span id="cal-lbl"></span>
+          <button type="button" onclick="calNav(1)">&#8250;</button>
+        </div>
+        <div class="cal-dow"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+        <div class="cal-days" id="cal-days"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -449,13 +487,80 @@ pillGroup('type-pills', v => { type = v; });
 pillGroup('domain-pills', v => { domain = v; });
 $('ws-select').addEventListener('change', () => { updateProjField(); updatePreview(); });
 $('proj-select').addEventListener('change', updatePreview);
-$('meeting-date').addEventListener('change', updatePreview);
 $('title').addEventListener('input', updatePreview);
+
+// ── Calendar picker ───────────────────────────────────────────────────────────
+
+var CAL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+var CAL_MONTHS_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var CAL_DAYS_S = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+var calY, calM;
+
+function calISOToDate(iso) { var p=iso.split('-'); return new Date(+p[0],+p[1]-1,+p[2]); }
+function calDateToISO(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function calSameDay(a,b) { return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate(); }
+
+function calRender() {
+  $('cal-lbl').textContent = CAL_MONTHS[calM] + ' ' + calY;
+  var today = calISOToDate(C.todayISO);
+  var sel = $('meeting-date').value ? calISOToDate($('meeting-date').value) : today;
+  var first = new Date(calY, calM, 1);
+  var last = new Date(calY, calM+1, 0);
+  var html = '';
+  for (var i=0; i<first.getDay(); i++) html += '<div class="cd cd-empty"></div>';
+  for (var d=1; d<=last.getDate(); d++) {
+    var dt = new Date(calY, calM, d);
+    var iso = calDateToISO(dt);
+    var cls = 'cd';
+    if (dt > today) { cls += ' cd-future'; html += '<div class="'+cls+'">'+d+'</div>'; continue; }
+    if (calSameDay(dt, today)) cls += ' cd-today';
+    if (calSameDay(dt, sel)) cls += ' cd-sel';
+    html += '<div class="'+cls+'" data-iso="'+iso+'" onclick="calPick(this.dataset.iso)">'+d+'</div>';
+  }
+  $('cal-days').innerHTML = html;
+}
+
+function calNav(dir) {
+  calM += dir;
+  if (calM<0){calM=11;calY--;} if (calM>11){calM=0;calY++;}
+  calRender();
+}
+
+function calPick(iso) {
+  $('meeting-date').value = iso;
+  calUpdateTrigger();
+  $('cal').classList.add('hidden');
+  updatePreview();
+}
+
+function calUpdateTrigger() {
+  var iso = $('meeting-date').value || C.todayISO;
+  var d = calISOToDate(iso);
+  $('cal-trigger').textContent = CAL_DAYS_S[d.getDay()]+', '+CAL_MONTHS_S[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();
+}
+
+function toggleCal() {
+  var cal = $('cal');
+  if (cal.classList.contains('hidden')) {
+    var iso = $('meeting-date').value || C.todayISO;
+    var d = calISOToDate(iso);
+    calY = d.getFullYear(); calM = d.getMonth();
+    calRender();
+    cal.classList.remove('hidden');
+  } else {
+    cal.classList.add('hidden');
+  }
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.cal-wrap')) $('cal').classList.add('hidden');
+});
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 setOptions($('status-select'), C.statusOptions, 2);
 $('meeting-date').value = C.todayISO;
+calUpdateTrigger();
 
 type = '${initialType}';
 domain = 'work';
@@ -506,6 +611,7 @@ function submit() {
 }
 
 function cancel() {
+  $('cal').classList.add('hidden');
   document.removeEventListener('keydown', handleKeyDown);
   clearTimeout(focusTimer);
   var code = '(function(){ DataStore.invokePluginCommandByName("Close Quick Note","oeid.noteplan-quicknote",[]); })()';

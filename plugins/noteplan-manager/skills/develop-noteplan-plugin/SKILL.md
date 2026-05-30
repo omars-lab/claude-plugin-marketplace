@@ -428,6 +428,105 @@ Test: Cmd-J → type the alias (e.g. `/plan`) → step through prompts.
 
 ---
 
+## Troubleshooting
+
+### Command doesn't appear in Cmd-J
+
+1. `jsFunction` in `plugin.json` doesn't match the exact top-level function name in `script.js`
+2. Plugin not reloaded after install — run `make install-noteplan-{slug}` (quits and relaunches NotePlan)
+3. `plugin.json` has a JSON syntax error — validate with `node -e "require('./plugin.json')"`
+4. Function is marked `"hidden": true` — hidden commands don't show in the command bar but are callable by alias
+
+### jsBridge postMessage fires but nothing happens
+
+- `onHandle` is omitted entirely → NotePlan silently drops the message. Must be `onHandle: ''`
+- `code` string has a syntax error → eval fails silently. Test by pasting the code string into a JS REPL
+- `DataStore.invokePluginCommandByName` arg order is `(commandName, pluginID, [args])` — pluginID second, not first
+
+### Plugin runs but `NotePlan` / `DataStore` / `Editor` is undefined
+
+- Running in Node.js (tests or e2e scripts) without mocking globals. Add at top of test file:
+  ```javascript
+  global.NotePlan = { htmlWindows: [] }
+  global.DataStore = { folders: [], projectNotes: [] }
+  global.Editor = { openNoteByFilename: jest.fn().mockResolvedValue(true), content: '' }
+  ```
+
+### HTML form script has a syntax error (all functions undefined in jsdom)
+
+Syntax errors prevent hoisting — no function is accessible. Diagnose:
+```javascript
+const html = buildFormHTML('plan', mockWorkstreams)
+const script = html.match(/<script>([\s\S]*?)<\/script>/)[1]
+try { new Function(script) } catch(e) { console.log(e.message) }
+```
+
+**Common cause**: `\'` inside a template literal becomes `'` in the output, breaking JS string literals. Use `data-*` attributes instead of inline `onclick="fn('value')"` strings, or write `\\'` (two backslashes + quote) to produce `\'` in the output.
+
+### Template literal escape gotcha
+
+Inside `buildFormHTML`'s backtick template literal:
+- `\'` → `'` (backslash dropped — not an escape in template literals)
+- `\\'` → `\'` (double backslash → single backslash, then literal `'`)
+- `\\` → `\`
+
+To embed a JS string using single quotes inside an `onclick` attribute, use a `data-*` attribute instead:
+```javascript
+// ✗ breaks — \'  becomes ' in template literal output
+html += '<div onclick="pick(\'' + val + '\')">...</div>'
+
+// ✓ safe — no quoting issues
+html += '<div data-val="' + val + '" onclick="pick(this.dataset.val)">...</div>'
+```
+
+### `win.close()` behavior by NotePlan version
+
+- **≤ 3.20.1**: `win.close()` quits the entire application — do not call. Workaround: replace body innerHTML with a success message, user closes with ⌘W.
+- **≥ 3.20.2**: `win.close()` works correctly. Call from a `closeQuickNote`-style command dispatched via jsBridge.
+
+### `showWindowWithOptions` — promise resolves on OPEN, not close
+
+The returned `Promise<Window>` resolves when the window **appears**, not when it's dismissed. The plugin function returns immediately. The window stays open independently until `win.close()` is called.
+
+```javascript
+// showCreateForm returns as soon as the window is visible
+async function showCreateForm() {
+  await HTMLView.showWindowWithOptions(html, 'Title', { customId: 'my-form', ... })
+  // returns here — window still open
+}
+```
+
+### Plugin doesn't reload after `make install`
+
+`make install-noteplan-{slug}` quits and relaunches NotePlan. If it's hanging: check if a NotePlan dialog or unsaved note is blocking quit. Kill manually: `pkill NotePlan3`, then `open -a NotePlan`.
+
+### `NotePlan.htmlWindows` is empty
+
+`htmlWindows` is only populated when `showWindowWithOptions` is called with `await`. Without `await`, the array stays empty — `win.close()` will never be reached.
+
+### Diagnostic snippet — inspect live window state
+
+Paste this into the Plugin Console or run as a hidden command to dump all inspectable state:
+
+```javascript
+async function debugWindowInfo() {
+  function safe(fn) { try { return fn() } catch(e) { return 'ERR:' + e } }
+  const lines = ['htmlWindows: ' + NotePlan.htmlWindows.length]
+  NotePlan.htmlWindows.forEach((w, i) => {
+    lines.push('  [' + i + '] customId=' + safe(() => w.customId)
+      + ' displayType=' + safe(() => w.displayType)
+      + ' id=' + safe(() => w.id))
+  })
+  lines.push('HTMLView proto: ' + safe(() => Object.getOwnPropertyNames(Object.getPrototypeOf(HTMLView)).join(', ')))
+  lines.push('NotePlan proto: ' + safe(() => Object.getOwnPropertyNames(Object.getPrototypeOf(NotePlan)).join(', ')))
+  const out = lines.join('\n')
+  console.log(out)
+  await CommandBar.prompt('Debug', out, ['OK'])
+}
+```
+
+---
+
 ## Phase 5: Update an Existing Plugin
 
 1. Edit `src/` or `script.js`
