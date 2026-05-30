@@ -882,10 +882,10 @@ For each section confirmed for moving:
   ---
   | Swept | Section | Summary | Destination |
   |-------|---------|---------|-------------|
-  | {YYYY-MM-DD} | # PlanName | {section1 name}, {section2 name} | [[PlanName1]] |
-  | {YYYY-MM-DD} | # Errands | {count} errand tasks | [[{TARGET_DATE_ISO}]] Errands |
-  | {YYYY-MM-DD} | # Unsorted | {section name} | [[{TARGET_DATE_ISO}]] Unsorted |
-  | {YYYY-MM-DD} | # 1-1 Notes | meeting notes | [[{MEETING_DATE_ISO}]] |
+  | {YYYY-MM-DD} | PlanName | {section1 name}, {section2 name} | [[PlanName1]] |
+  | {YYYY-MM-DD} | Errands | {count} errand tasks | [[{TARGET_DATE_ISO}]] Errands |
+  | {YYYY-MM-DD} | Unsorted | {section name} | [[{TARGET_DATE_ISO}]] Unsorted |
+  | {YYYY-MM-DD} | 1-1 Notes | meeting notes | [[{MEETING_DATE_ISO}]] |
   ```
   Where `{TARGET_DATE_ISO}` is `YYYY-MM-DD` (e.g. `[[2026-03-15]]`). Only list destinations where content was actually moved. Skip skipped sections. The breadcrumb is the one exception to "no new content in source" — it is allowed because it is a reference to swept content, not content itself.
 
@@ -1305,7 +1305,7 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Git pull before sweep | Phase 2 must run `git pull` before the pre-sweep commit. Stop if pull fails. |
 | Git push after every commit | After every commit in the sweep (pre-sweep, checkpoint, Unsorted re-route, final, reflect), run `git push` immediately. |
 | Tasks are mandatory, not optional | Create ALL phase tasks with dependencies at session start using TaskCreate. Mark `in_progress` before each phase, `completed` after. The task list is the user's primary visibility window. |
-| Swept breadcrumbs in source | After sweeping a daily note, append a markdown table (`| Swept | Section | Summary | Destination |`) at the end of the source file so the user can trace where content went. If a breadcrumb table already exists (note swept before), append new rows to it — do not create a second table. `is_allowed_new` allows `^\| ` (table rows). |
+| Swept breadcrumbs in source | After sweeping a daily note, append a markdown table (`| Swept | Section | Summary | Destination |`) at the end of the source file so the user can trace where content went. If a breadcrumb table already exists (note swept before), append new rows to it — do not create a second table. `is_allowed_new` allows `^\| ` (table rows). **Section names in the table must NOT include `#` prefixes** — strip the heading marker so cells don't render as headings in NotePlan (e.g. `Chandran Meeting Notes` not `# Chandran Meeting Notes`). |
 | Search before asking | Before presenting a routing question for an uncertain section, use WebSearch to identify unknown URLs, names, or topics. If the search gives a confident answer, route directly. If ambiguous, include findings in the routing question. After the user decides, update the destination's `description:` frontmatter to capture the clarification for future sweeps. |
 | Integrity check — normalize both sides | The `removed` and `added` sets in the Phase 7 integrity check must both be normalized (strip trailing `>YYYY-MM-DD` tags and `#hashtags`) before comparison. Date-forwarding during sweeps (e.g. `>2026-03-16` → `>2026-03-20`) should not cause false "content loss" failures. |
 | Integrity check — quoted diff paths | Git quotes paths containing non-ASCII characters (emoji filenames). The `+++ ` line may be `+++ "b/path"` instead of `+++ b/path`. Always handle both forms when tracking `current_file` in the diff parser. |
