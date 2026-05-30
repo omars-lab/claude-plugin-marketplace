@@ -11,7 +11,6 @@ Auto-updated when new issues are found during development.
 
 | ID | Component | Description | Fixed in |
 |---|---|---|---|
-| B-13 | `classifyRow` / anomaly detection | **Cross-row anomaly FP**: when multiple breadcrumb rows share the same destination file, every row sees the full set of dest additions as potentially untraced. Should partition dest additions across rows that claim that destination — each row gets only the additions that can't be attributed to any sibling row's removed lines. | 3.100.3 |
 | B-15 | `classifyRow` (lost) | **Redirect-stub FP**: when a destination plan has been migrated to a new namespace (e.g. `🏡260313👨🏻‍💻 Developing Bikar` → `☕️260313🎨 Developing Bikar`), the old stub contains only a `> Migrated: see [[...]]` pointer. Lines classified as lost against the stub should follow the redirect and re-check the linked destination. | — |
 
 <!-- /BUGS:OPEN -->
@@ -38,6 +37,7 @@ Auto-updated when new issues are found during development.
 | B-12 | `renderNarrative` | `day-sep-row` used `colspan="6"` in a 7-column table. Fixed to `colspan="7"`. | 3.97.0 |
 | B-13 | `classifyRow` + audit Python | **Cross-row anomaly FP**: multiple breadcrumb rows to same dest each see full dest additions as untraced. Fixed with two-layer subtraction: (1) sibling row removed norms (`getDestSiblingNorms()`); (2) global diff removed norms. Lines claimed by either layer are not anomalous for the current row. JS-17 regression test. 13 anomalies remain — those need V-47 (section scope) fixes. | 3.100.3 |
 | B-14 | `classifyRow` + audit Python | **New-file FP**: newly created plan/note files classified as anomaly because all diff additions (frontmatter + boilerplate + content) had no matching source removed lines. Fixed: `parseDiff` sets `isNewFile=true`; JS `classifyRow` returns `empty` when `total===0 && isNewFile`; Python audit returns `empty` with `new_file` issue tag. 25→13 anomaly on run 2026-04-21-14. | 3.100.2 |
+| V-47a | `extractSectionLines` + audit Python | **Fuzzy section name matching**: breadcrumb section names (e.g. "Anthropic GitHub refs") didn't match `##` headers in dest diff block (e.g. "## References") because exact/last-token checks failed. Added `v47aScore()` with de-plural stem prefix overlap ("refs"→"ref" matches "references" → score 0.7 ≥ 0.5). `extractSectionLines` refactored to inner `doExtract(activeName, strictBoundary)` with `sectionEntered` tracking. `sectionFound` return flag prevents full-file fallback even for empty scoped sections. Python mirror `_extract_section_lines_scoped` added. JS-19 regression test. 13→12 anomaly on run 2026-04-21-14. | 3.100.4–5 |
 
 <!-- /BUGS:FIXED -->
 
