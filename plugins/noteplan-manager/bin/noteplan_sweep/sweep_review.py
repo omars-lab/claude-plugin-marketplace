@@ -874,8 +874,17 @@ function injectMixedLostSubRow(idx, lostCount) {{
     <td style="padding:3px 6px;text-align:center"><button class="view-btn" onclick="event.stopPropagation();showSectionModal(${{idx}})">⌕</button></td>
   `;
   tr.after(subTr);
-  // Apply current type filter
+  // Apply current type filter to sub-row
   if (activeType !== 'all' && activeType !== 'lost') subTr.style.display = 'none';
+  // Upgrade parent badge from ⚡ mixed → → move (the lost block is now its own sub-row)
+  const parentBadge = tr.querySelector('.row-badge');
+  if (parentBadge) {{
+    parentBadge.className = 'row-badge rb-move';
+    parentBadge.textContent = '→';
+    parentBadge.title = 'Move — moved lines confirmed at destination (lost lines split below)';
+  }}
+  tr.dataset.rowType = 'move';
+  if (activeType !== 'all' && activeType !== 'move') tr.style.display = 'none';
 }}
 
 function updateRowBadge(idx, classification) {{
