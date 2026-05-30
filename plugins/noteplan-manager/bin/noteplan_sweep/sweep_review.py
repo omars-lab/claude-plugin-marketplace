@@ -1228,7 +1228,7 @@ function showSectionModal(idx, focusLost = false) {{
     const srcGrouped = renderSrcGrouped(_modalDestGroups, new Set(moved), movedPairs, srcLineNos, srcPairIds);
     // Lost lines: source lines that are countable but didn't arrive at destination
     const matchedSrcSet = new Set([...movedPairs.values()]);
-    const lostLines = removedLines.filter(l => !matchedSrcSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l) && !isLineInDestFile(l, destRaw));
+    const lostLines = removedLines.filter(l => !matchedSrcSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l));
     const isMixed = lostLines.length > 0 && moved.length > 0;
     let lostHtml = '';
     if (lostLines.length > 0) {{
@@ -1312,14 +1312,7 @@ function showSectionModal(idx, focusLost = false) {{
 
   let destPanel;
   if (focusLost) {{
-    // Lost-focus mode: destination panel shows why lines are absent
-    const _matchedSet = new Set([...movedPairs.values()]);
-    const lostLines = removedLines.filter(l => !_matchedSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l) && !isLineInDestFile(l, destRaw));
-    destPanel = `<div>
-      <div class="modal-panel-hdr">Destination — <span style="color:#f85149;font-size:11px">not found</span></div>
-      <div class="modal-panel-tabs"><span style="color:#f85149;font-size:10px">✗ ${{lostLines.length}} line${{lostLines.length!==1?'s':''}} not found at destination — this section needs to be split during sweep</span></div>
-      <div class="diff-lines" id="modal-dest-lines"><div class="modal-empty" style="color:#6e7681">These lines were removed from source but no matching content was found in the destination diff.<br><br>During the next sweep, route these lines to a separate destination.</div></div>
-    </div>`;
+    destPanel = '';  // No destination panel for lost rows — full width for source
   }} else {{
     destPanel = `<div>
       <div class="modal-panel-hdr">${{destHdr}}</div>
@@ -1330,7 +1323,10 @@ function showSectionModal(idx, focusLost = false) {{
 
   const titleSuffix = focusLost ? ' — ✗ Lost lines' : ' → ' + normDest(row.destination);
   document.getElementById('modal-title').textContent = sectionName + titleSuffix;
-  document.getElementById('modal-body').innerHTML = srcPanel + destPanel;
+  const modalBodyEl = document.getElementById('modal-body');
+  // Lost mode: single-column full-width; normal: two-column side-by-side
+  modalBodyEl.style.gridTemplateColumns = focusLost ? '1fr' : '';
+  modalBodyEl.innerHTML = srcPanel + destPanel;
   document.getElementById('modal-overlay').classList.add('open');
 
   // Update table badge — score = Moved / removedLines.length (direct) or Moved (inferred).
