@@ -1507,9 +1507,63 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 
 | File | What to write |
 |---|---|
-| `Observations.md` | Factual observations: who they work with, what they're building, recurring topics, work style |
+| `Observations.md` | Factual observations: who they work with, what they're building, recurring topics, work style. Also includes career trajectory notes and domain guide assessments. |
 | `Gaps.md` | Friction points, untracked areas, ideas that never became plans, recurring stuck tasks |
 | `Superpowers.md` | Strengths, domains of expertise, high-engagement topics, distinctive thinking patterns |
+
+**Monthly direction checkpoint** — on the first sweep of each calendar month, also write a checkpoint file:
+
+```
+$NOTES_ROOT/🏡 Personal/🏡💭 Thoughts/🪞 Reflections/🏡💭💻 GenAI Thoughts/📅 Direction Checkpoints/{YYYY-MM}.md
+```
+
+Create the `📅 Direction Checkpoints/` directory if it doesn't exist. Each checkpoint file is a standalone document — one per month:
+
+```markdown
+---
+date: {YYYY-MM-01}
+type: direction-checkpoint
+---
+
+# Direction Checkpoint — {Month YYYY}
+
+## Dual-Track Snapshot
+
+### 🏢 ServiceNow (Staff IC target)
+- What the last month of work signals: {1-3 bullets from impact timeline entries}
+- Staff-level signals present: {list of SCOPE+/LEADERSHIP/INNOVATION entries}
+- Staff-level signals missing: {which signal types were absent this month}
+- Energy window status: {high / moderate / depleted — based on note density and content}
+
+### 👥 EarlBear (long-term primary goal)
+- Progress this month: {what was built, decided, validated}
+- Build-vs-validate balance: {which mode dominated}
+- Saad alignment: {mentioned in progress? Last co-founder touchpoint visible in notes?}
+- Momentum: {growing / steady / stalled}
+
+### 🏡 Personal (grounding system)
+- Family / spiritual / health presence: {visible in notes? deferred?}
+- Balance signal: {personal investment appears proportionate / personal is being squeezed}
+
+## Direction Assessment
+
+- Is the dual track on course? {yes / drifting — explain}
+- What's compounding well? {1-2 specific things gaining momentum}
+- What's at risk of stalling? {1-2 specific things that need attention}
+
+## Guidance for the Coming Month
+
+- 🏢 Work: {1 concrete focus that advances the Staff IC case}
+- 👥 EarlBear: {1 concrete milestone — measurable, not vague}
+- 🏡 Personal: {1 commitment to protect, not defer}
+- 🔀 If overloaded: {what to deprioritize first}
+```
+
+**Rules for checkpoints:**
+- Write on the **first sweep of the month** only — detect by checking if a file for the current `{YYYY-MM}` already exists
+- Draw only from: impact timeline entries, brag sheet entries, EarlBear progress log, and Observations from the past 30 days — no speculation
+- The guidance section is a direct recommendation, not a question
+- Commit checkpoint files separately with: `git commit -m "reflect(checkpoint): {YYYY-MM} direction checkpoint"`
 
 **What to observe passively while sweeping:**
 
