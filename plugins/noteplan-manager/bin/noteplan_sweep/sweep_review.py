@@ -524,7 +524,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .nav-tbl th{{background:#161b22;padding:6px 10px;text-align:left;color:#8b949e;font-weight:500;border-bottom:2px solid #30363d;position:sticky;top:0;z-index:1}}
 .nav-tbl th:nth-child(1){{width:28px}}.nav-tbl th:nth-child(2){{width:18%}}.nav-tbl th:nth-child(3){{width:37%}}.nav-tbl th:nth-child(4){{width:38%}}.nav-tbl th:nth-child(5){{width:44px}}
 .row-badge{{display:inline-block;font-size:11px;min-width:16px;text-align:center;border-radius:3px;padding:1px 4px;font-weight:600}}
-.rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-anomaly{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}
+.rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-anomaly{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}.rb-mixed{{background:#2d1f00;color:#e3b341;border:1px solid #e3b341}}
 .nav-tbl td{{padding:5px 10px;border-bottom:1px solid #21262d;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .nav-tbl tr:hover td{{background:#161b22}}
 .nav-tbl .section-col{{color:#e6edf3;font-weight:500}}
@@ -561,6 +561,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
   <button class="type-chip active" data-type="all" onclick="setType('all')" title="Show all rows">All</button>
   <button class="type-chip" data-type="move" onclick="setType('move')" title="Move — all source lines confirmed at destination">→ Move</button>
   <button class="type-chip" data-type="lost" onclick="setType('lost')" title="Lost — one or more source lines did not arrive">✗ Lost</button>
+  <button class="type-chip" data-type="mixed" onclick="setType('mixed')" title="Mixed — some lines moved, some lost; needs split">⚡ Mixed</button>
   <button class="type-chip" data-type="anomaly" onclick="setType('anomaly')" title="Anomaly — destination has additions with no matching source">+ Anomaly</button>
   <button class="type-chip" data-type="empty" onclick="setType('empty')" title="Unverifiable — source or destination not found in diff">· Empty</button>
   <button class="copy-btn" id="copy-btn" onclick="copyNarrative()">📋 Copy</button>
@@ -834,17 +835,20 @@ function classifyRow(idx) {{
   else type = 'lost';                              // ANY source line missing → lost
 
   const lostCount = total - movedCount;
-  const result = {{ type, movedCount, lostCount, newCount: trueNewCount }};
+  // Mixed = some lines moved, some didn't — sweep should have split this into two rows
+  const mixed = type === 'lost' && movedCount > 0 && lostCount > 0;
+  const result = {{ type, movedCount, lostCount, newCount: trueNewCount, mixed }};
   _rowClassifications.set(idx, result);
   return result;
 }}
 
-const _badgeLabels   = {{ move: '→', lost: '✗', anomaly: '+', empty: '·' }};
+const _badgeLabels   = {{ move: '→', lost: '✗', anomaly: '+', empty: '·', mixed: '⚡' }};
 const _badgeTitles   = {{
   move:    'Move — all source lines confirmed at destination',
   lost:    'Lost — one or more source lines did not arrive at destination',
   anomaly: 'Anomaly — destination has additions with no matching source',
   empty:   'Unverifiable — source or destination not found in diff',
+  mixed:   'Mixed — some lines moved, some lost. This section should have been split into separate rows during sweep.',
 }};
 
 function updateRowBadge(idx, classification) {{
@@ -852,16 +856,18 @@ function updateRowBadge(idx, classification) {{
   if (!tr) return;
   const badge = tr.querySelector('.row-badge');
   if (!badge) return;
-  const {{ type, movedCount, lostCount, newCount }} = classification;
-  badge.className = `row-badge rb-${{type}}`;
-  badge.textContent = _badgeLabels[type] || '?';
+  const {{ type, movedCount, lostCount, newCount, mixed }} = classification;
+  const displayType = mixed ? 'mixed' : type;
+  badge.className = `row-badge rb-${{displayType}}`;
+  badge.textContent = _badgeLabels[displayType] || '?';
   let counts = '';
-  if (type === 'move')    counts = ` (${{movedCount}} line${{movedCount!==1?'s':''}} moved)`;
-  if (type === 'lost')    counts = ` (${{lostCount}} line${{lostCount!==1?'s':''}} not arrived)`;
-  if (type === 'anomaly') counts = newCount ? ` (${{newCount}} unexpected)` : '';
-  badge.title = (_badgeTitles[type] || type) + counts;
-  tr.dataset.rowType = type;
-  if (activeType !== 'all' && type !== activeType) tr.style.display = 'none';
+  if (mixed)           counts = ` (${{movedCount}} moved, ${{lostCount}} lost — needs split)`;
+  else if (type === 'move')    counts = ` (${{movedCount}} line${{movedCount!==1?'s':''}} moved)`;
+  else if (type === 'lost')    counts = ` (${{lostCount}} line${{lostCount!==1?'s':''}} not arrived)`;
+  else if (type === 'anomaly') counts = newCount ? ` (${{newCount}} unexpected)` : '';
+  badge.title = (_badgeTitles[displayType] || displayType) + counts;
+  tr.dataset.rowType = displayType;
+  if (activeType !== 'all' && displayType !== activeType) tr.style.display = 'none';
 }}
 
 let _modalMovedLines = [], _modalNewLines = [], _modalCrossLines = [];
@@ -1179,7 +1185,13 @@ function showSectionModal(idx) {{
   }} else if (validMoved.length === 0) {{
     countLabel = `<div class="modal-panel-tabs"><span style="color:#f85149;font-size:10px">✗ 0 lines confirmed moved</span>${{validationWarning}}</div>`;
   }} else {{
-    countLabel = `<div class="modal-panel-tabs"><span style="color:#3fb950;font-size:10px">✓ ${{validMoved.length}} line${{validMoved.length!==1?'s':''}} confirmed moved</span>${{validationWarning}}</div>`;
+    const countableForMixed = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l));
+    const totalForMixed = srcResult.matched ? countableForMixed.length : validMoved.length;
+    const lostForMixed = totalForMixed - validMoved.length;
+    const mixedWarning = lostForMixed > 0
+      ? `<span style="color:#e3b341;font-size:10px;margin-left:8px">⚡ ${{lostForMixed}} lost — should be split into separate rows during sweep</span>`
+      : '';
+    countLabel = `<div class="modal-panel-tabs"><span style="color:#3fb950;font-size:10px">✓ ${{validMoved.length}} line${{validMoved.length!==1?'s':''}} confirmed moved</span>${{mixedWarning}}${{validationWarning}}</div>`;
   }}
 
   const destPanel = `<div>
@@ -1205,7 +1217,8 @@ function showSectionModal(idx) {{
   else if (movedCount === srcTotal) type = 'move';  // all arrived
   else type = 'lost';                               // any missing → lost
   const lostCountM = srcTotal - movedCount;
-  const classification = {{ type, movedCount, lostCount: lostCountM, newCount: trueNewCount }};
+  const mixed = type === 'lost' && movedCount > 0 && lostCountM > 0;
+  const classification = {{ type, movedCount, lostCount: lostCountM, newCount: trueNewCount, mixed }};
   _rowClassifications.set(idx, classification);
   updateRowBadge(idx, classification);
 }}
@@ -2085,8 +2098,9 @@ def cmd_sweep_review_audit(args):
             matched = any(_fuzzy_match(sn, dn) for dn, _ in dest_norms)
             (moved if matched else lost).append(src_line)
 
-        row_type = 'move' if (moved and not lost) else 'lost'
-        if moved and lost: issues.append('mixed_row')
+        mixed = bool(moved and lost)
+        row_type = 'move' if (moved and not lost) else 'mixed' if mixed else 'lost'
+        if mixed: issues.append('needs_split')
 
         return {'type': row_type, 'issues': issues, 'moved': moved, 'lost': lost, 'new': []}
 
@@ -2097,7 +2111,7 @@ def cmd_sweep_review_audit(args):
     isSep = lambda r: re.match(r'^-+$', (r.get('section') or '').strip())
     rows = [r for r in (narrative or []) if not isSep(r)]
 
-    counts: dict = {'move': 0, 'lost': 0, 'anomaly': 0, 'empty': 0}
+    counts: dict = {'move': 0, 'lost': 0, 'mixed': 0, 'anomaly': 0, 'empty': 0}
     problems = []
 
     for row in rows:
@@ -2105,11 +2119,11 @@ def cmd_sweep_review_audit(args):
         t = result['type']
         counts[t] = counts.get(t, 0) + 1
 
-        if result['issues'] or result['lost'] or result['new']:
+        if result['issues'] or result['lost'] or result['new'] or result['type'] == 'mixed':
             problems.append((row, result))
 
     total = sum(counts.values())
-    lines_out.append(f"  {total} rows — ✓ {counts.get('move',0)} moved  ✗ {counts.get('lost',0)} lost  + {counts.get('anomaly',0)} anomaly  · {counts.get('empty',0)} empty")
+    lines_out.append(f"  {total} rows — ✓ {counts.get('move',0)} moved  ✗ {counts.get('lost',0)} lost  ⚡ {counts.get('mixed',0)} mixed  + {counts.get('anomaly',0)} anomaly  · {counts.get('empty',0)} empty")
     lines_out.append(sep())
 
     if not problems:
@@ -2119,9 +2133,15 @@ def cmd_sweep_review_audit(args):
             src  = row.get('source_file', '?').split('/')[-1]
             dest = re.sub(r'\[\[([^\]]+)\]\]', r'\1', row.get('destination', '?')).strip()
             sect = row.get('section', '?')
-            lines_out.append(f"\n  {result['type'].upper()}  {sect}  →  {dest}  [{src}]")
+            type_label = '⚡ MIXED' if result['type'] == 'mixed' else result['type'].upper()
+            lines_out.append(f"\n  {type_label}  {sect}  →  {dest}  [{src}]")
             for issue in result['issues']:
                 lines_out.append(f"    ⚠  {issue.replace('_', ' ')}")
+            if result['type'] == 'mixed':
+                for l in result['moved'][:3]:
+                    lines_out.append(f"    →  {l[:80]}")
+                if len(result['moved']) > 3:
+                    lines_out.append(f"    →  … {len(result['moved'])-3} more moved lines")
             for l in result['lost'][:5]:
                 lines_out.append(f"    ✗  {l[:80]}")
             if len(result['lost']) > 5:
