@@ -153,6 +153,13 @@ When you encounter a bare URL, use this table to decide how to handle it. Apply 
 - If the page title is reliable and descriptive → use it directly  
 - If the page title is generic or the content needs context → Haiku summary
 
+**This table is a living artifact.** When you encounter a URL type not covered here:
+1. Decide on the right action using the rule of thumb above
+2. Enrich it (or skip it) for the current task
+3. Add a new row to this table so future sessions handle it consistently
+
+The stop hook will prompt: *"If URL type is new, update URL Type Playbook in enrich-links/SKILL.md."* That is the trigger to extend this table. Keep rows ordered: skip patterns first, then auto-format, then fetch-and-summarize.
+
 ---
 
 ## Search Engine URLs — Auto-Format from Query Param
