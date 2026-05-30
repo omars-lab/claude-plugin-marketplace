@@ -167,6 +167,10 @@ When you encounter a bare URL, use this table to decide how to handle it. Apply 
 | **Reddit post (full URL)** | `reddit.com/r/<sub>/comments/<id>/<title_slug>/` | **Extract from slug** — title is embedded in the URL path; replace underscores with spaces. Different from short share links (`/s/<id>`) which have no slug | `[Reddit/r/chemistry: project ideas for the science fair](url)` |
 | **Figma workspace/file** | `figma.com/files/team/`, `figma.com/design/` | **Label from URL path + note context** — bot returns "Login \| Figma"; use path segments and surrounding context to infer purpose | `[Figma: team workspace all-projects view](url)` |
 | **529/education savings portal** | `my529.org`, `*.529` plan sites | **Label from URL path + domain knowledge** — state 529 portals require login; use URL path segments and domain name to construct label | `[my529: print or online 529 education savings gift contributions](url)` |
+| **Google developer docs** | `developers.google.com/...` | **Label from URL path** — page title is just "Google" (garbage); construct label from path segments (API name + section) | `[Google Maps Places API pricing: per-request billing tiers](url)` |
+| **Obsidian plugin search** | `obsidian.md/plugins?search=<query>` | **Auto-format from `search=` param** — extract query and format as "Obsidian plugin directory: {query} plugins" | `[Obsidian plugin directory: Calendar plugins](url)` |
+| **Obsidian forum post** | `forum.obsidian.md/t/<slug>/<id>` | **Use page title** — title is reliable: "Topic Name - Category - Obsidian Forum"; strip category and site suffix | `[Obsidian forum: Personal Knowledge Graphs — concept and implementation in PKM](url)` |
+| **Tool homepage with garbage title** | Any domain whose page title is "external link", "redirect", or similarly meaningless | **Label from domain name + domain knowledge** — BorgBackup, similar self-hosted tools that return redirect pages | `[BorgBackup: deduplicating, encrypting backup program for Linux and macOS](url)` |
 
 **Rule of thumb:**
 - If the URL type gives you enough info without a network call → auto-format
