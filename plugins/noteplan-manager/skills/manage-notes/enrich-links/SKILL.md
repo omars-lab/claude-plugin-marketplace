@@ -148,6 +148,11 @@ When you encounter a bare URL, use this table to decide how to handle it. Apply 
 | **LinkedIn job** | `linkedin.com/jobs/view/` | **Use page title** (job title + company) | `[Staff Software Engineer — ServiceNow](url)` |
 | **Map / address query** | `maps.google.com`, `wrm.capitol.texas.gov/map?address=` | **Auto-format** from address param or use title | `[Map: 600 C-Bar Ranch Trail, Cedar Park TX](url)` |
 | **Real estate listing** | `redfin.com`, `zillow.com`, `realtor.com` path contains address | **Auto-format** from URL path segments — state/city/address/zip already encoded | `[Redfin: 3900 Avery Woods Ln, Cedar Park TX 78613](url)` |
+| **Amazon product** | `amazon.com/<product-name>/dp/<ASIN>` | **Auto-format** from URL product-name slug (before `/dp/`) | `[Ring Floodlight Cam Wired Plus](url)` |
+| **E-commerce product** | `ring.com/products/`, `bestbuy.com`, etc. | **Use page description** if title is garbage (e.g. "Arrow Icon"); else use title | `[Ring Retrofit Kit: connect hardwired alarm sensors to Ring Alarm system](url)` |
+| **Service listing** | `thumbtack.com/*/service/<id>` | **Use page title** — service name + location already in title | `[TJK Security & Automation — Liberty Hill TX security on Thumbtack](url)` |
+| **HA community forum** | `community.home-assistant.io/t/<slug>/<id>` | **Extract from URL slug** — like Reddit, title is embedded in slug | `[HA forum: Duck DNS not working — challenge validation failed](url)` |
+| **GitHub discussion** | `github.com/<owner>/<repo>/discussions/<id>` | **Use page title** — discussion title is in the HTML title | `[HA OS GitHub: include open-vm-tools in OVA image for VMware](url)` |
 
 **Rule of thumb:**
 - If the URL type gives you enough info without a network call → auto-format
