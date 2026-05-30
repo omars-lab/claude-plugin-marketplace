@@ -2441,9 +2441,11 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
     # Without dedupe, the same content shows under both rows in the portal.
     # Strategy: build (dest_stem, normLine) → [idx] map; for each conflict where
     # at least one owner is inferred, prefer the non-inferred row (tiebreak on
-    # lowest idx). Demote losing rows: source line moves moved → truly_lost,
-    # dest line drops out, type is recomputed if counts change. Anomaly rows
-    # participate as dest-line owners but only their dest_lines is trimmed.
+    # lowest idx). Losing rows have the line REMOVED from their accounting (not
+    # demoted to truly_lost) — the line was misattributed to the loser's section
+    # by inference; from the loser's perspective the line was never part of its
+    # section. Adding to truly_lost would falsely report it as lost when it's
+    # actually safely accounted for in the winner row (and on disk at dest).
     by_idx = {r['idx']: r for r in results}
     dest_owners: dict[tuple[str, str], list[int]] = {}
     for r in results:
@@ -2479,11 +2481,10 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             if demoted:
                 loser['moved_lines'] = new_moved
                 loser['moved_count'] = len(new_moved)
-                loser.setdefault('truly_lost_lines', []).extend(demoted)
-                loser['truly_lost_lines'] = loser['truly_lost_lines'][:20]
-                loser['lost_count'] = len(loser['truly_lost_lines'])
+                # Drop line_statuses entries for the demoted source lines —
+                # they are no longer attributed to this row at all.
                 for d in demoted:
-                    loser.setdefault('line_statuses', {})[_norm_line(d)] = 'absent'
+                    loser.get('line_statuses', {}).pop(_norm_line(d), None)
             if 'dedupe_demoted' not in loser.get('issues', []):
                 loser.setdefault('issues', []).append('dedupe_demoted')
             # Recompute type if counts changed

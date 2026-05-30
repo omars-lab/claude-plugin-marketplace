@@ -46,6 +46,7 @@ from noteplan_sweep.sweep_review import (
     _extract_js_str,
     _extract_js_val,
     _build_snapshot_html,
+    _norm_line,
     _py_classify_all_rows,
     _py_cross_row_issues,
 )
@@ -567,7 +568,9 @@ def test_sr21_py_cross_row_issues_v_c2():
 
 def test_sr22_dedupe_inferred_rows():
     """SR-22: when two inferred rows claim the same dest line, only the lowest-idx row keeps it.
-    The losing row's source line is demoted from moved_lines to truly_lost_lines.
+    The losing row's source line is REMOVED from its accounting entirely (not added to
+    truly_lost). The line was misattributed by inference; it actually belongs to the winner
+    row and is safely on disk at the destination — falsely reporting it as lost would mislead.
     """
     task = "- [ ] Implement Bikar pattern system in Figma"
     # No section headers in source — both rows fall into inference mode.
@@ -593,13 +596,18 @@ def test_sr22_dedupe_inferred_rows():
 
     assert task not in loser["moved_lines"], f"loser must not keep moved line: {loser}"
     assert task not in loser["dest_lines"],  f"loser must drop dest line: {loser}"
-    assert task in loser["truly_lost_lines"], \
-        f"loser must record line as truly_lost: {loser}"
+    assert task not in loser["truly_lost_lines"], \
+        f"loser must NOT report the line as truly_lost — it's misattribution, not loss: {loser}"
     assert "dedupe_demoted" in loser["issues"], \
         f"loser must be tagged dedupe_demoted: {loser['issues']}"
     assert loser["moved_count"] == 0
-    assert loser["lost_count"] >= 1
-    assert loser["type"] in ("lost", "empty")
+    assert loser["lost_count"] == 0, \
+        f"loser must not gain a phantom lost count from dedupe: {loser}"
+    assert loser["type"] == "empty", \
+        f"loser drops to empty when its only claim was a misattribution: {loser['type']}"
+    # line_statuses for the demoted line must be cleared
+    assert _norm_line(task) not in (loser.get("line_statuses") or {}), \
+        f"loser's line_statuses must drop the demoted line: {loser.get('line_statuses')}"
 
 
 # ---------------------------------------------------------------------------
