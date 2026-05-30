@@ -2263,7 +2263,8 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             results.append({'idx': modal_idx, 'type': 'empty', 'moved_count': 0,
                             'lost_count': 0, 'truly_lost_lines': [], 'moved_lines': [],
                             'dest_lines': [], 'went_to_details': {}, 'line_statuses': {},
-                            'inferred': False, 'issues': issues})
+                            'inferred': False, 'dest_stem': _dest_stem(dest_raw),
+                            'issues': issues})
             modal_idx += 1
             continue
 
@@ -2305,7 +2306,8 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
                             'dest_lines': _anom_lines[:20] if _anom_type == 'anomaly' else [],
                             'went_to_details': {}, 'line_statuses': {},
                             'misrouted_count': 0, 'went_to_files': [],
-                            'inferred': inferred, 'issues': issues})
+                            'inferred': inferred, 'dest_stem': _dest_stem(dest_raw),
+                            'issues': issues})
             modal_idx += 1
             continue
 
@@ -2428,9 +2430,68 @@ def _py_classify_all_rows(diff_text: str, narrative: list, root: Path) -> list[d
             'misrouted_count':  misrouted_count,
             'went_to_files':    sorted(went_to_files_set),
             'inferred':         inferred,
+            'dest_stem':        dest_stem_key,
             'issues':           issues,
         })
         modal_idx += 1
+
+    # #89 — Dedupe dest-line claims across rows.
+    # Two rows that share the same destination but different sections can both
+    # claim the same dest line as moved when at least one used section inference.
+    # Without dedupe, the same content shows under both rows in the portal.
+    # Strategy: build (dest_stem, normLine) → [idx] map; for each conflict where
+    # at least one owner is inferred, prefer the non-inferred row (tiebreak on
+    # lowest idx). Demote losing rows: source line moves moved → truly_lost,
+    # dest line drops out, type is recomputed if counts change. Anomaly rows
+    # participate as dest-line owners but only their dest_lines is trimmed.
+    by_idx = {r['idx']: r for r in results}
+    dest_owners: dict[tuple[str, str], list[int]] = {}
+    for r in results:
+        idx_r = r['idx']
+        stem = r.get('dest_stem', '')
+        if not stem:
+            continue
+        for dl in r.get('dest_lines', []):
+            n = _norm_line(dl)
+            if len(n) > 4:
+                dest_owners.setdefault((stem, n), []).append(idx_r)
+
+    for (stem, norm), owners in dest_owners.items():
+        unique = sorted(set(owners))
+        if len(unique) < 2:
+            continue
+        if not any(by_idx[i].get('inferred') for i in unique):
+            continue  # both real headers — leave V-C2 to flag, no demotion
+        non_inferred = [i for i in unique if not by_idx[i].get('inferred')]
+        winner = (non_inferred or unique)[0]  # lowest idx wins
+        for li in unique:
+            if li == winner:
+                continue
+            loser = by_idx[li]
+            loser['dest_lines'] = [dl for dl in loser.get('dest_lines', [])
+                                   if _norm_line(dl) != norm]
+            new_moved, demoted = [], []
+            for sl in loser.get('moved_lines', []):
+                if not demoted and _fuzzy_match(_norm_line(sl), norm):
+                    demoted.append(sl)
+                else:
+                    new_moved.append(sl)
+            if demoted:
+                loser['moved_lines'] = new_moved
+                loser['moved_count'] = len(new_moved)
+                loser.setdefault('truly_lost_lines', []).extend(demoted)
+                loser['truly_lost_lines'] = loser['truly_lost_lines'][:20]
+                loser['lost_count'] = len(loser['truly_lost_lines'])
+                for d in demoted:
+                    loser.setdefault('line_statuses', {})[_norm_line(d)] = 'absent'
+            if 'dedupe_demoted' not in loser.get('issues', []):
+                loser.setdefault('issues', []).append('dedupe_demoted')
+            # Recompute type if counts changed
+            if loser['type'] == 'anomaly':
+                if not loser['dest_lines']:
+                    loser['type'] = 'empty'
+            elif loser.get('moved_count', 0) == 0:
+                loser['type'] = 'lost' if loser.get('lost_count', 0) > 0 else 'empty'
 
     return results
 

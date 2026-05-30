@@ -559,3 +559,85 @@ def test_sr21_py_cross_row_issues_v_c2():
     assert len(vc2) >= 1, f"Expected at least one V-C2 issue, got: {issues}"
     assert "0" in vc2[0] and "1" in vc2[0], \
         f"V-C2 issue must reference both row indices: {vc2[0]}"
+
+
+# ---------------------------------------------------------------------------
+# SR-22  Dedupe: two inferred rows competing for same dest line — winner only
+# ---------------------------------------------------------------------------
+
+def test_sr22_dedupe_inferred_rows():
+    """SR-22: when two inferred rows claim the same dest line, only the lowest-idx row keeps it.
+    The losing row's source line is demoted from moved_lines to truly_lost_lines.
+    """
+    task = "- [ ] Implement Bikar pattern system in Figma"
+    # No section headers in source — both rows fall into inference mode.
+    diff = _py_make_diff([
+        {"path": "Calendar/20260413.md", "removed": [task], "added": []},
+        {"path": "Plans/Design.md",      "removed": [],     "added": [task]},
+    ])
+    narrative = [
+        {"source_file": "Calendar/20260413.md", "section": "Section A",
+         "destination": "[[Plans/Design]]", "date": "2026-04-13", "summary": ""},
+        {"source_file": "Calendar/20260413.md", "section": "Section B",
+         "destination": "[[Plans/Design]]", "date": "2026-04-13", "summary": ""},
+    ]
+    results = _run_classify(diff, narrative)
+    assert len(results) == 2
+
+    winner, loser = results[0], results[1]
+    assert winner["inferred"] is True, "winner row should be inferred"
+    assert loser["inferred"] is True,  "loser row should be inferred"
+
+    assert task in winner["moved_lines"], f"winner must keep the line: {winner}"
+    assert task in winner["dest_lines"],  f"winner must keep dest line: {winner}"
+
+    assert task not in loser["moved_lines"], f"loser must not keep moved line: {loser}"
+    assert task not in loser["dest_lines"],  f"loser must drop dest line: {loser}"
+    assert task in loser["truly_lost_lines"], \
+        f"loser must record line as truly_lost: {loser}"
+    assert "dedupe_demoted" in loser["issues"], \
+        f"loser must be tagged dedupe_demoted: {loser['issues']}"
+    assert loser["moved_count"] == 0
+    assert loser["lost_count"] >= 1
+    assert loser["type"] in ("lost", "empty")
+
+
+# ---------------------------------------------------------------------------
+# SR-23  Dedupe skipped: two real-header rows — V-C2 reported, no demotion
+# ---------------------------------------------------------------------------
+
+def test_sr23_no_dedupe_when_both_headers_real():
+    """SR-23: when both rows have real section headers, V-C2 fires but dedupe is skipped.
+    Both rows keep their claims so the user can investigate manually.
+    """
+    task = "- [ ] shared planning task across both sections"
+    # Both ## A and ## B headers exist in source diff; both have the same task.
+    diff = _py_make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": ["## Section A", task, "## Section B", task], "added": []},
+        {"path": "Plans/Design.md",
+         "removed": [], "added": [task]},
+    ])
+    narrative = [
+        {"source_file": "Calendar/20260413.md", "section": "Section A",
+         "destination": "[[Plans/Design]]", "date": "2026-04-13", "summary": ""},
+        {"source_file": "Calendar/20260413.md", "section": "Section B",
+         "destination": "[[Plans/Design]]", "date": "2026-04-13", "summary": ""},
+    ]
+    results = _run_classify(diff, narrative)
+    assert len(results) == 2
+    r0, r1 = results
+
+    assert r0["inferred"] is False, "row 0 should not be inferred (real header)"
+    assert r1["inferred"] is False, "row 1 should not be inferred (real header)"
+
+    # Both rows must still claim the line — no demotion when headers are real.
+    assert task in r0["moved_lines"], f"row 0 keeps line: {r0}"
+    assert task in r1["moved_lines"], f"row 1 keeps line: {r1}"
+    assert "dedupe_demoted" not in r0.get("issues", [])
+    assert "dedupe_demoted" not in r1.get("issues", [])
+
+    # V-C2 still fires — flagging the cross-row collision for human review.
+    issues = _py_cross_row_issues(results)
+    vc2 = [i for i in issues if i.startswith("V-C2")]
+    assert len(vc2) >= 1, f"V-C2 must still be reported: {issues}"
