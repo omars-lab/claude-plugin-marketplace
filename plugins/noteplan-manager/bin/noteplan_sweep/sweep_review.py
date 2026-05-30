@@ -432,6 +432,22 @@ def _build_snapshot_html(
     seed_json = json.dumps(seed_comments, indent=2)
     narrative_json = json.dumps(narrative or [], indent=2)
     changed_cal_json = json.dumps(changed_calendar_files or [], indent=2)
+    # Build dest-file grep map: destStem → [normLine, ...] from actual files on disk
+    # Used by JS classifyRow to confirm "lost" lines are truly absent (not already in dest)
+    dest_file_lines: dict[str, list[str]] = {}
+    _notes_root = Path("~/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes").expanduser()
+    if narrative and _notes_root.exists():
+        dest_stems = set()
+        for r in narrative:
+            d = re.sub(r'\[\[([^\]]+)\]\]', r'\1', r.get('destination', '')).strip()
+            d = re.sub(r'\.md$', '', d).strip()
+            if d: dest_stems.add(d)
+        for stem in dest_stems:
+            p = _find_dest_on_disk(_notes_root.parent, stem)
+            if p:
+                lines = [_norm_line(l) for l in p.read_text(errors='replace').splitlines()]
+                dest_file_lines[stem.lower()] = [l for l in lines if len(l) > 4]
+    dest_file_lines_json = json.dumps(dest_file_lines)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -584,6 +600,8 @@ const STAT_TEXT = {json.dumps(stat_text)};
 const SEED_COMMENTS = {seed_json};
 const NARRATIVE = {narrative_json};
 const CHANGED_CALENDAR_FILES = {changed_cal_json};
+// destStem.lower() → [normLine, ...] — full file content at generate time, for lost-line verification
+const DEST_FILE_LINES = {dest_file_lines_json};
 
 let allParsedFiles = [];
 const MODAL_ROWS = [];
@@ -740,6 +758,17 @@ function classifyDestLines(removedLines, addedLines) {{
 // Shared pair validator — same logic as showSectionModal's validation pass.
 // Returns only the moved lines whose (destLine, srcLine) pair passes norm-match.
 // Used by both classifyRow and showSectionModal so tooltip counts == modal counts.
+// Check if a line already exists in the destination file (pre-existing from a prior sweep).
+// destRaw = destination stem (no .md, no [[]]). Returns true if line is found on disk.
+function isLineInDestFile(line, destRaw) {{
+  const key = destRaw.toLowerCase();
+  const fileLines = DEST_FILE_LINES[key];
+  if (!fileLines) return false;
+  const sn = normLine(line);
+  if (!sn || sn.length <= 4) return false;
+  return fileLines.some(dn => dn === sn || (sn.length >= 10 && (dn.startsWith(sn.slice(0,40)) || sn.startsWith(dn.slice(0,40)))));
+}}
+
 function filterValidPairs(moved, movedPairs, removedLines) {{
   const removedSet = new Set(removedLines);
   return moved.filter(destLine => {{
@@ -821,10 +850,10 @@ function classifyRow(idx) {{
   // Denominator: count only non-empty, non-noise source lines — blank lines are skipped
   // by classifyDestLines so they must not inflate the denominator either.
   // For inferred rows the section boundary is unknown so use movedCount (only judge what matched).
-  const countableRemoved = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l));
-  const total = srcResult.matched ? countableRemoved.length : movedCount;
-
   const destRawC = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
+  const countableRemoved = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l)
+    && !isLineInDestFile(l, destRawC));  // exclude lines already in dest file (prior sweep)
+  const total = srcResult.matched ? countableRemoved.length : movedCount;
   const destMissing = !DIFF_TEXT.toLowerCase().includes((destRawC + '.md').toLowerCase());
   const srcMissing  = !DIFF_TEXT.toLowerCase().includes(row.source_file.split('/').pop().toLowerCase());
 
@@ -1179,7 +1208,7 @@ function showSectionModal(idx, focusLost = false) {{
     const srcGrouped = renderSrcGrouped(_modalDestGroups, new Set(moved), movedPairs, srcLineNos, srcPairIds);
     // Lost lines: source lines that are countable but didn't arrive at destination
     const matchedSrcSet = new Set([...movedPairs.values()]);
-    const lostLines = removedLines.filter(l => !matchedSrcSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l));
+    const lostLines = removedLines.filter(l => !matchedSrcSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l) && !isLineInDestFile(l, destRaw));
     const isMixed = lostLines.length > 0 && moved.length > 0;
     let lostHtml = '';
     if (lostLines.length > 0) {{
@@ -1247,7 +1276,7 @@ function showSectionModal(idx, focusLost = false) {{
   }} else if (validMoved.length === 0) {{
     countLabel = `<div class="modal-panel-tabs"><span style="color:#f85149;font-size:10px">✗ 0 lines confirmed moved</span>${{validationWarning}}</div>`;
   }} else {{
-    const countableForMixed = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l));
+    const countableForMixed = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l) && !isLineInDestFile(l, destRaw));
     const totalForMixed = srcResult.matched ? countableForMixed.length : validMoved.length;
     const lostForMixed = totalForMixed - validMoved.length;
     const mixedWarning = lostForMixed > 0
@@ -1260,7 +1289,7 @@ function showSectionModal(idx, focusLost = false) {{
   if (focusLost) {{
     // Lost-focus mode: destination panel shows why lines are absent
     const _matchedSet = new Set([...movedPairs.values()]);
-    const lostLines = removedLines.filter(l => !_matchedSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l));
+    const lostLines = removedLines.filter(l => !_matchedSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l) && !isLineInDestFile(l, destRaw));
     destPanel = `<div>
       <div class="modal-panel-hdr">Destination — <span style="color:#f85149;font-size:11px">not found</span></div>
       <div class="modal-panel-tabs"><span style="color:#f85149;font-size:10px">✗ ${{lostLines.length}} line${{lostLines.length!==1?'s':''}} not found at destination — this section needs to be split during sweep</span></div>
@@ -1283,7 +1312,7 @@ function showSectionModal(idx, focusLost = false) {{
   // New lines in destination are a separate anomaly, not part of migration score.
   const movedCount = validMoved.length;
   const trueNewCount = _modalNewLines.length;
-  const countableRemovedM = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l));
+  const countableRemovedM = removedLines.filter(l => normLine(l).length > 2 && !isNoiseLine(l) && !isLineInDestFile(l, destRaw));
   const srcTotal = srcResult.matched ? countableRemovedM.length : movedCount;
   let type;
   if (destNotInDiff || srcNotInDiff) type = 'empty';
@@ -1996,6 +2025,17 @@ def _norm_line(s: str) -> str:
     s = _re.sub(r'\s+', ' ', s).strip().lower()
     return s
 
+def _find_dest_on_disk(root: Path, dest_stem: str) -> Path | None:
+    """Search for a destination .md file by stem anywhere under the Notes dir."""
+    notes = root / "Notes"
+    if not notes.exists():
+        return None
+    target = dest_stem.lower() + '.md'
+    for p in notes.rglob('*.md'):
+        if p.name.lower() == target:
+            return p
+    return None
+
 def _fuzzy_match(a: str, b: str) -> bool:
     """Python mirror of classifyDestLines prefix/body matching."""
     if not a or not b:
@@ -2162,7 +2202,7 @@ def cmd_sweep_review_audit(args):
             return {'type': 'anomaly' if dest_content else 'empty', 'issues': issues,
                     'moved': [], 'lost': [], 'new': dest_content[:5]}
 
-        # Match removed lines against destination added lines
+        # Match removed lines against destination added lines (diff only)
         dest_added = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
         dest_norms = [(_norm_line(l), l) for l in dest_added
                       if not _is_noise(l) and len(_norm_line(l)) > 2]
@@ -2173,11 +2213,34 @@ def cmd_sweep_review_audit(args):
             matched = any(_fuzzy_match(sn, dn) for dn, _ in dest_norms)
             (moved if matched else lost).append(src_line)
 
+        # Secondary grep: lines not found in diff may already exist in dest file on disk
+        # (moved by a prior sweep — not a +line, so not in diff)
+        already_present = []
+        if lost:
+            dest_file_path = _find_dest_on_disk(root, dest_raw)
+            if dest_file_path:
+                dest_text_norm = _norm_line(dest_file_path.read_text(errors='replace'))
+                # Use full file text for substring search (faster than line-by-line for audit)
+                dest_full = dest_file_path.read_text(errors='replace')
+                dest_file_norms = {_norm_line(l) for l in dest_full.splitlines()
+                                   if len(_norm_line(l)) > 4}
+                truly_lost = []
+                for l in lost:
+                    sn = _norm_line(l)
+                    if any(_fuzzy_match(sn, dn) for dn in dest_file_norms):
+                        already_present.append(l)
+                    else:
+                        truly_lost.append(l)
+                lost = truly_lost
+
         mixed = bool(moved and lost)
         row_type = 'move' if (moved and not lost) else 'mixed' if mixed else 'lost'
+        if not lost and not moved and already_present: row_type = 'move'  # all present on disk
         if mixed: issues.append('needs_split')
+        if already_present: issues.append(f'{len(already_present)} line(s) already in dest file')
 
-        return {'type': row_type, 'issues': issues, 'moved': moved, 'lost': lost, 'new': []}
+        return {'type': row_type, 'issues': issues, 'moved': moved, 'lost': lost,
+                'already_present': already_present, 'new': []}
 
     # Run audit
     sep = lambda: '─' * 60
@@ -2194,7 +2257,7 @@ def cmd_sweep_review_audit(args):
         t = result['type']
         counts[t] = counts.get(t, 0) + 1
 
-        if result['issues'] or result['lost'] or result['new'] or result['type'] == 'mixed':
+        if result['issues'] or result['lost'] or result['new'] or result['type'] == 'mixed' or result.get('already_present'):
             problems.append((row, result))
 
     total = sum(counts.values())
@@ -2221,6 +2284,10 @@ def cmd_sweep_review_audit(args):
                 lines_out.append(f"    ✗  {l[:80]}")
             if len(result['lost']) > 5:
                 lines_out.append(f"    ✗  … {len(result['lost'])-5} more lost lines")
+            for l in result.get('already_present', [])[:3]:
+                lines_out.append(f"    ✓~  {l[:80]}  (already in dest file)")
+            if len(result.get('already_present', [])) > 3:
+                lines_out.append(f"    ✓~  … {len(result['already_present'])-3} more already present")
             for l in result['new'][:3]:
                 lines_out.append(f"    +  {l[:80]}")
             if len(result['new']) > 3:
