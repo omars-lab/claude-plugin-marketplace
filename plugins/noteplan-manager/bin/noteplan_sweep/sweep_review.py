@@ -555,6 +555,11 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .sec-toggle{{padding:0 5px 0 0;background:none;border:none;color:#484f58;cursor:pointer;font-size:9px;vertical-align:middle}}
 .sec-toggle:hover{{color:#8b949e}}
 .empty{{color:#484f58;padding:24px;text-align:center}}
+/* ── Validation ── */
+.row-warn{{display:inline-block;font-size:10px;margin-left:4px;color:#e3b341;cursor:help;vertical-align:middle}}
+#validation-banner{{padding:6px 16px;font-size:12px;border-bottom:1px solid #30363d;display:none}}
+#validation-banner.ok{{background:#0e2a14;color:#3fb950;display:block}}
+#validation-banner.warn{{background:#2d1f00;color:#e3b341;display:block}}
 </style>
 </head>
 <body>
@@ -588,6 +593,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 <div id="layout">
   <nav id="sidebar" style="display:none"></nav>
   <main id="main">
+    <div id="validation-banner"></div>
     <div id="narrative"></div>
     <div id="diff" style="display:none"></div>
   </main>
@@ -822,6 +828,12 @@ const isNoiseLine = line => {{
 
 // Row classification cache: idx → {{type, movedCount, newCount}}
 const _rowClassifications = new Map();
+// Layer 3/4 support: movedPairs per row, stored so cross-row pass can inspect them
+const _rowMovedPairs = new Map(); // idx → movedPairs Map (destLine → srcLine)
+// Layer 2: row-level validation issues
+const _rowValidation = new Map(); // idx → [issue strings]
+// Layer 4: cross-row issues
+const _crossRowIssues = [];
 
 // Classify a narrative row by running extract + classify (same logic as showSectionModal).
 // Result is cached so badge updates and modal opens share the same computation.
@@ -898,6 +910,16 @@ function classifyRow(idx) {{
   const lostCount = total - movedCount;
   // Mixed = some lines moved, some didn't — sweep should have split this into two rows
   const mixed = type === 'lost' && movedCount > 0 && lostCount > 0;
+  // V-P4: movedCount must not exceed total (clamp and log)
+  if (movedCount > total) {{ console.error('V-P4: movedCount > total', idx, movedCount, total); }}
+  // V-P5: assert all line numbers > 0
+  const _srcLineNosCheck = new Map();
+  srcResult.lines.forEach((l, i) => {{ if (!_srcLineNosCheck.has(l)) _srcLineNosCheck.set(l, srcResult.lineNos?.[i]); }});
+  if ([..._srcLineNosCheck.values()].some(n => n != null && n <= 0)) console.warn('V-P5: invalid line numbers', idx);
+  // TODO V-P3: srcLine norm non-empty check (srcLine.length > 3 after normLine)
+  // TODO V-P6: source panel line count == destination panel line count (rendering symmetry)
+  // Store movedPairs for cross-row pass (Layer 4)
+  _rowMovedPairs.set(idx, movedPairs);
   const result = {{ type, movedCount, lostCount, newCount: trueNewCount, mixed, emptyReason }};
   _rowClassifications.set(idx, result);
   return result;
@@ -996,6 +1018,126 @@ function updateRowBadge(idx, classification) {{
   if (activeType !== 'all' && displayType !== activeType) tr.style.display = 'none';
   // Inject synthetic Lost sub-row (idempotent — guard inside)
   if (mixed) injectMixedLostSubRow(idx, lostCount);
+}}
+
+// ── Layer 2: Row integrity validation ─────────────────────────────────────
+function annotateRowWarnings(idx, issues) {{
+  if (!issues || !issues.length) return;
+  _rowValidation.set(idx, issues);
+  const tr = document.querySelector(`tr[data-row-idx="${{idx}}"]`);
+  if (!tr) return;
+  // Insert ⚠ span next to the badge, avoid duplicates
+  if (tr.querySelector('.row-warn')) return;
+  const badgeCell = tr.querySelector('td:first-child');
+  if (!badgeCell) return;
+  const span = document.createElement('span');
+  span.className = 'row-warn';
+  span.textContent = '⚠';
+  span.title = issues.join('\\n');
+  badgeCell.appendChild(span);
+}}
+
+function validateRowIntegrity(idx, row, seen) {{
+  const issues = [];
+  if (!row) return;
+  const diffLower = DIFF_TEXT.toLowerCase();
+
+  // V-R1: source_file appears in DIFF_TEXT
+  const srcStem = (row.source_file || '').split('/').pop().toLowerCase();
+  if (srcStem && !diffLower.includes(srcStem)) {{
+    issues.push(`V-R1: source_file '${{srcStem}}' not found in diff`);
+  }}
+
+  // V-R2: destination (normalized) appears in DIFF_TEXT
+  const destRaw = (row.destination || '').replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
+  const destStem = (destRaw.split('/').pop() + '.md').toLowerCase();
+  if (destStem && destStem !== '.md' && !diffLower.includes(destStem)) {{
+    issues.push(`V-R2: destination '${{destStem}}' not found in diff`);
+  }}
+
+  // V-R3: section name found as real header (srcResult.matched == false means inferred)
+  const cached = _rowClassifications.get(idx);
+  // We re-run extractSectionLines to check .matched — use cached result if classifyRow already ran
+  // classifyRow stores result but not srcResult.matched; re-check via a lightweight extract
+  const sectionName = (row.section || '').replace(/^#+\\s*/, '').trim();
+  const chk = extractSectionLines(row.source_file, sectionName, '-');
+  if (!chk.matched) {{
+    issues.push(`V-R3: section '${{sectionName}}' not found as a real header in source diff — inferred`);
+  }}
+
+  // V-R4: no duplicate (source_file × section × destination)
+  const tupleKey = `${{row.source_file}}|${{row.section}}|${{row.destination}}`;
+  if (seen.has(tupleKey)) {{
+    issues.push(`V-R4: duplicate row (source_file × section × destination): ${{tupleKey}}`);
+  }} else {{
+    seen.set(tupleKey, idx);
+  }}
+
+  // V-R5: source_file path ≠ destination path (self-migration)
+  const srcStemFull = (row.source_file || '').replace(/\\.md$/, '');
+  if (srcStemFull && destRaw && srcStemFull.endsWith(destRaw)) {{
+    issues.push(`V-R5: self-migration — source_file and destination resolve to the same file`);
+  }}
+
+  if (issues.length) annotateRowWarnings(idx, issues);
+}}
+
+// ── Layer 4: Cross-row consistency ────────────────────────────────────────
+function validateCrossRowConsistency() {{
+  const destLineOwners = new Map(); // normLine(destLine) → [idx, ...]
+  const srcLineOwners  = new Map(); // normLine(srcLine)  → [idx, ...]
+
+  for (const [idx, pairs] of _rowMovedPairs) {{
+    const row = MODAL_ROWS[idx];
+    if (!row || !pairs) continue;
+    for (const [destLine, srcLine] of pairs) {{
+      const dn = normLine(destLine);
+      const sn = normLine(srcLine);
+      // V-C2: no destLine claimed by two rows
+      if (!destLineOwners.has(dn)) destLineOwners.set(dn, []);
+      destLineOwners.get(dn).push(idx);
+      // V-C3: no srcLine sent to two different destinations
+      if (!srcLineOwners.has(sn)) srcLineOwners.set(sn, []);
+      srcLineOwners.get(sn).push(idx);
+    }}
+  }}
+
+  let c2count = 0, c3count = 0;
+  for (const [dn, idxs] of destLineOwners) {{
+    const unique = [...new Set(idxs)];
+    if (unique.length > 1) {{
+      c2count++;
+      _crossRowIssues.push(`V-C2: dest line claimed by rows ${{unique.join(', ')}}: ${{dn.slice(0, 60)}}`);
+    }}
+  }}
+  for (const [sn, idxs] of srcLineOwners) {{
+    const unique = [...new Set(idxs)];
+    if (unique.length > 1) {{
+      c3count++;
+      _crossRowIssues.push(`V-C3: src line sent to multiple rows (${{unique.join(', ')}}): ${{sn.slice(0, 60)}}`);
+    }}
+  }}
+  if (c2count || c3count) {{
+    console.warn('[V-C] Cross-row issues:', _crossRowIssues.length, 'total', {{c2count, c3count}});
+  }}
+  updateValidationBanner();
+}}
+
+function updateValidationBanner() {{
+  const banner = document.getElementById('validation-banner');
+  if (!banner) return;
+  const rowWarnCount = _rowValidation.size;
+  const crossCount = _crossRowIssues.length;
+  if (rowWarnCount === 0 && crossCount === 0) {{
+    banner.className = 'ok';
+    banner.textContent = '✓ All rows validated — no integrity issues found';
+  }} else {{
+    const parts = [];
+    if (rowWarnCount) parts.push(`${{rowWarnCount}} row${{rowWarnCount !== 1 ? 's' : ''}} with integrity warnings (V-R)`);
+    if (crossCount)   parts.push(`${{crossCount}} cross-row consistency issue${{crossCount !== 1 ? 's' : ''}} (V-C) — some destination lines may be double-claimed`);
+    banner.className = 'warn';
+    banner.textContent = '⚠ ' + parts.join(' · ');
+  }}
 }}
 
 let _modalMovedLines = [], _modalNewLines = [], _modalCrossLines = [];
@@ -1764,17 +1906,30 @@ window.addEventListener('DOMContentLoaded', () => {{
   renderDiffFiles(allParsedFiles);
 
   // Background scan: classify all rows in idle time, 10 per frame
+  // Layer 2 (validateRowIntegrity) runs alongside each row classification.
+  // Layer 4 (validateCrossRowConsistency) runs once after all rows are done.
   function classifyAllRows() {{
     let i = 0;
+    const seen = new Map(); // for V-R4 duplicate check
     function batch() {{
       const end = Math.min(i + 10, MODAL_ROWS.length);
       for (; i < end; i++) {{
         const c = classifyRow(i);
         if (c) updateRowBadge(i, c);
+        validateRowIntegrity(i, MODAL_ROWS[i], seen);
       }}
-      if (i < MODAL_ROWS.length) requestIdleCallback(batch);
+      if (i < MODAL_ROWS.length) {{
+        requestIdleCallback(batch);
+      }} else {{
+        // All rows done — run cross-row consistency pass (Layer 4)
+        validateCrossRowConsistency();
+      }}
     }}
-    if (MODAL_ROWS.length > 0) requestIdleCallback(batch);
+    if (MODAL_ROWS.length > 0) {{
+      requestIdleCallback(batch);
+    }} else {{
+      updateValidationBanner();
+    }}
   }}
   classifyAllRows();
 
@@ -1911,6 +2066,10 @@ def cmd_sweep_review_compile(args):
     if utils.DRY_RUN:
         utils.log(f"[dry-run] Would write {review_path} with {len(merged_comments)} comment(s)")
         return
+
+    # Layer 1 — Diff integrity checks (non-blocking, warns to stderr)
+    for w in _validate_diff_integrity(diff_text, narrative or []):
+        utils.err(f"[V-D] {w}")
 
     new_html = _build_snapshot_html(run_id, date_str, sha, stat_text, diff_text, merged_comments, narrative, changed_cal)
     review_path.write_text(new_html, encoding="utf-8")
@@ -2147,6 +2306,42 @@ def _is_noise(line: str) -> bool:
     if re.match(r'^-{2,}$', n) or re.match(r'^—+$', n): return True
     if re.match(r'^[-*]\s*\[\s*\]\s*$', n): return True
     return False
+
+
+def _validate_diff_integrity(diff_text: str, narrative: list) -> list[str]:
+    """Layer 1 — Diff integrity checks. Returns list of warning strings."""
+    warnings: list[str] = []
+
+    # V-D1: diff is non-empty
+    if not diff_text or not diff_text.strip():
+        warnings.append("V-D1: diff_text is empty — report has no diff data")
+        return warnings  # further checks meaningless
+
+    # V-D2: at least one Calendar file (YYYYMMDD.md) appears in diff
+    if not re.search(r'\b\d{8}\.md\b', diff_text):
+        warnings.append("V-D2: no Calendar file (YYYYMMDD.md) found in diff — sweep may not have touched any daily notes")
+
+    # V-D3: all @@ hunk headers match @@ -N[,N] +N[,N] @@
+    for hunk in re.findall(r'@@[^@\n]*@@', diff_text):
+        if not re.match(r'^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@', hunk):
+            warnings.append(f"V-D3: malformed hunk header: {hunk!r}")
+
+    # V-D4: no residual octal escapes (\NNN) in filenames after path decoding
+    for line in diff_text.splitlines():
+        if line.startswith('diff --git ') or line.startswith('+++ ') or line.startswith('--- '):
+            if re.search(r'\\[0-7]{3}', line):
+                warnings.append(f"V-D4: residual octal escape in filename line: {line!r}")
+
+    # V-D5: every source_file in narrative rows appears in the diff
+    for row in (narrative or []):
+        sf = row.get('source_file', '')
+        if not sf:
+            continue
+        stem = sf.split('/')[-1]
+        if stem and stem.lower() not in diff_text.lower():
+            warnings.append(f"V-D5: source_file '{stem}' not found in diff")
+
+    return warnings
 
 def _parse_diff_sections(diff_text: str) -> dict:
     """Parse diff into {filename: {removed: [lines], added: [lines]}}."""
