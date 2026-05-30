@@ -17,6 +17,18 @@ You never modify note content. You ask before acting when intent is unclear.
 
 ---
 
+## Tenet: No regex for intent detection
+
+**Intent / semantic detection — IOU detection, voice-note detection, section classification, routing signals, any decision that requires *understanding* what content means — must be done by you reading the content with Read/grep tools, NOT by regex patterns in helper scripts.**
+
+Regex is only for mechanical transforms (date format normalization, indentation preservation, appending a date tag to a line *already* marked as root-level) on lines **you** have already classified. Skills or executor scripts that pattern-match for classification are doing the assistant's job in code.
+
+When this SKILL.md says "detect lines matching X" for classification/routing purposes, you read the section, decide which lines qualify, and pass an explicit per-line set (e.g. `iou_lines: [9, 34, 143, 144]`) to the executor. The executor applies the mechanical transform (append `>SOURCE_DATE` tag) only to the lines you flagged — it does not re-derive intent from the text.
+
+This applies to: IOU classification, voice-note signal detection, "is this section a meeting / research / reference candidate," routing-by-content. None of those should ever live in a regex inside a helper script.
+
+---
+
 ## Environment Detection
 
 **CRITICAL**: Do NOT use hardcoded paths. Detect the user's NotePlan directory dynamically:
@@ -614,7 +626,7 @@ Found {n} section(s) with incomplete content:
 For each sweepable section, determine the best destination using the plan index and classify it:
 
 **Match signals (try in order):**
-0. Section contains one or more **"I owe [person]"** lines (e.g. `- [ ] I owe Anna the ARB doc`, `- [ ] i Owe Jeff goals`) → `🔴 High-priority IOU` — route to the **next business day note** (not a plan file, not the weekly target). These are interpersonal commitments that need immediate visibility. Detect with case-insensitive pattern: `i owe [name]`. Each IOU section gets its own breadcrumb row with destination `[[{NEXT_BUSINESS_DAY}]] Unsorted`. Next business day is today if it's Mon–Fri before end of day, otherwise the next Monday (or next working day skipping weekends).
+0. Section contains one or more **interpersonal "I owe / owe [person]"** style lines (e.g. `- [ ] I owe Anna the ARB doc`, `- [ ] i Owe Jeff goals`, `- [ ] Reply to Shikar`, `- [ ] Send Anna responses`) → `🔴 High-priority IOU` — route to the **next business day note** (not a plan file, not the weekly target). These are interpersonal commitments that need immediate visibility. **Per the no-regex tenet at the top of this skill: YOU read each line and decide whether it is an IOU, considering wording, context, and who's owed what.** Do not delegate this decision to a regex in any helper script. Pass the resulting line numbers explicitly as `iou_lines: [...]` in the move spec — the executor uses that list to append the source-date tag, but never re-derives IOU intent. Each IOU group gets its own breadcrumb row with destination `[[{NEXT_BUSINESS_DAY}]] Unsorted`. Next business day is today if it's Mon–Fri before end of day, otherwise the next Monday (or next working day skipping weekends).
 1. Section content contains `[[PlanName]]` wikilink matching a plan in the index → `✅ Confident`
 2. Section header text closely matches a plan name → `✅ Confident`
 3. Section's workstream emoji matches a single plan's workstream → `✅ Confident`
@@ -1232,10 +1244,11 @@ When moving a block, two types of metadata may be appended to **root-level task 
    - Use the **target note's date** (next Friday for work, next Sunday for personal)
    - Only on `- [ ]` or `* [ ]` lines at root indentation level
 
-1. **IOU source-date tag** — for lines matching the IOU pattern (`i owe [name]`, case-insensitive), ALSO append the **source note's date** as a second `>YYYY-MM-DD` tag. This stamps when the obligation was first recorded, preserving provenance even after the daily note is swept.
+1. **IOU source-date tag** — for lines **you classified as IOUs in Step 6b** (passed to the executor as `iou_lines: [...]`), ALSO append the **source note's date** as a second `>YYYY-MM-DD` tag. This stamps when the obligation was first recorded, preserving provenance even after the daily note is swept.
    - Format: `- [ ] I owe Anna the ARB doc >2026-04-24 >2026-04-13` (target date first, source date second)
    - Derive the source date from the Calendar filename: `20260413.md` → `>2026-04-13`
    - Both tags appear on the line: the target date drives NotePlan scheduling, the source date documents when the IOU was written
+   - **Classification is yours, not the executor's** (see tenet at top of this skill). The executor receives an explicit `iou_lines` list and applies the source-date tag only to those exact line numbers; it does not pattern-match for `i owe` itself.
    - Apply to **root-level IOU lines only** — do not tag nested sub-tasks
 
 2. **Hash tags** — append relevant `#tag` labels to root-level task lines when a clear categorical tag is warranted (e.g. `#errand`, `#meeting`, `#followup`). Only add tags that are already present in the surrounding plan file or that are clearly implied by the routing destination. Never invent tags.
