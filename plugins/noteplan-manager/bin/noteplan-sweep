@@ -78,15 +78,15 @@ COMMANDS = [
     ("enrich-links",            "Enrich bare URLs in file; --use-chrome for Okta-protected internal URLs"),
     ("fix-links",               "Repair [[wikilinks]] and [[Stem#Heading]] anchors after file renames"),
     # Group 8: Dashboard
-    ("dashboard-generate",      "Scan NotePlan files → extract plans/tasks/ideas → write dashboard/ideas.html"),
-    ("dashboard-open",          "Open dashboard/ideas.html in browser"),
-    ("serve",                   "Start local server on localhost:PORT with interactive write-back (drag Kanban, toggle tasks, edit frontmatter)"),
+    ("dashboard-generate",      "Scan NotePlan files → extract plans/tasks/ideas → write dashboard/plans.html"),
+    ("dashboard-open",          "Open dashboard/plans.html in browser"),
+    ("serve",                   "Start local server (insights.html hub + /plans /contributions /ai-usage) with interactive write-back"),
     # Group 9: Conversation Mining
     ("conversation-mine",       "Parse Claude transcripts, cross-map with plans, write dashboard/sessions.json + ideas.json"),
     ("mine-commit",             "Stage dashboard/*.json + write-back plan changes and commit mine(YYYY-MM-DD) message"),
     # Group 10: Work Board
-    ("work-board-generate",     "Extract living artifacts + plans → write dashboard/work-board.html"),
-    ("work-board-open",         "Open dashboard/work-board.html in browser"),
+    ("work-board-generate",     "Extract living artifacts + plans → write dashboard/insights.html (central gallery hub)"),
+    ("work-board-open",         "Open dashboard/insights.html in browser"),
     # Group 11: AI Usage
     ("ai-usage-mine",           "Index all Claude transcripts across projects → dashboard/ai-usage.json (--deep for tool counts)"),
     ("ai-usage-generate",       "Read ai-usage.json → write dashboard/ai-usage.html (Anthropic theme)"),

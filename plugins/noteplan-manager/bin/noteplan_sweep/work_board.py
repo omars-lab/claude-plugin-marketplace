@@ -5,8 +5,8 @@ Extends the Idea Dashboard with living artifact panes:
   Accomplishments (Brag Sheet), Observations, Gaps & Growth, Impact Timeline, AI Usage summary.
 
 Commands:
-  work-board-generate    Extract living artifacts + plans → write dashboard/work-board.html
-  work-board-open        Open dashboard/work-board.html in browser
+  work-board-generate    Extract living artifacts + plans → write dashboard/insights.html
+  work-board-open        Open dashboard/insights.html in browser
 """
 
 import json
@@ -770,7 +770,7 @@ def cmd_work_board_generate(args):
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     if utils.DRY_RUN:
-        utils.log(f"[dry-run] Would write dashboard/work-board.html ({len(plans)} plans, {len(brag)} brag, {len(observations)} obs, {len(gaps)} gaps, {len(superpowers)} superpowers, {len(impact)} impact)")
+        utils.log(f"[dry-run] Would write dashboard/insights.html ({len(plans)} plans, {len(brag)} brag, {len(observations)} obs, {len(gaps)} gaps, {len(superpowers)} superpowers, {len(impact)} impact)")
         return
 
     html = build_work_board_html(
@@ -778,7 +778,7 @@ def cmd_work_board_generate(args):
         brag, observations, gaps, superpowers, impact,
         ai_summary, generated_at,
     )
-    out = dash_dir / "work-board.html"
+    out = dash_dir / "insights.html"
     out.write_text(html, encoding="utf-8")
     utils.log(f"work-board-generate: wrote {out}")
     utils.log(f"  {len(plans)} plans · {len(brag)} accomplishments · {len(observations)} observations · {len(gaps)} gaps · {len(superpowers)} superpowers · {len(impact)} impact entries")
@@ -793,9 +793,9 @@ def cmd_work_board_generate(args):
 
 
 def cmd_work_board_open(args):
-    path = utils.noteplan_root() / "dashboard" / "work-board.html"
+    path = utils.noteplan_root() / "dashboard" / "insights.html"
     if not path.exists():
-        utils.err("dashboard/work-board.html not found. Run work-board-generate first.")
+        utils.err("dashboard/insights.html not found. Run work-board-generate first.")
         sys.exit(utils.EXIT_NOT_FOUND)
     import subprocess as sp
     sp.run(["open", str(path)])

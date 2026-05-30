@@ -2,8 +2,8 @@
 dashboard.py — Idea Dashboard generation for noteplan-sweep.
 
 Commands:
-  dashboard-generate    Scan NotePlan files → extract data → write dashboard/ideas.html
-  dashboard-open        Open dashboard/ideas.html in browser
+  dashboard-generate    Scan NotePlan files → extract data → write dashboard/plans.html
+  dashboard-open        Open dashboard/plans.html in browser
 """
 
 import json
@@ -1055,7 +1055,7 @@ def cmd_dashboard_generate(args):
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
     html = build_html(plans, tasks, ideas, generated_at)
 
-    out = dash_dir / "ideas.html"
+    out = dash_dir / "plans.html"
     if utils.DRY_RUN:
         utils.log(f"[dry-run] Would write {out} ({len(plans)} plans, {len(tasks)} tasks, {len(ideas)} ideas)")
         return
@@ -1075,9 +1075,9 @@ def cmd_dashboard_generate(args):
 
 def cmd_dashboard_open(args):
     root = utils.noteplan_root()
-    path = root / "dashboard" / "ideas.html"
+    path = root / "dashboard" / "plans.html"
     if not path.exists():
-        utils.err("dashboard/ideas.html not found. Run dashboard-generate first.")
+        utils.err("dashboard/plans.html not found. Run dashboard-generate first.")
         sys.exit(utils.EXIT_NOT_FOUND)
     import subprocess as sp
     sp.run(["open", str(path)])

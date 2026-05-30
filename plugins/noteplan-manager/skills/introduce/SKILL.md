@@ -144,7 +144,7 @@ Produces: `sessions.json`, `plan-sessions.json`, `ideas.json`, `discovered_ideas
 
 The analytics pipeline is driven by `noteplan-sweep` CLI commands. Phase 9 of `sweep-daily-notes` runs the full pipeline automatically after each sweep.
 
-### Idea Dashboard (`dashboard/ideas.html`)
+### Plans Dashboard (`dashboard/plans.html`)
 
 **Commands:** `noteplan-sweep dashboard-generate [--skip-mine]` · `noteplan-sweep dashboard-open`
 
@@ -165,7 +165,7 @@ Global facet chips: Status (single-select), Project (multi-toggle), Plantype (mu
 
 ---
 
-### Personal Work Board (`dashboard/work-board.html`)
+### Insights Hub (`dashboard/insights.html`)
 
 **Commands:** `noteplan-sweep work-board-generate` · `noteplan-sweep work-board-open`
 

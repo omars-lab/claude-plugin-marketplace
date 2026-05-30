@@ -150,9 +150,10 @@ class NoteplanHandler(BaseHTTPRequestHandler):
 
         # Route mappings
         route_map = {
-            "/": self.dashboard_dir / "ideas.html",
-            "/ideas": self.dashboard_dir / "ideas.html",
-            "/work-board": self.dashboard_dir / "work-board.html",
+            "/": self.dashboard_dir / "insights.html",
+            "/insights": self.dashboard_dir / "insights.html",
+            "/plans": self.dashboard_dir / "plans.html",
+            "/contributions": self.dashboard_dir / "contributions.html",
             "/ai-usage": self.dashboard_dir / "ai-usage.html",
         }
 
@@ -290,10 +291,10 @@ def cmd_serve(args):
     dash_dir = root / "dashboard"
     port = getattr(args, "port", 4242)
 
-    # Auto-generate dashboard if HTML doesn't exist
-    ideas_html = dash_dir / "ideas.html"
+    # Auto-generate dashboards if HTML doesn't exist
+    ideas_html = dash_dir / "plans.html"
     if not ideas_html.exists():
-        utils.log("dashboard/ideas.html not found — running dashboard-generate first...")
+        utils.log("dashboard/plans.html not found — running dashboard-generate first...")
         try:
             from noteplan_sweep import dashboard as db
             import types
@@ -310,8 +311,9 @@ def cmd_serve(args):
 
     url = f"http://localhost:{port}"
     utils.log(f"Serving NotePlan dashboards at {url}")
-    utils.log(f"  Ideas Dashboard  → {url}/")
-    utils.log(f"  Work Board       → {url}/work-board")
+    utils.log(f"  Insights (hub)   → {url}/")
+    utils.log(f"  Plans            → {url}/plans")
+    utils.log(f"  Contributions    → {url}/contributions")
     utils.log(f"  AI Usage         → {url}/ai-usage")
     utils.log("Press Ctrl+C to stop.")
 
