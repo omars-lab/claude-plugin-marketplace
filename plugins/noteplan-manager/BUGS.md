@@ -9,7 +9,11 @@ Auto-updated when new issues are found during development.
 
 <!-- BUGS:OPEN -->
 
-*(No open bugs)*
+| ID | Component | Description | Fixed in |
+|---|---|---|---|
+| B-13 | `classifyRow` / anomaly detection | **Cross-row anomaly FP**: when multiple breadcrumb rows share the same destination file, every row sees the full set of dest additions as potentially untraced. Should partition dest additions across rows that claim that destination — each row gets only the additions that can't be attributed to any sibling row's removed lines. | — |
+| B-14 | `classifyRow` / anomaly detection | **New-file frontmatter FP**: newly created plan/meeting files show `---` frontmatter as anomalous additions. The diff hunk for new files (`new file mode`) should be excluded from anomaly scoring — frontmatter lines are always portal-generated noise. Detect via `new file mode` in diff header for the dest file. | — |
+| B-15 | `classifyRow` (lost) | **Redirect-stub FP**: when a destination plan has been migrated to a new namespace (e.g. `🏡260313👨🏻‍💻 Developing Bikar` → `☕️260313🎨 Developing Bikar`), the old stub contains only a `> Migrated: see [[...]]` pointer. Lines classified as lost against the stub should follow the redirect and re-check the linked destination. | — |
 
 <!-- /BUGS:OPEN -->
 

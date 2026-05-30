@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Run plugin tests when plugin source files are staged.
+set -euo pipefail
+
+STAGED=$(git diff --cached --name-only)
+
+if echo "$STAGED" | grep -q 'plugins/oeid-noteplan-quicknote/\(script\.js\|plugin\.json\)'; then
+  echo "▶ oeid-noteplan-quicknote staged — running tests..."
+  cd "$(git rev-parse --show-toplevel)"
+  make test-noteplan-quicknote-all
+fi
