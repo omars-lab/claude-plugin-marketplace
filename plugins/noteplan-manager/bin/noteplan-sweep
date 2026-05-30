@@ -26,7 +26,7 @@ if os.path.isfile(_VENV_PYTHON) and not sys.executable.startswith(_SCRIPT_DIR):
 sys.path.insert(0, os.path.dirname(__file__))
 
 import noteplan_sweep.utils as utils
-from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair, sweep_review
+from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair, sweep_review, dashboard, conversation_mine
 
 VERSION = "0.1.0"
 
@@ -77,7 +77,12 @@ COMMANDS = [
     # Group 7: Link Repair
     ("enrich-links",            "Enrich bare URLs in file; --use-chrome for Okta-protected internal URLs"),
     ("fix-links",               "Repair [[wikilinks]] and [[Stem#Heading]] anchors after file renames"),
-    # Group 8: Sweep Review
+    # Group 8: Dashboard
+    ("dashboard-generate",      "Scan NotePlan files → extract plans/tasks/ideas → write dashboard/ideas.html"),
+    ("dashboard-open",          "Open dashboard/ideas.html in browser"),
+    # Group 9: Conversation Mining
+    ("conversation-mine",       "Parse Claude transcripts, cross-map with plans, write dashboard/sessions.json + ideas.json"),
+    # Group 10: Sweep Review
     ("sweep-commit",            "Stage modified .md files and create a structured sweep(YYYY-MM-DD) commit"),
     ("sweep-review-generate",   "Generate immutable snapshot HTML from the sweep commit diff"),
     ("sweep-review-compile",    "Merge snapshot + all rN.comments.jsonl rounds → review.html"),
@@ -272,27 +277,42 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("notes_root", nargs="?",
                    help="Notes root directory to scan (default: cwd)")
 
-    # ── Group 8: Sweep Review ──────────────────────────────────────────────
-    p = sub.add_parser("sweep-commit", help=COMMANDS[36][1])
+    # ── Group 8: Dashboard ────────────────────────────────────────────────
+    p = sub.add_parser("dashboard-generate", help=COMMANDS[36][1])
+    p.add_argument("--out", metavar="PATH", help="Output path for ideas.html (default: dashboard/ideas.html)")
+    p.add_argument("--dir", dest="notes_dir", help="Notes root override")
+
+    p = sub.add_parser("dashboard-open", help=COMMANDS[37][1])
+
+    # ── Group 9: Conversation Mining ──────────────────────────────────────
+    p = sub.add_parser("conversation-mine", help=COMMANDS[38][1])
+    p.add_argument("--since", metavar="YYYY-MM-DD", help="Only process sessions on or after this date")
+    p.add_argument("--full", action="store_true", help="Ignore cursor — reprocess all sessions")
+    p.add_argument("--projects", metavar="PATH1,PATH2",
+                   help="Comma-separated project CWDs to mine (default: NotePlan root)")
+    p.add_argument("--no-writeback", action="store_true", help="Skip Phase G write-back (read-only mode)")
+
+    # ── Group 10: Sweep Review ────────────────────────────────────────────
+    p = sub.add_parser("sweep-commit", help=COMMANDS[39][1])
     p.add_argument("--dry-run", action="store_true", help="Print what would be committed without writing")
 
-    p = sub.add_parser("sweep-review-generate", help=COMMANDS[37][1])
+    p = sub.add_parser("sweep-review-generate", help=COMMANDS[40][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--no-carry-comments", action="store_true",
                    help="Start fresh — do not inject existing comments into new snapshot")
 
-    p = sub.add_parser("sweep-review-compile", help=COMMANDS[38][1])
+    p = sub.add_parser("sweep-review-compile", help=COMMANDS[41][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-squash", help=COMMANDS[39][1])
+    p = sub.add_parser("sweep-review-squash", help=COMMANDS[42][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-list", help=COMMANDS[40][1])
+    p = sub.add_parser("sweep-review-list", help=COMMANDS[43][1])
     p.add_argument("--date", help="Filter to a specific YYYY-MM-DD")
 
-    p = sub.add_parser("sweep-review-open", help=COMMANDS[41][1])
+    p = sub.add_parser("sweep-review-open", help=COMMANDS[44][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
     p.add_argument("--snapshot", action="store_true", help="Open raw snapshot instead of compiled review")
@@ -339,6 +359,9 @@ DISPATCH = {
     "archive-url":              url_enrichment.cmd_archive_url,
     "enrich-links":             url_enrichment.cmd_enrich_links,
     "fix-links":                link_repair.cmd_fix_links,
+    "dashboard-generate":       dashboard.cmd_dashboard_generate,
+    "dashboard-open":           dashboard.cmd_dashboard_open,
+    "conversation-mine":        conversation_mine.cmd_conversation_mine,
     "sweep-commit":             sweep_review.cmd_sweep_commit,
     "sweep-review-generate":    sweep_review.cmd_sweep_review_generate,
     "sweep-review-compile":     sweep_review.cmd_sweep_review_compile,
