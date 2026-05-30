@@ -870,12 +870,6 @@ function classifyRow(idx) {{
   let addedLines = destSectionResult.lines.length > 0
     ? destSectionResult.lines
     : destGroups.flatMap(g => g.lines);
-  // B-14: newly created files show frontmatter as additions — filter them out so they
-  // don't trigger anomaly scoring. A new file's content is all portal-generated noise.
-  if (destFile && destFile.isNewFile) {{
-    const _isFrontmatter = l => /^---$/.test(l.trim()) || /^(doctype|status|started|namespace|workstream|plantype|description|title|contributors|initiative)\s*:/.test(l.trim());
-    addedLines = addedLines.filter(l => !_isFrontmatter(l));
-  }}
 
   if (!srcResult.matched && addedLines.length > 0) {{
     const allSrc = extractSectionLines(row.source_file, null, '-').lines;
@@ -926,7 +920,9 @@ function classifyRow(idx) {{
       ? 'section has no content lines'
       : 'section not found + destination is empty';
   }}
-  else if (total === 0 && addedLines.length > 0) type = 'anomaly';
+  // B-14: if dest was newly created, its additions are portal boilerplate + swept content —
+  // not anomalous. Classify as empty (nothing to verify from this row's source).
+  else if (total === 0 && addedLines.length > 0) type = (destFile && destFile.isNewFile) ? 'empty' : 'anomaly';
   else if (movedCount === total) type = 'move';   // ALL source lines arrived
   else type = 'lost';                              // ANY source line missing → lost
 
@@ -2606,6 +2602,18 @@ def cmd_sweep_review_audit(args):
 
         removed = [l for l in raw_removed if not _is_noise(l) and len(_norm_line(l)) > 2]
         if not removed:
+            # B-14: newly created plan/note files have portal-generated boilerplate and
+            # swept content as additions. When source has no countable removed lines and
+            # the dest was created in this diff, treat as 'empty' — nothing to verify.
+            _dest_stem_lower = (dest_raw.split('/')[-1] + '.md').lower()
+            _dest_is_new = any(
+                'new file mode' in blk
+                for blk in re.split(r'(?=diff --git )', diff_text)
+                if _dest_stem_lower in blk.lower()
+            )
+            if _dest_is_new:
+                return {'type': 'empty', 'issues': issues + ['new_file'],
+                        'moved': [], 'lost': [], 'new': []}
             dest_added = _extract_section_lines(diff_text, dest_raw + '.md', None, '+')
             dest_content = [l for l in dest_added if not _is_noise(l) and len(_norm_line(l)) > 2]
             return {'type': 'anomaly' if dest_content else 'empty', 'issues': issues,
