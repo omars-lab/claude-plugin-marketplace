@@ -2893,7 +2893,23 @@ def cmd_sweep_review_audit(args):
                 and _norm_line(l) not in sibling_norms
                 and _norm_line(l) not in _global_removed_norms
             ]
-            return {'type': 'anomaly' if dest_content else 'empty', 'issues': issues,
+            if not dest_content:
+                return {'type': 'empty', 'issues': issues, 'moved': [], 'lost': [], 'new': []}
+            # B-16: multi-commit sweep FP — source section removal was committed separately.
+            # When the diff is incomplete (section gone from disk but not in diff), unclaimed
+            # dest additions that are ALL present on disk are confirmed-arrived. Classify empty.
+            dest_file_path = _find_dest_on_disk(root, dest_raw)
+            if dest_file_path:
+                dest_text = dest_file_path.read_text(errors='replace')
+                dest_file_norms = {_norm_line(l) for l in dest_text.splitlines()
+                                   if len(_norm_line(l)) > 4}
+                unconfirmed = [l for l in dest_content
+                               if not any(_fuzzy_match(_norm_line(l), dn)
+                                          for dn in dest_file_norms)]
+                if not unconfirmed:
+                    return {'type': 'empty', 'issues': issues + ['disk_confirmed'],
+                            'moved': [], 'lost': [], 'new': []}
+            return {'type': 'anomaly', 'issues': issues,
                     'moved': [], 'lost': [], 'new': dest_content[:5]}
 
         # Match removed lines against destination added lines (diff only)
