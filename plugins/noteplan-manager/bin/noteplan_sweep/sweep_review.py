@@ -865,13 +865,13 @@ function injectMixedLostSubRow(idx, lostCount) {{
   subTr.dataset.mixedLostFor = String(idx);
   subTr.dataset.rowType = 'lost';  // participates in type filter as Lost
   subTr.title = 'Click to open modal — scroll to Lost section';
-  subTr.onclick = () => {{ showSectionModal(idx); }};
+  subTr.onclick = () => {{ showSectionModal(idx, true); }};
   subTr.innerHTML = `
     <td style="padding:3px 6px;text-align:center"><span class="row-badge rb-lost">✗</span></td>
     <td class="section-col" style="color:#f85149">↳ Lost (${{lostCount}} line${{lostCount!==1?'s':''}}) — not found at destination</td>
     <td class="summary-col" style="color:#6e7681">Needs separate row — split this section during sweep</td>
     <td class="dest-col" style="color:#6e7681">?? unknown</td>
-    <td style="padding:3px 6px;text-align:center"><button class="view-btn" onclick="event.stopPropagation();showSectionModal(${{idx}})">⌕</button></td>
+    <td style="padding:3px 6px;text-align:center"><button class="view-btn" onclick="event.stopPropagation();showSectionModal(${{idx}}, true)">⌕</button></td>
   `;
   tr.after(subTr);
   // Apply current type filter to sub-row
@@ -1041,9 +1041,14 @@ function switchDestTab(type, btn) {{
   document.getElementById('modal-dest-lines').innerHTML = renderDestGroups(_modalDestGroups, new Set(lines), cls);
 }}
 
-function showSectionModal(idx) {{
+function showSectionModal(idx, focusLost = false) {{
   const row = MODAL_ROWS[idx];
   if (!row) return;
+  // Auto-enable focusLost for pure Lost rows (not mixed — mixed sub-row already passes true explicitly)
+  if (!focusLost) {{
+    const cached = _rowClassifications.get(idx);
+    if (cached && cached.type === 'lost' && !cached.mixed) focusLost = true;
+  }}
 
   const sectionName = row.section.replace(/^#+\\s*/, '').trim();
   let destRaw = row.destination.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1').trim().replace(/\\.md$/, '');
@@ -1195,10 +1200,15 @@ function showSectionModal(idx) {{
           lostLineHtml + `</div>`;
       }}
     }}
-    const movedHeader = isMixed
+    const movedHeader = isMixed && !focusLost
       ? `<div style="color:#3fb950;font-size:11px;font-weight:600;padding:2px 0 6px">✓ Moved (${{moved.length}} line${{moved.length!==1?'s':''}}) — arrived at destination</div>`
       : '';
-    srcBody = `${{srcTabBar}}<div class="diff-lines">${{movedHeader}}${{srcGrouped}}${{lostHtml}}</div>`;
+    if (focusLost) {{
+      // Lost-focus mode: show ONLY the lost lines, hide moved content entirely
+      srcBody = `${{srcTabBar}}<div class="diff-lines">${{lostHtml || '<div class="modal-empty">No lost lines detected</div>'}}</div>`;
+    }} else {{
+      srcBody = `${{srcTabBar}}<div class="diff-lines">${{movedHeader}}${{srcGrouped}}${{lostHtml}}</div>`;
+    }}
   }} else {{
     // No lines found — show collapsed fallback
     const allRemoved = extractSectionLines(row.source_file, null, '-').lines;
@@ -1246,13 +1256,26 @@ function showSectionModal(idx) {{
     countLabel = `<div class="modal-panel-tabs"><span style="color:#3fb950;font-size:10px">✓ ${{validMoved.length}} line${{validMoved.length!==1?'s':''}} confirmed moved</span>${{mixedWarning}}${{validationWarning}}</div>`;
   }}
 
-  const destPanel = `<div>
-    <div class="modal-panel-hdr">${{destHdr}}</div>
-    ${{countLabel}}
-    <div class="diff-lines" id="modal-dest-lines">${{destBody}}</div>
-  </div>`;
+  let destPanel;
+  if (focusLost) {{
+    // Lost-focus mode: destination panel shows why lines are absent
+    const _matchedSet = new Set([...movedPairs.values()]);
+    const lostLines = removedLines.filter(l => !_matchedSet.has(l) && normLine(l).length > 2 && !isNoiseLine(l));
+    destPanel = `<div>
+      <div class="modal-panel-hdr">Destination — <span style="color:#f85149;font-size:11px">not found</span></div>
+      <div class="modal-panel-tabs"><span style="color:#f85149;font-size:10px">✗ ${{lostLines.length}} line${{lostLines.length!==1?'s':''}} not found at destination — this section needs to be split during sweep</span></div>
+      <div class="diff-lines" id="modal-dest-lines"><div class="modal-empty" style="color:#6e7681">These lines were removed from source but no matching content was found in the destination diff.<br><br>During the next sweep, route these lines to a separate destination.</div></div>
+    </div>`;
+  }} else {{
+    destPanel = `<div>
+      <div class="modal-panel-hdr">${{destHdr}}</div>
+      ${{countLabel}}
+      <div class="diff-lines" id="modal-dest-lines">${{destBody}}</div>
+    </div>`;
+  }}
 
-  document.getElementById('modal-title').textContent = sectionName + ' → ' + normDest(row.destination);
+  const titleSuffix = focusLost ? ' — ✗ Lost lines' : ' → ' + normDest(row.destination);
+  document.getElementById('modal-title').textContent = sectionName + titleSuffix;
   document.getElementById('modal-body').innerHTML = srcPanel + destPanel;
   document.getElementById('modal-overlay').classList.add('open');
 
