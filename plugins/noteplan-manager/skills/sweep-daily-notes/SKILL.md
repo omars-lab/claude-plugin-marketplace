@@ -108,9 +108,11 @@ Set based on answer:
 |---|---|---|---|---|---|---|
 | Work | Past 1 month | Mon–Fri | `🏢 ServiceNow/📆 Plans/` | 60 days | `{workstream}/` | Next Friday |
 | Personal | Past 3 months | Sat–Sun | `🏡 Personal/🏡📆 Plans/` | 90 days | `Present/{plantype}/` | Next Sunday |
-| Both | Past 3 months | Mon–Sun | Both of the above | 90 days | Per day-of-week | Fri for weekdays, Sun for weekends |
+| Both | Past 3 months | Mon–Sun | All three of the above | 90 days | Per day-of-week | Fri for weekdays, Sun for weekends |
 
-**Both mode**: build both work and personal plan indexes in Phase 3. For each daily note in Phase 6, apply the correct index and target based on the note's day-of-week (Mon–Fri → work rules; Sat–Sun → personal rules).
+**Both mode**: build work, personal, AND EarlBear plan indexes in Phase 3. For each daily note in Phase 6, apply the correct index and target based on the note's day-of-week (Mon–Fri → work rules; Sat–Sun → personal rules). **EarlBear content can appear on any day** — detect it by `👥` emoji, "EarlBear" keyword, or `[[👥...]]` wikilinks, and route to the **personal target** (next Sunday).
+
+**EarlBear domain** (`👥`): a side business initiative indexed alongside work and personal. Plans live in `👥 EarlBear/📆 Plans/` with workstream subdirs (same structure as work). Naming convention: `👥YYMMDD{workstream} Title.md`, frontmatter `namespace: 👥`. EarlBear content routes to the personal target note (next Sunday) since it's a side project. **Future expansion note**: when EarlBear volume grows, consider adding `👥📋 Lists/`, `👥👤 Meetings/`, and potentially its own target day.
 
 ### Calculating target date:
 
@@ -288,7 +290,40 @@ Research index entry shape:
 
 **Domain scoring**: `domains` extracted from frontmatter are used as routing signals in Step 6b/6c — a section containing a URL whose domain appears in a research doc's `domains` list scores **+4** toward that research doc.
 
-Report: "Found N recently-touched plans + M list files + K meeting files + J thought files + R research docs." List all with descriptions.
+### EarlBear Index (always indexed alongside work + personal)
+
+Also index **EarlBear plan files** from the EarlBear plans directory:
+- EarlBear: `$NOTES_ROOT/👥 EarlBear/📆 Plans/`
+
+```bash
+EARLBEAR_PLAN_ROOT="$NOTES_ROOT/👥 EarlBear/📆 Plans"
+
+find "$EARLBEAR_PLAN_ROOT" -name "*.md" -mtime -${LOOKBACK_DAYS} 2>/dev/null | sort
+```
+
+For each EarlBear plan file, extract frontmatter + H1 (same as work plans). Add to the index with `"namespace": "👥"`. EarlBear plans use the same workstream subdir pattern as work plans — discover subdirs dynamically.
+
+EarlBear index entry shape:
+```json
+{
+  "filename_stem": "👥260326🧑🏻‍💻 Auto Deck Generation",
+  "path": "/full/path.md",
+  "type": "plan",
+  "namespace": "👥",
+  "workstream_or_plantype": "🧑🏻‍💻",
+  "status": "🟢",
+  "description": "...",
+  "description_missing": false
+}
+```
+
+**EarlBear detection signals** for routing (used in Step 6b):
+- Section header contains "EarlBear" or "Earl Bear" (case-insensitive)
+- Section content contains `[[👥...]]` wikilink
+- `👥` emoji in section header or content
+- Section mentions "Saad" (EarlBear co-founder) without matching a work meeting
+
+Report: "Found N recently-touched plans + M list files + K meeting files + J thought files + R research docs + E EarlBear plans." List all with descriptions.
 
 ---
 
@@ -435,10 +470,12 @@ For each sweepable section, determine the best destination using the plan index 
 4. Section mentions a person's name that appears in a plan's `contributors` field → `✅ Confident` (e.g. "Dennis 1-1" content matching a plan with `contributors: ["Dennis"]`)
 5. Section header contains meeting keywords ("Meeting Notes", "1-1", "Sync", "Catch Up", "Chat with", "Workshop") OR a person's name matching a meeting file in the index → `👤 Meeting candidate` — present meeting routing UI
 6. Section header contains "References" or "References:" → `📋 Reference candidate` — present list/reference routing UI
-7. Section matches **2+ research signals** (see below) → `🔬 Research candidate` — present research routing UI instead of plan routing
-8. Clearly personal content (shopping, errands, `[[🏡...]]` wikilinks in work mode) → `⏭️ Skip` (but see **Personal in Both mode** below)
-9. Completed-task-only block → `⏭️ Skip` by default, but see **Completed task routing** below
-10. Anything else → `❓ Uncertain`
+7. Section header or content contains EarlBear signals ("EarlBear", "Earl Bear", `👥` emoji, `[[👥...]]` wikilink, "Saad" without a work meeting match) → route to EarlBear plan index; if no match, `❓ Uncertain` with EarlBear plans surfaced first
+8. Section matches **2+ research signals** (see below) → `🔬 Research candidate` — present research routing UI instead of plan routing
+9. Section contains a **voice note block** (see below) → `🎤 Voice note` — run voice note processing before routing
+10. Clearly personal content (shopping, errands, `[[🏡...]]` wikilinks in work mode) → `⏭️ Skip` (but see **Personal in Both mode** below)
+11. Completed-task-only block → `⏭️ Skip` by default, but see **Completed task routing** below
+12. Anything else → `❓ Uncertain`
 
 **Research candidate signals** (classify `🔬` when 2+ apply):
 
@@ -450,6 +487,52 @@ For each sweepable section, determine the best destination using the plan index 
 | Investigative language: "What does X mean", "context for", "overview of", "how does X work", "important context" | `"What does product mean ..."` |
 | Section content domain overlaps with an existing research doc's `domains:` frontmatter | URL from `fluidtopics.com` → matches existing research doc |
 | Conclusion language: "decided to use", "conclusion:", "final approach:", "we will use X" | → flag as **concluded** → prefer Deep Dive destination |
+
+**Voice note signals** (classify `🎤` when 2+ apply):
+
+| Signal | Example |
+|---|---|
+| A single task/line >200 chars with <3 sentence boundaries | `- [ ] there's some more cloth artifact POC's. I need to do one thought is that Claude artifacts.of they call an MCP...` (500+ chars, stream of consciousness) |
+| `￼` object replacement character (U+FFFC) | Voice dictation artifact from iOS/macOS |
+| Phonetic misspellings of technical terms | "Jason" → JSON, "bite stream" → byte stream, "cloth" → Claude, "Ayham" → I am, "bases 64" → base64 |
+| Filler phrases: "you know", "I don't know", "like" used as connectors | "but you know they're gonna expect" |
+| Missing/inconsistent punctuation with run-on connectors | "and and", "so if we had an MCP that like vendor" |
+| All lowercase or inconsistent capitalization patterns | Voice transcription default |
+
+**Voice note processing pipeline** (run BEFORE routing):
+
+1. **Detect**: Flag lines/blocks matching 2+ voice note signals
+2. **Break into thoughts**: Split the stream-of-consciousness into logical sentences/ideas using context clues (topic shifts, "the other thought is", "so if we", "one thought is")
+3. **Fix voice-to-text errors**: Apply phonetic→technical corrections. Common mappings:
+   - `Jason` → `JSON`, `Ayham` → `I am`, `bite` → `byte`, `cloth` → `Claude`
+   - `bases 64` / `base 64` → `base64`, `vender`/`vendor` (in tech context) → `render`
+   - `we bet` → `we'd`, `gonna` → `going to`
+   - Strip filler: "you know", "like" (as filler, not comparison), "I don't know"
+   - Remove `￼` object replacement characters
+4. **Structure**: Convert into tasks (`- [ ]`) or bullets (`-`) based on intent:
+   - Actionable items → `- [ ]`
+   - Ideas/questions → `-` with `?` suffix
+   - Multi-part thoughts → nested bullets
+5. **Present before/after** for confirmation:
+
+```javascript
+AskUserQuestion({
+  questions: [{
+    question: `🎤 Voice note detected in "${sectionHeader}":\n\n**Raw transcription:**\n\`\`\`\n${rawText.substring(0, 300)}...\n\`\`\`\n\n**Cleaned + structured:**\n\`\`\`\n${cleanedText}\n\`\`\`\n\nUse the cleaned version for routing?`,
+    header: `Voice note: "${sectionHeader}"`,
+    options: [
+      { label: "Use cleaned version", description: "Route the structured text instead of the raw transcription" },
+      { label: "Keep raw", description: "Route the original transcription as-is" },
+      { label: "⏭️ Skip", description: "Leave this section in the source note" }
+    ],
+    multiSelect: false
+  }]
+})
+```
+
+6. **Route**: After confirmation, the cleaned (or raw) content proceeds to normal classification and routing. The voice note processing is a **pre-routing transformation**, not a routing decision itself.
+
+**Important**: Voice note cleaning is the ONE exception to the "no content changes" rule. The user explicitly confirms the transformation via AskUserQuestion. The raw transcription is preserved in the swept breadcrumb table's Summary column for traceability.
 
 **Cross-day consolidation**: While classifying sections across multiple days, track research candidates in a topic map keyed by dominant domain/keyword cluster (e.g., `servicenow-docs`, `a2a-protocol`, `eval-frameworks`). When two candidates from different days share a cluster, flag them as **consolidation candidates** and present them together during routing:
 ```
@@ -489,9 +572,11 @@ Announce the classification before routing:
 ```
 📅 {fileDate} — {n} sweepable section(s):
   ✅ {k} confident match(es) — will auto-route
+  👥 {e} EarlBear match(es) — will route to EarlBear plans / personal target
   👤 {p} meeting candidate(s) — will ask to route to meeting file
   📋 {q} reference candidate(s) — will ask to route to list file
   🔬 {r} research candidate(s) — will ask to route to research doc or deep dive
+  🎤 {v} voice note(s) — will clean + confirm before routing
   ❓ {m} uncertain section(s) — will ask individually
   ⏭️  {j} skip(s) — personal/completed
 ```
@@ -751,6 +836,10 @@ YEAR=$(date +%Y)
 # filename_stem = "🏡{YYMMDD}{plantype_emoji} {title}"
 # e.g. "🏡260313👨🏻‍💻 My New Initiative"
 
+# EarlBear plan:
+# filename_stem = "👥{YYMMDD}{workstream_emoji} {title}"
+# e.g. "👥260313🧑🏻‍💻 Auto Deck Generation"
+
 # Work meeting notes:
 # filename_stem = "🏢 {YYMMDD} {title}"
 # e.g. "🏢 260313 Dennis 1-1"
@@ -786,6 +875,20 @@ plantype: {plantype_emoji}
 * [ ]
 ```
 
+*EarlBear plan:*
+```markdown
+---
+doctype: 📆
+status: {status_emoji}
+started: {YYMMDD}
+namespace: 👥
+workstream: {workstream_emoji}
+---
+# 👥{YYMMDD}{workstream_emoji} {title}
+* [ ] Is [[👥{YYMMDD}{workstream_emoji} {title}]] done? >{YEAR}-W{WW}
+* [ ]
+```
+
 *Work meeting notes:*
 ```markdown
 ---
@@ -800,6 +903,7 @@ namespace: 🏢
 **Place the file** in the correct subdirectory:
 - Work plan: `$PLAN_ROOT/{workstream_dir}/` (match the existing subdir for that workstream emoji)
 - Personal plan: `$PLAN_ROOT/Present/{plantype_dir}/` (match the existing subdir for that plantype emoji)
+- EarlBear plan: `$NOTES_ROOT/👥 EarlBear/📆 Plans/{workstream_dir}/` (create subdir if needed)
 - Work meeting: `$NOTES_ROOT/🏢 ServiceNow/👤 Meetings/` (root or `1-1s/` subdir as appropriate)
 
 Discover the correct subdir by listing the directory — never hardcode.
@@ -1325,6 +1429,12 @@ During the sweep you've read many daily notes and observed the user's ideas, col
 | Meeting note creation first-class | The routing UI includes `👤 New Meeting note` as a distinct option (not just `🆕 Create plan`). Uses `🏢📝 Work Meeting Notes.md` template. Available in both meeting candidate UI and uncertain section UI. |
 | Reference candidate classification | Sections with "References" or "References:" in the header are classified as `📋 Reference candidate` with a dedicated list/reference routing UI that surfaces list files first. |
 | List/reference file creation first-class | The routing UI includes `📋 New List/Reference file` as a distinct option. Creates `🏢📋 References[{Qualifier}].md` or `🏡📋 References[{Qualifier}].md` with minimal frontmatter. |
+| EarlBear indexed | `👥 EarlBear/📆 Plans/` is always indexed alongside work + personal plans. EarlBear content detected by `👥` emoji, "EarlBear" keyword, `[[👥...]]` wikilinks, or "Saad" name. Routes to personal target (next Sunday). |
+| EarlBear plan naming | Uses work-like convention: `👥YYMMDD{workstream} Title.md`, `namespace: 👥`, workstream subdirs under `📆 Plans/`. Same frontmatter as work plans but with `namespace: 👥`. |
+| EarlBear future expansion | When EarlBear volume grows, consider adding `👥📋 Lists/`, `👥👤 Meetings/`, `👥🔬 Research/`, and potentially its own sweep mode with a dedicated target day. Revisit each sweep. |
+| Voice note detection | Lines >200 chars with <3 sentence boundaries, `￼` characters, phonetic misspellings, filler phrases, or run-on connectors are classified as `🎤 Voice note`. Requires 2+ signals. |
+| Voice note processing | Voice notes are cleaned before routing: break into sentences, fix phonetic→technical errors (JSON, byte, base64, Claude), strip filler, structure into tasks/bullets. Present before/after via AskUserQuestion. User confirms cleaned or raw version. |
+| Voice note is the one content edit exception | Voice note cleaning is the only case where content is modified during sweep. The raw transcription is preserved in the breadcrumb table Summary column for traceability. User must explicitly confirm the transformation. |
 
 ---
 
