@@ -41,18 +41,24 @@ def _detect_domain(repo_name: str) -> str:
 def _get_repo_commits(repo_path: Path, days: int = 365) -> list[dict]:
     """Return commits for the last N days from a git repo."""
     since = (date.today() - timedelta(days=days)).isoformat()
+    # Use %x00 (NUL) as record separator and include body (%b) for trailer detection
+    fmt = "%ad%x00%s%x00%b%x00---COMMIT_END---%n"
     try:
         result = subprocess.run(
-            ["git", "log", f"--since={since}", "--format=%ad|||%s|||%H", "--date=short"],
+            ["git", "log", f"--since={since}", f"--format={fmt}", "--date=short"],
             cwd=repo_path, capture_output=True, text=True, timeout=15,
         )
         commits = []
-        for line in result.stdout.strip().splitlines():
-            parts = line.split("|||", 2)
+        for record in result.stdout.split("---COMMIT_END---\n"):
+            record = record.strip()
+            if not record:
+                continue
+            parts = record.split("\x00", 2)
             if len(parts) < 2:
                 continue
             d, msg = parts[0].strip(), parts[1].strip()
-            is_ai = "Co-Authored-By: Claude" in msg or "Co-Authored-By: Claude" in (parts[2] if len(parts) > 2 else "")
+            body = parts[2] if len(parts) > 2 else ""
+            is_ai = "Co-Authored-By: Claude" in body or "co-authored-by: claude" in body.lower()
             commits.append({"date": d, "message": msg[:120], "is_ai": is_ai})
         return commits
     except Exception:
