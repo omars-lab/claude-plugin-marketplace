@@ -651,7 +651,7 @@ def test_js14_anomaly_row_modal(playwright, http_server):
     modal_text = page.eval_on_selector("#modal-body", "el => el.textContent")
     browser.close()
 
-    assert "rb-anomaly" in badge_class, f"Expected rb-anomaly badge, got: {badge_class}"
+    assert "rb-untraced" in badge_class, f"Expected rb-untraced badge (Track C rename), got: {badge_class}"
     assert grid_cols == "1fr", f"Expected single-column anomaly layout, got: {grid_cols!r}"
     assert "mystery task" in modal_text or "unexpected" in modal_text.lower(), (
         f"Anomaly content not shown in modal: {modal_text!r}"

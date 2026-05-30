@@ -546,7 +546,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .nav-tbl th:nth-child(1){{width:28px}}.nav-tbl th:nth-child(2){{width:50px}}.nav-tbl th:nth-child(3){{width:18%}}.nav-tbl th:nth-child(4){{width:22%}}.nav-tbl th:nth-child(5){{width:88px}}.nav-tbl th:nth-child(6){{width:auto}}.nav-tbl th:nth-child(7){{width:44px}}
 .src-col{{color:#58a6ff;font-family:monospace;font-size:11px;white-space:nowrap}}
 .row-badge{{display:inline-block;font-size:11px;min-width:16px;text-align:center;border-radius:3px;padding:1px 4px;font-weight:600}}
-.rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-anomaly{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}.rb-mixed{{background:#2d1f00;color:#e3b341;border:1px solid #e3b341}}
+.rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-untraced{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}.rb-mixed{{background:#2d1f00;color:#e3b341;border:1px solid #e3b341}}
 .row-badge[data-scoped="false"]{{box-shadow:0 0 0 2px #e3b341;cursor:help}}
 .mixed-lost-sub-row td{{background:#1a0a0a;border-left:2px solid #f85149;padding-left:10px!important;color:#8b949e;font-size:11px;cursor:pointer}}
 .mixed-lost-sub-row:hover td{{background:#251010}}
@@ -594,7 +594,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
   <button class="type-chip" data-type="move" onclick="setType('move')" title="Move — all source lines confirmed at destination">→ Move</button>
   <button class="type-chip" data-type="lost" onclick="setType('lost')" title="Lost — one or more source lines did not arrive">✗ Lost</button>
   <button class="type-chip" data-type="mixed" onclick="setType('mixed')" title="Mixed — some lines moved, some lost; needs split">⚡ Mixed</button>
-  <button class="type-chip" data-type="anomaly" onclick="setType('anomaly')" title="Anomaly — destination has additions with no matching source">+ Anomaly</button>
+  <button class="type-chip" data-type="anomaly" onclick="setType('anomaly')" title="Untraced — destination has additions with no traceable source row">? Untraced</button>
   <button class="type-chip" data-type="empty" onclick="setType('empty')" title="Empty — no source content found or destination file is empty">· Empty</button>
   <button class="copy-btn" id="copy-btn" onclick="copyNarrative()">📋 Copy</button>
 </div>
@@ -1090,11 +1090,13 @@ function classifyRow(idx) {{
   return result;
 }}
 
-const _badgeLabels   = {{ move: '→', lost: '✗', anomaly: '+', empty: '·', mixed: '⚡' }};
+const _badgeLabels   = {{ move: '→', lost: '✗', anomaly: '?', empty: '·', mixed: '⚡' }};
+// Internal type 'anomaly' maps to CSS class 'rb-untraced' and label '?'
+const _badgeCls      = {{ anomaly: 'untraced' }};
 const _badgeTitles   = {{
   move:    'Move — all source lines confirmed at destination',
   lost:    'Lost — one or more source lines did not arrive at destination',
-  anomaly: 'Anomaly — destination has additions with no matching source',
+  anomaly: 'Untraced — destination has additions with no traceable source row',
   empty:   'Empty — nothing to verify',
   mixed:   'Mixed — some lines moved, some lost. This section should have been split into separate rows during sweep.',
 }};
@@ -1142,7 +1144,8 @@ function updateRowBadge(idx, classification) {{
   const {{ type, movedCount, lostCount, newCount, mixed }} = classification;
   // Mixed rows: parent always shows → Move (the lost block is owned by the sub-row)
   const displayType = mixed ? 'move' : type;
-  badge.className = `row-badge rb-${{displayType}}`;
+  const badgeCls = _badgeCls[displayType] || displayType;
+  badge.className = `row-badge rb-${{badgeCls}}`;
   badge.textContent = _badgeLabels[displayType] || '?';
   let counts = '';
   if (mixed)                   counts = ` (${{movedCount}} moved — ${{lostCount}} lost split below)`;

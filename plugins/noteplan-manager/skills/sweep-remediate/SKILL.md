@@ -8,7 +8,7 @@ description: Guided sweep remediation — loads the latest sweep report, verifie
 You are a guided sweep remediation assistant. Your job is to:
 
 1. Load the latest sweep export (narrative rows + full diff)
-2. For every row classified as Lost, Anomaly, or Mixed — **verify it is a real issue** by checking the current destination file on disk and git history
+2. For every row classified as Lost, Untraced, or Mixed — **verify it is a real issue** by checking the current destination file on disk and git history
 3. Present only confirmed real issues one at a time via `AskUserQuestion`
 4. Execute the chosen remediation action
 5. After all issues are resolved, produce a data quality report and use findings to improve the portal's classification logic
@@ -26,7 +26,7 @@ A sweep moves content from daily calendar notes into destination plan/list files
 | **Move (→)** | All source lines confirmed present in destination diff | No — clean |
 | **Lost (✗)** | Source lines removed but NOT found in destination additions | **Yes if still absent from dest file on disk** |
 | **Mixed (⚡)** | Some lines moved, some lost | **Yes for the lost subset if still absent on disk** |
-| **Anomaly (+)** | Destination has additions with no traceable source section | **Yes if not covered by any other row** |
+| **Untraced (?)** | Destination has additions with no traceable source row | **Yes if not covered by any other row** |
 | **Empty (·)** | Source section had only noise lines (headers, checkboxes, etc.) | No — nothing to move |
 
 **Key distinction — diff vs disk:**
@@ -131,7 +131,7 @@ if countableRemoved == 0:           type = 'empty'
 elif matched == countableRemoved:   type = 'move'
 elif matched == 0:                  type = 'lost'
 elif matched > 0:                   type = 'mixed'   (some moved, some lost)
-elif addedLines > 0, matched == 0:  type = 'anomaly'
+elif addedLines > 0, matched == 0:  type = 'anomaly'  # displayed as '? Untraced' in portal
 ```
 
 **Fuzzy prefix normalization** (same as portal's `normLine`):
@@ -146,7 +146,7 @@ Total rows: N
   → move:    N  (skip — clean)
   → lost:    N  (verify)
   → mixed:   N  (verify lost subset)
-  → anomaly: N  (verify)
+  → untraced: N (verify — portal shows '? Untraced')
   → empty:   N  (skip — no content)
 ```
 
@@ -187,20 +187,20 @@ grep -i "$(echo 'line content' | sed 's/[^a-zA-Z0-9 ]//g' | cut -c1-40)" "$DEST_
    git log -p --follow -- "$DEST_FILE_RELATIVE_PATH" | grep -c "+ $LINE_CONTENT"
    ```
 
-### For each Anomaly row:
+### For each Untraced (?) row:
 
 1. Resolve destination file path as above
 2. Extract added lines for this destination from the diff
-3. For each added line, check if it appears in ANY other narrative row's source section (it might be a cross-row move, not a true anomaly)
-4. Lines with no source trace → `confirmed_anomaly`
-5. Lines traceable to another row's source → `cross_row` (accounted for — not a real anomaly)
+3. For each added line, check if it appears in ANY other narrative row's source section (it might be a cross-row move, not truly untraced)
+4. Lines with no source trace → `confirmed_untraced`
+5. Lines traceable to another row's source → `cross_row` (accounted for — not a real issue)
 
 ### Build verified issue list
 
 After verification, you have:
 ```
-confirmed_lost:    N rows (or N lines within mixed rows)
-confirmed_anomaly: N rows
+confirmed_lost:      N rows (or N lines within mixed rows)
+confirmed_untraced:  N rows
 dest_missing:      N rows
 resolved:          N rows (were flagged but are actually fine)
 false_positive:    N rows (portal noise — should improve classification)
@@ -212,7 +212,7 @@ Show this breakdown to the user before Phase 3.
 
 ## Phase 3: Guided Remediation (One Issue at a Time)
 
-Work through `confirmed_lost`, `confirmed_anomaly`, and `dest_missing` rows in order. For each:
+Work through `confirmed_lost`, `confirmed_untraced`, and `dest_missing` rows in order. For each:
 
 ### Present the issue
 
@@ -345,7 +345,7 @@ Before closing, verify the current sweep report matches the intended mental mode
 |---|---|---|
 | Move (→) | All source lines confirmed at destination | Verified against disk |
 | Lost (✗) | Lines genuinely absent from dest file | Confirmed by Phase 2 disk grep |
-| Anomaly (+) | Dest additions with no traceable source | Not from any narrative row's source |
+| Untraced (?) | Dest additions with no traceable source row | Not from any narrative row's source |
 | Mixed (⚡) | Some moved, some genuinely lost | Lost subset verified on disk |
 | Empty (·) | Source section had only noise lines | No real content removed |
 
@@ -367,4 +367,4 @@ If the portal is showing incorrect types for a majority of rows, recommend runni
 - [ ] Quality log updated with findings
 - [ ] False positive rate reported
 - [ ] Portal classification improvements proposed (and optionally applied)
-- [ ] Final report adheres to the mental model: only real issues surface as Lost/Anomaly
+- [ ] Final report adheres to the mental model: only real issues surface as Lost/Untraced
