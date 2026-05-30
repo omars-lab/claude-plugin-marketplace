@@ -471,6 +471,8 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .domain-chip,.type-chip{{padding:3px 10px;border-radius:12px;cursor:pointer;font-size:12px;background:#21262d;color:#8b949e;border:1px solid #30363d}}
 .domain-chip.active{{background:#1a3a28;color:#3fb950;border-color:#3fb950}}
 .type-chip.active{{background:#1c2128;color:#e6edf3;border-color:#58a6ff}}
+.toggle-chip{{padding:3px 10px;border-radius:12px;cursor:pointer;font-size:11px;background:#21262d;color:#484f58;border:1px dashed #30363d}}
+.toggle-chip.on{{color:#8b949e;border-color:#484f58}}
 .filter-sep{{color:#30363d;font-size:14px;margin:0 2px}}
 .copy-btn{{margin-left:auto;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;background:#21262d;color:#8b949e;border:1px solid #30363d}}
 .copy-btn:hover{{color:#e6edf3}}
@@ -596,6 +598,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
   <button class="type-chip" data-type="mixed" onclick="setType('mixed')" title="Mixed — some lines moved, some lost; needs split">⚡ Mixed</button>
   <button class="type-chip" data-type="anomaly" onclick="setType('anomaly')" title="Untraced — destination has additions with no traceable source row">? Untraced</button>
   <button class="type-chip" data-type="empty" onclick="setType('empty')" title="Empty — no source content found or destination file is empty">· Empty</button>
+  <button class="toggle-chip" id="empty-toggle" onclick="toggleEmpty()" title="Empty rows have no content to verify — toggle to show/hide them in All view">· Empty: hidden</button>
   <button class="copy-btn" id="copy-btn" onclick="copyNarrative()">📋 Copy</button>
 </div>
 <div id="layout">
@@ -1229,7 +1232,7 @@ function updateRowBadge(idx, classification) {{
     badge.onclick = null;
   }}
   tr.dataset.rowType = displayType;
-  if (activeType !== 'all' && displayType !== activeType) tr.style.display = 'none';
+  tr.style.display = isRowVisible(displayType) ? '' : 'none';
   // Inject synthetic Lost sub-row (idempotent — guard inside)
   if (mixed) injectMixedLostSubRow(idx, lostCount);
 }}
@@ -1901,6 +1904,23 @@ function normDest(dest) {{
 
 let activeDomain = 'all';
 let activeType = 'all';
+let showEmpty = false; // empty rows hidden by default (42%+ in typical sweeps = noise)
+
+function isRowVisible(rowType) {{
+  if (activeType === 'empty') return rowType === 'empty';
+  if (activeType !== 'all') return rowType === activeType;
+  return rowType !== 'empty' || showEmpty;
+}}
+
+function toggleEmpty() {{
+  showEmpty = !showEmpty;
+  const btn = document.getElementById('empty-toggle');
+  if (btn) {{
+    btn.textContent = showEmpty ? '· Empty: shown' : '· Empty: hidden';
+    btn.classList.toggle('on', showEmpty);
+  }}
+  setType(activeType);
+}}
 
 function setDomain(d) {{
   activeDomain = d;
@@ -1919,7 +1939,7 @@ function setType(t) {{
   // Show/hide rows by their current classified type (no re-render needed)
   document.querySelectorAll('tr[data-row-idx], tr[data-mixed-lost-for]').forEach(tr => {{
     const rowType = tr.dataset.rowType || 'pending';
-    tr.style.display = (t === 'all' || rowType === t) ? '' : 'none';
+    tr.style.display = isRowVisible(rowType) ? '' : 'none';
   }});
   // Also hide/show day separator rows — hide if all their rows are hidden
   document.querySelectorAll('tr.day-sep-row').forEach(sep => {{
