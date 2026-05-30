@@ -18,6 +18,7 @@ Bug index:
   JS-07  extractDestWithContext: +# Header line sets section context
   JS-08  cross-move: line in global removed map from another file → Cross tab
   JS-09  lost/moved badges appear on Diff view deleted lines
+  JS-21  filterValidPairs: noise-line (empty checkbox) match doesn't inflate movedCount → no negative lostCount
 """
 
 import http.server
@@ -1044,3 +1045,57 @@ def test_js20_compound_lost_row_filter_visibility(playwright, http_server):
     )
     assert visible_after_lost, "Compound row must be visible when filtering by ✗ Lost"
     assert not visible_after_move, "Compound row must be hidden when filtering by → Move"
+
+
+# ---------------------------------------------------------------------------
+# JS-21  filterValidPairs: noise-line match doesn't inflate movedCount
+#         → lostCount must never be negative
+# ---------------------------------------------------------------------------
+
+def test_js21_noise_line_match_no_negative_lostcount(playwright, http_server):
+    """JS-21: Empty checkbox in both source and dest shouldn't inflate movedCount → lostCount >= 0."""
+    base_url, serve_dir = http_server
+
+    real_task   = "- [ ] Review Jeff Charts"
+    noise_line  = "- [ ] "          # empty checkbox — normLine = ""
+    arrived     = "- [x] Review Jeff Charts >2026-04-24"
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Jeff goals", "summary": "Get goals for Jeff",
+                  "destination": "[[🏢260318 Understanding Org Goals]]"}]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": ["## Jeff goals", real_task, noise_line], "added": []},
+        {"path": "🏢260318 Understanding Org Goals.md",
+         "added": ["## Jeff goals", arrived, noise_line], "removed": []},
+    ])
+    page_name = _write_page(serve_dir, "js21.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row-badge.rb-pending').length === 0",
+        timeout=10_000,
+    )
+
+    count_text = page.eval_on_selector(
+        "tr[data-row-idx='0'] .count-col", "el => el.textContent"
+    )
+    badge_class = page.eval_on_selector(
+        "tr[data-row-idx='0'] .row-badge", "el => el.className"
+    )
+    browser.close()
+
+    # lostCount must not be negative — noise match inflating movedCount is the bug
+    count_val = count_text.strip().lstrip('+')
+    try:
+        numeric = int(count_val.split('+')[0].split('-')[0] or '0')
+    except ValueError:
+        numeric = 0
+    assert '-' not in count_text or count_text.strip() == '·', (
+        f"lostCount must not be negative — got count: {count_text!r}, badge: {badge_class}"
+    )
+    # Row must be move (real_task arrived) or at most lost with count >= 0
+    assert 'rb-pending' not in badge_class, f"Badge not updated: {badge_class}"

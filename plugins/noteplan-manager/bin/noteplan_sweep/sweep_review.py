@@ -890,6 +890,9 @@ function filterValidPairs(moved, movedPairs, removedLines) {{
     const srcLine = movedPairs.get(destLine);
     if (!srcLine || !removedSet.has(srcLine)) return false;
     const dn = normLine(destLine), sn = normLine(srcLine);
+    // Reject noise-line pairs (empty checkbox, short norm) — these inflate movedCount
+    // beyond countableRemoved, producing negative lostCount (V-P4 violation)
+    if (dn.length <= 2 || sn.length <= 2) return false;
     const db = bodyText(dn), sb = bodyText(sn);
     const pLen = Math.min(50, Math.min(dn.length, sn.length));
     const bLen = Math.min(40, Math.min(db.length, sb.length));
