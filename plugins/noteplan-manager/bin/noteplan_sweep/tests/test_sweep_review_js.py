@@ -541,11 +541,11 @@ def test_js11_move_row_badge_and_modal(playwright, http_server):
 
 
 # ---------------------------------------------------------------------------
-# JS-12  Mixed row — compound badge →1 ✗1 (blocks model), no sub-row injection
+# JS-12  Mixed row — compound badge →1 ✗1 (blocks model), row type = lost, no sub-row
 # ---------------------------------------------------------------------------
 
 def test_js12_mixed_row_badge_and_modal(playwright, http_server):
-    """JS-12: Some lines moved, some lost → compound badge →1 ✗1 (rb-mixed), no sub-row."""
+    """JS-12: Some lines moved, some lost → compound badge →1 ✗1 (rb-lost), no sub-row."""
     base_url, serve_dir = http_server
 
     moved_task = "- [ ] task that arrives"
@@ -581,9 +581,9 @@ def test_js12_mixed_row_badge_and_modal(playwright, http_server):
     sub_row = page.query_selector("tr[data-mixed-lost-for='0']")
     browser.close()
 
-    # Compound badge: rb-mixed class, text shows →N ✗M
-    assert "rb-mixed" in badge_class, (
-        f"Expected rb-mixed badge on mixed row, got: {badge_class}"
+    # Compound badge: rb-lost class (Mixed collapsed into Lost), text shows →N ✗M
+    assert "rb-lost" in badge_class, (
+        f"Expected rb-lost badge on compound row (Mixed merged into Lost), got: {badge_class}"
     )
     assert "→" in badge_text and "✗" in badge_text, (
         f"Expected compound →N ✗M badge text, got: {badge_text!r}"
@@ -988,3 +988,59 @@ def test_js19_v47a_fuzzy_section_scoping(playwright, http_server):
         f"V-47a: fuzzy match 'Anthropic GitHub refs' → '## References' should scope "
         f"dest additions to empty References section → NOT anomaly. Badge: {badge_class}"
     )
+
+
+# ---------------------------------------------------------------------------
+# JS-20  #37: compound-badge Lost row (→N ✗M) has data-row-type=lost,
+#         appears under ✗ Lost filter, disappears under → Move / ⚡ Mixed filters
+# ---------------------------------------------------------------------------
+
+def test_js20_compound_lost_row_filter_visibility(playwright, http_server):
+    """JS-20: Compound row (some moved, some lost) → data-row-type=lost, visible in Lost filter."""
+    base_url, serve_dir = http_server
+
+    moved_task = "- [ ] task that arrives"
+    lost_task  = "- [ ] task that gets lost"
+    narrative = [{"date": "2026-04-13", "source_file": "Calendar/20260413.md",
+                  "section": "Work", "summary": "compound lost",
+                  "destination": "[[Calendar/20260421]]"}]
+    diff = _make_diff([
+        {"path": "Calendar/20260413.md",
+         "removed": ["## Work", moved_task, lost_task], "added": []},
+        {"path": "Calendar/20260421.md",
+         "added": ["## Work", f"{moved_task} >2026-04-24"], "removed": []},
+    ])
+    page_name = _write_page(serve_dir, "js20.html", diff, narrative)
+
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    page.goto(f"{base_url}/{page_name}")
+    page.wait_for_selector(".nav-tbl")
+
+    page.click(".view-btn")
+    page.wait_for_selector("#modal-overlay.open")
+    page.keyboard.press("Escape")
+
+    row_type = page.eval_on_selector(
+        "tr[data-row-idx='0']", "el => el.dataset.rowType"
+    )
+
+    # Filter by Lost — compound row must be visible
+    page.eval_on_selector("button[data-type='lost']", "el => el.click()")
+    visible_after_lost = page.eval_on_selector(
+        "tr[data-row-idx='0']", "el => el.style.display !== 'none'"
+    )
+
+    # Filter by Move — compound row must be hidden
+    page.eval_on_selector("button[data-type='move']", "el => el.click()")
+    visible_after_move = page.eval_on_selector(
+        "tr[data-row-idx='0']", "el => el.style.display !== 'none'"
+    )
+
+    browser.close()
+
+    assert row_type == "lost", (
+        f"Compound row (some moved, some lost) must have data-row-type=lost, got: {row_type!r}"
+    )
+    assert visible_after_lost, "Compound row must be visible when filtering by ✗ Lost"
+    assert not visible_after_move, "Compound row must be hidden when filtering by → Move"

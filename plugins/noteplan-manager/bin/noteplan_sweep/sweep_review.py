@@ -548,11 +548,8 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .nav-tbl th:nth-child(1){{width:28px}}.nav-tbl th:nth-child(2){{width:50px}}.nav-tbl th:nth-child(3){{width:18%}}.nav-tbl th:nth-child(4){{width:22%}}.nav-tbl th:nth-child(5){{width:88px}}.nav-tbl th:nth-child(6){{width:auto}}.nav-tbl th:nth-child(7){{width:44px}}
 .src-col{{color:#58a6ff;font-family:monospace;font-size:11px;white-space:nowrap}}
 .row-badge{{display:inline-block;font-size:11px;min-width:16px;text-align:center;border-radius:3px;padding:1px 4px;font-weight:600}}
-.rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-untraced{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}.rb-mixed{{background:#2d1f00;color:#e3b341;border:1px solid #e3b341}}
+.rb-move{{background:#1a3a28;color:#3fb950}}.rb-lost{{background:#2d0a0a;color:#f85149}}.rb-untraced{{background:#1a1a00;color:#e3b341}}.rb-empty{{background:#1c2128;color:#484f58}}.rb-pending{{color:#484f58}}
 .row-badge[data-scoped="false"]{{box-shadow:0 0 0 2px #e3b341;cursor:help}}
-.mixed-lost-sub-row td{{background:#1a0a0a;border-left:2px solid #f85149;padding-left:10px!important;color:#8b949e;font-size:11px;cursor:pointer}}
-.mixed-lost-sub-row:hover td{{background:#251010}}
-.mixed-lost-sub-row .row-badge{{vertical-align:middle}}
 .nav-tbl td{{padding:5px 10px;border-bottom:1px solid #21262d;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .nav-tbl tr:hover td{{background:#161b22}}
 .nav-tbl .section-col{{color:#e6edf3;font-weight:500}}
@@ -595,7 +592,6 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
   <button class="type-chip active" data-type="all" onclick="setType('all')" title="Show all rows">All</button>
   <button class="type-chip" data-type="move" onclick="setType('move')" title="Move — all source lines confirmed at destination">→ Move</button>
   <button class="type-chip" data-type="lost" onclick="setType('lost')" title="Lost — one or more source lines did not arrive">✗ Lost</button>
-  <button class="type-chip" data-type="mixed" onclick="setType('mixed')" title="Mixed — some lines moved, some lost; needs split">⚡ Mixed</button>
   <button class="type-chip" data-type="anomaly" onclick="setType('anomaly')" title="Untraced — destination has additions with no traceable source row">? Untraced</button>
   <button class="type-chip" data-type="empty" onclick="setType('empty')" title="Empty — no source content found or destination file is empty">· Empty</button>
   <button class="toggle-chip" id="empty-toggle" onclick="toggleEmpty()" title="Empty rows have no content to verify — toggle to show/hide them in All view">· Empty: hidden</button>
@@ -1074,8 +1070,6 @@ function classifyRow(idx) {{
   else type = 'lost';                              // ANY source line missing → lost
 
   const lostCount = total - movedCount;
-  // Mixed = some lines moved, some didn't — sweep should have split this into two rows
-  const mixed = type === 'lost' && movedCount > 0 && lostCount > 0;
   // V-P4: movedCount must not exceed total (clamp and log)
   if (movedCount > total) {{ console.error('V-P4: movedCount > total', idx, movedCount, total); }}
   // V-P5: assert all line numbers > 0
@@ -1099,13 +1093,13 @@ function classifyRow(idx) {{
     if (movedCount > 0) blocks.push({{ type: 'move', lines: validMoved, count: movedCount }});
     if (lostLines.length > 0) blocks.push({{ type: 'lost', lines: lostLines, count: lostLines.length }});
   }}
-  const result = {{ type, movedCount, lostCount, newCount: trueNewCount, mixed, emptyReason,
+  const result = {{ type, movedCount, lostCount, newCount: trueNewCount, emptyReason,
                    v47Fallback: destSectionResult.v47Fallback && !b15Applied, blocks }};
   _rowClassifications.set(idx, result);
   return result;
 }}
 
-const _badgeLabels   = {{ move: '→', lost: '✗', anomaly: '?', untraced: '?', empty: '·', mixed: '⚡' }};
+const _badgeLabels   = {{ move: '→', lost: '✗', anomaly: '?', untraced: '?', empty: '·' }};
 // Internal type 'anomaly' maps to CSS class 'rb-untraced' and label '?'
 const _badgeCls      = {{ anomaly: 'untraced' }};
 const _badgeTitles   = {{
@@ -1114,43 +1108,7 @@ const _badgeTitles   = {{
   anomaly:  'Untraced — destination has additions with no traceable source row',
   untraced: 'Untraced — destination has additions with no traceable source row',
   empty:    'Empty — nothing to verify',
-  mixed:    'Mixed — some lines moved, some lost. This section should have been split into separate rows during sweep.',
 }};
-
-function injectMixedLostSubRow(idx, lostCount) {{
-  const tr = document.querySelector(`tr[data-row-idx="${{idx}}"]`);
-  if (!tr) return;
-  // Don't inject twice
-  if (tr.nextSibling?.dataset?.mixedLostFor === String(idx)) return;
-  const row = MODAL_ROWS[idx];
-  const subTr = document.createElement('tr');
-  subTr.className = 'mixed-lost-sub-row';
-  subTr.dataset.mixedLostFor = String(idx);
-  subTr.dataset.rowType = 'lost';  // participates in type filter as Lost
-  subTr.title = 'Click to open modal — scroll to Lost section';
-  subTr.onclick = () => {{ showSectionModal(idx, true); }};
-  subTr.innerHTML = `
-    <td style="padding:3px 6px;text-align:center"><span class="row-badge rb-lost">✗</span></td>
-    <td class="count-col" style="width:48px;text-align:center;font-size:10px;color:#f85149;font-family:monospace">${{lostCount}}</td>
-    <td class="section-col" style="color:#f85149">↳ Lost (${{lostCount}} line${{lostCount!==1?'s':''}}) — not found at destination</td>
-    <td class="summary-col" style="color:#6e7681">Needs separate row — split this section during sweep</td>
-    <td class="src-col" style="color:#6e7681">—</td>
-    <td class="dest-col" style="color:#6e7681">?? unknown</td>
-    <td style="padding:3px 6px;text-align:center"><button class="view-btn" onclick="event.stopPropagation();showSectionModal(${{idx}}, true)">⌕</button></td>
-  `;
-  tr.after(subTr);
-  // Apply current type filter to sub-row
-  if (activeType !== 'all' && activeType !== 'lost') subTr.style.display = 'none';
-  // Upgrade parent badge from ⚡ mixed → → move (the lost block is now its own sub-row)
-  const parentBadge = tr.querySelector('.row-badge');
-  if (parentBadge) {{
-    parentBadge.className = 'row-badge rb-move';
-    parentBadge.textContent = '→';
-    parentBadge.title = 'Move — moved lines confirmed at destination (lost lines split below)';
-  }}
-  tr.dataset.rowType = 'move';
-  if (activeType !== 'all' && activeType !== 'move') tr.style.display = 'none';
-}}
 
 function updateRowBadge(idx, classification) {{
   const tr = document.querySelector(`tr[data-row-idx="${{idx}}"]`);
@@ -1159,38 +1117,43 @@ function updateRowBadge(idx, classification) {{
   if (!badge) return;
   classification = classification || _rowClassifications.get(idx);
   if (!classification) return;
-  const {{ type, movedCount, lostCount, newCount, mixed }} = classification;
+  const {{ type, movedCount, lostCount, newCount }} = classification;
   const blocks = classification.blocks || [];
-  // Multi-block: render compound badge (→N ✗M) and skip sub-row injection
+  // Compound Lost: some lines moved, some lost — render →N ✗M badge, type stays 'lost'
   if (blocks.length > 1) {{
-    badge.className = 'row-badge rb-mixed';
+    badge.className = 'row-badge rb-lost';
     badge.textContent = blocks.map(b => (_badgeLabels[b.type] || '?') + b.count).join(' ');
-    badge.title = blocks.map(b => `${{b.count}} ${{b.type}}`).join(' + ');
+    const moveBlock = blocks.find(b => b.type === 'move');
+    const lostBlock = blocks.find(b => b.type === 'lost');
+    badge.title = `Lost — ${{moveBlock?.count ?? 0}} moved, ${{lostBlock?.count ?? 0}} did not arrive`;
     if (classification.v47Fallback) {{
       badge.dataset.scoped = 'false';
       badge.title += ' ⚠ Section not matched — showing full file';
     }} else {{ delete badge.dataset.scoped; }}
-    badge.style.cursor = '';
-    badge.onclick = null;
+    badge.style.cursor = 'pointer';
+    badge.onclick = (e) => {{ e.stopPropagation(); showSectionModal(idx); }};
     const mbCountCell = tr.querySelector('.count-col');
     if (mbCountCell) {{
       mbCountCell.textContent = blocks.map(b => b.count).join('+');
       mbCountCell.title = blocks.map(b => `${{b.count}} ${{b.type}}`).join(', ');
+      mbCountCell.style.color = '#f85149';
     }}
     const mbDestCell = tr.querySelector('.dest-col');
-    if (mbDestCell) {{ mbDestCell.style.opacity = ''; mbDestCell.title = ''; }}
-    tr.dataset.rowType = 'mixed';
-    if (activeType !== 'all' && activeType !== 'mixed') tr.style.display = 'none';
+    if (mbDestCell) {{
+      mbDestCell.style.opacity = '0.45';
+      mbDestCell.title = 'Intended destination — some lines NOT confirmed moved here';
+    }}
+    tr.dataset.rowType = 'lost';
+    if (activeType !== 'all' && activeType !== 'lost') tr.style.display = 'none';
     return;
   }}
-  // Single-block: existing path (mixed is always false here since multi-block returns above)
-  const displayType = mixed ? 'move' : type;
+  // Single-block path
+  const displayType = type;
   const badgeCls = _badgeCls[displayType] || displayType;
   badge.className = `row-badge rb-${{badgeCls}}`;
   badge.textContent = _badgeLabels[displayType] || '?';
   let counts = '';
-  if (mixed)                   counts = ` (${{movedCount}} moved — ${{lostCount}} lost split below)`;
-  else if (type === 'move')    counts = ` (${{movedCount}} line${{movedCount!==1?'s':''}} moved)`;
+  if (type === 'move')    counts = ` (${{movedCount}} line${{movedCount!==1?'s':''}} moved)`;
   else if (type === 'lost')    counts = ` (${{lostCount}} line${{lostCount!==1?'s':''}} not arrived)`;
   else if (type === 'anomaly') counts = newCount ? ` (${{newCount}} unexpected)` : '';
   const emptyDetail = (displayType === 'empty' && classification.emptyReason)
@@ -1203,10 +1166,10 @@ function updateRowBadge(idx, classification) {{
   }} else {{
     delete badge.dataset.scoped;
   }}
-  // Mark destination cell for lost rows — "intended but not confirmed"
+  // Mark destination cell for lost/empty rows — "intended but not confirmed"
   const destCell = tr.querySelector('.dest-col');
   if (destCell) {{
-    if (type === 'lost' || (type === 'empty' && !mixed)) {{
+    if (type === 'lost' || type === 'empty') {{
       destCell.style.opacity = '0.45';
       destCell.title = 'Intended destination — content was NOT confirmed moved here';
     }} else {{
@@ -1217,8 +1180,7 @@ function updateRowBadge(idx, classification) {{
   // Populate count cell
   const countCell = tr.querySelector('.count-col');
   if (countCell) {{
-    if (mixed)                   {{ countCell.textContent = `${{movedCount}}+${{lostCount}}`; countCell.title = `${{movedCount}} moved, ${{lostCount}} lost`; }}
-    else if (type === 'move')    {{ countCell.textContent = movedCount; countCell.title = `${{movedCount}} lines moved`; countCell.style.color = '#3fb950'; }}
+    if (type === 'move')    {{ countCell.textContent = movedCount; countCell.title = `${{movedCount}} lines moved`; countCell.style.color = '#3fb950'; }}
     else if (type === 'lost')    {{ countCell.textContent = lostCount; countCell.title = `${{lostCount}} lines not arrived`; countCell.style.color = '#f85149'; }}
     else if (type === 'anomaly') {{ countCell.textContent = newCount ? `+${{newCount}}` : '+?'; countCell.title = `${{newCount}} unexpected lines`; countCell.style.color = '#e3b341'; }}
     else                         {{ countCell.textContent = '·'; countCell.style.color = '#484f58'; }}
@@ -1233,8 +1195,6 @@ function updateRowBadge(idx, classification) {{
   }}
   tr.dataset.rowType = displayType;
   tr.style.display = isRowVisible(displayType) ? '' : 'none';
-  // Inject synthetic Lost sub-row (idempotent — guard inside)
-  if (mixed) injectMixedLostSubRow(idx, lostCount);
 }}
 
 // ── Layer 2: Row integrity validation ─────────────────────────────────────
@@ -1547,7 +1507,7 @@ function showSectionModal(idx, focusLost = false) {{
   let focusAnomaly = false;
   if (!focusLost) {{
     const cached = _rowClassifications.get(idx);
-    if (cached && cached.type === 'lost' && !cached.mixed) focusLost = true;
+    if (cached && cached.type === 'lost' && (cached.blocks || []).length <= 1) focusLost = true;
     if (cached && cached.type === 'empty') focusLost = true;
     if (cached && cached.type === 'anomaly') focusAnomaly = true;
   }}
@@ -1862,7 +1822,6 @@ function showSectionModal(idx, focusLost = false) {{
   else if (movedCount === srcTotal) type = 'move';  // all arrived
   else type = 'lost';                               // any missing → lost
   const lostCountM = srcTotal - movedCount;
-  const mixed = type === 'lost' && movedCount > 0 && lostCountM > 0;
   const _movedNormSetM = new Set(validMoved.map(l => normLine(l)));
   const lostLinesM = countableRemovedM.filter(l => !_movedNormSetM.has(normLine(l)));
   const blocksM = [];
@@ -1872,7 +1831,7 @@ function showSectionModal(idx, focusLost = false) {{
     if (movedCount > 0) blocksM.push({{ type: 'move', lines: validMoved, count: movedCount }});
     if (lostLinesM.length > 0) blocksM.push({{ type: 'lost', lines: lostLinesM, count: lostLinesM.length }});
   }}
-  const classification = {{ type, movedCount, lostCount: lostCountM, newCount: trueNewCount, mixed, blocks: blocksM }};
+  const classification = {{ type, movedCount, lostCount: lostCountM, newCount: trueNewCount, blocks: blocksM }};
   _rowClassifications.set(idx, classification);
   updateRowBadge(idx, classification);
 }}
@@ -1937,7 +1896,7 @@ function setType(t) {{
   document.querySelectorAll('.type-chip').forEach(c =>
     c.classList.toggle('active', c.dataset.type === t));
   // Show/hide rows by their current classified type (no re-render needed)
-  document.querySelectorAll('tr[data-row-idx], tr[data-mixed-lost-for]').forEach(tr => {{
+  document.querySelectorAll('tr[data-row-idx]').forEach(tr => {{
     const rowType = tr.dataset.rowType || 'pending';
     tr.style.display = isRowVisible(rowType) ? '' : 'none';
   }});
