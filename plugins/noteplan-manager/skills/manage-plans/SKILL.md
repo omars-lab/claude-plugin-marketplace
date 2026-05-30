@@ -17,6 +17,7 @@ Single entry point for all plan file operations:
 | Update a plan's status | "status", "future", "started", "done", "paused", "change status" | [update-plan-status/SKILL.md](update-plan-status/SKILL.md) |
 | Flatten Future/Present/Past folder structure | "flatten", "migrate", "future/present/past", "one-time migration" | [flatten-plans/SKILL.md](flatten-plans/SKILL.md) |
 | Reorganize plan file content under sections | "organize plan", "reorganize", "sections", "scattered content" | [organize-plans/SKILL.md](organize-plans/SKILL.md) |
+| Generate performance review / promo narrative | "impact narrative", "perf review", "brag sheet", "promotion case", "what did I do", "career impact" | [generate-impact-narrative/SKILL.md](generate-impact-narrative/SKILL.md) |
 | Create a new plan | "new plan", "create plan", "start a plan" | `noteplan-sweep clone-plan` |
 
 ## Task Management (MANDATORY)
@@ -37,6 +38,7 @@ Check if the user's message clearly signals an operation from the table above. C
 - "update status" / "change to started" / "mark as done" / "future → started" → update-plan-status
 - "flatten plans" / "migrate from future/present/past" / "one-time migration" → flatten-plans
 - "organize plan" / "reorganize" / "clean up sections" / "scattered content" → organize-plans
+- "impact narrative" / "perf review" / "promotion case" / "what did I do" / "career impact" / "brag sheet summary" → generate-impact-narrative
 - "new plan" / "create plan" / "start a plan" / "make a plan for" → `noteplan-sweep clone-plan`
 
 If the intent is **clear** from the message, proceed directly to Phase 2 without asking.
@@ -52,7 +54,8 @@ AskUserQuestion({
       { label: "Fix plan structure", description: "Standardize frontmatter, headers, and self-referencing todos across plan files" },
       { label: "Update plan status", description: "Change status of one or more plans (frontmatter, H1 emoji, filename, completed date)" },
       { label: "Flatten folder structure", description: "One-time migration: remove Future/Present/Past folders, move plans to flat workstream layout" },
-      { label: "Reorganize plan content", description: "Group scattered content under clear section headers without changing any content" }
+      { label: "Reorganize plan content", description: "Group scattered content under clear section headers without changing any content" },
+      { label: "Generate impact narrative", description: "Synthesize brag sheet + impact timeline into a performance review narrative or promotion case" }
     ],
     multiSelect: false
   }]
@@ -70,6 +73,8 @@ Read the appropriate sub-skill SKILL.md and follow its workflow as if it had bee
 **For flatten-plans:** Read [flatten-plans/SKILL.md](flatten-plans/SKILL.md) and follow its workflow.
 
 **For organize-plans:** Read [organize-plans/SKILL.md](organize-plans/SKILL.md) and follow its workflow.
+
+**For generate-impact-narrative:** Read [generate-impact-narrative/SKILL.md](generate-impact-narrative/SKILL.md) and follow its workflow.
 
 **For create-plan:** Use `noteplan-sweep clone-plan` to create a new plan file from the standard template:
 
