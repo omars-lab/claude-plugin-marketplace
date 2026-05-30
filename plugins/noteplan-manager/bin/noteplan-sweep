@@ -26,7 +26,7 @@ if os.path.isfile(_VENV_PYTHON) and not sys.executable.startswith(_SCRIPT_DIR):
 sys.path.insert(0, os.path.dirname(__file__))
 
 import noteplan_sweep.utils as utils
-from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair, sweep_review, dashboard, conversation_mine, work_board, ai_usage, server, contributions, graph
+from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair, sweep_review, dashboard, conversation_mine, work_board, ai_usage, server, contributions, graph, graph_embed
 
 VERSION = "0.1.0"
 
@@ -99,6 +99,9 @@ COMMANDS = [
     ("graph-extract",           "Build graph.json from sessions/plans/repos/skills — nodes + edges"),
     ("graph-stats",             "Print node/edge counts, top plans by session touches, use case distribution"),
     ("graph-query",             "Search graph by text or Cypher subset (MATCH/WHERE/RETURN/ORDER BY/LIMIT)"),
+    ("graph-embed",             "Embed graph nodes via LM Studio or sentence-transformers → graph.embeddings.bin"),
+    ("graph-build",             "Validate embedding coverage + write embedding_meta to graph.json"),
+    ("graph-query-vec",         "Cosine similarity search over embedded nodes"),
     # Group 13: Sweep Review
     ("sweep-commit",            "Stage modified .md files and create a structured sweep(YYYY-MM-DD) commit"),
     ("sweep-review-generate",   "Generate immutable snapshot HTML from the sweep commit diff"),
@@ -348,27 +351,42 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cypher", metavar="QUERY", help="Cypher subset: MATCH (n[:Type]) [WHERE n.attr op val] RETURN n.field [ORDER BY ...] [LIMIT N]")
     p.add_argument("--limit", type=int, default=10, help="Max results (default: 10)")
 
+    p = sub.add_parser("graph-embed", help=COMMANDS[52][1])
+    p.add_argument("--backend", choices=["lmstudio", "sentence-transformers"], default="lmstudio")
+    p.add_argument("--model", default="nomic-embed-text-v1.5", help="Embedding model name")
+    p.add_argument("--port", type=int, default=1234, help="LM Studio port (default: 1234)")
+    p.add_argument("--force", action="store_true", help="Re-embed all nodes even if already embedded")
+
+    sub.add_parser("graph-build", help=COMMANDS[53][1])
+
+    p = sub.add_parser("graph-query-vec", help=COMMANDS[54][1])
+    p.add_argument("query", help="Query text to embed and search")
+    p.add_argument("--backend", choices=["lmstudio", "sentence-transformers"], default="lmstudio")
+    p.add_argument("--model", default="nomic-embed-text-v1.5")
+    p.add_argument("--port", type=int, default=1234)
+    p.add_argument("--top-k", type=int, default=10, dest="top_k")
+
     # ── Group 13: Sweep Review ────────────────────────────────────────────
-    p = sub.add_parser("sweep-commit", help=COMMANDS[52][1])
+    p = sub.add_parser("sweep-commit", help=COMMANDS[55][1])
     p.add_argument("--dry-run", action="store_true", help="Print what would be committed without writing")
 
-    p = sub.add_parser("sweep-review-generate", help=COMMANDS[53][1])
+    p = sub.add_parser("sweep-review-generate", help=COMMANDS[56][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--no-carry-comments", action="store_true",
                    help="Start fresh — do not inject existing comments into new snapshot")
 
-    p = sub.add_parser("sweep-review-compile", help=COMMANDS[54][1])
+    p = sub.add_parser("sweep-review-compile", help=COMMANDS[57][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-squash", help=COMMANDS[55][1])
+    p = sub.add_parser("sweep-review-squash", help=COMMANDS[58][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-list", help=COMMANDS[56][1])
+    p = sub.add_parser("sweep-review-list", help=COMMANDS[59][1])
     p.add_argument("--date", help="Filter to a specific YYYY-MM-DD")
 
-    p = sub.add_parser("sweep-review-open", help=COMMANDS[57][1])
+    p = sub.add_parser("sweep-review-open", help=COMMANDS[60][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
     p.add_argument("--snapshot", action="store_true", help="Open raw snapshot instead of compiled review")
@@ -431,6 +449,9 @@ DISPATCH = {
     "graph-extract":            graph.cmd_graph_extract,
     "graph-stats":              graph.cmd_graph_stats,
     "graph-query":              graph.cmd_graph_query,
+    "graph-embed":              graph_embed.cmd_graph_embed,
+    "graph-build":              graph_embed.cmd_graph_build,
+    "graph-query-vec":          graph_embed.cmd_graph_query_vec,
     "sweep-commit":             sweep_review.cmd_sweep_commit,
     "sweep-review-generate":    sweep_review.cmd_sweep_review_generate,
     "sweep-review-compile":     sweep_review.cmd_sweep_review_compile,
