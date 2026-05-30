@@ -466,18 +466,21 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .modal-title{{font-size:13px;font-weight:600;color:#e6edf3;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .modal-close{{background:none;border:none;color:#8b949e;cursor:pointer;font-size:18px;line-height:1;padding:0 2px;flex-shrink:0}}
 .modal-close:hover{{color:#e6edf3}}
-.modal-body{{flex:1;min-height:0;overflow-y:auto;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px}}
+.modal-body{{flex:1;min-height:0;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px;overflow:hidden}}
+.modal-body>div{{min-width:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}}
 .modal-panel-hdr{{font-size:11px;font-weight:600;color:#8b949e;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #30363d}}
 .modal-empty{{color:#484f58;font-size:12px;padding:16px;text-align:center}}
-.diff-lines{{font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;line-height:18px;overflow-x:auto}}
+.diff-lines{{font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;line-height:18px;overflow-x:auto;flex:1}}
 .diff-line{{padding:1px 8px;white-space:pre}}
 .diff-line.removed{{background:#4a0f1a;color:#ffdcd7}}
 .diff-line.added{{background:#0e4429;color:#aff5b4}}
 .diff-line.new-content{{background:#1f1200;color:#e3b341}}
+.diff-line.cross-moved{{background:#0d1b2a;color:#79c0ff}}
 .modal-panel-tabs{{display:flex;gap:4px;margin-bottom:8px}}
 .mpanel-tab{{padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px;background:#21262d;color:#8b949e;border:1px solid #30363d}}
 .mpanel-tab.active{{background:#1a3a28;color:#3fb950;border-color:#3fb950}}
 .mpanel-tab.new-tab.active{{background:#2d1f00;color:#e3b341;border-color:#e3b341}}
+.mpanel-tab.cross-tab.active{{background:#0d1b2a;color:#79c0ff;border-color:#79c0ff}}
 #layout{{display:flex;flex:1;min-height:0}}
 #sidebar{{width:260px;min-width:160px;background:#161b22;border-right:1px solid #30363d;overflow-y:auto;flex-shrink:0;padding:8px 0}}
 .fi{{padding:5px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;border-left:3px solid transparent;font-size:12px}}
@@ -498,10 +501,15 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-si
 .row{{display:flex;min-height:18px}}
 .ln{{width:36px;text-align:right;padding:0 6px;color:#484f58;user-select:none;border-right:1px solid #30363d;flex-shrink:0;line-height:18px}}
 .lc{{flex:1;padding:0 6px;white-space:pre;overflow:hidden;line-height:18px}}
-.row.add{{background:#0e4429}}.row.add .ln{{background:#0a3320;color:#3fb950}}
-.row.del{{background:#4a0f1a}}.row.del .ln{{background:#38080f;color:#f85149}}
+.row.add{{background:#0e4429}}.row.add .ln{{background:#0a3320;color:#3fb950}}.row.add .lc{{color:#aff5b4}}
+.row.del{{background:#1a0a0f}}.row.del .ln{{background:#120508;color:#6e3a44}}.row.del .lc{{color:#6b7280}}
 .row.ctx{{background:#0d1117}}
 .row.hdr{{background:#1c2128}}.row.hdr .lc{{color:#8b949e}}
+.diff-ctx-hdr{{font-family:'SF Mono','Fira Code',monospace;font-size:11px;padding:4px 8px 2px;color:#58a6ff;font-weight:600;background:#0d1117;border-top:1px solid #21262d;margin-top:6px}}
+.diff-ctx-skip{{font-family:'SF Mono','Fira Code',monospace;font-size:11px;padding:0 8px 4px;color:#484f58;background:#0d1117}}
+.move-badge{{margin-left:6px;padding:0 5px;border-radius:3px;font-size:10px;background:#1a3a28;color:#3fb950;border:1px solid #3fb950;text-decoration:none;white-space:nowrap;flex-shrink:0}}
+.move-badge:hover{{background:#204830}}
+.lost-badge{{margin-left:6px;padding:0 5px;border-radius:3px;font-size:10px;background:#2d0a0a;color:#f85149;border:1px solid #f85149;white-space:nowrap;flex-shrink:0}}
 .row.add .lc{{color:#aff5b4}}.row.del .lc{{color:#ffdcd7}}
 /* ── Narrative panel ── */
 #narrative{{padding:16px}}
@@ -695,17 +703,94 @@ function classifyDestLines(removedLines, addedLines) {{
   return {{ moved, newContent }};
 }}
 
-let _modalMovedLines = [], _modalNewLines = [];
+let _modalMovedLines = [], _modalNewLines = [], _modalCrossLines = [];
+let _modalDestGroups = []; // [{{header, lines}}] — all dest + lines with their section context
+
+// Global removed-lines map: normLine → source filename stem (lazy, built once per page)
+let _globalRemovedMap = null;
+function getGlobalRemovedMap() {{
+  if (_globalRemovedMap) return _globalRemovedMap;
+  _globalRemovedMap = new Map();
+  const rawLines = DIFF_TEXT.split('\\n');
+  let curStem = '';
+  for (const line of rawLines) {{
+    if (line.startsWith('diff --git ')) {{
+      // extract b-side filename stem
+      const m = line.match(/b\\/(.+)$/);
+      curStem = m ? m[1].split('/').pop().replace(/\\.md$/, '') : '';
+      continue;
+    }}
+    if (line.startsWith('-') && line.length > 1) {{
+      const n = normLine(line.slice(1));
+      if (n.length > 5 && !_globalRemovedMap.has(n)) _globalRemovedMap.set(n, curStem);
+    }}
+  }}
+  return _globalRemovedMap;
+}}
+
+// Walk dest file diff, grouping + lines by nearest preceding # header in context lines.
+// Returns [{{header: string|null, lines: string[]}}]
+function extractDestWithContext(filename) {{
+  const rawLines = DIFF_TEXT.split('\\n');
+  const baseName = filename.split('/').pop().toLowerCase();
+  let inFile = false, curHeader = null;
+  const groups = [];
+  let curGroup = null;
+
+  for (const line of rawLines) {{
+    if (line.startsWith('diff --git ')) {{
+      inFile = line.toLowerCase().includes(baseName);
+      curHeader = null; curGroup = null;
+      continue;
+    }}
+    if (!inFile || line.startsWith('+++') || line.startsWith('---') || line.startsWith('index')) continue;
+    if (line.startsWith('@@')) {{ curGroup = null; continue; }}
+    const type = line.length ? line[0] : ' ';
+    if (type !== '+' && type !== '-' && type !== ' ') continue;
+    const content = line.slice(1);
+
+    if (type === ' ') {{
+      // Context line — track nearest # header, break current group
+      if (/^#+\\s/.test(content)) curHeader = content;
+      curGroup = null;
+    }} else if (type === '+') {{
+      if (/^#+\\s/.test(content)) {{
+        // Added header line — use as section marker, don't add to content group
+        curHeader = content;
+        curGroup = null;
+      }} else {{
+        if (!curGroup || curGroup.header !== curHeader) {{
+          curGroup = {{ header: curHeader, lines: [] }};
+          groups.push(curGroup);
+        }}
+        curGroup.lines.push(content);
+      }}
+    }} else {{
+      curGroup = null; // deleted line breaks adjacency
+    }}
+  }}
+  return groups;
+}}
+
+function renderDestGroups(groups, lineSet, cls) {{
+  let html = '';
+  for (const g of groups) {{
+    const filtered = g.lines.filter(l => lineSet.has(l));
+    if (!filtered.length) continue;
+    if (g.header) {{
+      html += `<div class="diff-ctx-hdr">${{esc(g.header)}}</div><div class="diff-ctx-skip">…</div>`;
+    }}
+    html += filtered.map(l => `<div class="diff-line ${{cls}}">${{esc(l)}}</div>`).join('');
+  }}
+  return html || '<div class="modal-empty">No lines in this category</div>';
+}}
 
 function switchDestTab(type, btn) {{
   document.querySelectorAll('.mpanel-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  const lines = type === 'moved' ? _modalMovedLines : _modalNewLines;
-  const cls   = type === 'moved' ? 'added' : 'new-content';
-  document.getElementById('modal-dest-lines').innerHTML =
-    lines.length
-      ? lines.map(l => `<div class="diff-line ${{cls}}">${{esc(l)}}</div>`).join('')
-      : '<div class="modal-empty">No lines in this category</div>';
+  const lines = type === 'moved' ? _modalMovedLines : type === 'cross' ? _modalCrossLines : _modalNewLines;
+  const cls   = type === 'moved' ? 'added' : type === 'cross' ? 'cross-moved' : 'new-content';
+  document.getElementById('modal-dest-lines').innerHTML = renderDestGroups(_modalDestGroups, new Set(lines), cls);
 }}
 
 function showSectionModal(idx) {{
@@ -722,8 +807,8 @@ function showSectionModal(idx) {{
     const stem = (f.filename || '').split('/').pop().replace(/\\.md$/, '');
     return stem === destRaw || (f.filename || '').endsWith(destRaw + '.md');
   }});
-  const destResult  = destFile ? extractSectionLines(destFile.filename, null, '+') : {{ lines: [], matched: true }};
-  const addedLines  = destResult.lines;
+  _modalDestGroups = destFile ? extractDestWithContext(destFile.filename) : [];
+  const addedLines = _modalDestGroups.flatMap(g => g.lines);
 
   // Section header not found (synthetic section name) — infer removed lines by
   // content-matching ALL source removed lines against what landed in the destination.
@@ -743,19 +828,43 @@ function showSectionModal(idx) {{
 
   const {{ moved, newContent }} = classifyDestLines(removedLines, addedLines);
   _modalMovedLines = moved;
-  _modalNewLines   = newContent;
 
-  // Source panel — when section header not matched, show a collapsed "show all" rather than polluting with unrelated lines
+  // Re-classify "new" lines against the global removed map — lines found in ANY
+  // other source file are "cross-moved", not truly new.
+  const globalMap = getGlobalRemovedMap();
+  const srcStem = row.source_file.split('/').pop().replace(/\\.md$/, '');
+  _modalCrossLines = [];
+  _modalNewLines = [];
+  for (const line of newContent) {{
+    const n = normLine(line);
+    const fromStem = globalMap.get(n);
+    if (fromStem && fromStem !== srcStem) {{
+      _modalCrossLines.push(line);
+    }} else {{
+      _modalNewLines.push(line);
+    }}
+  }}
+
+  // Source panel — use inferred lines when header match failed but content inference succeeded
   const srcName = `<span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(row.source_file.split('/').pop())}}</span>`;
+  const didInfer = !srcResult.matched && removedLines.length > 0;
   let srcBody;
-  if (srcResult.matched) {{
-    srcBody = removedLines.map(l => `<div class="diff-line removed">${{esc(l)}}</div>`).join('');
+  // Source tab bar — mirrors the dest panel's tab bar height for alignment
+  const inferTag = didInfer
+    ? `<span style="color:#8b949e;font-size:10px;margin-left:8px">⚙ inferred</span>`
+    : '';
+  const srcTabBar = `<div class="modal-panel-tabs">${{inferTag}}</div>`;
+
+  if (removedLines.length > 0) {{
+    srcBody = `${{srcTabBar}}<div class="diff-lines">${{
+      removedLines.map(l => `<div class="diff-line removed">${{esc(l)}}</div>`).join('')
+    }}</div>`;
   }} else {{
-    // Get all removed lines from the file for the collapsed fallback
+    // No lines found — show collapsed fallback
     const allRemoved = extractSectionLines(row.source_file, null, '-').lines;
     const allHtml = allRemoved.map(l => `<div class="diff-line removed">${{esc(l)}}</div>`).join('') || '<div class="modal-empty">No removed lines in file</div>';
-    srcBody = `<div class="modal-empty" style="color:#d29922;margin-bottom:8px">
-      ⚠️ Section header "<strong>${{esc(sectionName)}}</strong>" not found as a literal <code>#</code> header — this was a synthesized grouping name.
+    srcBody = `${{srcTabBar}}<div class="modal-empty" style="color:#d29922;margin-bottom:8px">
+      ⚠️ Section header "<strong>${{esc(sectionName)}}</strong>" not found — synthesized grouping name.
     </div>
     <details>
       <summary style="cursor:pointer;color:#58a6ff;font-size:12px;padding:4px 0">Show all ${{allRemoved.length}} removed lines from this file</summary>
@@ -767,14 +876,16 @@ function showSectionModal(idx) {{
   // Destination panel with Moved / New tabs
   const destName = destFile ? destFile.filename.split('/').pop() : destRaw;
   const destHdr = `Added to destination — <span style="color:#e6edf3;font-family:monospace;font-size:11px">${{esc(destName)}}</span>`;
-  const initLines = moved.length ? moved : newContent;
-  const initCls   = moved.length ? 'added' : 'new-content';
-  const destBody = initLines.map(l => `<div class="diff-line ${{initCls}}">${{esc(l)}}</div>`).join('') || '<div class="modal-empty">No lines</div>';
+  const activeInit = moved.length ? 'moved' : _modalCrossLines.length ? 'cross' : 'new';
+  const initSet = new Set(activeInit === 'moved' ? moved : activeInit === 'cross' ? _modalCrossLines : _modalNewLines);
+  const initCls = activeInit === 'moved' ? 'added' : activeInit === 'cross' ? 'cross-moved' : 'new-content';
+  const destBody = renderDestGroups(_modalDestGroups, initSet, initCls);
   const destPanel = `<div>
     <div class="modal-panel-hdr">${{destHdr}}</div>
     <div class="modal-panel-tabs">
-      <button class="mpanel-tab${{moved.length ? ' active' : ''}}" onclick="switchDestTab('moved',this)">↔ Moved (${{moved.length}})</button>
-      <button class="mpanel-tab new-tab${{!moved.length ? ' active' : ''}}" onclick="switchDestTab('new',this)">✦ New (${{newContent.length}})</button>
+      <button class="mpanel-tab${{activeInit==='moved'?' active':''}}" onclick="switchDestTab('moved',this)">↔ Moved (${{moved.length}})</button>
+      <button class="mpanel-tab cross-tab${{activeInit==='cross'?' active':''}}" onclick="switchDestTab('cross',this)">↗ Cross (${{_modalCrossLines.length}})</button>
+      <button class="mpanel-tab new-tab${{activeInit==='new'?' active':''}}" onclick="switchDestTab('new',this)">✦ New (${{_modalNewLines.length}})</button>
     </div>
     <div class="diff-lines" id="modal-dest-lines">${{destBody}}</div>
   </div>`;
@@ -825,12 +936,16 @@ function renderNarrative() {{
 
   if (!NARRATIVE.length) {{
     el.innerHTML = '<div class="empty">No sweep breadcrumb data found.<br>Breadcrumb tables are written to each swept Calendar note.</div>';
+    showTab('diff');
     return;
   }}
 
-  const rows = activeDomain === 'all'
+  const isSepRow = r => /^-+$/.test((r.section || '').trim()) || /^-+$/.test((r.destination || '').trim());
+
+  const rows = (activeDomain === 'all'
     ? NARRATIVE
-    : NARRATIVE.filter(r => inferDomain(r.destination) === activeDomain);
+    : NARRATIVE.filter(r => inferDomain(r.destination) === activeDomain)
+  ).filter(r => !isSepRow(r));
 
   if (!rows.length) {{
     el.innerHTML = '<div class="empty">No sections match the selected domain filter.</div>';
@@ -937,9 +1052,19 @@ function parseDiff(text) {{
       let p = l.slice(4).trim();
       if (p.startsWith('"') && p.endsWith('"')) p = p.slice(1, -1);
       if (p.startsWith('b/')) cur.filename = p.slice(2);
+      // else: deleted file (+++ /dev/null) — keep filename from --- line set below
       continue;
     }}
-    if (l.startsWith('--- ') || l.startsWith('index ') || l.startsWith('new file') || l.startsWith('deleted file') || l.startsWith('old mode') || l.startsWith('new mode')) continue;
+    if (l.startsWith('--- ')) {{
+      // Fallback filename source for deleted files (--- a/path, +++ /dev/null)
+      if (!cur.filename) {{
+        let p = l.slice(4).trim();
+        if (p.startsWith('"') && p.endsWith('"')) p = p.slice(1, -1);
+        if (p.startsWith('a/')) cur.filename = p.slice(2);
+      }}
+      continue;
+    }}
+    if (l.startsWith('index ') || l.startsWith('new file') || l.startsWith('deleted file') || l.startsWith('old mode') || l.startsWith('new mode')) continue;
     if (l.startsWith('@@')) {{
       const m = l.match(/@@ -(\\d+)(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/);
       if (m) {{ leftN = parseInt(m[1]); rightN = parseInt(m[2]); }}
@@ -966,7 +1091,23 @@ function esc(s) {{
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }}
 
-function renderHunk(hunk) {{
+// Build map: normLine(content) → [destFilename, ...]  (all + lines across all files)
+function buildMoveMap(files) {{
+  const map = new Map();
+  for (const f of files) {{
+    for (const hunk of f.hunks) {{
+      for (const r of hunk.right) {{
+        const n = normLine(r.c);
+        if (n.length < 6) continue;
+        if (!map.has(n)) map.set(n, []);
+        map.get(n).push(f.filename);
+      }}
+    }}
+  }}
+  return map;
+}}
+
+function renderHunk(hunk, srcFilename, moveMap) {{
   const llen = hunk.left.length, rlen = hunk.right.length;
   const total = Math.max(llen, rlen);
   let leftRows = '', rightRows = '';
@@ -977,7 +1118,24 @@ function renderHunk(hunk) {{
     const isCtx = l && r && l.c === r.c;
     const lCls = isCtx ? 'ctx' : (l ? 'del' : 'ctx');
     const rCls = isCtx ? 'ctx' : (r ? 'add' : 'ctx');
-    leftRows  += `<div class="row ${{lCls}}"><span class="ln">${{l ? l.n : ''}}</span><span class="lc">${{l ? esc(l.c) : ''}}</span></div>`;
+
+    let annotation = '';
+    if (!isCtx && l && lCls === 'del' && moveMap) {{
+      const n = normLine(l.c);
+      if (n.length >= 6) {{
+        const dests = (moveMap.get(n) || []).filter(f => f !== srcFilename);
+        if (dests.length > 0) {{
+          const stem = dests[0].split('/').pop().replace(/\\.md$/, '');
+          const cb = 'noteplan://x-callback-url/openNote?noteTitle=' + encodeURIComponent(stem);
+          const label = stem.replace(/^\\S+\\s*/, '').slice(0, 28) || stem.slice(0, 28);
+          annotation = `<a href="${{cb}}" class="move-badge" title="Moved to ${{esc(stem)}}">→ ${{esc(label)}}</a>`;
+        }} else {{
+          annotation = `<span class="lost-badge">✗ lost</span>`;
+        }}
+      }}
+    }}
+
+    leftRows  += `<div class="row ${{lCls}}" style="align-items:center"><span class="ln">${{l ? l.n : ''}}</span><span class="lc">${{l ? esc(l.c) : ''}}</span>${{annotation}}</div>`;
     rightRows += `<div class="row ${{rCls}}"><span class="ln">${{r ? r.n : ''}}</span><span class="lc">${{r ? esc(r.c) : ''}}</span></div>`;
   }}
 
@@ -1012,10 +1170,12 @@ function renderDiffFiles(files) {{
     return `<div class="fi" id="nav-${{fi}}" onclick="scrollToFile(${{fi}});setActive(${{fi}})">${{badge}}<span class="name" title="${{esc(f.filename || '')}}">${{esc(name)}}</span></div>`;
   }}).join('');
 
+  const moveMap = buildMoveMap(files);
+
   diff.innerHTML = files.map((f, fi) => {{
     const adds = f.hunks.reduce((s, h) => s + h.right.length, 0);
     const dels = f.hunks.reduce((s, h) => s + h.left.length, 0);
-    const hunksHtml = f.hunks.map(renderHunk).join('');
+    const hunksHtml = f.hunks.map(h => renderHunk(h, f.filename, moveMap)).join('');
     const displayName = f.filename || '(unknown file)';
     return `<div class="fd" id="file-${{fi}}">
       <div class="fdh">
@@ -1074,6 +1234,38 @@ window.addEventListener('DOMContentLoaded', () => {{
 
 
 # ---------------------------------------------------------------------------
+# HTML data extraction helpers (module-level for testability)
+# ---------------------------------------------------------------------------
+
+def _extract_js_str(html: str, var: str) -> str:
+    """Extract a JSON string value assigned to `var` in the snapshot HTML."""
+    marker = f'const {var} = '
+    idx = html.find(marker)
+    if idx == -1:
+        return ""
+    start = idx + len(marker)
+    try:
+        value, _ = json.JSONDecoder().raw_decode(html, start)
+        return value if isinstance(value, str) else ""
+    except Exception:
+        return ""
+
+
+def _extract_js_val(html: str, var: str) -> object:
+    """Extract a JSON array/object value assigned to `var` in the snapshot HTML."""
+    marker = f'const {var} = '
+    idx = html.find(marker)
+    if idx == -1:
+        return []
+    start = idx + len(marker)
+    try:
+        value, _ = json.JSONDecoder().raw_decode(html, start)
+        return value if isinstance(value, (list, dict)) else []
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
 # sweep-review-compile
 # ---------------------------------------------------------------------------
 
@@ -1110,17 +1302,6 @@ def cmd_sweep_review_compile(args):
         except Exception:
             pass
 
-    if not all_comments and not comment_rounds:
-        # Just copy snapshot as review
-        import shutil
-        review_path = sweeps / f"{run_id}.review.html"
-        if utils.DRY_RUN:
-            utils.log(f"[dry-run] Would copy {snapshot_path} → {review_path}")
-            return
-        shutil.copy2(str(snapshot_path), str(review_path))
-        utils.log(f"sweep-review-compile: wrote {review_path} (no comments)")
-        return
-
     # Deduplicate: latest entry per anchor wins
     by_anchor: dict = {}
     for entry in all_comments:
@@ -1130,26 +1311,32 @@ def cmd_sweep_review_compile(args):
 
     merged_comments = list(by_anchor.values())
 
-    # Re-generate review.html by injecting comments into snapshot
-    # Read snapshot to extract embedded DIFF_TEXT and RUN_ID
+    # Always rebuild review.html from current source code, extracting embedded data
+    # from the snapshot. This ensures latest JS/CSS + decoded emoji paths.
     snapshot_html = snapshot_path.read_text(encoding="utf-8")
 
-    # Patch the SEED_COMMENTS constant in the HTML
-    seed_json = json.dumps(merged_comments, indent=2)
-    new_html = re.sub(
-        r'const SEED_COMMENTS = \[.*?\];',
-        f'const SEED_COMMENTS = {seed_json};',
-        snapshot_html,
-        flags=re.DOTALL
-    )
+    diff_text = _extract_js_str(snapshot_html, "DIFF_TEXT")
+    stat_text = _extract_js_str(snapshot_html, "STAT_TEXT")
+    narrative = _extract_js_val(snapshot_html, "NARRATIVE")
+    changed_cal = _extract_js_val(snapshot_html, "CHANGED_CALENDAR_FILES")
+
+    # Re-apply path decoding to fix old snapshots that stored octal-quoted paths
+    diff_text = _decode_git_quoted_paths(diff_text)
+    stat_text = _decode_git_quoted_paths(stat_text)
+
+    # Extract sha from header span in snapshot
+    sha_m = re.search(r'sha: ([0-9a-f]{7,40})', snapshot_html)
+    sha = sha_m.group(1) if sha_m else run_id
 
     review_path = sweeps / f"{run_id}.review.html"
     if utils.DRY_RUN:
-        utils.log(f"[dry-run] Would write {review_path} with {len(merged_comments)} merged comment(s)")
+        utils.log(f"[dry-run] Would write {review_path} with {len(merged_comments)} comment(s)")
         return
 
+    new_html = _build_snapshot_html(run_id, date_str, sha, stat_text, diff_text, merged_comments, narrative, changed_cal)
     review_path.write_text(new_html, encoding="utf-8")
-    utils.log(f"sweep-review-compile: wrote {review_path} ({len(merged_comments)} comment(s) from {len(comment_rounds)} round(s))")
+    cmt_note = f"{len(merged_comments)} comment(s) from {len(comment_rounds)} round(s)" if merged_comments else "no comments"
+    utils.log(f"sweep-review-compile: wrote {review_path} ({cmt_note})")
 
 
 # ---------------------------------------------------------------------------

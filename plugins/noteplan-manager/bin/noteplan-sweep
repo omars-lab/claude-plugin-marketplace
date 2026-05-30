@@ -380,11 +380,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--top-k", type=int, default=10, dest="top_k")
 
     # ── Group 13: Sweep Review ────────────────────────────────────────────
-    p = sub.add_parser("sweep-commit", help=COMMANDS[56][1])
-    p.add_argument("--dry-run", action="store_true", help="Print what would be committed without writing")
-
-    p = sub.add_parser("sweep-start", help=COMMANDS[57][1])
+    p = sub.add_parser("sweep-start", help=COMMANDS[56][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
+
+    p = sub.add_parser("sweep-commit", help=COMMANDS[57][1])
+    p.add_argument("--dry-run", action="store_true", help="Print what would be committed without writing")
 
     p = sub.add_parser("sweep-review-generate", help=COMMANDS[58][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
@@ -393,18 +393,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-carry-comments", action="store_true",
                    help="Start fresh — do not inject existing comments into new snapshot")
 
-    p = sub.add_parser("sweep-review-compile", help=COMMANDS[58][1])
+    p = sub.add_parser("sweep-review-compile", help=COMMANDS[59][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-squash", help=COMMANDS[59][1])
+    p = sub.add_parser("sweep-review-squash", help=COMMANDS[60][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
-    p = sub.add_parser("sweep-review-list", help=COMMANDS[60][1])
+    p = sub.add_parser("sweep-review-list", help=COMMANDS[61][1])
     p.add_argument("--date", help="Filter to a specific YYYY-MM-DD")
 
-    p = sub.add_parser("sweep-review-open", help=COMMANDS[61][1])
+    p = sub.add_parser("sweep-review-open", help=COMMANDS[62][1])
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
     p.add_argument("--snapshot", action="store_true", help="Open raw snapshot instead of compiled review")
