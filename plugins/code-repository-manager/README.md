@@ -14,6 +14,7 @@ Manage code repository documentation — publish co-design docs to GitHub Wiki a
 |---|---|---|
 | **Intro** | `introduce` | Explain plugin capabilities and guide to the right skill |
 | **Publish** | `update-docs` | Sync co-design documents to GitHub Wiki and GitHub Pages, rebuild navigation, commit and push |
+| **Heal** | `fix-doc-links` | Repair broken links, sidebar/category files, and link rot in a markdown docs site; convert Figma share URLs to embeds |
 
 ## Requirements
 

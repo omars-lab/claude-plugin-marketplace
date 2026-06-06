@@ -16,6 +16,7 @@ Covers the full architecture lifecycle — from evaluating options when nothing 
 | **Design** | `design-architecture` | Evaluate options for unknown architecture — pros/cons, cost analysis, comparison matrix, recommendation |
 | **Capture** | `generate-erd` | Generate ERDs from schemas, data models, or live ServiceNow tables |
 | **Capture** | `generate-diagram` | Generate any PlantUML diagram: sequence, C4, component, deployment |
+| **Capture** | `analyze-sql` | Analyze a SQL query / data model into documentation plus a rendered PlantUML data-flow diagram |
 | **Capture** | `capture-architecture` | Create ADRs and architecture overview documents |
 | **Iterate** | `iterate-architecture` | Act on feedback — update diagrams, supersede ADRs, trace what changed and why |
 | **Reverse** | `reverse-engineer` | Reverse engineer a codebase, wiki, or docs into Mermaid architecture diagrams |

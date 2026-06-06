@@ -597,6 +597,10 @@ A well-generated Makefile should:
 
 Remember: **The Makefile is executable documentation**. It should be as clear and helpful as written docs, but with the power to actually perform actions.
 
+## Git Submodules
+
+If the repo vendors another repo as a git submodule (e.g. a shared `prompts/`, `docs/`, or `lib/`), add submodule-management targets too. See [../guides/git-submodules.md](../guides/git-submodules.md) for the ready-to-use target set (`update-<sub>`, `fix-submodule-detached-head`, `commit-submodule-updates`, `push-with-submodules`, `enable-submodule-status`, `enable-recursive-push`), the problems they solve, and the full update workflow. Remember to add each new target to `.PHONY`.
+
 ## Task Management
 
 Use `TaskCreate` and `TaskUpdate` to track progress across the generation workflow.

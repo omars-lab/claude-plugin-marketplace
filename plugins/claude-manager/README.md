@@ -21,6 +21,9 @@ Meta-plugin for managing Claude Code plugins, skills, and CLAUDE.md files across
 | **Skill** | `skill-create` | Create new skills in any plugin with mandatory patterns |
 | | `skill-update` | Navigate to and safely edit existing skills |
 | **Setup** | `claude-md-setup` | Generate comprehensive CLAUDE.md project instruction files |
+| **Metrics** | `inject-prompt-metrics` | Inject a standardized metrics-collection section (JSON-LD: time saved, efficiency, quality) into a prompt or SKILL.md |
+
+> Note: skill names above are the historical categories; the current entry points are the `manage-plugins`, `manage-skills`, `manage-claude-config`, and `inject-prompt-metrics` orchestrators (run `/claude-manager:introduce` for the live list).
 
 ## Framework Standards
 

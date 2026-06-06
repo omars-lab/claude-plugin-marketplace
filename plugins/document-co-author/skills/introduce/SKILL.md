@@ -23,8 +23,12 @@ output.pptx          ← always regenerated from spec
 
 To change a slide title, swap a bullet, or add a new slide — Claude edits the YAML, re-runs the renderer. No code changes. No hunting.
 
-The plugin currently has one skill:
+The plugin's skills:
 - **build-powerpoint** — build a branded PowerPoint from a content spec, using a corporate `.pptx` template for fonts, colors, and slide layouts
+- **import-structured-doc** — import a loose source doc into a structured target template (consistent sections, frontmatter, backlinks, tag taxonomy)
+- **manage-ai-metadata** — make markdown docs self-healing: inject AI-readable update instructions, then discover and execute them to keep content current
+
+It also ships an authoring reference: [guides/blog-post-structure.md](../../guides/blog-post-structure.md) — a reusable structure for turning a technical artifact into an engaging, scannable blog/doc post.
 
 ## How to Introduce Yourself
 
@@ -59,6 +63,9 @@ What would you like to do?
 | Update a slide in an existing deck | build-powerpoint | `/document-co-author:build-powerpoint` |
 | Add a new slide to an existing deck | build-powerpoint | `/document-co-author:build-powerpoint` |
 | Change bullet text or table content | build-powerpoint | `/document-co-author:build-powerpoint` |
+| Restructure loose notes into a templated doc | import-structured-doc | `/document-co-author:import-structured-doc` |
+| Make a doc auto-update its stats/lists | manage-ai-metadata | `/document-co-author:manage-ai-metadata` |
+| Refresh docs that already carry AI metadata | manage-ai-metadata | `/document-co-author:manage-ai-metadata` |
 
 ## When to Use This Plugin vs Others
 

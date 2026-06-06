@@ -252,6 +252,50 @@ Mark Phase 3 task as `completed`.
 5. **Include a `title`.** Every diagram should declare what it shows.
 6. **Save .puml alongside the image.** The source enables future updates without redrawing from scratch.
 
+## AWS Icons (cloud architecture diagrams)
+
+When a diagram needs official AWS service icons:
+
+1. **Define the icon set** with the correct base URL and pin a version:
+   ```plantuml
+   !define AWSPuml https://raw.githubusercontent.com/awslabs/aws-icons-for-plantuml/v20.0/dist
+   !include AWSPuml/AWSCommon.puml
+   !include AWSPuml/NetworkingContentDelivery/APIGateway.puml
+   ```
+2. **Use `!include`, not `!includeurl`** for AWS icons.
+3. **Verify icon paths** — services live under category folders, and the path often differs from the service name. Common corrections:
+   - `SimpleStorageServiceS3.puml` → `AWSPuml/Storage/SimpleStorageService.puml`
+   - `ArtificialIntelligence/SageMaker.puml` → `AWSPuml/Analytics/SageMaker.puml`
+   - `ApplicationIntegration/APIGateway.puml` → `AWSPuml/NetworkingContentDelivery/APIGateway.puml`
+
+**Iterative debugging when icons fail** (`"Cannot open URL"` in the rendered SVG):
+1. Read the rendered SVG/error to find which `!include` failed.
+2. Look up the correct category path for that service.
+3. Fix the include, re-render, and confirm the SVG contains a real diagram (not an error message).
+
+## Embedding in docs (MDX / Markdown)
+
+When the diagram goes into a docs site, render once and embed the image, keeping the source available:
+
+1. **Save the rendered SVG** into the docs site's static/assets directory (discover it from the repo — e.g. a `static/img/` or `assets/` folder — do not assume an absolute path).
+2. **Reference it** by the site's public path (e.g. `/img/<name>.svg`).
+3. **For MDX docs, use a tabbed block** so readers can see the rendered diagram and the source:
+   ```mdx
+   <Tabs>
+   <TabItem value="svg" label="Rendered Diagram" default>
+   ![Diagram Name](/img/diagram-name.svg)
+   </TabItem>
+   <TabItem value="plantuml" label="PlantUML Code">
+   ```plantuml
+   @startuml
+   ... diagram source ...
+   @enduml
+   ```
+   </TabItem>
+   </Tabs>
+   ```
+4. **Verify** the page renders the image (not a broken link or an error SVG).
+
 ## Common Mistakes to Avoid
 
 1. **Don't cram everything into one diagram.** A diagram that shows everything explains nothing. Create multiple focused diagrams.

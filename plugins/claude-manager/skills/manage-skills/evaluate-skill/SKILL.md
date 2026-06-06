@@ -144,6 +144,10 @@ For each approved skill, implement the missing dimensions:
 
 Use Edit tool for all changes (targeted edits, not full rewrites).
 
+## Optional: Maturity Pass
+
+The 9-dimension score measures *structural* quality. For a deeper, qualitative read — is the skill self-healing, metrics-driven, improving over time? — offer an optional maturity assessment using [guides/maturity-dimensions.md](guides/maturity-dimensions.md). It yields a maturity level (Experimental → Developing → Mature → Production) to report alongside the scorecard. If a skill should emit metrics, route to `claude-manager:inject-prompt-metrics`; for plugin-level maturity improvements, route to `suggest-plugin-maturity`.
+
 ## What This Skill Does NOT Do
 
 - Does NOT check plugin infrastructure (version tracking, marketplace registration, introduce skill existence) — use `evaluate-plugin`

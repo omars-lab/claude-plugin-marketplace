@@ -100,6 +100,16 @@ Reorganize a document (or set of related documents) under key-question headers â
 - Notes from multiple related sources need merging into one navigable document
 - Existing section headers are topic-based ("Authentication") and you want question-based ("How does authentication work?")
 
+### meta-content-organizer
+
+**Usage:** `/knowledge-manager:meta-content-organizer`
+
+Meta-prompt generator: analyzes a target directory (structure, existing templates, naming patterns) and generates a custom, self-healing content-organizer prompt tailored to that directory.
+
+**Use when:**
+- You want a reusable organization prompt purpose-built for one folder (a notes vault, a research archive, a projects directory)
+- A generic organizer isn't aware of the directory's templates and conventions
+
 ## Common Workflows
 
 ### Full extraction workflow
