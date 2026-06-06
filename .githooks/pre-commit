@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
-# Run plugin tests when plugin source files are staged.
+# Secret scan + run plugin tests when plugin source files are staged.
 set -euo pipefail
+
+# === Secret scan (staged) ===
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo ""
+  echo "ERROR: gitleaks is not installed. Install with: brew install gitleaks"
+  echo "Commits are blocked until gitleaks is available (prevents committing secrets)."
+  exit 1
+fi
+echo "Scanning staged changes for secrets..."
+gitleaks protect --staged --redact --verbose
 
 STAGED=$(git diff --cached --name-only)
 

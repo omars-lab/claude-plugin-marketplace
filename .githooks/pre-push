@@ -1,0 +1,42 @@
+#!/bin/sh
+# === Protected-remote guard ===
+# This repo reaches its public GitHub mirror only via `make sync-remote`
+# (author-rewriting, content-checked). Block accidental DIRECT pushes to it,
+# but allow the sanctioned sync, which pushes from the internal __github_sync branch.
+PROTECTED_REMOTE="github"
+SYNC_BRANCH="__github_sync"
+REMOTE_NAME="$1"
+
+if [ "$REMOTE_NAME" = "$PROTECTED_REMOTE" ]; then
+    # stdin: <local_ref> <local_sha> <remote_ref> <remote_sha>
+    while read local_ref local_sha remote_ref remote_sha; do
+        case "$local_ref" in
+            *"$SYNC_BRANCH")
+                : ;;  # sanctioned sync push — allow
+            *)
+                echo ""
+                echo "ERROR: Direct push of '$local_ref' to '$PROTECTED_REMOTE' is blocked."
+                echo "This remote is a PUBLIC mirror — push via the sanitizing sync instead:"
+                echo "    make sync-remote        # author-rewriting path"
+                echo ""
+                echo "(To deliberately bypass: git push --no-verify — and be sure why.)"
+                exit 1 ;;
+        esac
+    done
+fi
+
+# === Secret scan ===
+if ! command -v gitleaks >/dev/null 2>&1; then
+    echo ""
+    echo "ERROR: gitleaks is not installed. Install with: brew install gitleaks"
+    echo "Pushes are blocked until gitleaks is available."
+    exit 1
+fi
+echo "Running full secret scan before push..."
+if ! gitleaks detect --source . --redact --verbose; then
+    echo ""
+    echo "ERROR: Secret scan failed. Push blocked."
+    exit 1
+fi
+
+exit 0

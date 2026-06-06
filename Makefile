@@ -1,4 +1,4 @@
-.PHONY: help test-all test-noteplan-manager test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register sync-remote
+.PHONY: help test-all test-noteplan-manager test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register sync-remote setup-hooks secret-scan secret-scan-staged
 
 # Colors for output
 GREEN := \033[0;32m
@@ -18,7 +18,16 @@ help: ## Show this help message
 
 setup-hooks: ## Point git at .githooks/ so checked-in hooks are active (run once per clone)
 	@git config core.hooksPath .githooks
-	@echo "$(GREEN)✓ git core.hooksPath → .githooks$(NC)"
+	@chmod +x .githooks/* 2>/dev/null || true
+	@echo "$(GREEN)✓ git core.hooksPath → .githooks (pre-commit + pre-push: secret scan)$(NC)"
+
+secret-scan: ## Scan the whole repo for leaked secrets (gitleaks)
+	@command -v gitleaks >/dev/null 2>&1 || { echo "$(RED)gitleaks not installed — brew install gitleaks$(NC)"; exit 1; }
+	gitleaks detect --source . --redact --verbose
+
+secret-scan-staged: ## Scan only staged changes for secrets (pre-commit style)
+	@command -v gitleaks >/dev/null 2>&1 || { echo "$(RED)gitleaks not installed — brew install gitleaks$(NC)"; exit 1; }
+	gitleaks protect --staged --redact --verbose
 
 validate: ## Validate marketplace.json structure
 	@./scripts/cli validate $(MARKETPLACE_NAME)

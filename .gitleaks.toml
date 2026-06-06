@@ -1,0 +1,19 @@
+# Gitleaks configuration for oeid-claude-plugin-marketplace.
+# Extends the built-in default ruleset, then allowlists known-safe
+# documentation examples (dummy secrets used to demonstrate scanning).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowlisted paths and example/test secrets used in docs"
+# Stripe test-mode keys (sk_test_…, pk_test_…) are not real credentials.
+regexes = [
+  '''sk_test_[A-Za-z0-9]+''',
+  '''pk_test_[A-Za-z0-9]+''',
+  '''TEST_SECRET=sk_test_[A-Za-z0-9]+''',
+]
+# The repo-security skill documents how secret scanning works and
+# intentionally contains dummy example tokens.
+paths = [
+  '''plugins/code-quality-manager/skills/manage-repo-security/.*''',
+]
