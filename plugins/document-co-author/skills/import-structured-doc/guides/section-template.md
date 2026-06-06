@@ -38,6 +38,24 @@ date: <today's date, e.g. 2026-06-05T10:00>
 - **Tags**: relate to the subject; align with the taxonomy root used in sections 7–8.
 - The exact field set, author id, and date format come from the user's configured convention.
 
+### Salvaging legacy / non-conforming frontmatter
+
+When the source **already carries a frontmatter block** (or several) from a previous tool or export, don't discard it — **repurpose** what you can into the target convention before filling gaps from the body. Map fields by meaning, not by name:
+
+| Source field (common) | Target field | Notes |
+|---|---|---|
+| `id` | `slug` | Clean up casing/spacing into a URL-safe slug. |
+| `summary` | `title` | Use as the title if no better subject is derivable. |
+| `yields`, `category`, `type` | `tags` | Fold into the tag list (dedup, align with the taxonomy root). |
+| `content` / body excerpt | `description` | Derive a one-line description if none exists. |
+| dates inside `jira` / `trello` / body | `date` | Use the earliest meaningful date; else today. |
+
+Rules:
+- **Consolidate multiple frontmatter blocks** into a single conforming block.
+- **Drop tool-specific keys** that carry no target meaning (e.g. `jira`, `trello`, `glue`, content hashes/`md5`) — but first lift any reusable value out of them (dates, links worth keeping as references).
+- **Preserve, don't invent**: only repurpose values actually present; fill remaining required fields from the body per the rules above.
+- If a non-standard key holds load-bearing content (e.g. a `priorities` list), move it into the appropriate body section rather than the frontmatter.
+
 ## 2. Diagram / Embed
 
 If the source contains a diagram/embed link (e.g. a board or design link), convert it to the collection's embed format. A common pattern for an embeddable iframe:

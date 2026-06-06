@@ -165,7 +165,7 @@
       "name": "document-co-author",
       "source": "./plugins/document-co-author",
       "description": "Build presentation decks and structured documents from content specs — separating content from rendering for prompt-driven iteration",
-      "version": "1.0.0",
+      "version": "1.2.1",
       "category": "productivity",
       "keywords": ["presentations", "powerpoint", "documents", "decks", "content", "co-author"]
     }
