@@ -39,6 +39,17 @@ validate_plugin() {
   local plugin_name
   plugin_name="$(basename "$plugin_dir")"
 
+  # Skip non-Claude-Code plugins (e.g. NotePlan app plugins) that live under
+  # plugins/ but are not Claude Code plugins. Heuristic: no .claude-plugin/ dir,
+  # but a root plugin.json carrying NotePlan markers (noteplan.* or plugin.script).
+  if [ ! -d "$plugin_dir/.claude-plugin" ] && [ -f "$plugin_dir/plugin.json" ]; then
+    if grep -qE '"(noteplan\.|plugin\.script)' "$plugin_dir/plugin.json" 2>/dev/null; then
+      echo -e "\n${BLUE}Validating ${plugin_name}...${NC}"
+      echo -e "  ${YELLOW}⊘${NC} skipping non-Claude-Code plugin (NotePlan app plugin)"
+      return 0
+    fi
+  fi
+
   echo -e "\n${BLUE}Validating ${plugin_name}...${NC}"
 
   # plugin.json exists and is valid JSON
@@ -128,6 +139,24 @@ validate_plugin() {
     check "Registered in marketplace.json" "pass"
   else
     check "NOT registered in marketplace.json" "fail"
+  fi
+
+  # marketplace.json version matches plugin.json version (drift guard)
+  if [ -f "$plugin_dir/.claude-plugin/plugin.json" ]; then
+    local pj_ver mj_ver
+    pj_ver=$(python3 -c "import json; print(json.load(open('$plugin_dir/.claude-plugin/plugin.json')).get('version',''))" 2>/dev/null || echo "")
+    mj_ver=$(python3 -c "
+import json
+data = json.load(open('$MARKETPLACE_JSON'))
+print(next((p.get('version','') for p in data['plugins'] if p.get('name')=='$plugin_name'), ''))
+" 2>/dev/null || echo "")
+    if [ -n "$pj_ver" ] && [ -n "$mj_ver" ]; then
+      if [ "$pj_ver" = "$mj_ver" ]; then
+        check "marketplace.json version matches plugin.json ($pj_ver)" "pass"
+      else
+        check "marketplace.json v$mj_ver != plugin.json v$pj_ver — run version sync" "fail"
+      fi
+    fi
   fi
 }
 
