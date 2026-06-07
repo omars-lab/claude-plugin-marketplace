@@ -1,7 +1,7 @@
 {
   "name": "document-co-author",
   "description": "Build presentation decks and structured documents from content specs \u2014 separating content from rendering for prompt-driven iteration",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "author": {
     "name": "Omar Eid",
     "email": "omar_eid21@yahoo.com"

@@ -11,6 +11,8 @@ This skill is template-driven. The **source directory**, the **target directory*
 
 The default 8-section template (Frontmatter, Diagram/Embed, Questions, Decision, Strategy, References, Kinds of Action Items, Specific Action Items) is an **example/default**, not law. Confirm or override it with the user before importing.
 
+For a different shape of job — authoring (or repairing) a **folder's README so it doubles as a navigation index** for that folder and its children, generated from a directory tree rather than a single loose note — use the alternative template in **`guides/readme-index-template.md`** (intent → sibling-distinction → "what you'll find here" → linked document/child-folder index, applied recursively down the tree).
+
 ## Task Management (MANDATORY)
 
 Create all 8 tasks with dependencies before doing any work. Run `TaskList()` afterward to show the workflow to the user.
@@ -184,7 +186,7 @@ AskUserQuestion({
 
 For each source, produce the structured output per the confirmed template: generate frontmatter, map content into the ordered sections, build the tag/hashtag taxonomy, and apply the naming convention. Preserve all original content.
 
-The default template, per-section extraction rules, the abstract/specific split, the hashtag rules, frontmatter shape, and naming conventions are detailed in **`guides/section-template.md`**. Read it before generating, and adapt it if the user supplied a custom template.
+The default template, per-section extraction rules, the abstract/specific split, the hashtag rules, frontmatter shape, and naming conventions are detailed in **`guides/section-template.md`**. Read it before generating, and adapt it if the user supplied a custom template. If the job is authoring a folder README as a navigation index, follow **`guides/readme-index-template.md`** instead.
 
 ### Phase 7 (Task #7) — Validate
 
