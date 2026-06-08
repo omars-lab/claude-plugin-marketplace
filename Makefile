@@ -1,4 +1,4 @@
-.PHONY: help test-all test-noteplan-manager test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register sync-remote setup-hooks secret-scan secret-scan-staged
+.PHONY: help test-all test-noteplan-manager test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins validate-governance list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register sync-remote setup-hooks secret-scan secret-scan-staged
 
 # Colors for output
 GREEN := \033[0;32m
@@ -41,6 +41,9 @@ validate-plugin: ## Validate a single plugin (PLUGIN=name)
 		exit 1; \
 	fi
 	@./scripts/validate-plugins.sh $(PLUGIN)
+
+validate-governance: ## Cross-repo: validate suggested-plugins manifests + hook engine (REPOS optional)
+	@./scripts/validate-governance.sh $(REPOS)
 
 list-plugins: ## List all plugins with status
 	@./scripts/cli plugins $(MARKETPLACE_NAME)
