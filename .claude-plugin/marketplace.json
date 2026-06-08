@@ -13,7 +13,7 @@
       "name": "discover-oeid-plugins",
       "source": "./plugins/discover-oeid-plugins",
       "description": "Discover available personal plugins and see what's installed",
-      "version": "1.0.3",
+      "version": "1.1.0",
       "category": "getting-started",
       "keywords": [
         "discover",
