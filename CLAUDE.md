@@ -100,6 +100,7 @@ plugins/<plugin-name>/
 | `suggest-` | `suggest-groupings` | Advisory output only |
 | `research-` | `research-claude-md` | Mines/synthesizes data |
 | `configure-` | `configure-statusline` | Wires configuration |
+| `monitor-` | `monitor-prices` | Watches something over time; snapshot → re-run → drift report |
 | `manage-` | `manage-skills` | Meta-skill orchestrator |
 | `introduce` | `introduce` | Every plugin's self-description |
 

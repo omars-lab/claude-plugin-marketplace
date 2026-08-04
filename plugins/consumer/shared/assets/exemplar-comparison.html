@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exemplar — decision artifact (synthetic data)</title>
+<style>
+  :root{
+    --vellum:#DDE1D8; --panel:#E7EAE2; --panel2:#D3D8CD;
+    --ink:#191E1B; --ink70:#4A524C; --ink45:#767D74; --rule:#A8AEA2;
+    --c1:#A8352B; --c2:#2E4C7A; --c3:#2C6249; --c4:#9A6B12; --c5:#6B4A8A;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--vellum);color:var(--ink);font-family:var(--sans);
+       -webkit-font-smoothing:antialiased}
+  header{border-bottom:2px solid var(--ink);padding:18px 20px 15px}
+  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--ink45)}
+  h1{font-family:var(--mono);font-size:22px;font-weight:600;letter-spacing:-.01em;
+     margin:8px 0 10px;line-height:1.2}
+  .lede{font-size:13px;line-height:1.55;color:var(--ink70);max-width:640px}
+  main{padding:18px 20px 30px}
+  h2{font-family:var(--mono);font-size:16px;font-weight:600;margin:26px 0 4px}
+  h2:first-child{margin-top:0}
+  .sub{font-size:13px;color:var(--ink70);margin:0 0 14px;max-width:640px;line-height:1.5}
+  h3{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.14em;
+     text-transform:uppercase;color:var(--ink45);margin:20px 0 8px}
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--rule)}
+  table{border-collapse:collapse;width:100%;min-width:600px;background:var(--vellum)}
+  th,td{text-align:left;padding:7px 10px;font-size:12.5px;border-bottom:1px solid var(--rule);
+        vertical-align:top;line-height:1.45}
+  thead th{font-family:var(--mono);font-size:11px;background:var(--panel);
+           border-bottom:1.5px solid var(--ink);white-space:nowrap}
+  tbody th{font-weight:500;color:var(--ink70);background:var(--panel);
+           font-family:var(--mono);font-size:11px}
+  tr:last-child td,tr:last-child th{border-bottom:none}
+  td.n{font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+  tr.total th,tr.total td{border-top:1.5px solid var(--ink);background:var(--panel);
+                          font-family:var(--mono);font-weight:600}
+  .g{font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--ink45);
+     margin-left:5px;vertical-align:2px}
+  .g.D{color:var(--c1)}
+  .win{color:var(--c3);font-weight:600}
+  .lose{color:var(--c1)}
+  .warn{color:var(--c4)}
+  .callout{border-left:3px solid var(--c2);padding:10px 0 10px 13px;margin:14px 0 0;max-width:670px}
+  .callout .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--c2);
+                margin-bottom:5px}
+  .callout p{font-size:13px;line-height:1.55;color:var(--ink70);margin:0 0 8px}
+  .callout p:last-child{margin-bottom:0}
+  .callout.red{border-left-color:var(--c1)} .callout.red .lbl{color:var(--c1)}
+  /* auto-fit, so an odd candidate count never leaves a dead grey cell */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:1px;
+         background:var(--rule);border:1px solid var(--rule);margin-top:6px}
+  .card{background:var(--vellum);padding:14px 15px 16px}
+  .card h4{font-family:var(--mono);font-size:13px;margin:0 0 2px}
+  .card .price{font-family:var(--mono);font-size:11px;color:var(--ink45);margin-bottom:10px}
+  .card ul{margin:0 0 9px;padding-left:16px;font-size:12.5px;line-height:1.55;color:var(--ink70)}
+  .card li{margin-bottom:5px}
+  .card .hd{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--ink45);
+            margin-bottom:4px}
+  .bars{margin-top:6px}
+  .bar{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+  .bar .nm{font-family:var(--mono);font-size:11px;width:130px;flex:none}
+  .bar .track{flex:1;height:15px;background:var(--panel2);min-width:60px}
+  .bar .fill{height:100%;display:block}
+  .bar .val{font-family:var(--mono);font-size:11px;width:60px;flex:none;text-align:right}
+  .keys{display:flex;flex-wrap:wrap;gap:8px 18px;padding:9px 0 2px}
+  .key{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink70)}
+  .key .sw{width:22px;height:0;flex:none}
+  .stat{font-family:var(--mono);font-size:11px;color:var(--ink70);padding:8px 0 0}
+  a{color:var(--c2)}
+  a:hover{color:var(--ink)}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--c2);outline-offset:2px}
+  .lnk{display:block;border:1px solid var(--rule);background:var(--panel);padding:9px 12px;
+       margin-bottom:7px;text-decoration:none;color:var(--ink)}
+  .lnk:hover{background:var(--vellum)}
+  .lnk .t{font-family:var(--mono);font-size:12px;font-weight:600;display:block}
+  .lnk .d{font-size:11.5px;color:var(--ink70);display:block;margin-top:2px;line-height:1.45}
+  .lnk .u{font-family:var(--mono);font-size:9.5px;color:var(--ink45);display:block;margin-top:3px;
+          word-break:break-all}
+  footer{border-top:2px solid var(--ink);padding:14px 20px 26px;font-size:12px;color:var(--ink70);
+         line-height:1.55}
+  footer .eyebrow{margin-bottom:6px}
+  @media (max-width:700px){
+    .cards{grid-template-columns:1fr}
+    h1{font-size:19px}
+    .bar .nm{width:100px;font-size:10px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">EXEMPLAR &middot; SYNTHETIC DATA &middot; METHOD ILLUSTRATION</div>
+  <h1>Benchtop cutter &mdash; the call</h1>
+  <div class="lede">
+    Every name, price and score on this page is invented. It exists to show what a decision artifact
+    has to carry: kill switches above the matrix, an evidence grade in every cell, sold and asking
+    kept apart, and a sample too thin for a confident band saying so on its face.
+  </div>
+</header>
+
+<main id="body"></main>
+
+<footer>
+  <div class="eyebrow">COLLECTED 2026-08-04 &middot; SYNTHETIC</div>
+  Re-research before reusing anything here. Prices and lineups rot in weeks, and used-market sold
+  data typically reaches back only about 90 days.
+</footer>
+
+<script>
+/* ---------- data ---------------------------------------------------------- */
+
+var COLLECTED = "2026-08-04";
+
+var CANDIDATES = [
+  { key:"meridian", name:"Meridian M3",  price:1450, color:"#2E4C7A",
+    tag:"The safe one",
+    pros:[
+      "Published spare-parts commitment through 2031, with the wear parts in stock at two retailers — a spindle failure is a $180 part and a week, not a hunt.",
+      "Measured 0.08 mm repeatability across four positions on the bed, holding after an 8-hour run."
+    ],
+    cons:[
+      "Slowest of the three on the same file — about 40 minutes against 26, so iterating on a design costs you roughly 90 extra minutes a week at five revisions.",
+      "The enclosure is an $220 accessory, not included, and the material you named needs one."
+    ] },
+  { key:"corvid",   name:"Corvid 240",   price:1199, color:"#2C6249",
+    tag:"The value one",
+    pros:[
+      "Cheapest on the board and the only one that ships with extraction ducting, saving roughly $150 and an afternoon.",
+      "Open toolchain — standard post-processor, so your existing CAM setup works unchanged."
+    ],
+    cons:[
+      "Released four months ago. No long-term reliability record exists yet; that is a statement about the evidence, not about the machine.",
+      "Consumable head is a sealed assembly at $240 rather than a $30 replaceable tip. Budget two a year at your duty cycle — $480/yr, more than the price gap to the M3."
+    ] },
+  { key:"atlas",    name:"Atlas Pro X",  price:2050, color:"#A8352B",
+    tag:"The capability one",
+    pros:[
+      "Largest envelope by a wide margin and the only one that clears the oversized part you described.",
+      "Rigid frame; the one review that measured under load found no deflection at full feed."
+    ],
+    cons:[
+      "Requires a 240V circuit. If you do not already have one in that space, add $600–900 for an electrician before it runs at all.",
+      "Proprietary CAM with no published post-processor. Your existing toolchain does not carry over."
+    ] }
+];
+
+/* One candidate is disqualified outright. It never gets scored. */
+var KILLED = [
+  { name:"Larkspur 120",
+    reason:"Work envelope is 190 mm on the long axis. The largest part you named is 260 mm. " +
+           "No fixturing or two-pass workaround makes a single-piece 260 mm part fit." }
+];
+
+/* score 1-5, grade A/B/C/D. Grades are shown in-cell, deliberately. */
+var CRITERIA = [
+  { name:"Work envelope",          weight:16, s:{meridian:[3,"A"], corvid:[3,"A"], atlas:[5,"A"]} },
+  { name:"Accuracy under load",    weight:18, s:{meridian:[5,"A"], corvid:[3,"C"], atlas:[4,"B"]} },
+  { name:"Material range",         weight:12, s:{meridian:[4,"A"], corvid:[3,"B"], atlas:[5,"A"]} },
+  { name:"Extraction / safety",    weight:10, s:{meridian:[3,"B"], corvid:[4,"A"], atlas:[4,"B"]} },
+  { name:"Toolchain openness",     weight:12, s:{meridian:[4,"A"], corvid:[5,"A"], atlas:[1,"A"]} },
+  { name:"Consumable cost / hr",   weight:12, s:{meridian:[4,"A"], corvid:[2,"A"], atlas:[3,"C"]} },
+  { name:"Parts & service horizon",weight:10, s:{meridian:[5,"A"], corvid:[2,"D"], atlas:[3,"D"]} },
+  { name:"Platform risk",          weight:10, s:{meridian:[4,"B"], corvid:[3,"D"], atlas:[2,"C"]} }
+];
+
+var TCO = [
+  { key:"meridian", label:"Meridian M3", total:2890 },
+  { key:"corvid",   label:"Corvid 240",  total:3315 },
+  { key:"atlas",    label:"Atlas Pro X", total:4260 }
+];
+
+/* Used-market read on the M3. n=5 sold -- too thin for a band, and it says so. */
+var MARKET = {
+  item:"Meridian M3 (used)",
+  newEquivalent:1450,
+  listings:[
+    { price:1180, status:"sold",   condition:"fair",      location:"Portland, OR", url:"https://example.invalid/l/1", title:"M3, runs, some cosmetic wear" },
+    { price:1250, status:"sold",   condition:"good",      location:"Reno, NV",     url:"https://example.invalid/l/2", title:"Meridian M3 + spare collets" },
+    { price:1310, status:"sold",   condition:"good",      location:"Boise, ID",    url:"https://example.invalid/l/3", title:"M3 with 240h on the counter" },
+    { price:1400, status:"sold",   condition:"excellent", location:"Seattle, WA",  url:"https://example.invalid/l/4", title:"M3, lightly used, boxed" },
+    { price:1520, status:"sold",   condition:"like_new",  location:"Tacoma, WA",   url:"https://example.invalid/l/5", title:"M3 like new, all accessories" },
+    { price:1900, status:"asking", condition:"good",      location:"Eugene, OR",   url:"https://example.invalid/l/6", title:"M3 — originally $2,400 new, firm" },
+    { price:2100, status:"asking", condition:"good",      location:"Salem, OR",    url:"https://example.invalid/l/7", title:"M3, barely used, climate controlled" },
+    { price:2250, status:"asking", condition:"excellent", location:"Bend, OR",     url:"https://example.invalid/l/8", title:"M3 bundle with tooling" },
+    { price:2400, status:"asking", condition:"good",      location:"Spokane, WA",  url:"https://example.invalid/l/9", title:"Serious buyers only, first come" }
+  ]
+};
+
+var SOURCES = [
+  { t:"eBay — sold & completed",  d:"The closest thing to a price index. Roughly a 90-day window.",
+    u:"https://www.ebay.com/sch/i.html?_nkw=MODEL&LH_Sold=1&LH_Complete=1" },
+  { t:"Facebook Marketplace",          d:"Login-walled — open it yourself and paste what you see.",
+    u:"https://www.facebook.com/marketplace/search/?query=MODEL" },
+  { t:"Craigslist — your metro",  d:"Local pickup. Prices run below shipped, sometimes well below.",
+    u:"https://CITY.craigslist.org/search/sss?query=MODEL" }
+];
+
+/* ---------- helpers ------------------------------------------------------- */
+
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function money(v){ return "$" + Number(v).toLocaleString("en-US",{maximumFractionDigits:0}); }
+function med(a){ var s=a.slice().sort(function(x,y){return x-y;}), m=s.length>>1;
+  return s.length%2 ? s[m] : (s[m-1]+s[m])/2; }
+function byKey(k){ for(var i=0;i<CANDIDATES.length;i++) if(CANDIDATES[i].key===k) return CANDIDATES[i]; }
+
+function weighted(k){
+  var t=0; for(var i=0;i<CRITERIA.length;i++) t += CRITERIA[i].s[k][0]*CRITERIA[i].weight;
+  return t/100;
+}
+
+/* ---------- sections ------------------------------------------------------ */
+
+function ruledOut(){
+  if(!KILLED.length) return "";                     /* section disappears when empty */
+  var items = KILLED.map(function(k){
+    return '<p><strong>'+esc(k.name)+'</strong> &mdash; '+esc(k.reason)+'</p>';
+  }).join("");
+  return '<h2>Ruled out immediately</h2>'+
+    '<p class="sub">These failed a hard requirement. They are not scored, because a disqualification '+
+    'buried as a low number in a table stops reading as a disqualification.</p>'+
+    '<div class="callout red"><div class="lbl">KILL SWITCH</div>'+items+'</div>';
+}
+
+function matrix(){
+  var totals = CANDIDATES.map(function(c){ return weighted(c.key); });
+  var best = Math.max.apply(null, totals);
+
+  var head = '<thead><tr><th>Criterion</th><th>Wt</th>'+
+    CANDIDATES.map(function(c){ return '<th>'+esc(c.name)+'</th>'; }).join("")+'</tr></thead>';
+
+  var body = '<tbody>'+CRITERIA.map(function(cr){
+    var rowScores = CANDIDATES.map(function(c){ return cr.s[c.key][0]; });
+    var top = Math.max.apply(null, rowScores);
+    return '<tr><th>'+esc(cr.name)+'</th><td class="n">'+cr.weight+'</td>'+
+      CANDIDATES.map(function(c){
+        var v = cr.s[c.key][0], g = cr.s[c.key][1];
+        var cls = (v===top && rowScores.filter(function(x){return x===top;}).length===1) ? " win" : "";
+        return '<td class="n"><span class="'+cls.trim()+'">'+v+'</span>'+
+               '<span class="g '+esc(g)+'">'+esc(g)+'</span></td>';
+      }).join("")+'</tr>';
+  }).join("")+
+    '<tr class="total"><th>Weighted total</th><td></td>'+
+    totals.map(function(t){
+      return '<td>'+(t===best?'<span class="win">':'<span>')+t.toFixed(2)+'</span></td>';
+    }).join("")+'</tr></tbody>';
+
+  return '<h2>The matrix</h2>'+
+    '<p class="sub">Scores 1&ndash;5 against anchors, weighted to the requirements pinned before any '+
+    'research started. The letter beside each score is how well that score is evidenced.</p>'+
+    '<div class="scroll"><table>'+head+body+'</table></div>'+
+    '<div class="keys">'+
+      '<div class="key"><span class="sw" style="border-top:2.5px solid var(--ink)"></span>'+
+        '<span>A &mdash; independently measured</span></div>'+
+      '<div class="key"><span class="sw" style="border-top:2.5px solid var(--ink45)"></span>'+
+        '<span>B &mdash; reviewed, no figure</span></div>'+
+      '<div class="key"><span class="sw" style="border-top:2.5px dashed var(--ink45)"></span>'+
+        '<span>C &mdash; owner report</span></div>'+
+      '<div class="key"><span class="sw" style="border-top:2.5px dotted var(--c1)"></span>'+
+        '<span class="lose">D &mdash; inference, not evidence</span></div>'+
+    '</div>'+
+    '<div class="callout"><div class="lbl">READING THIS TABLE</div>'+
+    '<p>Four cells are grade D. Both of them on <strong>parts &amp; service horizon</strong> are '+
+    'inference from sibling models, because neither vendor publishes an end-of-life policy — '+
+    'and a vendor that will not publish one is itself the finding. Treat that row as the weakest '+
+    'part of this comparison and the first thing to re-check.</p>'+
+    '<p>The M3 and the Pro X are 0.29 apart, which is inside the noise. That is a tie, and it breaks '+
+    'on envelope: if the oversized part is real, the Pro X is the only candidate that makes it.</p>'+
+    '</div>';
+}
+
+function cards(){
+  return '<h2>Each one in plain terms</h2>'+
+    '<p class="sub">Every con carries a number. A con without one is a vibe, and vibes are what a '+
+    'matrix is supposed to replace.</p>'+
+    '<div class="cards">'+CANDIDATES.map(function(c){
+      return '<div class="card">'+
+        '<h4 style="color:'+esc(c.color)+'">'+esc(c.name)+'</h4>'+
+        '<div class="price">'+esc(money(c.price))+' &middot; '+esc(c.tag)+'</div>'+
+        '<div class="hd">HOLDS UP</div><ul>'+
+          c.pros.map(function(p){ return '<li>'+esc(p)+'</li>'; }).join("")+'</ul>'+
+        '<div class="hd">COSTS YOU</div><ul>'+
+          c.cons.map(function(p){ return '<li>'+esc(p)+'</li>'; }).join("")+'</ul>'+
+      '</div>';
+    }).join("")+'</div>';
+}
+
+function tco(){
+  var max = Math.max.apply(null, TCO.map(function(t){ return t.total; }));
+  return '<h2>What it costs you over 3 years</h2>'+
+    '<p class="sub">Purchase + consumables + wear parts + scrapped work &minus; resale. Computed '+
+    'separately from the weighted score so the two can disagree — and here they do.</p>'+
+    '<div class="bars">'+TCO.map(function(t){
+      var c = byKey(t.key);
+      return '<div class="bar"><span class="nm">'+esc(t.label)+'</span>'+
+        '<span class="track"><span class="fill" style="width:'+
+          (t.total/max*100).toFixed(1)+'%;background:'+esc(c.color)+'"></span></span>'+
+        '<span class="val">'+esc(money(t.total))+'</span></div>';
+    }).join("")+'</div>'+
+    '<div class="callout"><div class="lbl">CROSS-CHECK</div><p>The Corvid is the cheapest to buy and '+
+    'the middle one to own — the $240 sealed head twice a year eats the $250 purchase advantage '+
+    'inside the first year. Sticker price and cost of ownership rank these differently, which is the '+
+    'whole reason to compute both.</p></div>';
+}
+
+function distribution(){
+  var sold   = MARKET.listings.filter(function(l){ return l.status==="sold"; });
+  var asking = MARKET.listings.filter(function(l){ return l.status==="asking"; });
+  var sp = sold.map(function(l){ return l.price; });
+  var ap = asking.map(function(l){ return l.price; });
+
+  var all = sp.concat(ap).concat([MARKET.newEquivalent]);
+  var lo = Math.min.apply(null, all)*0.94, hi = Math.max.apply(null, all)*1.06;
+  var W=700, L=54, R=18, x = function(p){ return L + (p-lo)/(hi-lo)*(W-L-R); };
+
+  var mS = med(sp), mA = med(ap);
+  var gap = ((mA/mS - 1)*100).toFixed(0);
+
+  /* "MEDIAN $x,xxx" is ~100px of monospace. If the ceiling line sits inside that
+     span to the right, flip the label to the left of the median line instead. */
+  var mFlip = (x(MARKET.newEquivalent) - x(mS)) > 0 &&
+              (x(MARKET.newEquivalent) - x(mS)) < 110;
+
+  function dots(rows, y, filled){
+    return rows.map(function(l,i){
+      var cy = y + ((i%3)-1)*7;                       /* deterministic jitter, no overlap at n=5 */
+      return '<a href="'+esc(l.url)+'" target="_blank" rel="noopener noreferrer">'+
+        '<circle cx="'+x(l.price).toFixed(1)+'" cy="'+cy+'" r="5" '+
+          (filled ? 'fill="#2E4C7A" fill-opacity=".8"'
+                  : 'fill="none" stroke="#767D74" stroke-width="1.5"')+'>'+
+        '<title>'+esc(money(l.price))+' · '+esc(l.status)+' · '+esc(l.condition)+
+          ' · '+esc(l.location)+' — '+esc(l.title)+'</title></circle></a>';
+    }).join("");
+  }
+
+  var ticks = [1200,1500,1800,2100,2400].map(function(t){
+    return '<line x1="'+x(t)+'" y1="34" x2="'+x(t)+'" y2="176" stroke="#A8AEA2" '+
+             'stroke-width="1" stroke-dasharray="2 4"/>'+
+           '<text x="'+x(t)+'" y="192" font-size="10" fill="#767D74" text-anchor="middle" '+
+             'font-family="ui-monospace,Menlo,monospace">'+esc(money(t))+'</text>';
+  }).join("");
+
+  var svg =
+    '<svg viewBox="0 0 700 210" style="width:100%;min-width:520px;height:auto" '+
+      'role="img" aria-label="Price distribution: 5 sold, 4 asking">'+
+    ticks+
+    /* ceiling */
+    '<line x1="'+x(MARKET.newEquivalent)+'" y1="26" x2="'+x(MARKET.newEquivalent)+'" y2="176" '+
+      'stroke="#A8352B" stroke-width="1.5"/>'+
+    '<text x="'+(x(MARKET.newEquivalent)-6)+'" y="22" font-size="10" fill="#A8352B" '+
+      'text-anchor="end" font-family="ui-monospace,Menlo,monospace">'+
+      'CEILING — NEW '+esc(money(MARKET.newEquivalent))+'</text>'+
+    /* median sold — label sits below the line, and flips to the far side when the
+       ceiling is close enough that the text would cross it */
+    '<line x1="'+x(mS)+'" y1="52" x2="'+x(mS)+'" y2="96" stroke="#191E1B" stroke-width="1.5"/>'+
+    '<text x="'+(mFlip ? x(mS)-6 : x(mS)+6)+'" y="108" font-size="10" fill="#191E1B" '+
+      'text-anchor="'+(mFlip ? "end" : "start")+'" '+
+      'font-family="ui-monospace,Menlo,monospace">MEDIAN '+esc(money(mS))+'</text>'+
+    /* rows */
+    '<text x="8" y="76" font-size="10" fill="#4A524C" font-family="ui-monospace,Menlo,monospace">SOLD</text>'+
+    dots(sold, 72, true)+
+    '<text x="8" y="140" font-size="10" fill="#4A524C" font-family="ui-monospace,Menlo,monospace">ASKING</text>'+
+    dots(asking, 136, false)+
+    '</svg>';
+
+  return '<h2>What it actually sells for</h2>'+
+    '<p class="sub">Filled dots are completed sales. Hollow dots are what sellers are asking, which '+
+    'is a different thing and never averaged in with the first. Every dot links to its listing.</p>'+
+    '<div class="scroll" style="border:none">'+svg+'</div>'+
+    '<div class="stat">n=' + sp.length + ' sold · n=' + ap.length + ' asking · collected ' +
+      esc(COLLECTED) + '</div>'+
+    '<div class="callout red"><div class="lbl">TOO THIN FOR A BAND</div>'+
+    '<p>Five sales is not a distribution. There is no interquartile band drawn here and no '+
+    'percentile quoted, because a confident-looking band over five points is the main way this kind '+
+    'of chart misleads people. Median '+esc(money(mS))+', and treat it as a midpoint with a wide '+
+    'error bar until there are at least eight.</p>'+
+    '<p>Asking runs <strong>+'+esc(gap)+'%</strong> over sold. That gap is why the two rows exist. '+
+    'Note also that every asking listing sits above the price of a new one — the ceiling rule '+
+    'disposes of all four without needing any further analysis.</p></div>';
+}
+
+function links(){
+  return '<h2>Check the prices yourself</h2>'+
+    '<p class="sub">Substitute the model name. These are the searches behind the numbers above.</p>'+
+    SOURCES.map(function(s){
+      return '<a class="lnk" href="'+esc(s.u)+'" target="_blank" rel="noopener noreferrer">'+
+        '<span class="t">'+esc(s.t)+'</span><span class="d">'+esc(s.d)+'</span>'+
+        '<span class="u">'+esc(s.u)+'</span></a>';
+    }).join("");
+}
+
+function theCall(){
+  return '<h2>The call</h2>'+
+    '<p class="sub"><strong>Meridian M3 at '+esc(money(1450))+'</strong>, unless the 260 mm part is '+
+    'a real requirement rather than an aspiration — in which case it is the Atlas Pro X and a '+
+    'conversation with an electrician first. The M3 wins on the one axis that is both heavily '+
+    'weighted and grade A: measured accuracy that holds after eight hours. Its honest downside is '+
+    'that it is the slowest of the three and the enclosure is a separate $220.</p>'+
+    '<div class="callout"><div class="lbl">WHAT WOULD CHANGE THIS</div>'+
+    '<p>If the oversized part becomes firm, the Pro X is the only candidate and the toolchain '+
+    'rewrite is the price of admission. If a vendor publishes an end-of-life policy, two grade-D '+
+    'cells become grade A and the ranking may move. If a used M3 appears under '+esc(money(1100))+
+    ' in good condition, it beats everything here.</p></div>';
+}
+
+document.getElementById("body").innerHTML =
+  theCall() + ruledOut() + matrix() + cards() + tco() + distribution() + links();
+</script>
+</body>
+</html>
