@@ -43,7 +43,7 @@
       "name": "noteplan-manager",
       "source": "./plugins/noteplan-manager",
       "description": "Complete NotePlan management suite for templates, organization, analysis, and note creation",
-      "version": "3.118.1",
+      "version": "3.122.0",
       "category": "productivity",
       "keywords": [
         "noteplan",
@@ -74,7 +74,7 @@
       "name": "claude-manager",
       "source": "./plugins/claude-manager",
       "description": "Manage Claude skills and CLAUDE.md files - create, update, and organize skills across plugins",
-      "version": "2.4.0",
+      "version": "2.4.1",
       "category": "development",
       "keywords": [
         "meta",
@@ -136,7 +136,7 @@
     {
       "name": "plan-manager",
       "source": "./plugins/plan-manager",
-      "description": "Manage Claude Code plans — inspect quality, move to projects, and produce changelogs",
+      "description": "Manage Claude Code plans \u2014 inspect quality, move to projects, and produce changelogs",
       "version": "1.1.0",
       "category": "productivity",
       "keywords": [
@@ -231,7 +231,7 @@
     {
       "name": "architecture-manager",
       "source": "./plugins/architecture-manager",
-      "description": "Generate and maintain architecture artifacts — ERDs, sequence diagrams, C4 diagrams, deployment diagrams, ADRs, and architecture overviews using PlantUML and code-driven rendering",
+      "description": "Generate and maintain architecture artifacts \u2014 ERDs, sequence diagrams, C4 diagrams, deployment diagrams, ADRs, and architecture overviews using PlantUML and code-driven rendering",
       "version": "1.2.0",
       "category": "development",
       "keywords": [
@@ -249,7 +249,7 @@
     {
       "name": "cron-manager",
       "source": "./plugins/cron-manager",
-      "description": "Manage automated background Claude Code tasks — scheduled syncs, cron-style workflows, and periodic maintenance",
+      "description": "Manage automated background Claude Code tasks \u2014 scheduled syncs, cron-style workflows, and periodic maintenance",
       "version": "1.0.0",
       "category": "automation",
       "keywords": [
@@ -265,7 +265,7 @@
     {
       "name": "profile-manager",
       "source": "./plugins/profile-manager",
-      "description": "Manage your profiles — shell environment (browser automation, aliases, setup) and professional profile (resume mission statement, bullet points)",
+      "description": "Manage your profiles \u2014 shell environment (browser automation, aliases, setup) and professional profile (resume mission statement, bullet points)",
       "version": "1.5.0",
       "category": "utilities",
       "keywords": [
@@ -285,7 +285,7 @@
     {
       "name": "code-repository-manager",
       "source": "./plugins/code-repository-manager",
-      "description": "Manage code repository documentation — publish co-design docs to GitHub Wiki and GitHub Pages, rebuild navigation, and sync across targets",
+      "description": "Manage code repository documentation \u2014 publish co-design docs to GitHub Wiki and GitHub Pages, rebuild navigation, and sync across targets",
       "version": "1.1.0",
       "category": "development",
       "keywords": [
@@ -301,7 +301,7 @@
     {
       "name": "design-partner",
       "source": "./plugins/design-partner",
-      "description": "Collaborative design facilitation — build high-level design documents section by section through structured co-authoring",
+      "description": "Collaborative design facilitation \u2014 build high-level design documents section by section through structured co-authoring",
       "version": "1.1.0",
       "category": "development",
       "keywords": [
@@ -316,7 +316,7 @@
     {
       "name": "document-co-author",
       "source": "./plugins/document-co-author",
-      "description": "Build presentation decks and structured documents from content specs — separating content from rendering for prompt-driven iteration",
+      "description": "Build presentation decks and structured documents from content specs \u2014 separating content from rendering for prompt-driven iteration",
       "version": "1.3.0",
       "category": "productivity",
       "keywords": [
@@ -331,7 +331,7 @@
     {
       "name": "local-guide",
       "source": "./plugins/local-guide",
-      "description": "Be your own local guide — discover businesses near a location and detect whether a company has filed to open at a specific address, using free no-API-key public data (OpenStreetMap + Socrata open-data portals).",
+      "description": "Be your own local guide \u2014 discover businesses near a location and detect whether a company has filed to open at a specific address, using free no-API-key public data (OpenStreetMap + Socrata open-data portals).",
       "version": "1.0.0",
       "category": "utilities",
       "keywords": [
