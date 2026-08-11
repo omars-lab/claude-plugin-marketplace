@@ -160,7 +160,8 @@ def get_summary(root: Path, run_id: str) -> tuple[int, dict]:
             tally[cl.get("provenance", "verbatim")] = tally.get(
                 cl.get("provenance", "verbatim"), 0) + 1
     files = ex.touched_files(manifest, state)
-    msg = ex._build_commit_message(root, files)
+    sweep_date = (manifest.get("run_id") or "")[:10] or None
+    msg = ex._build_commit_message(root, files, sweep_date)
     return 200, {"ok": True, "commit_message": msg, "provenance": tally,
                  "files": files, "counts": state["counts"],
                  "can_finalize": state["can_finalize"]}
@@ -289,7 +290,10 @@ def post_finalize(root: Path, run_id: str, body: dict) -> tuple[int, dict]:
                      "counts": state["counts"]}
 
     ss.append_event(root, run_id, {"type": "finalize_started"})
-    out = ex.finalize(root, manifest, state,
+    # Use the sweep's own date (from run_id), not the wall-clock day finalize
+    # runs — a review that spans midnight must still commit under the sweep date.
+    sweep_date = (manifest.get("run_id") or "")[:10] or None
+    out = ex.finalize(root, manifest, state, sweep_date=sweep_date,
                       commit_message=body.get("commit_message"))
     if out["ok"]:
         ss.append_event(root, run_id, {"type": "finalize_done",

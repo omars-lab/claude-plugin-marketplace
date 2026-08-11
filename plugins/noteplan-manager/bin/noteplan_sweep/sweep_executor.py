@@ -566,8 +566,9 @@ def validate_session_diff(root: Path, base_sha: str, manifest: dict,
 # Finalize orchestration
 # ---------------------------------------------------------------------------
 
-def _build_commit_message(root: Path, md_files: list[str]) -> str:
-    today = date.today().strftime("%Y-%m-%d")
+def _build_commit_message(root: Path, md_files: list[str],
+                          sweep_date: str | None = None) -> str:
+    today = sweep_date or date.today().strftime("%Y-%m-%d")
     calendar = [p for p in md_files if p.startswith("Calendar/")]
     plans = [p for p in md_files if "Plans/" in p or "Lists/" in p]
     other = [p for p in md_files if p not in calendar and p not in plans]
@@ -705,7 +706,7 @@ def finalize(root: Path, manifest: dict, state: dict,
         _git(["reset", "-q"], root)
         return {"ok": False, "report": report}
 
-    msg = commit_message or _build_commit_message(root, files)
+    msg = commit_message or _build_commit_message(root, files, sweep_date)
     c = _git(["commit", "-m", msg], root)
     if c.returncode != 0:
         return {"ok": False, "report": {

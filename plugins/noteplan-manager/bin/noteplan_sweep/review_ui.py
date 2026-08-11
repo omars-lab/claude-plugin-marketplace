@@ -235,8 +235,24 @@ function splitMoveClient(move, parts) {
   return children;
 }
 
+// Locate a move's outgoing contiguous run in the current file by CONTENT,
+// preferring the occurrence nearest the (possibly stale) line-number hint.
+// Mirrors sweep_executor.find_anchor so the source pane highlights the real
+// position even after earlier approved moves shifted the file. -1 if absent.
+function locateRun(lines, texts, hint) {
+  const k = texts.length;
+  if (!k) return -1;
+  let pos = -1, best = Infinity;
+  for (let i = 0; i + k <= lines.length; i++) {
+    let ok = true;
+    for (let j = 0; j < k; j++) if (lines[i + j] !== texts[j]) { ok = false; break; }
+    if (ok && Math.abs(i - hint) < best) { best = Math.abs(i - hint); pos = i; }
+  }
+  return pos;
+}
+
 window.__sweepTest = { selectionReduce, classifyProvenance, statusMeta,
-                       canFinalize, wordDiff, splitMoveClient };
+                       canFinalize, wordDiff, splitMoveClient, locateRun };
 
 // ── Store + API ─────────────────────────────────────────────────────────────
 
@@ -412,12 +428,7 @@ async function renderSource(m) {
   const lines = file.lines || [];
   // Locate the contiguous run matching outTexts; prefer the one nearest the hint.
   const hint = (m.source.line_start || 1) - 1;
-  let pos = -1, best = 1e9;
-  for (let i = 0; i + k <= lines.length; i++) {
-    let ok = true;
-    for (let j = 0; j < k; j++) if (lines[i + j] !== outTexts[j]) { ok = false; break; }
-    if (ok && Math.abs(i - hint) < best) { best = Math.abs(i - hint); pos = i; }
-  }
+  const pos = locateRun(lines, outTexts, hint);
   let html = '';
   if (pos < 0) {
     // Stale — the exact run isn't on disk; show the hint window as context.

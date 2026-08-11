@@ -152,6 +152,26 @@ def test_split_rejects_overlap(page):
     assert err and "multiple parts" in err
 
 
+def test_locate_run_exact_at_hint(page):
+    pos = ev(page, "__sweepTest.locateRun(['a','b','c','d'],['b','c'],1)")
+    assert pos == 1
+
+
+def test_locate_run_after_shift(page):
+    # earlier approved move deleted lines → target now sits above the hint
+    pos = ev(page, "__sweepTest.locateRun(['x','t1','t2','y'],['t1','t2'],3)")
+    assert pos == 1  # regression: was mis-highlighted when keyed on stale line numbers
+
+
+def test_locate_run_absent(page):
+    assert ev(page, "__sweepTest.locateRun(['a','b'],['zzz'],0)") == -1
+
+
+def test_locate_run_duplicate_picks_nearest(page):
+    pos = ev(page, "__sweepTest.locateRun(['dup','x','dup','y'],['dup'],2)")
+    assert pos == 2  # nearest to hint=2
+
+
 def test_no_console_errors_on_load(page):
     # window.__sweepTest present and page structure rendered
     assert ev(page, "typeof __sweepTest.selectionReduce") == "function"
