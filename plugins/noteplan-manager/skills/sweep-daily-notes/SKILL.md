@@ -397,6 +397,35 @@ For each file, extract H1 + first 3–5 non-empty body lines. Add to the index w
 
 The **self-knowledge reflection files** (`Observations.md`, `Gaps.md`, `Superpowers.md`) in `🪞 Reflections/🏡💭💻 GenAI Thoughts/` are NOT routing targets — they are written by the sweep assistant itself in Phase 8.5.
 
+### Threads Index (extend routing options with evolving open questions / theses)
+
+**The canonical home for open questions and theses the user develops over time is `🏡💭 Thoughts/🧵 Threads/`** — one note per evolving question (e.g. "Will ServiceNow Lay Folks Off?"). A *thread* differs from a one-shot *idea*: a thread accumulates evidence, links, and dated reflection across many sweeps; an idea is a single capture. Always index Threads so the user knows where their developing thoughts live and they're a routing target.
+
+```bash
+THREADS_ROOT="$NOTES_ROOT/🏡 Personal/🏡💭 Thoughts/🧵 Threads"   # create on first use if absent
+find "$THREADS_ROOT" -name "*.md" 2>/dev/null | sort
+```
+
+For each thread file, extract H1 (the question) + frontmatter (`status: open|resolved`, `started`). Add to the index with `"type": "thread"`. A thread note's structure:
+
+```markdown
+---
+doctype: 💭
+status: open
+started: {first-thought date YYYY-MM-DD}
+namespace: 🏡
+description: {the open question in one line}
+---
+# 🏡💭 {The Question?}
+
+{one-line framing — "An evolving thread tracking ..."}
+
+## {YYYY-MM-DD}   ← the SOURCE calendar date the thinking occurred (provenance)
+- {captured lines, verbatim}
+```
+
+**Provenance is the point** — every addition is stamped with the **source calendar date** under its own `## YYYY-MM-DD` heading, so "when did I first / last think this?" is always answerable. First-thought date = the `started:` frontmatter; each sweep appends a new dated entry rather than overwriting.
+
 ### Research Index (extend routing options with research docs and deep dives)
 
 Also index **research documents** from the Research directories and the Deep Dives workstream:
@@ -638,6 +667,7 @@ For each sweepable section, determine the best destination using the plan index 
 7. Section header or content contains EarlBear signals ("EarlBear", "Earl Bear", `👥` emoji, `[[👥...]]` wikilink, "Saad" without a work meeting match) → route to EarlBear plan index; if no match, `❓ Uncertain` with EarlBear plans surfaced first
 8. Section matches **2+ research signals** (see below) → `🔬 Research candidate` — present research routing UI instead of plan routing
 9. Section contains a **voice note block** (see below) → `🎤 Voice note` — run voice note processing before routing
+9b. Section reads as an **open question / thesis the user is developing** (interrogative framing — "will X happen", "should I…?", "what are the leading indicators of…"; speculative-but-recurring; tracks an evolving belief rather than proposing a concrete task) → `🧵 Thread candidate` — route to a matching existing thread in `🧵 Threads/`, or offer to create one. This is distinct from a one-shot `💡 Idea`: a thread is something the user will keep adding to over time. When routing, append the lines under a dated `## {source-date}` heading in the thread note (provenance).
 10. Clearly personal content (shopping, errands, `[[🏡...]]` wikilinks in work mode) → `⏭️ Skip` (but see **Personal in Both mode** below)
 11. Completed-task-only block → `⏭️ Skip` by default, but see **Completed task routing** below
 12. Anything else → `❓ Uncertain`
@@ -1919,6 +1949,8 @@ type: direction-checkpoint
 | Top-5 routing suggestions | Score every plan against the section header + content; show only the top 5 matches. Never dump the full plan list into the routing UI. |
 | Both mode supported | When mode = "Both", build both work + personal indexes. Each note's day-of-week determines which index and target to use. |
 | Thoughts directory indexed | Index `🏡💭 Thoughts/💡 Ideas/` alongside plans and lists. Present as routing option for raw ideas, braindumps, and speculative product/startup thinking. |
+| Threads — developing thoughts | The canonical home for open questions / theses the user develops over time is `🏡💭 Thoughts/🧵 Threads/` (one note per question, e.g. "Will ServiceNow Lay Folks Off?"). Index it in Phase 3. Classify a section as `🧵 Thread candidate` when it reads as an evolving open question/thesis (not a one-shot idea, not an actionable task). Route to a matching thread or offer to create one. |
+| Threads — provenance dating | Every thread note records `started:` (first-thought date) and appends each addition under a `## {source calendar date}` heading so "when did I first/last think this?" is answerable. Append dated entries; never overwrite. A thread accumulates across many sweeps; a `💡 Idea` is a single capture. |
 | Meeting planning → next business day | When routing unscheduled meeting tasks from Unsorted (e.g. "Figure out meetings — Jeff, Khusbha, etc."), place them in the **next business day's daily note** (create it if needed), not in a general backlog. |
 | Self-knowledge capture | After each sweep's final commit (Phase 8.5), append dated observations to `🪞 Reflections/🏡💭💻 GenAI Thoughts/Observations.md`, `Gaps.md`, and `Superpowers.md`. Only write what's verifiable from the notes read. |
 | Habits tracking in sweep | Phase 8.5 also updates `🏡📋 Habits.md`: scan swept notes for habit signals (observed habits, aspired habits, habit reflections). Update `Last Seen` and frequency on existing rows; add new rows for newly spotted habits. |
