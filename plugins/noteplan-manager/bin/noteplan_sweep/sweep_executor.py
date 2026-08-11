@@ -647,6 +647,31 @@ def add_breadcrumbs_and_clear(root: Path, manifest: dict, state: dict,
     return sorted(touched)
 
 
+def dest_existence_issues(root: Path, manifest: dict) -> tuple[list[str], list[str]]:
+    """Cross-check each move's destination.exists claim against disk.
+
+    Returns (errors, warnings). A create-block destination (exists=false) that
+    already exists on disk is an ERROR — apply would silently append to the real
+    file and the review UI would show a misleading "new file" preview with
+    frontmatter that never gets written. An exists=true destination missing on
+    disk is a WARNING — apply will create an empty file and insert into it,
+    losing the intended template.
+    """
+    errors, warnings = [], []
+    for mv in manifest.get("moves", []):
+        dst = mv.get("destination", {})
+        rel = dst.get("file", "")
+        on_disk = (root / rel).exists()
+        claims_new = not dst.get("exists", True)
+        if claims_new and on_disk:
+            errors.append(f"{mv.get('id')}: destination.exists=false (new file) but "
+                          f"already exists on disk: {rel}")
+        if (not claims_new) and not on_disk:
+            warnings.append(f"{mv.get('id')}: destination.exists=true but not found "
+                            f"on disk (will be created empty): {rel}")
+    return errors, warnings
+
+
 def touched_files(manifest: dict, state: dict) -> list[str]:
     """All .md files the session may have modified (sources + applied dests)."""
     files = {sf["file"] for sf in manifest.get("source_files", [])}

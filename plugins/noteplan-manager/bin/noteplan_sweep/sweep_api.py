@@ -330,14 +330,18 @@ def cmd_sweep_manifest_validate(args):
         sys.exit(utils.EXIT_NOT_FOUND)
 
     errors = sm.validate_manifest(manifest)
+    # Cross-check destination.exists claims against disk (catches new-file
+    # blocks pointing at files that already exist, and vice versa).
+    dest_errors, dest_warnings = ex.dest_existence_issues(root, manifest)
+    errors += dest_errors
     for e in errors:
         utils.err(e)
     if errors:
-        utils.err(f"{len(errors)} schema error(s) — manifest not registered")
+        utils.err(f"{len(errors)} error(s) — manifest not registered")
         sys.exit(utils.EXIT_VALIDATION_FAILURE)
 
     # Disk-drift warnings: can each move's source lines still be anchored?
-    warnings = []
+    warnings = list(dest_warnings)
     for mv in manifest.get("moves", []):
         src = root / mv["source"]["file"]
         if not src.exists():

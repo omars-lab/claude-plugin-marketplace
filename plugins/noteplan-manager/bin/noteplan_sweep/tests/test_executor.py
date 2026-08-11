@@ -162,6 +162,25 @@ def test_refresh_rebases_cosmetic_drift(tmp_path):
     assert new_lines[0]["h"] == sm.line_hash("- [ ] task >2026-07-20")
 
 
+def test_dest_existence_issues(tmp_path):
+    (tmp_path / "Notes").mkdir()
+    (tmp_path / "Notes" / "Exists.md").write_text("# x\n", encoding="utf-8")
+    manifest = {"moves": [
+        # claims new but exists → error
+        {"id": "a", "destination": {"file": "Notes/Exists.md", "exists": False,
+                                    "create": {"kind": "list", "h1": "# x"}}},
+        # claims existing but missing → warning
+        {"id": "b", "destination": {"file": "Notes/Missing.md", "exists": True}},
+        # correct new file → nothing
+        {"id": "c", "destination": {"file": "Notes/Fresh.md", "exists": False,
+                                    "create": {"kind": "list", "h1": "# f"}}},
+    ]}
+    errors, warnings = ex.dest_existence_issues(tmp_path, manifest)
+    assert any("already exists on disk" in e and e.startswith("a") for e in errors)
+    assert any("not found" in w and w.startswith("b") for w in warnings)
+    assert not any(x.startswith("c") for x in errors + warnings)
+
+
 def test_atomic_write_roundtrip(tmp_path):
     p = tmp_path / "sub" / "f.md"
     ex.atomic_write(p, "hello\n")

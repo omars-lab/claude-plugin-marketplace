@@ -403,24 +403,41 @@ async function fetchFile(path, start, end) {
 async function renderSource(m) {
   const el = document.getElementById('src-code');
   if (!el) return;
-  const ls = m.source.line_start, le = m.source.line_end;
-  const file = await fetchFile(m.source.file, Math.max(1, ls - 3), le + 3);
   const outTexts = m.source.lines.map(l => l.text);
-  const outSet = new Set(outTexts);
-  const startNo = file.start || Math.max(1, ls - 3);
+  const k = outTexts.length;
+  // Fetch the whole source (daily notes are small) so we can content-anchor the
+  // outgoing run even after earlier approved moves shifted line numbers — the
+  // manifest's line_start is only a hint, never trusted for display.
+  const file = await fetchFile(m.source.file);
+  const lines = file.lines || [];
+  // Locate the contiguous run matching outTexts; prefer the one nearest the hint.
+  const hint = (m.source.line_start || 1) - 1;
+  let pos = -1, best = 1e9;
+  for (let i = 0; i + k <= lines.length; i++) {
+    let ok = true;
+    for (let j = 0; j < k; j++) if (lines[i + j] !== outTexts[j]) { ok = false; break; }
+    if (ok && Math.abs(i - hint) < best) { best = Math.abs(i - hint); pos = i; }
+  }
   let html = '';
-  (file.lines || []).forEach((line, i) => {
-    const no = startNo + i;
-    const isOut = no >= ls && no <= le && outSet.has(line);
-    const idx = outTexts.indexOf(line);
+  if (pos < 0) {
+    // Stale — the exact run isn't on disk; show the hint window as context.
+    const from = Math.max(0, hint - 3), to = Math.min(lines.length, hint + k + 3);
+    for (let i = from; i < to; i++)
+      html += `<div class="crow ctx"><span class="cgut">${i + 1}</span><span class="ctxt">${esc(lines[i]) || ' '}</span></div>`;
+    html += '<div class="crow ctx"><span class="cgut">⚠</span><span class="ctxt">(outgoing lines not found at this position — move is stale)</span></div>';
+    el.innerHTML = html;
+    return;
+  }
+  const from = Math.max(0, pos - 3), to = Math.min(lines.length, pos + k + 3);
+  for (let i = from; i < to; i++) {
+    const no = i + 1;
+    const isOut = i >= pos && i < pos + k;
+    const idx = isOut ? i - pos : -1;
     const selCls = (isOut && store.selection.selected.includes(idx)) ? ' sel' : '';
-    // mismatch: a line in the target range whose text != manifest text
-    const expected = (no >= ls && no <= le) ? (m.source.lines[no - ls] || {}).text : null;
-    const mism = expected != null && expected !== line ? ' mismatch' : '';
-    html += `<div class="crow ${isOut ? 'out' : 'ctx'}${selCls}${mism}" data-idx="${isOut ? idx : ''}">`
-      + `<span class="cgut">${no}</span><span class="ctxt">${esc(line) || ' '}</span></div>`;
-  });
-  el.innerHTML = html || '<div class="crow ctx"><span class="cgut"></span><span class="ctxt">(source lines not found — stale)</span></div>';
+    html += `<div class="crow ${isOut ? 'out' : 'ctx'}${selCls}" data-idx="${isOut ? idx : ''}">`
+      + `<span class="cgut">${no}</span><span class="ctxt">${esc(lines[i]) || ' '}</span></div>`;
+  }
+  el.innerHTML = html;
   el.querySelectorAll('.crow.out').forEach(row => {
     row.onclick = (e) => {
       const idx = parseInt(row.dataset.idx, 10);
@@ -464,16 +481,27 @@ async function renderDest(m) {
     while (insertAt > hdr + 1 && lines[insertAt - 1].trim() === '') insertAt--;
   }
   let html = '';
+  const CTX = 4;  // context lines around the insertion — a focused PR-style hunk
   const show = (from, to) => { for (let i = from; i < to; i++) html += `<div class="crow ctx"><span class="cgut">${i + 1}</span><span class="ctxt">${esc(lines[i]) || ' '}</span></div>`; };
+  const gap = (n) => { if (n > 0) html += `<div class="ins-rule" style="color:#484f58">⋯ ${n} line${n === 1 ? '' : 's'} above ⋯</div>`; };
   if (hdr < 0) {
+    // Section absent → created at EOF. Show a tail of the file as context.
+    const from = Math.max(0, lines.length - CTX);
+    gap(from);
+    show(from, lines.length);
     html += `<div class="ins-rule">section "${esc(section)}" will be created at end of file</div>`;
-    show(0, lines.length);
     html += contentRows(content, lines.length + 1);
   } else {
-    show(0, insertAt);
+    // Focused hunk: section header … CTX lines before insertion … inserted … CTX after.
+    const winStart = Math.max(hdr, insertAt - CTX);
+    gap(winStart);
+    if (winStart > hdr) { show(hdr, hdr + 1); if (winStart > hdr + 1) html += `<div class="ins-rule" style="color:#484f58">⋯</div>`; }
+    show(winStart, insertAt);
     html += `<div class="ins-rule">── inserted under "${esc(section)}" ──</div>`;
     html += contentRows(content, insertAt + 1);
-    show(insertAt, lines.length);
+    const after = Math.min(lines.length, insertAt + CTX);
+    show(insertAt, after);
+    if (after < lines.length) html += `<div class="ins-rule" style="color:#484f58">⋯ ${lines.length - after} more ⋯</div>`;
   }
   el.innerHTML = html;
 }
