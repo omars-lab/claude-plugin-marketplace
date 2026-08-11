@@ -358,6 +358,20 @@
         "pricing",
         "consumer"
       ]
+    },
+    {
+      "name": "oeid-noteplan-quicknote",
+      "source": "./plugins/oeid-noteplan-quicknote",
+      "description": "NotePlan app plugin (not a Claude Code plugin): /plan, /meeting, and /note commands that create correctly-named NotePlan notes across Work, Personal, NaqshCoffee, and EarlBear workstreams",
+      "version": "2.3.0",
+      "category": "productivity",
+      "keywords": [
+        "noteplan",
+        "notes",
+        "naming-conventions",
+        "workstreams",
+        "quicknote"
+      ]
     }
   ]
 }
