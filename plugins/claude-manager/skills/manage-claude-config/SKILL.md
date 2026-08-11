@@ -18,6 +18,7 @@ Single entry point for all Claude configuration operations:
 | Fix / minimize CLAUDE.md | "fix claude.md", "audit claude.md", "bloated", "clean up" | [fix-claude-md/SKILL.md](fix-claude-md/SKILL.md) |
 | Research CLAUDE.md patterns | "research", "patterns", "session history", "what have I asked" | [research-claude-md/SKILL.md](research-claude-md/SKILL.md) |
 | Generate CLAUDE.md from scratch | "setup", "generate", "new claude.md", "create claude.md" | [setup-claude-md/SKILL.md](setup-claude-md/SKILL.md) |
+| Move sessions between projects | "move session", "moved my repo", "migrate sessions", "project slug" | [move-sessions/SKILL.md](move-sessions/SKILL.md) |
 
 ## Task Management (MANDATORY)
 
@@ -38,6 +39,7 @@ First, check if the user's message clearly signals an operation from the table a
 - "fix claude.md" / "audit claude.md" / "bloated instructions" / "clean up CLAUDE.md" → fix-claude-md
 - "research claude.md" / "what patterns" / "mine session history" → research-claude-md
 - "setup claude.md" / "generate CLAUDE.md" / "new project instructions" → setup-claude-md
+- "move session" / "moved my repo" / "migrate session history" / "project slug dir" → move-sessions
 
 If the intent is **clear** from the message, proceed directly to Phase 2 without asking.
 
@@ -53,7 +55,8 @@ AskUserQuestion({
       { label: "Status line", description: "Wire ~/.claude/settings.json to the plugin's statusline script, configure display options" },
       { label: "Fix CLAUDE.md", description: "Audit and minimize an existing CLAUDE.md — remove bloat, keep only constraint-level instructions" },
       { label: "Research CLAUDE.md patterns", description: "Mine session logs and existing CLAUDE.md files to surface recurring preferences" },
-      { label: "Generate CLAUDE.md", description: "Create a new CLAUDE.md for a project from scratch" }
+      { label: "Generate CLAUDE.md", description: "Create a new CLAUDE.md for a project from scratch" },
+      { label: "Move sessions", description: "Relocate session history between ~/.claude/projects slug dirs after a repo moves, or move a single session" }
     ],
     multiSelect: false
   }]
@@ -73,6 +76,8 @@ Read the appropriate sub-skill SKILL.md and follow its workflow as if it had bee
 **For research-claude-md:** Read [research-claude-md/SKILL.md](research-claude-md/SKILL.md) and follow its workflow.
 
 **For setup-claude-md:** Read [setup-claude-md/SKILL.md](setup-claude-md/SKILL.md) and follow its workflow.
+
+**For move-sessions:** Read [move-sessions/SKILL.md](move-sessions/SKILL.md) and follow its workflow.
 
 ## Recommended Sequence for New Projects
 
