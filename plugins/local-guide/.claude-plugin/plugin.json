@@ -1,0 +1,10 @@
+{
+  "name": "local-guide",
+  "description": "Be your own local guide — discover businesses near a location and detect whether a company has filed to open at a specific address, using free no-API-key public data (OpenStreetMap + Socrata open-data portals).",
+  "version": "1.0.0",
+  "author": {
+    "name": "Omar Eid",
+    "email": "omar_eid21@yahoo.com"
+  },
+  "license": "MIT"
+}
