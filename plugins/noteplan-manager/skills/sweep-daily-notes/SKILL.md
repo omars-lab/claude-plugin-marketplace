@@ -893,7 +893,23 @@ If **"🔬 New Research note"** or **"🤿 New Deep Dive plan"** is selected →
 
 After all uncertain sections are routed, **present the complete day plan** (confident + newly routed).
 
-**CRITICAL — one row per section, one destination per row.** Each section must appear on its own line with exactly one destination. Never group multiple sections into a single entry, and never list multiple destinations for one section. If 10 sections are being swept, the table must have 10 rows.
+**HARD MUST — show the line-level diff-view table BEFORE every confirmation AskUserQuestion.** `AskUserQuestion` cannot render a table or a diff, so the user is routing blind unless you print the mapping in the chat message first. Before *any* "Execute / Confirm" question for a day (and before any per-section routing question where it aids clarity), emit a plain-text diff-view table in the chat that shows, for every sweepable line/section: the **source line number(s)**, the **exact content** (verbatim, truncated only if very long), the **→ destination** (`[[wikilink]]` or target-note + section), and any **enrichment/tag** that will be applied. Never ask the user to confirm a move they cannot see. If you catch yourself jumping straight to the confirmation question without having printed this table, stop and print it first.
+
+Diff-view table format (one row per source line/section):
+
+```
+### 📅 Diff preview — Calendar/{fileDate}.md
+
+| Src line(s) | Content | → Destination | Tag/enrich |
+|---|---|---|---|
+| 3–6 | `- [ ] Build AI feature catalog ...` | `[[🏢260302🧑🏻‍💻 ...Agentic AI Landscape]]` | >TARGET |
+| 9   | `- [ ] [[🏢...MCP]]` | `[[🏢260302🧑🏻‍💻 POC ...MCP]]` | >TARGET |
+| 12  | `https://...` | `[[🏢📋 References[...]]]` | enrich |
+
+Stays: line 14 `[x] ...` (completed) · Skip: `# Shopping` (personal)
+```
+
+**CRITICAL — one row per section, one destination per row.** Each section/line must appear on its own row with exactly one destination. Never group multiple sections into a single entry, and never list multiple destinations for one section. If 10 sections are being swept, the table must have 10 rows.
 
 ```
 📋 Final sweep plan for {fileDate}:
@@ -1898,6 +1914,7 @@ type: direction-checkpoint
 | Checkpoint commits per day | Commit after each day's sweep for granular recoverability. |
 | Line-level integrity check | Run the Python diff validation script before the final commit. |
 | Proposal includes exact lines | Each routing entry in the final plan shows the exact lines being moved in a code block, plus destination note. |
+| Diff-view before every confirmation | HARD MUST: before any "Execute/Confirm" AskUserQuestion for a day, print a plain-text diff-view table in chat mapping source line number(s) → exact content → destination → tag/enrich. AskUserQuestion can't render a diff, so confirming without this table means the user routes blind. Never jump straight to the confirm question. |
 | Uncertain sections are individual | Never bulk-ask about routing. Every uncertain/ambiguous block gets its own AskUserQuestion, one at a time, with a progress counter. |
 | Top-5 routing suggestions | Score every plan against the section header + content; show only the top 5 matches. Never dump the full plan list into the routing UI. |
 | Both mode supported | When mode = "Both", build both work + personal indexes. Each note's day-of-week determines which index and target to use. |
