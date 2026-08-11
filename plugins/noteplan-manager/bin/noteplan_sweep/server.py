@@ -13,9 +13,11 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 import noteplan_sweep.utils as utils
+import noteplan_sweep.sweep_api as sweep_api
+import noteplan_sweep.review_ui as review_ui
 from noteplan_sweep.dashboard import parse_frontmatter, scan_plans
 
 
@@ -169,6 +171,19 @@ class NoteplanHandler(BaseHTTPRequestHandler):
             self._api_get_summary()
             return
 
+        # Interactive review UI page: /review/<run_id>
+        if path.startswith("/review/"):
+            run_id = path[len("/review/"):]
+            html = review_ui.build_review_ui_html(run_id)
+            self._send_cors(200, "text/html; charset=utf-8")
+            self.wfile.write(html.encode("utf-8"))
+            return
+
+        # Interactive review API (read side): /api/sweep/*
+        if path.startswith("/api/sweep/"):
+            self._sweep_api_get(path, parse_qs(parsed.query))
+            return
+
         # Sweep review files (sweeps/ lives at noteplan root, not dashboard/)
         if path.startswith("/sweeps/"):
             self._serve_file(self.noteplan_root / path.lstrip("/"))
@@ -223,6 +238,69 @@ class NoteplanHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json_err(str(e), 500)
 
+    # ── Sweep review API ──────────────────────────────────────────────────
+
+    def _sweep_reply(self, result: tuple):
+        code, data = result
+        self._send_cors(code)
+        self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+
+    def _sweep_api_get(self, path: str, qs: dict):
+        root = self.noteplan_root
+
+        def q1(key, default=None):
+            v = qs.get(key)
+            return v[0] if v else default
+
+        if path == "/api/sweep/sessions":
+            return self._sweep_reply(sweep_api.list_sessions(root))
+        if path == "/api/sweep/file":
+            return self._sweep_reply(sweep_api.get_file(root, {
+                "path": q1("path", ""), "start": q1("start"),
+                "end": q1("end"), "sections": q1("sections")}))
+        if path == "/api/sweep/files":
+            return self._sweep_reply(sweep_api.search_files(root, q1("q", "")))
+
+        # /api/sweep/session/<run_id>[/status|/summary]
+        rest = path[len("/api/sweep/session/"):] if path.startswith(
+            "/api/sweep/session/") else None
+        if rest is not None:
+            parts = rest.split("/")
+            run_id = parts[0]
+            sub = parts[1] if len(parts) > 1 else None
+            if sub is None:
+                return self._sweep_reply(sweep_api.get_session(root, run_id))
+            if sub == "status":
+                return self._sweep_reply(sweep_api.get_status(root, run_id))
+            if sub == "summary":
+                return self._sweep_reply(sweep_api.get_summary(root, run_id))
+
+        self._json_err("Unknown sweep endpoint", 404)
+
+    def _sweep_api_post(self, path: str, body: dict):
+        root = self.noteplan_root
+        prefix = "/api/sweep/session/"
+        if not path.startswith(prefix):
+            return self._json_err("Unknown sweep endpoint", 404)
+        parts = path[len(prefix):].split("/")
+        if len(parts) < 2:
+            return self._json_err("run_id and action required", 400)
+        run_id, action = parts[0], parts[1]
+        dispatch = {
+            "decision": sweep_api.post_decision,
+            "approve": sweep_api.post_approve,
+            "split": sweep_api.post_split,
+            "finalize": sweep_api.post_finalize,
+            "abort": sweep_api.post_abort,
+        }
+        fn = dispatch.get(action)
+        if fn is None:
+            return self._json_err(f"Unknown action: {action}", 404)
+        try:
+            return self._sweep_reply(fn(root, run_id, body))
+        except FileNotFoundError:
+            return self._json_err(f"no such session: {run_id}", 404)
+
     # ── POST ──────────────────────────────────────────────────────────────
 
     def do_POST(self):
@@ -235,6 +313,8 @@ class NoteplanHandler(BaseHTTPRequestHandler):
             self._api_frontmatter(body)
         elif parsed.path == "/api/task":
             self._api_task(body)
+        elif parsed.path.startswith("/api/sweep/"):
+            self._sweep_api_post(parsed.path, body)
         else:
             self._json_err("Unknown endpoint", 404)
 

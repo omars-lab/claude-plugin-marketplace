@@ -26,7 +26,7 @@ if os.path.isfile(_VENV_PYTHON) and not sys.executable.startswith(_SCRIPT_DIR):
 sys.path.insert(0, os.path.dirname(__file__))
 
 import noteplan_sweep.utils as utils
-from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair, sweep_review, dashboard, conversation_mine, work_board, ai_usage, server, contributions, graph, graph_embed
+from noteplan_sweep import movement, source, validation, backlinks, discovery, url_enrichment, link_repair, sweep_review, dashboard, conversation_mine, work_board, ai_usage, server, contributions, graph, graph_embed, sweep_api
 
 VERSION = "0.1.0"
 
@@ -118,6 +118,9 @@ COMMANDS = [
     ("sweep-diff-coverage",     "Per-source-file: breadcrumb count vs removed lines — flags thin-coverage (B-16 risk)"),
     ("sweep-review-diagnose",   "Per-row diagnostic: source diff coverage, section match, anomaly root cause"),
     ("sweep-review-diff-range", "Show the git diff range stored in a snapshot + commits and calendar files in range"),
+    # Group 14: Interactive Review UI
+    ("sweep-manifest-validate", "Validate a move manifest (schema + hashes + disk drift) and register the review session"),
+    ("sweep-session-status",    "Print folded status of a review session as JSON (agent polling)"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -174,6 +177,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("file", help="Source daily note path")
     p.add_argument("--keep-completed", action="store_true", default=True,
                    help="Keep [x] completed tasks (default: true)")
+    p.add_argument("--keep-lines-file", dest="keep_lines_file", metavar="FILE",
+                   help="File of exact raw lines to retain (newline-separated) — "
+                        "user 'keep in source' decisions")
 
     p = sub.add_parser("add-breadcrumb", help=COMMANDS[6][1])
     p.add_argument("file", help="Source note to append breadcrumb table to")
@@ -451,6 +457,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--date", help="YYYY-MM-DD of the sweep (default: today)")
     p.add_argument("--run", type=int, metavar="N", help="Run counter (default: latest)")
 
+    # ── Group 14: Interactive Review UI ───────────────────────────────────
+    p = sub.add_parser("sweep-manifest-validate", help=COMMANDS[70][1])
+    p.add_argument("manifest", help="Path to the move manifest JSON to validate + register")
+
+    p = sub.add_parser("sweep-session-status", help=COMMANDS[71][1])
+    p.add_argument("run_id", help="Run ID (e.g. 2026-07-09-01)")
+
     return parser
 
 # ---------------------------------------------------------------------------
@@ -527,6 +540,8 @@ DISPATCH = {
     "sweep-diff-coverage":      sweep_review.cmd_sweep_diff_coverage,
     "sweep-review-diagnose":    sweep_review.cmd_sweep_review_diagnose,
     "sweep-review-diff-range":  sweep_review.cmd_sweep_review_diff_range,
+    "sweep-manifest-validate":  sweep_api.cmd_sweep_manifest_validate,
+    "sweep-session-status":     sweep_api.cmd_sweep_session_status,
 }
 
 def cmd_list_commands(_args=None):

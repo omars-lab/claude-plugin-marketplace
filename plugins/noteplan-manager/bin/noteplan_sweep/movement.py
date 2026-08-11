@@ -52,6 +52,80 @@ def _ensure_trailing_newline(text: str) -> str:
     return text.rstrip("\n") + "\n"
 
 
+def insert_into_section(dst_text: str, section_header: str,
+                        content_lines: list[str], date: str | None) -> str:
+    """Insert `content_lines` under `section_header` in `dst_text` and return
+    the new text (with a single trailing newline, empty subheaders cleaned).
+
+    Pure (no I/O). Shared by cmd_append_section and cmd_move_range so the
+    insertion semantics stay byte-identical between "append content" and
+    "move a line range". Behaviour:
+
+      - If the section is absent, create it at EOF first.
+      - With `date`, manage a '## From {date}' subheader inside the section:
+        append after an existing block, or prepend a new '## From {date}' block.
+      - Without `date`, append at the end of the section (before the next
+        top-level '# ' header), trimming trailing blank lines first.
+
+    `content_lines` is a list of raw lines WITHOUT trailing newlines (i.e. the
+    result of splitting content and dropping a trailing empty element).
+
+    Raises ValueError if the header cannot be located after creation (a bug).
+    """
+    # Create section at EOF if absent
+    if utils.find_section(dst_text, section_header) == -1:
+        utils.verbose(f"section {section_header!r} not found — creating at EOF")
+        dst_text = dst_text.rstrip("\n") + f"\n\n{section_header}\n"
+
+    lines = dst_text.split("\n")
+
+    # Find the section header line (last match, matching legacy behaviour)
+    header_line_idx = None
+    for idx, line in enumerate(lines):
+        if line.rstrip() == section_header.rstrip():
+            header_line_idx = idx
+    if header_line_idx is None:
+        raise ValueError(f"section header not found after creation: {section_header!r}")
+
+    # Find the end of this section (next top-level # header or EOF)
+    section_end_idx = len(lines)
+    for idx in range(header_line_idx + 1, len(lines)):
+        if re.match(r'^# ', lines[idx]):
+            section_end_idx = idx
+            break
+
+    body = list(content_lines)
+
+    if date:
+        date_end_idx = _find_date_subheader_end(
+            lines, header_line_idx + 1, section_end_idx, date
+        )
+        if date_end_idx != -1:
+            utils.verbose(f"found '## From {date}' subheader — appending after its block")
+            insert_at = date_end_idx
+            while insert_at > header_line_idx + 1 and lines[insert_at - 1].strip() == "":
+                insert_at -= 1
+            lines = lines[:insert_at] + body + lines[insert_at:]
+        else:
+            utils.verbose(f"'## From {date}' subheader not found — prepending")
+            insert_at = header_line_idx + 1
+            while insert_at < section_end_idx and lines[insert_at].strip() == "":
+                insert_at += 1
+            date_block = [f"## From {date}", ""] + body
+            lines = lines[:insert_at] + date_block + lines[insert_at:]
+    else:
+        insert_at = section_end_idx
+        while insert_at > header_line_idx + 1 and lines[insert_at - 1].strip() == "":
+            insert_at -= 1
+        lines = lines[:insert_at] + body + lines[insert_at:]
+
+    new_text = "\n".join(lines)
+    if not new_text.endswith("\n"):
+        new_text += "\n"
+
+    return utils.clean_empty_subheaders(new_text)
+
+
 # ---------------------------------------------------------------------------
 # cmd_create_section
 # ---------------------------------------------------------------------------
@@ -104,77 +178,18 @@ def cmd_append_section(args):
     if content and not content.endswith("\n"):
         content += "\n"
 
-    text = utils.read_file(dst_path)
-
-    # Create section at EOF if absent
-    sec_idx = utils.find_section(text, args.section_header)
-    if sec_idx == -1:
-        utils.verbose(f"section {args.section_header!r} not found — creating at EOF")
-        text = text.rstrip("\n") + f"\n\n{args.section_header}\n"
-        sec_idx = utils.find_section(text, args.section_header)
-
-    # Find the bounds of the section body (from line after header to next # header)
-    # Work in lines for easier insertion
-    lines = text.split("\n")
-
-    # Find the line index of the section header
-    header_line_idx = None
-    for idx, line in enumerate(lines):
-        if line.rstrip() == args.section_header.rstrip():
-            header_line_idx = idx
-
-    if header_line_idx is None:
-        utils.err(f"section header not found after creation attempt: {args.section_header!r}")
-        sys.exit(utils.EXIT_NOT_FOUND)
-
-    # Find the end of this section (next # header or EOF)
-    section_end_idx = len(lines)
-    for idx in range(header_line_idx + 1, len(lines)):
-        if re.match(r'^# ', lines[idx]):
-            section_end_idx = idx
-            break
-
     content_lines = content.split("\n")
     # Remove trailing empty string from split if content ended with \n
     if content_lines and content_lines[-1] == "":
         content_lines = content_lines[:-1]
 
-    if args.date:
-        date_end_idx = _find_date_subheader_end(
-            lines, header_line_idx + 1, section_end_idx, args.date
-        )
-        if date_end_idx != -1:
-            # Found existing ## From {date} — insert content after it
-            utils.verbose(f"found '## From {args.date}' subheader — appending after its block")
-            # Insert before the next ## header or section end
-            insert_at = date_end_idx
-            # Remove trailing blank lines before insert point
-            while insert_at > header_line_idx + 1 and lines[insert_at - 1].strip() == "":
-                insert_at -= 1
-            lines = lines[:insert_at] + content_lines + lines[insert_at:]
-        else:
-            # No existing ## From {date} — prepend it with content right after header
-            utils.verbose(f"'## From {args.date}' subheader not found — prepending")
-            insert_at = header_line_idx + 1
-            # Skip any blank lines immediately after the header
-            while insert_at < section_end_idx and lines[insert_at].strip() == "":
-                insert_at += 1
-            date_block = [f"## From {args.date}", ""] + content_lines
-            lines = lines[:insert_at] + date_block + lines[insert_at:]
-    else:
-        # No date — append content at end of section (before section_end_idx)
-        insert_at = section_end_idx
-        # Remove trailing blank lines before the next section
-        while insert_at > header_line_idx + 1 and lines[insert_at - 1].strip() == "":
-            insert_at -= 1
-        lines = lines[:insert_at] + content_lines + lines[insert_at:]
+    text = utils.read_file(dst_path)
 
-    new_text = "\n".join(lines)
-    if not new_text.endswith("\n"):
-        new_text += "\n"
-
-    # Clean empty subheaders
-    new_text = utils.clean_empty_subheaders(new_text)
+    try:
+        new_text = insert_into_section(text, args.section_header, content_lines, args.date)
+    except ValueError as e:
+        utils.err(str(e))
+        sys.exit(utils.EXIT_NOT_FOUND)
 
     utils.write_file(dst_path, new_text)
     utils.log(f"appended content under {args.section_header!r} in {dst_path.name}")
@@ -220,7 +235,6 @@ def cmd_move_range(args):
 
     # Extract the content to move
     moved_lines = src_lines[start_0:end_0]
-    moved_content = "\n".join(moved_lines) + "\n"
 
     # Build new src without the moved lines
     new_src_lines = src_lines[:start_0] + src_lines[end_0:]
@@ -228,63 +242,14 @@ def cmd_move_range(args):
     if not new_src_text.endswith("\n"):
         new_src_text += "\n"
 
-    # Now compute the new dst text using append_section logic
+    # Now compute the new dst text using the shared insertion logic
     dst_text = utils.read_file(dst_path)
 
-    # Create section in dst if absent
-    sec_idx = utils.find_section(dst_text, args.section_header)
-    if sec_idx == -1:
-        utils.verbose(f"section {args.section_header!r} not found in dst — creating at EOF")
-        dst_text = dst_text.rstrip("\n") + f"\n\n{args.section_header}\n"
-
-    # Build a fake args object to reuse append_section logic via inline approach
-    dst_lines = dst_text.split("\n")
-
-    # Find header line
-    header_line_idx = None
-    for idx, line in enumerate(dst_lines):
-        if line.rstrip() == args.section_header.rstrip():
-            header_line_idx = idx
-
-    if header_line_idx is None:
-        utils.err(f"section header could not be located after creation: {args.section_header!r}")
+    try:
+        new_dst_text = insert_into_section(dst_text, args.section_header, moved_lines, args.date)
+    except ValueError as e:
+        utils.err(str(e))
         sys.exit(utils.EXIT_NOT_FOUND)
-
-    # Find section end
-    section_end_idx = len(dst_lines)
-    for idx in range(header_line_idx + 1, len(dst_lines)):
-        if re.match(r'^# ', dst_lines[idx]):
-            section_end_idx = idx
-            break
-
-    moved_body = moved_lines  # list of lines without trailing newline
-
-    if args.date:
-        date_end_idx = _find_date_subheader_end(
-            dst_lines, header_line_idx + 1, section_end_idx, args.date
-        )
-        if date_end_idx != -1:
-            insert_at = date_end_idx
-            while insert_at > header_line_idx + 1 and dst_lines[insert_at - 1].strip() == "":
-                insert_at -= 1
-            dst_lines = dst_lines[:insert_at] + moved_body + dst_lines[insert_at:]
-        else:
-            insert_at = header_line_idx + 1
-            while insert_at < section_end_idx and dst_lines[insert_at].strip() == "":
-                insert_at += 1
-            date_block = [f"## From {args.date}", ""] + moved_body
-            dst_lines = dst_lines[:insert_at] + date_block + dst_lines[insert_at:]
-    else:
-        insert_at = section_end_idx
-        while insert_at > header_line_idx + 1 and dst_lines[insert_at - 1].strip() == "":
-            insert_at -= 1
-        dst_lines = dst_lines[:insert_at] + moved_body + dst_lines[insert_at:]
-
-    new_dst_text = "\n".join(dst_lines)
-    if not new_dst_text.endswith("\n"):
-        new_dst_text += "\n"
-
-    new_dst_text = utils.clean_empty_subheaders(new_dst_text)
 
     # Atomic: compute both, then write both
     utils.write_file(dst_path, new_dst_text)

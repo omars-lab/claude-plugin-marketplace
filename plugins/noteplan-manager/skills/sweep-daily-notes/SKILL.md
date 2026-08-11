@@ -628,7 +628,10 @@ Report: "Found N daily notes in scope. Earliest: {date}, Latest: {date}."
 
 ## Phase 6: Day-by-Day Guided Sweep
 
-Process one daily note at a time, oldest first. **Complete each day fully before moving to the next.**
+> **Execution model (as of the interactive Review UI): you PROPOSE, the user APPROVES, the server EXECUTES.**
+> Steps **6a** (announce) and **6b** (classify/score) still run — for **every in-scope day** — but you no longer route sections one-by-one in chat (old Step 6c) or move content with `move-range`/`append-section` yourself (old Step 6e). Instead you accumulate every decision into a single **move manifest** covering the whole run, hand the user a browser diff UI, and the server applies each approved move with hash validation. See **Step 6c — Emit manifest + launch Review UI** below. Old Steps **6c–6f** and **Phase 7** remain as legacy reference for the pre-UI flow; do not run them when using the manifest flow.
+>
+> The no-regex tenet is unchanged: you still read and classify every section (6b). The manifest just records those decisions as data instead of executing them.
 
 ### Step 6a — Announce the day
 
@@ -776,7 +779,84 @@ Announce the classification before routing:
   ⏭️  {j} skip(s) — personal/completed
 ```
 
-### Step 6c — Route uncertain sections one at a time
+### Step 6c — Emit move manifest + launch Review UI (active flow)
+
+After 6a/6b have classified every section for **all** in-scope days, assemble one **move manifest** and hand it to the interactive Review UI. Do not ask per-section routing questions and do not run `move-range`/`append-section` — the server does the moving after the user approves.
+
+**1. Build the manifest.** One JSON file, `sweeps/<run_id>.manifest.json`, where `<run_id>` is the ID from `sweep-start` (read `sweeps/.sweep-id`). Every classified section becomes one or more `moves`. Uncertain sections still get your best-guess destination plus `confidence: "low"` and `alternatives` (the top scored candidates) so the user can re-route in one click. Schema:
+
+```jsonc
+{
+  "schema_version": 1,
+  "run_id": "2026-07-09-01",              // from sweeps/.sweep-id
+  "base_sha": "<HEAD at sweep-start>",     // from sweeps/.sweep-base
+  "created_at": "<ISO8601>",
+  "mode": "work|personal|both",
+  "source_files": [
+    { "file": "Calendar/20260707.md",
+      "cleanup": { "clear_source": true, "keep_completed": true } }
+  ],
+  "moves": [{
+    "id": "mv-20260707-001",               // stable, source-line order
+    "source": {
+      "file": "Calendar/20260707.md", "section_header": "# ServiceNow",
+      "line_start": 14, "line_end": 15,    // 1-based, as the file is NOW
+      "lines": [ { "n": 14, "text": "<exact raw line>", "h": "<sha256[:16] of raw line>" } ],
+      "context_before": [], "context_after": []
+    },
+    "destination": {
+      "file": "Notes/.../🏢260118🏁 Plan.md", "exists": true,
+      "create": null,                       // OR for a NEW file:
+      // "create": { "kind": "plan|list|research|meeting",
+      //             "frontmatter": {"doctype":"plan","status":"🔵", ...},
+      //             "h1": "# 🏢 Title", "boilerplate_lines": ["", "# Next Steps"] },
+      "section_header": "# Next Steps", "date_subheader": null
+    },
+    "content": { "lines": [
+      { "text": "<line as it should appear in dest>",
+        "provenance": "verbatim|transformed|added",
+        "source_n": 14,                     // for verbatim/transformed
+        "original": "<pre-transform text>"  // transformed only
+      }
+    ]},
+    "classification": { "confidence": "high|medium|low", "rationale": "<one line>",
+      "alternatives": [ { "file": "...", "section_header": "...", "reason": "..." } ] },
+    "breadcrumb": { "section": "ServiceNow", "summary": "ACL follow-up → plan",
+                    "destination": "[[🏢 access-control-redesign]]" }
+  }]
+}
+```
+
+Rules for building it (all still Claude's judgement, per the no-regex tenet):
+- **Hashes** are the first 16 hex of SHA-256 over the **raw** line text (no trailing newline). Use `sweep_manifest.line_hash()` mentally, or just emit the raw text and run `sweep-manifest-validate` which recomputes and verifies.
+- **Provenance**: `verbatim` = moved as-is (text == source line); `transformed` = you reworded or appended a date/IOU tag (set `original`); `added` = a line with no source (breadcrumb subheaders, section headers you author). IOU date-tagging is a `transformed` line — you write the tagged text, no regex executor flag.
+- **Line ranges must not overlap** within one source file. Split a section into multiple moves if parts go to different destinations.
+- **New files**: set `destination.exists: false` and author the full `create` block (frontmatter + H1 + boilerplate) from the matching `@Templates/` file. The server writes it verbatim — invent nothing at apply time.
+- Keep `source_files[].cleanup.clear_source: true` for daily notes (open tasks not moved/kept get cleared at finalize); the UI's "keep in source" decisions are honored automatically.
+
+**2. Validate + register:**
+```bash
+noteplan-sweep sweep-manifest-validate sweeps/<run_id>.manifest.json
+```
+This checks schema, hash self-consistency, and non-overlap; warns on any source line that already drifted on disk; copies the manifest into `sweeps/` and journals `session_created`. Fix any reported errors before proceeding.
+
+**3. Launch the Review UI and hand off:**
+```bash
+noteplan-sweep serve          # if not already running (background)
+```
+Print the URL for the user: `http://localhost:4242/review/<run_id>`. The user reviews a PR-style two-column diff per move (source → destination, new files included), approves/skips/re-routes/edits, and the server applies each approved move with hash validation. Nothing commits until they hit **Finalize** (one `sweep(YYYY-MM-DD)` commit, gated by aggregate diff validation).
+
+**4. Poll until done, then report:**
+```bash
+noteplan-sweep sweep-session-status <run_id>    # → {state, counts, seq, commit_sha?}
+```
+Poll every ~30–60s until `state` is `finalized`, `failed`, or `aborted`. Then report counts + the commit SHA (finalized), the validation errors (failed → the user can fix and re-finalize, or you can), or that the session was rolled back (aborted). **Phase 7's manual git-diff check is superseded** by finalize validation — skip it in this flow. Proceed to Phase 7b/8/8.5/9 as normal after a `finalized` session.
+
+Tell the user (once) to **close the affected notes in NotePlan while reviewing** — an open, unsaved note can be re-saved by the app over an applied move.
+
+---
+
+### Step 6c (legacy, pre-UI) — Route uncertain sections one at a time
 
 **For every `❓ Uncertain` section, ask individually with AskUserQuestion — one question per section, no bulk prompts.**
 
@@ -1344,6 +1424,8 @@ Continue this loop until all days in scope are exhausted.
 ---
 
 ## Phase 7: Validate via Git Diff — Line-Level Integrity Check
+
+> **Superseded in the Review-UI flow.** When you used Step 6c (manifest + Review UI), this check is performed automatically by the server at **Finalize** (`sweep_executor.validate_session_diff`, a manifest-aware port of the check below) before the single commit is created. Skip this phase; a `finalized` session has already passed it. This phase remains authoritative only for the legacy per-day CLI flow.
 
 After all days are processed, run a final integrity check:
 

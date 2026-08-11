@@ -62,23 +62,17 @@ def _collect_breadcrumb_block(lines: list[str]) -> tuple[int, int] | None:
 # cmd_clear_source
 # ---------------------------------------------------------------------------
 
-def cmd_clear_source(args):
-    """
-    Clean a swept source note, keeping only:
-      1. Completed tasks (lines matching '- [x]' or '* [x]') and their
-         indented children.
-      2. The breadcrumb table block ('| Swept | ...' through end of table).
+def clear_source_text(text: str, keep_completed: bool = True,
+                      keep_line_texts: set[str] | None = None) -> str:
+    """Pure core of clear-source. Return the cleaned note text.
 
-    Everything else is removed: open tasks, unlabeled content, section
-    headers that become empty after removal.  The breadcrumb block is
-    preserved verbatim.
-
-    Args:
-        args.file           — source daily note path
-        args.keep_completed — (default True) keep [x] tasks
+    Keeps: the breadcrumb table verbatim; completed [x] tasks (+ indented
+    children) when keep_completed; and any line whose exact raw text is in
+    keep_line_texts (+ its indented children) — this is how a user's "keep in
+    source" decision survives the sweep. Everything else (open tasks, unlabeled
+    content, headers that become empty) is removed.
     """
-    path = Path(args.file)
-    text = utils.read_file(path)
+    keep_line_texts = keep_line_texts or set()
     lines = text.split("\n")
 
     breadcrumb = _collect_breadcrumb_block(lines)
@@ -95,11 +89,10 @@ def cmd_clear_source(args):
             i += 1
             continue
 
-        # Keep completed tasks and their indented children
-        if _is_completed_task(line):
+        # Keep completed tasks + user "keep" lines, and their indented children
+        if (keep_completed and _is_completed_task(line)) or line in keep_line_texts:
             keep.append(line)
             i += 1
-            # Collect indented children
             while i < len(lines) and _is_indented_child(lines[i]):
                 keep.append(lines[i])
                 i += 1
@@ -109,18 +102,51 @@ def cmd_clear_source(args):
         i += 1
 
     # Remove section headers that have no content after them
-    # (i.e. headers immediately followed by another header or EOF)
     cleaned = _remove_empty_section_headers(keep)
-
     # Collapse multiple consecutive blank lines into at most one
     collapsed = _collapse_blank_lines(cleaned)
 
     new_text = "\n".join(collapsed)
     if not new_text.endswith("\n"):
         new_text += "\n"
+    return new_text
+
+
+def cmd_clear_source(args):
+    """
+    Clean a swept source note, keeping only:
+      1. Completed tasks (lines matching '- [x]' or '* [x]') and their
+         indented children.
+      2. The breadcrumb table block ('| Swept | ...' through end of table).
+      3. Any exact lines listed in --keep-lines-file (user "keep" decisions).
+
+    Everything else is removed: open tasks, unlabeled content, section
+    headers that become empty after removal.  The breadcrumb block is
+    preserved verbatim.
+
+    Args:
+        args.file            — source daily note path
+        args.keep_completed  — (default True) keep [x] tasks
+        args.keep_lines_file — optional file of exact raw lines to retain
+                               (newline-separated); or None
+    """
+    path = Path(args.file)
+    text = utils.read_file(path)
+
+    keep_line_texts: set[str] = set()
+    klf = getattr(args, "keep_lines_file", None)
+    if klf:
+        raw = utils.read_file(Path(klf))
+        keep_line_texts = {ln for ln in raw.split("\n") if ln.strip()}
+
+    new_text = clear_source_text(
+        text,
+        keep_completed=getattr(args, "keep_completed", True),
+        keep_line_texts=keep_line_texts,
+    )
 
     utils.write_file(path, new_text)
-    utils.log(f"cleared source {path.name} — kept {len(collapsed)} lines")
+    utils.log(f"cleared source {path.name} — kept {len(new_text.splitlines())} lines")
 
 
 def _remove_empty_section_headers(lines: list[str]) -> list[str]:

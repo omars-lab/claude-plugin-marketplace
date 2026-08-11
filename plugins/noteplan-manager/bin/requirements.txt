@@ -7,3 +7,9 @@
 #                  After install: playwright install chromium
 
 playwright
+
+# Test-only (bin/noteplan_sweep/tests): the JS + browser suites run under
+# pytest with the pytest-playwright fixture (real Chromium). Install with:
+#   .venv/bin/pip install pytest pytest-playwright
+pytest
+pytest-playwright

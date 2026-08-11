@@ -74,10 +74,10 @@ def test_commands_index_alignment():
 
 
 def test_commands_count():
-    """Sanity-check: dispatcher should have exactly 70 commands."""
+    """Sanity-check: dispatcher should have exactly 72 commands."""
     content = DISPATCHER.read_text()
     cmds = _parse_commands_list(content)
-    assert len(cmds) == 70, f"Expected 70 commands, got {len(cmds)}: {cmds}"
+    assert len(cmds) == 72, f"Expected 72 commands, got {len(cmds)}: {cmds}"
 
 
 # ---------------------------------------------------------------------------
