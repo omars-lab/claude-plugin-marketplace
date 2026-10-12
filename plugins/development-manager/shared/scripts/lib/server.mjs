@@ -12,6 +12,16 @@
 // Requests passed through to the target get only the Host check, so the
 // target's own API (a PUT from its page, say) keeps working unchanged.
 //
+// The phone (design section 13): `tailscale serve` takes HTTPS on the Mac's
+// tailnet name and passes it to this server on 127.0.0.1. config.json's
+// `phone` block ({ host, port, logins, authors }) lets that name through the
+// Host check, and the matching `https://` Origin through the write check.
+// Tailscale keeps the Host the phone sent (`<host>:<port>`, checked
+// 2026-10-12), and replaces any Tailscale-User-Login the phone sends with the
+// real login. Every request that came that way (the phone Host, or any
+// Tailscale-User-Login header) must carry a login on the allow list, or it is
+// refused, page loads included. The login names the comment's author.
+//
 // Screenshots (design section 14): the page sends the picture of a thread's
 // element as a PNG body, with the same token and Origin checks as any write.
 // The server names the file and picks its folder. A picture is read back by an
@@ -126,6 +136,49 @@ function readBody(req) {
   });
 }
 
+/**
+ * The phone block of config.json, cleaned: { host, port, hosts, logins, authors }
+ * or null when the phone is off or the block is unusable. `hosts` are the Host
+ * headers accepted for it: `<host>:<port>` as Tailscale passes it on, and the
+ * bare name too when the port is 443, since a browser leaves out the default port.
+ */
+export function phoneSetting(config) {
+  const p = config && config.phone;
+  if (!p || typeof p !== "object") return null;
+  const host = typeof p.host === "string" ? p.host.trim().toLowerCase().replace(/\.$/, "") : "";
+  const port = Number(p.port);
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) || !Number.isInteger(port) || port < 1 || port > 65535) return null;
+  const logins = Array.isArray(p.logins) ? p.logins.filter((l) => typeof l === "string" && l.trim()).map((l) => l.trim().toLowerCase()) : [];
+  const authors = {};
+  if (p.authors && typeof p.authors === "object") {
+    for (const [k, v] of Object.entries(p.authors)) if (typeof v === "string" && v.trim()) authors[k.trim().toLowerCase()] = v.trim();
+  }
+  const hosts = [`${host}:${port}`].concat(port === 443 ? [host] : []);
+  return { host, port, hosts, logins, authors };
+}
+
+/**
+ * Who is asking, and may they. `localHosts` are this server's own Host values;
+ * `phone` is phoneSetting(config) or null; `author` the repo's author.
+ * Returns { ok: true, via: "local"|"tailscale", origin, author } or
+ * { ok: false, status, reason, error }. `origin` is the only Origin a write may carry.
+ */
+export function whoIsAsking(headers, { localHosts, phone, author }) {
+  const host = String(headers.host || "").toLowerCase();
+  const local = localHosts.has(host);
+  const viaPhone = !!(phone && phone.hosts.includes(host));
+  if (!local && !viaPhone) return { ok: false, status: 403, reason: "host", error: "wrong host" };
+  const raw = headers["tailscale-user-login"];
+  // A login header on a local request did not come from Tailscale, which sends
+  // the phone's Host. It is held to the same allow list all the same, so an
+  // unknown one is refused and a known one is only the author it would be anyway.
+  if (!viaPhone && raw === undefined) return { ok: true, via: "local", origin: `http://${host}`, author };
+  const login = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (!login) return { ok: false, status: 403, reason: "no_login", error: "no Tailscale login on this request; only signed-in people on the allow list can comment from the phone" };
+  if (!phone || !phone.logins.includes(login)) return { ok: false, status: 403, reason: "login_not_allowed", login, error: "this Tailscale login is not on the repo's allow list" };
+  return { ok: true, via: "tailscale", origin: viaPhone ? `https://${host}` : `http://${host}`, author: phone.authors[login] || author, login };
+}
+
 /** A short fingerprint of the store, so the page can ask "anything new?" cheaply. */
 function storeVersion(threads) {
   let n = 0;
@@ -140,17 +193,40 @@ function storeVersion(threads) {
 export function startServer(store, { target, root, port = 8766, record = true } = {}) {
   const token = randomBytes(16).toString("hex");
   const log = fileLogger(paths(store).serverLog);
-  const config = readConfig(store);
-  const author = typeof config.author === "string" && config.author ? config.author : "me";
   const targetUrl = target ? new URL(target) : null;
   const rootDir = root ? realpathSync(resolve(store.repo, root)) : null;
   let allowedHosts = new Set();
 
-  const hostOk = (req) => allowedHosts.has(String(req.headers.host || "").toLowerCase());
+  // config.json is read again when it changes, so `enable --phone` takes effect
+  // without a restart.
+  let config = { stamp: null, author: "me", phone: null };
+  function settings() {
+    let stamp = null;
+    try {
+      const st = statSync(paths(store).config);
+      stamp = `${st.mtimeMs}:${st.size}`;
+    } catch {
+      stamp = "none";
+    }
+    if (stamp !== config.stamp) {
+      const c = readConfig(store);
+      config = { stamp, author: typeof c.author === "string" && c.author ? c.author : "me", phone: phoneSetting(c) };
+    }
+    return config;
+  }
+
+  /** whoIsAsking for this request, logging any refusal. */
+  function ask(req) {
+    const s = settings();
+    const who = whoIsAsking(req.headers, { localHosts: allowedHosts, phone: s.phone, author: s.author });
+    if (!who.ok) log("reject", { reason: who.reason, host: String(req.headers.host || ""), ...(who.login ? { login: who.login } : {}) });
+    return who;
+  }
 
   // ---- The comment API ------------------------------------------------------------
 
-  async function api(req, res, path) {
+  async function api(req, res, path, who) {
+    const author = who.author;
     if (!sameToken(req.headers["x-page-comments-token"], token)) return sendJson(res, 403, { error: "missing or wrong token" });
     const url = new URL(req.url, "http://x");
     if (req.method === "GET" && path === "threads") {
@@ -165,9 +241,10 @@ export function startServer(store, { target, root, port = 8766, record = true } 
     // Writes: the Origin must be this server's own, and the body JSON. A JSON
     // content type makes the browser ask first for any cross-site call, and this
     // server answers no such ask, so the browser never sends the write.
-    if (req.headers.origin !== `http://${req.headers.host}`) return sendJson(res, 403, { error: "wrong origin" });
+    // From the phone the page is https://<tailnet name>:<port>, so that is its Origin.
+    if (req.headers.origin !== who.origin) return sendJson(res, 403, { error: "wrong origin" });
     const shot = /^threads\/([^/]+)\/shot$/.exec(path);
-    if (shot) return await postShot(req, res, shot[1]);
+    if (shot) return await postShot(req, res, shot[1], author);
     if (!/^application\/json\b/i.test(req.headers["content-type"] || "")) return sendJson(res, 415, { error: "send JSON" });
     let body;
     try {
@@ -189,7 +266,7 @@ export function startServer(store, { target, root, port = 8766, record = true } 
         rev: { bodyHash, ts: nowIso(), git: gitStamp(store.repo) },
         body: text,
       });
-      log("thread_new", { thread: id, page: cleanPage(body.page).path });
+      log("thread_new", { thread: id, page: cleanPage(body.page).path, via: who.via });
       return sendJson(res, 201, { thread: publicThread(readThread(store, id)) });
     }
     const m = /^threads\/([^/]+)\/(replies|status)$/.exec(path);
@@ -215,7 +292,7 @@ export function startServer(store, { target, root, port = 8766, record = true } 
    * body, or a JSON `{ "error": "<why>" }` when the capture failed. Only the
    * thread's first message gets a picture, so a second one is refused (409).
    */
-  async function postShot(req, res, id) {
+  async function postShot(req, res, id, author) {
     if (!isThreadId(id)) return sendJson(res, 404, { error: "not found" });
     if (!readThread(store, id)) return sendJson(res, 404, { error: `no thread ${id}` });
     const type = req.headers["content-type"] || "";
@@ -386,10 +463,8 @@ export function startServer(store, { target, root, port = 8766, record = true } 
   // ---- The server ---------------------------------------------------------------------
 
   const server = createServer(async (req, res) => {
-    if (!hostOk(req)) {
-      log("reject", { reason: "host", host: String(req.headers.host || "") });
-      return sendJson(res, 403, { error: "wrong host" });
-    }
+    const who = ask(req);
+    if (!who.ok) return sendJson(res, who.status, { error: who.error });
     const pathname = req.url.split("?")[0];
     try {
       if (pathname.startsWith(PREFIX)) {
@@ -397,7 +472,7 @@ export function startServer(store, { target, root, port = 8766, record = true } 
         if (Object.hasOwn(CLIENT_FILES, rest)) return clientFile(res, rest);
         if (rest.startsWith("shots/")) return getShot(req, res, rest, new URL(req.url, "http://x").searchParams);
         if (rest === "health") return sendJson(res, 200, { ok: true, mode: targetUrl ? "proxy" : "folder" });
-        if (rest === "threads" || rest.startsWith("threads/")) return await api(req, res, rest);
+        if (rest === "threads" || rest.startsWith("threads/")) return await api(req, res, rest, who);
         return sendJson(res, 404, { error: "not found" });
       }
       return targetUrl ? proxy(req, res) : serveFile(req, res);
@@ -411,7 +486,7 @@ export function startServer(store, { target, root, port = 8766, record = true } 
   // Live-reload sockets and other upgrades go straight through to the target.
   const sockets = new Set();
   server.on("upgrade", (req, socket, head) => {
-    if (!hostOk(req) || !targetUrl) {
+    if (!targetUrl || !ask(req).ok) {
       socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
       return;
     }

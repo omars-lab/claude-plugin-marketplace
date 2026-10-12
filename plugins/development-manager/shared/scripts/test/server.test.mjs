@@ -4,7 +4,7 @@ import { createServer, request } from "node:http";
 import { connect } from "node:net";
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { injectTag, startServer } from "../lib/server.mjs";
+import { injectTag, phoneSetting, startServer, whoIsAsking } from "../lib/server.mjs";
 import { readAll } from "../lib/store.mjs";
 import { SAMPLE, tempRepo } from "./helpers.mjs";
 
@@ -259,6 +259,144 @@ test("each start makes a new token", async () => {
     await b.close();
     assert.notEqual(a.token, b.token);
   } finally {
+    cleanup();
+  }
+});
+
+// ---- The phone, through tailscale serve (design section 13) --------------------------------
+// Invented tailnet name and logins. Tailscale passes the phone's Host on as
+// `<name>:<port>` and sets Tailscale-User-Login itself (checked 2026-10-12).
+
+const PHONE_HOST = "sample-mac.tailnet-example.ts.net";
+const PHONE_LOGIN = "person@example.com";
+
+async function phoneServer({ phone } = {}) {
+  const { repo, store, cleanup } = tempRepo();
+  mkdirSync(join(repo, "site"));
+  writeFileSync(join(repo, "site", "index.html"), "<body>x</body>");
+  const s = await startServer(store, { root: "site", port: 0 });
+  const p = { host: PHONE_HOST, port: s.port, logins: [PHONE_LOGIN], ...phone };
+  writeFileSync(join(repo, ".page-comments", "config.json"), JSON.stringify({ author: "sam", phone: p }));
+  return { repo, store, s, cleanup: async () => (await s.close(), cleanup()) };
+}
+
+const viaTailscale = (port, extra = {}) => ({ host: `${PHONE_HOST}:${port}`, "tailscale-user-login": PHONE_LOGIN, ...extra });
+
+test("phoneSetting reads the phone block, and turns away a bad one", () => {
+  assert.equal(phoneSetting({}), null);
+  assert.equal(phoneSetting({ phone: { host: "x", port: 8766 } }), null, "not a dotted name");
+  assert.equal(phoneSetting({ phone: { host: PHONE_HOST, port: "nope" } }), null);
+  const p = phoneSetting({ phone: { host: `${PHONE_HOST.toUpperCase()}.`, port: 8766, logins: [" Person@Example.com ", 7], authors: { "person@example.com": "sam" } } });
+  assert.deepEqual(p, { host: PHONE_HOST, port: 8766, hosts: [`${PHONE_HOST}:8766`], logins: [PHONE_LOGIN], authors: { [PHONE_LOGIN]: "sam" } });
+  assert.deepEqual(phoneSetting({ phone: { host: PHONE_HOST, port: 443 } }).hosts, [`${PHONE_HOST}:443`, PHONE_HOST], "port 443 also comes without the port");
+});
+
+test("whoIsAsking: local requests unchanged; Tailscale ones need a login on the list", () => {
+  const localHosts = new Set(["127.0.0.1:8766", "localhost:8766", "[::1]:8766"]);
+  const phone = phoneSetting({ phone: { host: PHONE_HOST, port: 8766, logins: [PHONE_LOGIN], authors: { [PHONE_LOGIN]: "omar" } } });
+  const ask = (headers, p = phone) => whoIsAsking(headers, { localHosts, phone: p, author: "sam" });
+  assert.deepEqual(ask({ host: "127.0.0.1:8766" }), { ok: true, via: "local", origin: "http://127.0.0.1:8766", author: "sam" });
+  assert.equal(ask({ host: "evil.example:8766" }).reason, "host");
+  assert.equal(ask({ host: `${PHONE_HOST}:8766` }, null).reason, "host", "no phone block: the tailnet name is just another host");
+  assert.equal(ask({ host: `${PHONE_HOST}:9999`, "tailscale-user-login": PHONE_LOGIN }).reason, "host", "another port on the tailnet name");
+  assert.equal(ask({ host: `${PHONE_HOST}:8766` }).reason, "no_login", "a tagged device, or a forged Host with no login");
+  assert.equal(ask({ host: `${PHONE_HOST}:8766`, "tailscale-user-login": "" }).reason, "no_login");
+  assert.equal(ask({ host: `${PHONE_HOST}:8766`, "tailscale-user-login": "someone-else@example.com" }).reason, "login_not_allowed");
+  assert.deepEqual(ask({ host: `${PHONE_HOST}:8766`, "tailscale-user-login": "PERSON@example.com" }), {
+    ok: true,
+    via: "tailscale",
+    origin: `https://${PHONE_HOST}:8766`,
+    author: "omar",
+    login: PHONE_LOGIN,
+  });
+  // A login header on the local Host did not come through Tailscale. It is held to
+  // the same list: an unknown one is refused, a known one changes nothing that matters.
+  assert.equal(ask({ host: "127.0.0.1:8766", "tailscale-user-login": "someone-else@example.com" }).reason, "login_not_allowed");
+  assert.equal(ask({ host: "127.0.0.1:8766", "tailscale-user-login": "someone-else@example.com" }, null).reason, "login_not_allowed");
+  assert.equal(ask({ host: "127.0.0.1:8766", "tailscale-user-login": PHONE_LOGIN }).origin, "http://127.0.0.1:8766");
+});
+
+test("phone: the tailnet name loads the page and comments as the login's author", async () => {
+  const { store, s, repo, cleanup } = await phoneServer({ phone: { authors: { [PHONE_LOGIN]: "omar" } } });
+  try {
+    const page = await call(s.port, { path: "/", headers: viaTailscale(s.port) });
+    assert.equal(page.status, 200);
+    const token = tokenOf(page.text);
+    const comment = { page: SAMPLE.page, viewport: SAMPLE.viewport, anchor: SAMPLE.anchor, body: "From the phone." };
+    const post = (headers) => call(s.port, { method: "POST", path: "/__page-comments/threads", headers: { "content-type": "application/json", "x-page-comments-token": token, ...headers }, body: comment });
+
+    assert.equal((await post(viaTailscale(s.port, { origin: `http://${PHONE_HOST}:${s.port}` }))).status, 403, "the phone's page is https");
+    assert.equal((await post(viaTailscale(s.port, { origin: `http://127.0.0.1:${s.port}` }))).status, 403, "a local Origin on the phone Host");
+    const made = await post(viaTailscale(s.port, { origin: `https://${PHONE_HOST}:${s.port}` }));
+    assert.equal(made.status, 201, made.text);
+    assert.equal(made.json.thread.messages[0].author, "omar", "the login's author, not the repo's");
+    const list = await call(s.port, { path: "/__page-comments/threads", headers: viaTailscale(s.port, { "x-page-comments-token": token }) });
+    assert.equal(list.json.author, "omar");
+
+    // The same server still answers the Mac as before, as the repo's author.
+    const local = await post({ origin: `http://127.0.0.1:${s.port}` });
+    assert.equal(local.status, 201);
+    assert.equal(local.json.thread.messages[0].author, "sam");
+    assert.match(readFileSync(join(repo, ".page-comments", ".state", "server.log"), "utf8"), /ev=thread_new .*via=tailscale/);
+    assert.equal(readAll(store).length, 2);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("phone: no login, a login not on the list, or a forged Host is refused, page loads included", async () => {
+  const { store, s, repo, cleanup } = await phoneServer();
+  try {
+    const page = await call(s.port, { path: "/" });
+    const token = tokenOf(page.text);
+    const headers = (extra) => ({ origin: `https://${PHONE_HOST}:${s.port}`, "content-type": "application/json", "x-page-comments-token": token, ...extra });
+    const post = (extra) => call(s.port, { method: "POST", path: "/__page-comments/threads", headers: headers(extra), body: { anchor: SAMPLE.anchor, page: SAMPLE.page, body: "x" } });
+
+    assert.equal((await call(s.port, { path: "/", headers: { host: `${PHONE_HOST}:${s.port}` } })).status, 403, "page load with no login");
+    assert.equal((await call(s.port, { path: "/", headers: viaTailscale(s.port, { "tailscale-user-login": "someone-else@example.com" }) })).status, 403);
+    const noLogin = await post({ host: `${PHONE_HOST}:${s.port}` });
+    assert.equal(noLogin.status, 403);
+    assert.match(noLogin.json.error, /no Tailscale login/);
+    assert.equal((await post(viaTailscale(s.port, { "tailscale-user-login": "someone-else@example.com" }))).status, 403);
+    assert.equal((await post({ host: `other-mac.tailnet-example.ts.net:${s.port}`, "tailscale-user-login": PHONE_LOGIN })).status, 403, "another tailnet name");
+    assert.equal(readAll(store).length, 0);
+    const log = readFileSync(join(repo, ".page-comments", ".state", "server.log"), "utf8");
+    assert.match(log, /ev=reject reason=no_login/);
+    assert.match(log, /ev=reject reason=login_not_allowed .*login=someone-else@example.com/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("phone: the setting is picked up without a restart, and socket upgrades are checked too", async () => {
+  const { repo, store, cleanup } = tempRepo();
+  const t = await new Promise((r) => {
+    const srv = createServer((req, res) => res.end("<body>x</body>"));
+    srv.on("upgrade", (req, socket) => socket.end("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"));
+    srv.listen(0, "127.0.0.1", () => r({ srv, port: srv.address().port }));
+  });
+  const s = await startServer(store, { target: `http://127.0.0.1:${t.port}`, port: 0 });
+  const upgrade = (headers) =>
+    new Promise((resolve, reject) => {
+      const sock = connect(s.port, "127.0.0.1", () => {
+        const lines = Object.entries(headers).map(([k, v]) => `${k}: ${v}`);
+        sock.write(`GET /live HTTP/1.1\r\n${lines.join("\r\n")}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`);
+      });
+      let buf = "";
+      sock.on("data", (d) => (buf += d));
+      sock.on("close", () => resolve(buf.split("\r\n")[0]));
+      sock.on("error", reject);
+      setTimeout(() => sock.end(), 300);
+    });
+  try {
+    assert.equal((await call(s.port, { path: "/", headers: viaTailscale(s.port) })).status, 403, "no phone block yet");
+    writeFileSync(join(repo, ".page-comments", "config.json"), JSON.stringify({ author: "sam", phone: { host: PHONE_HOST, port: s.port, logins: [PHONE_LOGIN] } }));
+    assert.equal((await call(s.port, { path: "/", headers: viaTailscale(s.port) })).status, 200, "picked up while running");
+    assert.match(await upgrade(viaTailscale(s.port)), /^HTTP\/1.1 101/);
+    assert.match(await upgrade({ host: `${PHONE_HOST}:${s.port}` }), /^HTTP\/1.1 403/);
+  } finally {
+    await s.close();
+    t.srv.close();
     cleanup();
   }
 });
