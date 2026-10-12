@@ -39,6 +39,6 @@
       "description": "Closes the Quick Note HTML form window",
       "jsFunction": "closeQuickNote",
       "hidden": true
-    },
+    }
   ]
 }
