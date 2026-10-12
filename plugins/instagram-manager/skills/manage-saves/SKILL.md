@@ -15,7 +15,7 @@ The data repo is `$INSTAGRAM_HOME` (default `~/Workspace/git/instagram`). Check 
 | If this is missing... | The next step is |
 |---|---|
 | `.cache/saves.json` | **import-saves** |
-| `data/tags.yaml` | tag-saves *(coming)* |
+| `data/tags.yaml` | **tag-saves** |
 | `data/items/` | split-saves *(coming)* |
 | `.cache/media/` | fetch-media *(coming)* |
 | `.cache/stills/` | extract-stills *(coming)* |
@@ -39,6 +39,7 @@ For more than one step, add a task per step with `TaskCreate` and mark each done
 |---|---|
 | "I have a new export" / "import my saves" | `import-saves` |
 | "which collections do I have?" | `import-saves` (`--list`) |
+| "sort my saves" / "tag the pilot" | `tag-saves` |
 | "what's next?" | this skill, Step 1 |
 
 ## Rules every step keeps

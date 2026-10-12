@@ -14,13 +14,14 @@ that feeds your other projects.
 /instagram-manager:introduce
 ```
 
-## Skills (3)
+## Skills (4)
 
 | Category | Skill | What it does |
 |---|---|---|
 | **Intro** | `introduce` | Explain the plugin and route to the right skill |
 | **Route** | `manage-saves` | Pick the next step: import, tag, split, media, hub, send |
 | **Import** | `import-saves` | Read the saved posts and collections out of your export zip, in memory |
+| **Tag** | `tag-saves` | Topics and places per save: collection rules, then Claude Haiku |
 
 ## Where your data lives
 
@@ -30,7 +31,8 @@ public repo.
 
 ## Requirements
 
-- Python 3, plus PyYAML for the data check (`shared/scripts/check_data.py`)
+- Python 3, plus PyYAML (the tagger and the data check)
+- An Anthropic API key for tagging: `ANTHROPIC_API_KEY`, or a LastPass note named by `INSTAGRAM_LPASS_PATH`
 - An Instagram data export (Settings → Your activity → Download your information), HTML or JSON
 
 ---

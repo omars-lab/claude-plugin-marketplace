@@ -20,7 +20,7 @@ The pipeline, in order:
 
 1. **import-saves** — read saved posts and collections from the export zip, in memory. Only the
    `saved/` files are opened; messages and the rest of the export are never unpacked.
-2. **tag-saves** *(coming)* — topics and cities per save.
+2. **tag-saves** — topics and places per save: collection rules first, then Claude Haiku.
 3. **split-saves** *(coming)* — the items a post names, each with its quote.
 4. **fetch-media** *(coming)* — the post's video or image, slowly, logged out.
 5. **extract-stills** *(coming)* — the best still and a short clip per item.
@@ -30,6 +30,7 @@ Skills available today:
 - **introduce** — this skill.
 - **manage-saves** — the router: works out which step comes next.
 - **import-saves** — step 1.
+- **tag-saves** — step 2.
 
 ## Where data lives
 
@@ -59,6 +60,7 @@ What would you like to do?
 - Import a new export                       (import-saves)
 - See what step comes next for my saves     (manage-saves)
 - List my collections and their sizes       (import-saves --list)
+- Sort my saves by topic and place         (tag-saves)
 - Just explain more
 ```
 
@@ -70,6 +72,7 @@ For a multi-step run, track each step with `TaskCreate` and mark it done as it f
 |---|---|---|
 | I downloaded a new Instagram export | import-saves | `/instagram-manager:import-saves` |
 | Which collections do I have? | import-saves | `/instagram-manager:import-saves` |
+| Sort my saves by topic or city | tag-saves | `/instagram-manager:tag-saves` |
 | What should I run next? | manage-saves | `/instagram-manager:manage-saves` |
 
 ## Plugin Map
@@ -78,7 +81,8 @@ For a multi-step run, track each step with `TaskCreate` and mark it done as it f
 instagram-manager
   ├── introduce      — this skill
   ├── manage-saves   — router across the pipeline
-  └── import-saves   — export zip → <data repo>/.cache/saves.json
+  ├── import-saves   — export zip → <data repo>/.cache/saves.json
+  └── tag-saves      — saves.json → <data repo>/data/tags.yaml
 
   shared/scripts/
     ├── home.py      — finds the data repo (INSTAGRAM_HOME)
@@ -89,5 +93,6 @@ instagram-manager
 
 ## Requirements
 
-- Python 3, plus PyYAML for the data check.
+- Python 3, plus PyYAML (the tagger and the data check).
+- An Anthropic API key for tag-saves: `ANTHROPIC_API_KEY`, or a LastPass note named by `INSTAGRAM_LPASS_PATH`.
 - An Instagram data export, HTML or JSON.

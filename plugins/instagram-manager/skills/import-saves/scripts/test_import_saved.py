@@ -208,10 +208,12 @@ class HtmlExport(unittest.TestCase):
 
     def test_never_public_leaves_out_ordinary_words(self):
         saves = [{"code": "FXa1Reel001", "owner": {"username": "travel"}},
-                 {"code": "FXb2Post002", "owner": {"username": "fixture_eats_01"}}]
+                 {"code": "FXb2Post002", "owner": {"username": "fixture_eats_01"}},
+                 {"code": "FXc3Post003", "owner": {"username": "tools"}}]   # a plural of a dictionary word
         cols = [{"name": "Recipes"}, {"name": "Weekend Trips"}]
-        got = import_saved.never_public("fixture.account", saves, cols, words={"travel", "recipes", "weekend"})
-        self.assertEqual(got, ["FXa1Reel001", "FXb2Post002", "Weekend Trips", "fixture.account", "fixture_eats_01"])
+        got = import_saved.never_public("fixture.account", saves, cols, words={"travel", "recipes", "weekend", "tool"})
+        self.assertEqual(got, ["FXa1Reel001", "FXb2Post002", "FXc3Post003", "Weekend Trips", "fixture.account",
+                               "fixture_eats_01"])
 
     def test_list_and_collection(self):
         self.load()

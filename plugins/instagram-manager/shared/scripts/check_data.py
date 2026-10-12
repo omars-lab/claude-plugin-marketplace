@@ -8,7 +8,9 @@ Checks, each one only when its file exists:
   config/collections.yaml  every topic is a known topic; every pilot names known collections;
                            with .cache/saves.json present, every collection name is in the export
                            (a typo would silently tag nothing)
-  data/tags.yaml           code → {topics[], cities[]}, topics known, codes in the export
+  config/places.yaml       a `places:` map, each with names[] and hashtags[] lists
+  data/tags.yaml           code → {topics[], cities[]}, topics and places known, codes in the export
+  (a known place is a city in collections.yaml or a key in places.yaml; so are pilot cities)
 
 Prints one ev= line per problem and exits 1 if there is any.
 """
@@ -58,6 +60,17 @@ def check():
         exported = {c["name"] for c in saved["collections"]}
         codes = {s["code"] for s in saved["saves"]}
 
+    places = load("config/places.yaml")
+    places_known = set()
+    if places is not None:
+        if not isinstance(places.get("places"), dict):
+            bad("check_fail", file="config/places.yaml", msg="needs a places: map")
+        else:
+            places_known = set(places["places"])
+            for place, v in places["places"].items():
+                if not isinstance(v, dict) or not all(isinstance(v.get(k) or [], list) for k in ("names", "hashtags")):
+                    bad("check_fail", file="config/places.yaml", place=place, msg="needs names[] and hashtags[] lists")
+
     cols = load("config/collections.yaml")
     if cols is not None:
         mapping = cols.get("collections") or {}
@@ -70,7 +83,11 @@ def check():
                     bad("check_fail", file="config/collections.yaml", collection=name, topic=t, msg="unknown topic")
             if exported is not None and name not in exported:
                 bad("check_fail", file="config/collections.yaml", collection=name, msg="not a collection in the export")
+            places_known |= {c for c in rule.get("cities") or []}
         for pilot, p in (cols.get("pilots") or {}).items():
+            for city in p.get("cities") or []:
+                if city not in places_known:
+                    bad("check_fail", file="config/collections.yaml", pilot=pilot, city=city, msg="pilot names an unknown place")
             for name in p.get("collections") or []:
                 if name not in mapping:
                     bad("check_fail", file="config/collections.yaml", pilot=pilot, collection=name,
@@ -85,6 +102,9 @@ def check():
             for topic in t.get("topics") or []:
                 if known and topic not in known:
                     bad("check_fail", file="data/tags.yaml", code=code, topic=topic, msg="unknown topic")
+            for city in t.get("cities") or []:
+                if places_known and city not in places_known:
+                    bad("check_fail", file="data/tags.yaml", code=code, city=city, msg="unknown place")
             if codes is not None and code not in codes:
                 bad("check_fail", file="data/tags.yaml", code=code, msg="not a save in the export")
 

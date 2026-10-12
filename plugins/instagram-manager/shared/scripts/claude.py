@@ -5,6 +5,7 @@
     text = call_claude(key, system, user_msg)          # retries 429/5xx, logs model_start/done
     d = parse_json(text)                               # first {...} in the reply
     quote_ok(d["quote"], caption)                      # the quote is really in the caption
+    USAGE                                              # calls and tokens so far, for a run's total
 
 The key comes from ANTHROPIC_API_KEY, or a LastPass secure note whose body is JSON
 {"api_key": "..."}. The note's path is not in this public plugin: pass it, or set
@@ -18,6 +19,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -26,6 +28,8 @@ from log import log
 
 MODEL = "claude-haiku-5-5"
 HTTP_TIMEOUT = 60
+USAGE = {"calls": 0, "tokens_in": 0, "tokens_out": 0}
+_usage_lock = threading.Lock()
 
 
 def load_key(lpass_path=None):
@@ -54,6 +58,10 @@ def call_claude(key, system, user_msg, model=MODEL, max_tokens=600):
             with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
                 out = json.load(r)
             log("model_done", tokens_in=out["usage"]["input_tokens"], tokens_out=out["usage"]["output_tokens"])
+            with _usage_lock:
+                USAGE["calls"] += 1
+                USAGE["tokens_in"] += out["usage"]["input_tokens"]
+                USAGE["tokens_out"] += out["usage"]["output_tokens"]
             return "".join(b.get("text", "") for b in out["content"])
         except urllib.error.HTTPError as e:
             log("model_error", code=e.code)

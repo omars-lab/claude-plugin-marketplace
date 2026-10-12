@@ -415,10 +415,16 @@ def dictionary_words(path=DICTIONARY):
         return set()
 
 
+def ordinary(item, words):
+    """A plain dictionary word, or its plural ("tools" when the dictionary only has "tool")."""
+    w = item.lower()
+    return w in words or (w.endswith("s") and w[:-1] in words) or (w.endswith("es") and w[:-2] in words)
+
+
 def never_public(acct, saves, collections, words=None):
     """The private strings, one per line: account, collection names, creators, post codes.
 
-    A single ordinary word ("California", "recipes") is left out: blocking it would stop normal
+    A single ordinary word ("California", "recipes", or a plural like "tools") is left out: blocking it would stop normal
     writing in the plugin, and on its own it says nothing about the account. Phrases, handles
     with digits or underscores, and post codes stay in.
     """
@@ -434,7 +440,7 @@ def never_public(acct, saves, collections, words=None):
         u = (s.get("owner") or {}).get("username")
         if u and len(u) >= 4:
             items.add(u)
-    return sorted(i for i in items if " " in i.strip() or i.lower() not in words)
+    return sorted(i for i in items if " " in i.strip() or not ordinary(i, words))
 
 
 def write_import(a):
