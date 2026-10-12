@@ -22,6 +22,9 @@ export const FAKE_CONFIG = join(FAKE, "config", "development-manager", "config.j
 mkdirSync(FAKE_ICLOUD, { recursive: true });
 process.env.PAGE_COMMENTS_ICLOUD_ROOT = FAKE_ICLOUD;
 process.env.DEVELOPMENT_MANAGER_CONFIG = FAKE_CONFIG;
+// Same for Tailscale: no test may reach the real one and change what this Mac serves.
+// A test that wants one points this at the fake (test/fake-tailscale.mjs).
+process.env.PAGE_COMMENTS_TAILSCALE = join(FAKE, "no-tailscale-here");
 process.on("exit", () => rmSync(FAKE, { recursive: true, force: true }));
 
 /** A new git repo in the temp folder. With `comments`, `.page-comments/threads/` too. */

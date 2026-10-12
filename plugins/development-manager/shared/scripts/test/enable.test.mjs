@@ -3,18 +3,20 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { ENABLE, tempRepo } from "./helpers.mjs";
 
 const ID = "development-manager@oeid-claude-plugins";
 
-function enable(args, repo) {
+function enable(args, repo, env = {}) {
   const r = spawnSync(process.execPath, [ENABLE, ...args, "--repo", repo], {
     encoding: "utf8",
     timeout: 60000,
-    env: { ...process.env, PAGE_COMMENTS_SKIP_CLAUDE: "1" },
+    env: { ...process.env, PAGE_COMMENTS_SKIP_CLAUDE: "1", ...env },
   });
   return { code: r.status, stdout: r.stdout, stderr: r.stderr };
 }
@@ -178,6 +180,191 @@ test("check fails when the CLAUDE.md note is gone", () => {
     assert.equal(r.code, 1);
     assert.match(r.stdout, /FAIL\s+CLAUDE\.md points Claude to answer-page-comments/);
   } finally {
+    cleanup();
+  }
+});
+
+// ---- --phone, against a stand-in for Tailscale's command line -----------------------------
+// Invented names throughout. The existing entry on 443 stands for something else the
+// person already serves on their tailnet name; it must come through every test untouched.
+
+const FAKE_TS = join(dirname(fileURLToPath(import.meta.url)), "fake-tailscale.mjs");
+const TS_HOST = "sample-mac.tailnet-example.ts.net";
+const TS_LOGIN = "person@example.com";
+const OTHER_ENTRY = { TCP: { 443: { HTTPS: true } }, Web: { [`${TS_HOST}:443`]: { Handlers: { "/": { Proxy: "http://127.0.0.1:4000" } } } } };
+
+/** A fake Tailscale: its state file, its call log, and the env that points enable at it. */
+function fakeTailscale({ serve = OTHER_ENTRY, status = {} } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "pc-ts-"));
+  const statePath = join(dir, "state.json");
+  const logPath = join(dir, "calls.log");
+  const bin = join(dir, "tailscale");
+  writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${FAKE_TS}" "$@"\n`);
+  chmodSync(bin, 0o755);
+  writeFileSync(
+    statePath,
+    JSON.stringify({
+      status: { BackendState: "Running", Self: { DNSName: `${TS_HOST}.`, UserID: 1234 }, User: { 1234: { LoginName: TS_LOGIN } }, CertDomains: [TS_HOST], ...status },
+      serve: structuredClone(serve),
+    }),
+  );
+  writeFileSync(logPath, "");
+  return {
+    env: { PAGE_COMMENTS_TAILSCALE: bin, FAKE_TAILSCALE_STATE: statePath, FAKE_TAILSCALE_LOG: logPath },
+    serve: () => JSON.parse(readFileSync(statePath, "utf8")).serve,
+    calls: () => readFileSync(logPath, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l).join(" ")),
+    clearCalls: () => writeFileSync(logPath, ""),
+    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+  };
+}
+
+const json = (repo, f) => JSON.parse(readFileSync(join(repo, ".page-comments", f), "utf8"));
+const changes = (repo) => json(repo, "install.json").changes.filter((c) => c.kind === "tailscale-serve");
+
+test("--phone serves the comment port on the tailnet, writes the setting, and records what it added", () => {
+  const { repo, cleanup } = tempRepo({ comments: false });
+  const ts = fakeTailscale();
+  try {
+    seed(repo);
+    const r = enable(["--target", "http://127.0.0.1:8765", "--phone"], repo, ts.env);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, new RegExp(`On the phone: https://${TS_HOST.replace(/\./g, "\\.")}:8766/`));
+    assert.match(r.stdout, /tailscale serve --https=8766 off/);
+    assert.match(r.stdout, /committed with the repo/);
+
+    assert.deepEqual(json(repo, "config.json").phone, { host: TS_HOST, port: 8766, logins: [TS_LOGIN] });
+    assert.deepEqual(changes(repo), [
+      { kind: "tailscale-serve", host: TS_HOST, port: 8766, target: "http://127.0.0.1:8766", added: true, on: ["serve", "--bg", "--https=8766", "http://127.0.0.1:8766"], off: ["serve", "--https=8766", "off"] },
+    ]);
+    assert.deepEqual(ts.calls(), ["status --json", "serve status --json", "serve --bg --https=8766 http://127.0.0.1:8766", "serve status --json"]);
+    const serve = ts.serve();
+    assert.deepEqual(serve.Web[`${TS_HOST}:8766`], { Handlers: { "/": { Proxy: "http://127.0.0.1:8766" } } });
+    assert.deepEqual(serve.Web[`${TS_HOST}:443`], OTHER_ENTRY.Web[`${TS_HOST}:443`], "the 443 entry is untouched");
+
+    // Again: nothing new is served, and it still counts as added by enable.
+    ts.clearCalls();
+    const again = enable(["--phone"], repo, ts.env);
+    assert.equal(again.code, 0, again.stderr);
+    assert.ok(!ts.calls().some((c) => c.startsWith("serve --bg")), ts.calls().join("; "));
+    assert.equal(changes(repo)[0].added, true);
+    assert.ok(ts.calls().every((c) => !/funnel/i.test(c)));
+  } finally {
+    ts.cleanup();
+    cleanup();
+  }
+});
+
+test("--phone --undo turns off only its own port and keeps the rest on", () => {
+  const { repo, cleanup } = tempRepo({ comments: false });
+  const ts = fakeTailscale();
+  try {
+    seed(repo);
+    assert.equal(enable(["--target", "http://127.0.0.1:8765"], repo).code, 0);
+    assert.equal(enable(["--phone"], repo, ts.env).code, 0);
+    ts.clearCalls();
+    const r = enable(["--phone", "--undo"], repo, ts.env);
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(ts.calls(), ["serve status --json", "serve --https=8766 off"]);
+    assert.deepEqual(ts.serve(), OTHER_ENTRY, "back to exactly what was there");
+    assert.equal(json(repo, "config.json").phone, undefined);
+    assert.deepEqual(changes(repo), []);
+    assert.ok(existsSync(join(repo, ".page-comments", "run")), "the rest of page comments stays on");
+    assert.equal(JSON.parse(readFileSync(join(repo, ".claude", "settings.json"), "utf8")).enabledPlugins[ID], true);
+    const twice = enable(["--phone", "--undo"], repo, ts.env);
+    assert.match(twice.stdout, /nothing to undo/);
+  } finally {
+    ts.cleanup();
+    cleanup();
+  }
+});
+
+test("--undo takes the phone off too", () => {
+  const { repo, cleanup } = tempRepo({ comments: false });
+  const ts = fakeTailscale();
+  try {
+    seed(repo);
+    assert.equal(enable(["--target", "http://127.0.0.1:8765", "--phone"], repo, ts.env).code, 0);
+    ts.clearCalls();
+    const r = enable(["--undo"], repo, ts.env);
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(ts.calls(), ["serve status --json", "serve --https=8766 off"]);
+    assert.deepEqual(ts.serve(), OTHER_ENTRY);
+    assert.equal(readFileSync(join(repo, "Makefile"), "utf8"), MAKEFILE);
+  } finally {
+    ts.cleanup();
+    cleanup();
+  }
+});
+
+test("--phone stops when the port already serves something else, and changes nothing", () => {
+  const { repo, cleanup } = tempRepo({ comments: false });
+  const taken = { TCP: { ...OTHER_ENTRY.TCP, 8766: { HTTPS: true } }, Web: { ...OTHER_ENTRY.Web, [`${TS_HOST}:8766`]: { Handlers: { "/": { Proxy: "http://127.0.0.1:9000" } } } } };
+  const ts = fakeTailscale({ serve: taken });
+  try {
+    seed(repo);
+    assert.equal(enable(["--target", "http://127.0.0.1:8765"], repo).code, 0);
+    const before = readFileSync(join(repo, ".page-comments", "config.json"), "utf8");
+    const r = enable(["--phone"], repo, ts.env);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /already serves something else on https port 8766 \(\/ -> http:\/\/127\.0\.0\.1:9000\)/);
+    assert.deepEqual(ts.calls(), ["status --json", "serve status --json"]);
+    assert.deepEqual(ts.serve(), taken);
+    assert.equal(readFileSync(join(repo, ".page-comments", "config.json"), "utf8"), before);
+    assert.deepEqual(changes(repo), []);
+  } finally {
+    ts.cleanup();
+    cleanup();
+  }
+});
+
+test("--phone leaves on an entry that was there before it, on undo", () => {
+  const { repo, cleanup } = tempRepo({ comments: false });
+  const mine = { TCP: { 8766: { HTTPS: true } }, Web: { [`${TS_HOST}:8766`]: { Handlers: { "/": { Proxy: "http://127.0.0.1:8766" } } } } };
+  const ts = fakeTailscale({ serve: mine });
+  try {
+    seed(repo);
+    assert.equal(enable(["--target", "http://127.0.0.1:8765", "--phone"], repo, ts.env).code, 0);
+    assert.equal(changes(repo)[0].added, false);
+    ts.clearCalls();
+    const r = enable(["--phone", "--undo"], repo, ts.env);
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(ts.calls(), []);
+    assert.match(r.stdout, /there before enable/);
+    assert.deepEqual(ts.serve(), mine);
+  } finally {
+    ts.cleanup();
+    cleanup();
+  }
+});
+
+test("--phone refuses Funnel, and stops when Tailscale is missing, off, or has no certificates", () => {
+  const { repo, cleanup } = tempRepo({ comments: false });
+  const off = fakeTailscale({ status: { BackendState: "Stopped" } });
+  const noCerts = fakeTailscale({ status: { CertDomains: undefined } });
+  try {
+    seed(repo);
+    assert.equal(enable(["--phone"], repo, noCerts.env).code, 3, "not enabled yet");
+    assert.equal(enable(["--target", "http://127.0.0.1:8765"], repo).code, 0);
+    for (const flag of ["--funnel", "--phone-funnel", "--Funnel=on"]) {
+      const r = enable(["--phone", flag], repo, noCerts.env);
+      assert.equal(r.code, 2, flag);
+      assert.match(r.stderr, /never use/);
+    }
+    // helpers.mjs points PAGE_COMMENTS_TAILSCALE at a file that is not there.
+    const missing = enable(["--phone"], repo);
+    assert.equal(missing.code, 3, missing.stderr);
+    assert.match(missing.stderr, /command line was not found/);
+    const stopped = enable(["--phone"], repo, off.env);
+    assert.equal(stopped.code, 1);
+    assert.match(stopped.stderr, /not connected/);
+    const certs = enable(["--phone"], repo, noCerts.env);
+    assert.equal(certs.code, 1);
+    assert.match(certs.stderr, /HTTPS Certificates/);
+    for (const ts of [off, noCerts]) assert.ok(!ts.calls().some((c) => c.startsWith("serve --bg")));
+    assert.equal(json(repo, "config.json").phone, undefined);
+  } finally {
+    off.cleanup();
+    noCerts.cleanup();
     cleanup();
   }
 });

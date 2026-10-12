@@ -6,6 +6,8 @@
 //   enable.mjs --repo . (--target <url> | --root <dir>) [--port 8766] [--shots-dir <path>]
 //   enable.mjs --check [--repo .]
 //   enable.mjs --undo [--repo .] [--purge [--force]]
+//   enable.mjs --phone [--repo .] [--target <url> | --root <dir>] [--port 8766]
+//   enable.mjs --phone --undo [--repo .]
 //
 // Enabling writes into the target repo, and every change outside
 // `.page-comments/` is listed in `.page-comments/install.json`, so --undo
@@ -18,7 +20,10 @@
 //   - the plugin turned on in the repo's committed `.claude/settings.json`, so
 //     every session opened in the repo has the answering skill and the watcher;
 //   - a marked block in the repo's CLAUDE.md that says to follow
-//     `development-manager:answer-page-comments` when the watcher prints a comment.
+//     `development-manager:answer-page-comments` when the watcher prints a comment;
+//   - with --phone, one `tailscale serve` entry (https on the comment server's port) and
+//     a `phone` block in config.json with the Mac's tailnet name and the allowed logins.
+//     Undo turns off that one entry only.
 //
 // Undo never deletes a screenshot: not in the iCloud folder, and not in
 // `.page-comments/shots/`, which stays with the .gitignore that keeps it out of git.
@@ -57,10 +62,11 @@ const out = (s = "") => process.stdout.write(s + "\n");
 
 function parseArgs(argv) {
   const values = new Set(["repo", "target", "root", "port", "marketplace", "author", "plugin-root", "shots-dir"]);
-  const bools = new Set(["detect", "check", "undo", "purge", "force", "json", "help"]);
+  const bools = new Set(["detect", "check", "undo", "purge", "force", "json", "help", "phone"]);
   const flags = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
+    if (a.startsWith("--") && /funnel/i.test(a)) throw new Exit(2, NO_FUNNEL);
     if (!a.startsWith("--")) throw new Exit(2, `unexpected argument: ${a}`);
     let [name, value] = a.slice(2).split(/=(.*)/s);
     if (bools.has(name)) flags[name] = true;
@@ -354,6 +360,180 @@ function pick(o, keys) {
   return r;
 }
 
+// ---- The phone, through Tailscale -----------------------------------------------------------
+//
+// `--phone` turns on one `tailscale serve` entry: https on the comment server's own port,
+// proxied to 127.0.0.1:<port>. Its own port, so the tailnet name's 443 (often in use for
+// something else) is never touched. Never Funnel: that would put the pages on the open
+// internet. Never `serve reset`: only the one entry enable added is ever turned off.
+
+const TAILSCALE_APP = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
+const NO_FUNNEL = "Tailscale Funnel would put the pages on the open internet; page comments never use it";
+
+/**
+ * Tailscale's command line: PAGE_COMMENTS_TAILSCALE, then PATH, then the Mac app. When
+ * the variable is set, nothing else is looked at, so tests never reach the real one.
+ */
+export function findTailscale(env = process.env) {
+  if (env.PAGE_COMMENTS_TAILSCALE !== undefined) return existsSync(env.PAGE_COMMENTS_TAILSCALE) ? env.PAGE_COMMENTS_TAILSCALE : null;
+  for (const d of (env.PATH || "").split(":")) if (d && existsSync(join(d, "tailscale"))) return join(d, "tailscale");
+  return existsSync(TAILSCALE_APP) ? TAILSCALE_APP : null;
+}
+
+function tailscale(cli, args) {
+  if (args.some((a) => /funnel/i.test(a))) throw new Exit(2, NO_FUNNEL);
+  // No --yes and no stdin: if Tailscale wants to ask something, it fails instead of waiting.
+  const r = spawnSync(cli, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 30000 });
+  if (r.error) throw new Exit(1, `could not run ${cli} ${args.join(" ")}: ${r.error.message}`);
+  return r;
+}
+
+function tailscaleJson(cli, args) {
+  const r = tailscale(cli, args);
+  if (r.status !== 0) throw new Exit(1, `tailscale ${args.join(" ")} failed: ${(r.stderr || r.stdout).trim()}`);
+  try {
+    return JSON.parse(r.stdout.trim() || "{}");
+  } catch {
+    throw new Exit(1, `tailscale ${args.join(" ")} did not give JSON`);
+  }
+}
+
+/**
+ * What `tailscale serve status --json` has on <host>:<port>:
+ * "none", "ours" (exactly / proxied to target, over https), or "taken" (anything else).
+ */
+export function servedAt(status, host, port, target) {
+  const s = status || {};
+  const key = `${host}:${port}`.toLowerCase();
+  const funnel = Object.keys(s.AllowFunnel || {}).find((k) => k.toLowerCase() === key && s.AllowFunnel[k]);
+  if (funnel) return { state: "taken", detail: "Funnel is on for it" };
+  const tcp = (s.TCP || {})[String(port)];
+  const webKey = Object.keys(s.Web || {}).find((k) => k.toLowerCase() === key);
+  const web = webKey ? s.Web[webKey] : null;
+  if (!tcp && !web) {
+    const other = Object.keys(s.Web || {}).find((k) => k.endsWith(`:${port}`));
+    return other ? { state: "taken", detail: `served for ${other}` } : { state: "none" };
+  }
+  if (!web) return { state: "taken", detail: tcp.TCPForward ? `a TCP forward to ${tcp.TCPForward}` : "a TCP entry" };
+  const handlers = web.Handlers || {};
+  const paths = Object.keys(handlers);
+  if (tcp && tcp.HTTPS && paths.length === 1 && paths[0] === "/" && handlers["/"].Proxy === target) return { state: "ours" };
+  const what = (h) => h.Proxy || h.Path || (h.Text !== undefined ? "some text" : "something");
+  return { state: "taken", detail: paths.map((p) => `${p} -> ${what(handlers[p])}`).join(", ") || "an empty web entry" };
+}
+
+const serveOn = (port, target) => ["serve", "--bg", `--https=${port}`, target];
+const serveOff = (port) => ["serve", `--https=${port}`, "off"];
+
+export function enablePhone(repo) {
+  const dir = join(repo, FOLDER);
+  const configPath = join(dir, "config.json");
+  const installPath = join(dir, "install.json");
+  const config = readJson(configPath);
+  const install = readJson(installPath);
+  if (!config || !install || !config.serve) throw new Exit(3, "page comments are not turned on here; run enable with --target or --root first, or add one of them to this --phone run");
+  const port = Number(config.serve.port || 8766);
+  const target = `http://127.0.0.1:${port}`;
+
+  const cli = findTailscale();
+  if (!cli) throw new Exit(3, `Tailscale's command line was not found on PATH or at ${TAILSCALE_APP}. Install Tailscale and sign in, then run this again`);
+  const st = tailscaleJson(cli, ["status", "--json"]);
+  if (st.BackendState !== "Running") throw new Exit(1, `Tailscale is not connected (it says ${st.BackendState || "nothing"}); open it and sign in, then run this again`);
+  const self = st.Self || {};
+  const host = String(self.DNSName || "")
+    .replace(/\.$/, "")
+    .toLowerCase();
+  if (!host) throw new Exit(1, "Tailscale did not give this Mac's name; turn on MagicDNS for the tailnet, then run this again");
+  const login = String(((st.User || {})[String(self.UserID)] || {}).LoginName || "").toLowerCase();
+  if (!login) throw new Exit(1, "Tailscale did not say who is signed in on this Mac");
+  if (!(st.CertDomains || []).map((d) => String(d).toLowerCase()).includes(host)) {
+    throw new Exit(1, "HTTPS certificates are off for this tailnet, so the phone could not open the page. Turn on HTTPS Certificates on the DNS page of the Tailscale admin console, then run this again");
+  }
+
+  const earlier = install.changes.find((c) => c.kind === "tailscale-serve");
+  if (earlier && (earlier.port !== port || earlier.host !== host)) {
+    throw new Exit(1, `the phone is already on for ${earlier.host}:${earlier.port}; run --phone --undo first, then this again`);
+  }
+  const before = servedAt(tailscaleJson(cli, ["serve", "status", "--json"]), host, port, target);
+  if (before.state === "taken") {
+    throw new Exit(1, `Tailscale already serves something else on https port ${port} (${before.detail}). It was left alone; pick another port with --port, or turn that entry off yourself`);
+  }
+  const did = [];
+  let added = !!(earlier && earlier.added);
+  if (before.state === "none") {
+    const r = tailscale(cli, serveOn(port, target));
+    if (r.status !== 0) throw new Exit(1, `tailscale ${serveOn(port, target).join(" ")} failed: ${(r.stderr || r.stdout).trim()}`);
+    added = true;
+    const after = servedAt(tailscaleJson(cli, ["serve", "status", "--json"]), host, port, target);
+    if (after.state !== "ours") throw new Exit(1, `tailscale serve ran, but port ${port} does not point at the comment server (${after.detail || "nothing there"}); turn it off with: tailscale ${serveOff(port).join(" ")}`);
+    did.push(`Tailscale: https port ${port} on this Mac's tailnet name now goes to the comment server (tailscale ${serveOn(port, target).join(" ")})`);
+  } else {
+    did.push(`Tailscale: https port ${port} already went to the comment server${added ? "" : "; it was there before enable, so undo leaves it on"}`);
+  }
+
+  // The allow list starts with whoever is signed in on this Mac; the author for a login
+  // is the repo's author unless `authors` in config.json says otherwise.
+  const prev = config.phone && typeof config.phone === "object" ? config.phone : {};
+  const logins = [...new Set((Array.isArray(prev.logins) ? prev.logins : []).map((l) => String(l).toLowerCase()).concat(login))];
+  config.phone = { ...prev, host, port, logins };
+  writeJson(configPath, config);
+  did.push(`${FOLDER}/config.json: the phone setting, allowing ${logins.join(", ")}`);
+
+  const change = { kind: "tailscale-serve", host, port, target, added, on: serveOn(port, target), off: serveOff(port) };
+  install.changes = install.changes.filter((c) => c.kind !== "tailscale-serve").concat(change);
+  install.updated = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  writeJson(installPath, install);
+
+  return {
+    did,
+    url: port === 443 ? `https://${host}/` : `https://${host}:${port}/`,
+    port,
+    login,
+    author: config.author,
+    off: `tailscale ${serveOff(port).join(" ")}`,
+  };
+}
+
+/** Turn the phone off: the one serve entry enable added, and the phone setting. */
+export function undoPhone(repo) {
+  const dir = join(repo, FOLDER);
+  const installPath = join(dir, "install.json");
+  const configPath = join(dir, "config.json");
+  const did = [];
+  const install = readJson(installPath);
+  const change = install && Array.isArray(install.changes) ? install.changes.find((c) => c.kind === "tailscale-serve") : null;
+  if (change) {
+    // Built from the port, not read from the file, so an edited install.json cannot run
+    // anything but this one "off".
+    const port = Number(change.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Exit(1, "install.json's tailscale-serve entry has no usable port; turn it off by hand");
+    const manual = `tailscale ${serveOff(port).join(" ")}`;
+    if (!change.added) did.push(`Tailscale: left https port ${port} on, because it was there before enable`);
+    else {
+      const cli = findTailscale();
+      if (!cli) did.push(`Tailscale's command line was not found, so https port ${port} is still on; turn it off with: ${manual}`);
+      else {
+        const now = servedAt(tailscaleJson(cli, ["serve", "status", "--json"]), change.host, port, change.target || `http://127.0.0.1:${port}`);
+        if (now.state === "ours") {
+          const r = tailscale(cli, serveOff(port));
+          if (r.status !== 0) throw new Exit(1, `${manual} failed: ${(r.stderr || r.stdout).trim()}`);
+          did.push(`Tailscale: turned off https port ${port} (${manual}); nothing else was touched`);
+        } else if (now.state === "none") did.push(`Tailscale: https port ${port} was already off`);
+        else did.push(`Tailscale: https port ${port} now serves something else (${now.detail}), so it was left alone`);
+      }
+    }
+    install.changes = install.changes.filter((c) => c !== change);
+    writeJson(installPath, install);
+  }
+  const config = readJson(configPath);
+  if (config && config.phone) {
+    delete config.phone;
+    writeJson(configPath, config);
+    did.push(`${FOLDER}/config.json: removed the phone setting`);
+  }
+  return did;
+}
+
 // ---- Check ----------------------------------------------------------------------------------
 
 function httpCall(port, { method = "GET", path = "/", headers = {}, body } = {}) {
@@ -512,7 +692,8 @@ function threadFiles(dir) {
 
 export function undo(repo, flags) {
   const dir = join(repo, FOLDER);
-  const did = [];
+  // The phone first, while install.json still says which serve entry enable added.
+  const did = undoPhone(repo);
   let install = readJson(join(dir, "install.json"));
   if (!install) {
     // No list of changes: find enable's blocks by their markers instead.
@@ -617,13 +798,18 @@ const HELP = `enable-page-comments: turn page comments on in a repo, check them,
   enable.mjs --repo . --root <dir> [--port 8766]    Serve a folder of pages with the comment button
   enable.mjs --check [--repo .]                     Prove the loop: setting, CLAUDE.md, a test comment the watcher sees
   enable.mjs --undo [--repo .] [--purge [--force]]  Remove what enable added; threads stay unless --purge
+  enable.mjs --phone [--repo .]                     Comment from your phone too, through Tailscale (add
+                                                    --target/--root/--port to enable at the same time)
+  enable.mjs --phone --undo [--repo .]              Turn the phone off; the rest stays on
 
 Other flags: --author <name> (who page comments are from; default: your git first name),
 --shots-dir <path> (where screenshots go; default: the global config's shotsDir, else
 ~/Library/Mobile Documents/com~apple~CloudDocs/CloudDesktop/data),
 --marketplace <name> (only if it cannot be worked out).
 
-Undo never deletes a screenshot, in iCloud Drive or in .page-comments/shots/.`;
+Undo never deletes a screenshot, in iCloud Drive or in .page-comments/shots/.
+--phone serves only the comment server's own https port on your tailnet, never Funnel,
+and undo turns off only that port.`;
 
 export async function main(argv) {
   const flags = parseArgs(argv);
@@ -642,6 +828,12 @@ export async function main(argv) {
     }
     return d.mode ? 0 : 3;
   }
+  if (flags.phone && flags.undo) {
+    const did = undoPhone(repo);
+    out(did.length ? "Page comments from the phone are off in this repo; the rest stays on." : "The phone was not on in this repo; nothing to undo.");
+    for (const d of did) out(`  - ${d}`);
+    return 0;
+  }
   if (flags.undo) {
     const did = undo(repo, flags);
     out("Page comments are off in this repo.");
@@ -655,6 +847,7 @@ export async function main(argv) {
     out(failed ? `${failed} check(s) failed.` : "The loop works: a comment on the page reaches Claude.");
     return failed ? 1 : 0;
   }
+  if (flags.phone && !flags.target && !flags.root && !flags.port) return phoneReport(repo, enablePhone(repo));
   const r = enable(repo, flags);
   out(`Page comments are on in ${basename(repo)}.`);
   for (const d of r.did) out(`  - ${d}`);
@@ -669,6 +862,24 @@ export async function main(argv) {
   out(`Undo it:    node ${join(HERE, "enable.mjs")} --undo --repo ${repo}`);
   const toCommit = [".page-comments/", ".claude/settings.json", "CLAUDE.md"].concat(r.makeTarget ? ["the Makefile"] : []);
   out(`Commit ${toCommit.slice(0, -1).join(", ")} and ${toCommit[toCommit.length - 1]} so every session in this repo can answer comments.`);
+  if (flags.phone) {
+    out("");
+    return phoneReport(repo, enablePhone(repo));
+  }
+  return 0;
+}
+
+function phoneReport(repo, p) {
+  out("Page comments from the phone are on.");
+  for (const d of p.did) out(`  - ${d}`);
+  out("");
+  out("config.json and install.json now name this Mac on your tailnet and your Tailscale login.");
+  out("Both are committed with the repo, so keep the phone off in a repo anyone else can read.");
+  out("");
+  out(`On the phone: ${p.url}   (Tailscale on, signed in as ${p.login}; comments are from ${p.author})`);
+  out("              The comment server must be running on the Mac, as usual.");
+  out(`Phone off:    node ${join(HERE, "enable.mjs")} --phone --undo --repo ${repo}`);
+  out(`              (runs ${p.off}; the rest of Tailscale is left alone)`);
   return 0;
 }
 
