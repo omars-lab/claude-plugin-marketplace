@@ -14,19 +14,28 @@ Both targets get the same co-design content. Use Makefile targets for the mechan
 
 ## Deployment Targets
 
+The skill hardcodes no host or owner. Read them from the repos' remotes before building any URL:
+
+```bash
+git remote get-url origin                  # docs repo, e.g. git@github.example.com:<owner>/<repo>.git
+git -C ../docs.wiki remote get-url origin  # wiki repo, e.g. git@github.example.com:<owner>/<repo>.wiki.git
+```
+
+From `git@<host>:<owner>/<repo>.git` (or `https://<host>/<owner>/<repo>.git`) take `<host>`, `<owner>` and `<repo>`. The examples below use `github.example.com`.
+
 ### Wiki
 
-- **Live**: `https://code.devsnc.com/omar-eid/docs/wiki`
-- **Repo**: `git@code.devsnc.com:omar-eid/docs.wiki.git` (sibling folder `../docs.wiki`)
+- **Live**: `https://<host>/<owner>/<repo>/wiki`
+- **Repo**: the docs repo's remote with `.wiki` before `.git` (sibling folder `../docs.wiki`)
 - **Structure**: Flat — all pages at wiki repo root (GitHub wiki limitation)
-- **Page URL**: `https://code.devsnc.com/omar-eid/docs/wiki/<page-name>`
+- **Page URL**: `https://<host>/<owner>/<repo>/wiki/<page-name>`
 
 ### GitHub Pages
 
-- **Live**: `https://code.devsnc.com/pages/omar-eid/docs/` (GitHub Enterprise Pages URL)
+- **Live**: `https://<host>/pages/<owner>/<repo>/` on GitHub Enterprise; `https://<owner>.github.io/<repo>/` on github.com
 - **Branch**: `gh-pages` (orphan branch, separate from `main`)
 - **Structure**: Flat — Jekyll serves markdown files from root
-- **Page URL**: `https://code.devsnc.com/pages/omar-eid/docs/<page-name>`
+- **Page URL**: the Live URL plus `<page-name>`
 
 ## Source Scope
 
@@ -114,7 +123,7 @@ make push-pages
 
 ### Phase 5 — Report
 
-Present a summary with live URLs:
+Present a summary with live URLs, built from the remotes (see Deployment Targets):
 
 ```
 Docs published
@@ -123,15 +132,15 @@ Docs published
   Targets:            Wiki ✓  |  Pages ✓
 
   Wiki:
-    Home: https://code.devsnc.com/omar-eid/docs/wiki
-    - https://code.devsnc.com/omar-eid/docs/wiki/CO-DESIGN-0001-implementation-agents-hld
-    - https://code.devsnc.com/omar-eid/docs/wiki/CO-DESIGN-0001-implementation-agents-summary
+    Home: https://github.example.com/<owner>/<repo>/wiki
+    - https://github.example.com/<owner>/<repo>/wiki/CO-DESIGN-0001-example-hld
+    - https://github.example.com/<owner>/<repo>/wiki/CO-DESIGN-0001-example-summary
     ...
 
   Pages:
-    Home: https://code.devsnc.com/pages/omar-eid/docs/
-    - https://code.devsnc.com/pages/omar-eid/docs/CO-DESIGN-0001-implementation-agents-hld
-    - https://code.devsnc.com/pages/omar-eid/docs/CO-DESIGN-0001-implementation-agents-summary
+    Home: https://github.example.com/pages/<owner>/<repo>/
+    - https://github.example.com/pages/<owner>/<repo>/CO-DESIGN-0001-example-hld
+    - https://github.example.com/pages/<owner>/<repo>/CO-DESIGN-0001-example-summary
     ...
 ```
 
@@ -139,7 +148,7 @@ Docs published
 
 | Situation | Handling |
 |-----------|----------|
-| Wiki repo doesn't exist | Script errors: "Run `git clone git@code.devsnc.com:omar-eid/docs.wiki.git ../docs.wiki` first" |
+| Wiki repo doesn't exist | Script errors: tell the user to clone it — `git clone <docs remote with .wiki before .git> ../docs.wiki` (e.g. `git@github.example.com:<owner>/<repo>.wiki.git`) |
 | No `gh-pages` branch yet | `sync-pages` creates it as an orphan branch automatically |
 | File has no H1 heading | Use filename (title-cased, hyphens→spaces) as fallback title |
 | Wiki has uncommitted changes | Script warns, asks to stash or abort |
@@ -159,16 +168,16 @@ Last synced: YYYY-MM-DD
 
 | Document | Description |
 |----------|-------------|
-| [Implementation Agents — HLD (v2)](CO-DESIGN-0001-implementation-agents-hld) | ... |
-| [Implementation Agents — Summary](CO-DESIGN-0001-implementation-agents-summary) | ... |
+| [Example — HLD (v2)](CO-DESIGN-0001-example-hld) | ... |
+| [Example — Summary](CO-DESIGN-0001-example-summary) | ... |
 ```
 
 **_Sidebar.md structure:**
 ```markdown
 **Co-Designs**
-- [HLD (v2)](CO-DESIGN-0001-implementation-agents-hld)
-- [HLD (v1)](CO-DESIGN-0001-implementation-agents-hld-v1)
-- [Summary](CO-DESIGN-0001-implementation-agents-summary)
+- [HLD (v2)](CO-DESIGN-0001-example-hld)
+- [HLD (v1)](CO-DESIGN-0001-example-hld-v1)
+- [Summary](CO-DESIGN-0001-example-summary)
 
 ---
 [Home](Home)

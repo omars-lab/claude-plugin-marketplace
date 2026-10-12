@@ -453,7 +453,7 @@ Research index entry shape:
   "namespace": "🏢",
   "status": "🟢",
   "description": "...",
-  "domains": ["code.devsnc.com", "servicenow.com/docs"],
+  "domains": ["ghe.example.com", "servicenow.com/docs"],
   "description_missing": false
 }
 ```
@@ -680,7 +680,7 @@ For each sweepable section, determine the best destination using the plan index 
 | Signal | Example |
 |---|---|
 | Section header contains: Research, Deep Dive, Investigating, Exploring, Landscape, Survey, Notes on, Background, Docs for, Overview | `# Researching Docs for Graph Building` |
-| 3+ URLs present, concentrated on 1–2 domains | 10 `code.devsnc.com` + `servicenow.com` links |
+| 3+ URLs present, concentrated on 1–2 domains | 10 links on your internal GitHub Enterprise host + `servicenow.com` links |
 | Zero `- [ ]` tasks — prose and/or links only | No tasks in section |
 | Investigative language: "What does X mean", "context for", "overview of", "how does X work", "important context" | `"What does product mean ..."` |
 | Section content domain overlaps with an existing research doc's `domains:` frontmatter | URL from `fluidtopics.com` → matches existing research doc |
@@ -757,7 +757,7 @@ Route all to one research doc?
 |---|---|---|
 | `*.service-now.com`, `*.servicenow.com` | ServiceNow instance/docs | Match to the relevant work plan (MCP, A2A, esgenius, etc.) by inspecting the path (`/sys_script_include`, `/rm_story`, `/atf`, etc.) |
 | `docs.google.com`, `icloud.com/notes` | External reference/doc | Route with the parent task, or to the relevant `📋 Lists/References[...]` file if it's a standalone reference |
-| `github.com`, `code.devsnc.com` | Repo/code reference | Route with parent task or to the relevant plan's reference section |
+| `github.com` or your internal GitHub Enterprise host | Repo/code reference | Route with parent task or to the relevant plan's reference section |
 | `youtube.com`, `learning.*` | Learning resource | Route to plan OR to `📋 Lists/References[Playlist - ...]` if standalone |
 | `calendly.com`, `*.zoom.us` | Scheduling link | Route with the meeting/1-1 content |
 | `claude.ai/chat/*`, `claude.ai/artifacts/*` | Claude session/artifact | Route with the parent task — these are working context |
