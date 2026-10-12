@@ -3,6 +3,13 @@
 // document.currentScript can read the per-run token from its own tag.
 // Everything it draws lives in a shadow root, and all comment text is set with
 // textContent, never as HTML.
+//
+// Pictures (design section 6): the click that picks an element also starts
+// drawing it to a PNG with the bundled modern-screenshot, and the picture is
+// sent after the comment saves. A slow or failed picture never holds up or
+// fails the comment; after 8 seconds it is given up and the reason is sent
+// instead. The server's served client.js starts with files-link.js, which
+// defines window.__pageCommentsFiles (the Files app links on an iPhone).
 (function () {
   "use strict";
   if (window.__pageComments) return;
@@ -14,6 +21,10 @@
   var POLL_MS = 4000;
   var PATH = location.pathname;
   var DRAFT_KEY = "page-comments:draft:" + PATH;
+  var SHOT_MS = 8000; // give up on a picture after this long
+  var SHOT_PAD = 16; // CSS pixels of background around the element
+  var SHOT_MAX_W = 600; // CSS pixels: wider elements are scaled down
+  var FILES = window.__pageCommentsFiles || null;
 
   // ---- State ---------------------------------------------------------------------------
   var threads = [];
@@ -413,6 +424,160 @@
     true,
   );
 
+  // ---- Pictures of the element -------------------------------------------------------------
+  var libLoad = null;
+
+  /** The bundled capture library, loaded once, the first time it is needed. */
+  function loadLib() {
+    if (libLoad) return libLoad;
+    libLoad = new Promise(function (resolve, reject) {
+      if (window.modernScreenshot) return resolve(window.modernScreenshot);
+      var s = document.createElement("script");
+      s.src = BASE + "vendor/modern-screenshot.js";
+      s.onload = function () {
+        // A page with its own AMD loader takes the library instead of window.
+        if (window.modernScreenshot) resolve(window.modernScreenshot);
+        else reject(new Error("the capture library loaded but did not start (the page may have its own module loader)"));
+      };
+      s.onerror = function () {
+        reject(new Error("the capture library did not load"));
+      };
+      (document.head || document.documentElement).appendChild(s);
+    });
+    libLoad.catch(function () {
+      libLoad = null; // try again next time
+    });
+    return libLoad;
+  }
+
+  /** The element's own background, or the nearest ancestor's that has one. */
+  function backgroundOf(el) {
+    for (var n = el; n && n.nodeType === 1; n = n.parentElement) {
+      var c = getComputedStyle(n).backgroundColor;
+      if (c && c !== "transparent" && !/^rgba\(.*,\s*0\)$/.test(c)) return c;
+    }
+    return "#ffffff";
+  }
+
+  function timeout(ms, what) {
+    return new Promise(function (_, reject) {
+      setTimeout(function () {
+        reject(new Error(what + " took longer than " + ms / 1000 + " seconds"));
+      }, ms);
+    });
+  }
+
+  /**
+   * Draw `el` to a PNG Blob: 16 px of background around it, at most 600 CSS px
+   * wide, at up to twice the pixel density. Iframes and this bar are left out.
+   * A node inside an SVG is drawn with its whole diagram, then cropped to it.
+   */
+  function capture(el) {
+    var target = el;
+    while (target.ownerSVGElement) target = target.ownerSVGElement;
+    var box = el.getBoundingClientRect();
+    var tBox = target.getBoundingClientRect();
+    if (!box.width || !box.height) return Promise.reject(new Error("the element has no size on screen"));
+    var scale = Math.min(devicePixelRatio || 1, 2) * Math.min(1, SHOT_MAX_W / (box.width + 2 * SHOT_PAD));
+    var bg = backgroundOf(el);
+    return loadLib()
+      .then(function (lib) {
+        return lib.domToCanvas(target, {
+          scale: scale,
+          backgroundColor: bg,
+          // The library drops the element's own margin, which lets the browser's
+          // default (an h1's 0.67em) come back in the copy and push it down.
+          style: { margin: "0" },
+          timeout: SHOT_MS,
+          filter: function (n) {
+            return n !== host && n.nodeName !== "IFRAME";
+          },
+        });
+      })
+      .then(function (drawn) {
+        var pad = Math.round(SHOT_PAD * scale);
+        var sx = Math.max(0, Math.round((box.left - tBox.left) * scale));
+        var sy = Math.max(0, Math.round((box.top - tBox.top) * scale));
+        var sw = Math.min(drawn.width - sx, Math.round(box.width * scale));
+        var sh = Math.min(drawn.height - sy, Math.round(box.height * scale));
+        var out = document.createElement("canvas");
+        out.width = sw + 2 * pad;
+        out.height = sh + 2 * pad;
+        var ctx = out.getContext("2d");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, out.width, out.height);
+        ctx.drawImage(drawn, sx, sy, sw, sh, pad, pad, sw, sh);
+        return new Promise(function (resolve, reject) {
+          out.toBlob(function (b) {
+            if (b) resolve(b);
+            else reject(new Error("the picture could not be made"));
+          }, "image/png");
+        });
+      });
+  }
+
+  /** Start a picture now; it settles within 8 seconds, with a Blob or a reason. */
+  function startShot(el) {
+    var p;
+    try {
+      p = capture(el);
+    } catch (e) {
+      p = Promise.reject(e);
+    }
+    var raced = Promise.race([p, timeout(SHOT_MS, "the picture")]);
+    raced.catch(function () {}); // looked at after the comment saves
+    return raced;
+  }
+
+  /** Send a thread's picture, or why there is none. Never shown as a comment error. */
+  function sendShot(id, shot) {
+    var path = "threads/" + id + "/shot";
+    function sendError(e) {
+      return call("POST", path, { error: (e && e.message) || "the capture failed" });
+    }
+    shot
+      .then(
+        function (blob) {
+          return fetch(BASE + path, { method: "POST", headers: { "X-Page-Comments-Token": TOKEN, "Content-Type": "image/png" }, body: blob, credentials: "same-origin" }).then(function (r) {
+            return r.json().then(function (j) {
+              if (r.ok) return j;
+              if (r.status === 409) return j; // a picture is already there
+              return sendError(new Error("the server refused the picture: " + (j.error || "HTTP " + r.status)));
+            });
+          });
+        },
+        sendError,
+      )
+      .then(function (r) {
+        if (r && r.thread) {
+          upsert(r.thread);
+          render(); // also refreshes the thread if it is open and nobody is typing
+        }
+      })
+      .catch(function (e) {
+        say("The picture was not saved: " + e.message);
+      });
+  }
+
+  function shotName(s) {
+    var p = s.icloud || s.local || "";
+    return p.slice(p.lastIndexOf("/") + 1);
+  }
+
+  /** One picture, inline, with the Files app links on an iPhone or iPad. */
+  function shotView(t, s, label) {
+    if (s.error) return h("div", { class: "shot-none", text: "No picture: " + s.error });
+    var src = BASE + "shots/" + t.id + "/" + encodeURIComponent(shotName(s)) + "?token=" + encodeURIComponent(TOKEN) + "&sha=" + encodeURIComponent(s.sha || "");
+    var fig = h("figure", { class: "shot" }, [h("img", { src: src, alt: label, loading: "lazy" }), h("figcaption", { text: label })]);
+    var links = FILES && s.icloud && FILES.isAppleTouch(navigator) ? FILES.filesLinks(s.icloud) : null;
+    if (links) {
+      fig.appendChild(
+        h("div", { class: "shot-links" }, [h("a", { href: links.file, text: "Open in Files" }), h("a", { href: links.folder, text: "Open the folder" })]),
+      );
+    }
+    return fig;
+  }
+
   // ---- The popover: a new comment, or one thread -------------------------------------
   function closePop() {
     pop.hidden = true;
@@ -443,6 +608,8 @@
   function openComposer(anchor, el, rect, text) {
     closePop();
     composer = { anchor: anchor, el: el };
+    // The picture starts now, from the click, so it shows the page as it was.
+    var shot = startShot(el);
     var where = anchor.type === "text" ? "On the text “" + clip(anchor.quote.exact, 60) + "”" : "On <" + anchor.tag + ">" + (anchor.label ? " “" + clip(anchor.label, 50) + "”" : "");
     var ta = h("textarea", { rows: "4", placeholder: "What should change here?", "aria-label": "Comment" });
     ta.value = text || "";
@@ -479,6 +646,7 @@
           closePop();
           render();
           say("Saved. Claude will see it.");
+          sendShot(r.thread.id, shot);
         })
         .catch(function (e) {
           save.disabled = false;
@@ -516,9 +684,21 @@
     var where = t.anchor.type === "text" && t.anchor.quote ? "“" + clip(t.anchor.quote.exact, 80) + "”" : "<" + t.anchor.tag + "> " + clip(t.anchor.label, 60);
     pop.appendChild(h("div", { class: "quote", text: where }));
     var list = h("ol", { class: "messages" });
-    t.messages.forEach(function (m) {
+    var shots = t.shots || [];
+    var commentShot = shots.filter(function (s) {
+      return s.role === "comment" && !s.error;
+    })[0] || shots.filter(function (s) {
+      return s.role === "comment";
+    }).pop();
+    t.messages.forEach(function (m, i) {
       var meta = m.author + " · " + when(m.ts) + (m.commit ? " · commit " + m.commit : "") + (m.edited ? " · edited" : "");
-      list.appendChild(h("li", { class: m.author === "claude" ? "claude" : "" }, [h("div", { class: "meta", text: meta }), h("div", { class: "body", text: m.body })]));
+      var li = h("li", { class: m.author === "claude" ? "claude" : "" }, [h("div", { class: "meta", text: meta }), h("div", { class: "body", text: m.body })]);
+      if (i === 0 && commentShot) li.appendChild(shotView(t, commentShot, "When the comment was made"));
+      list.appendChild(li);
+    });
+    shots.forEach(function (s) {
+      if (s.role !== "after" || s.error) return;
+      list.appendChild(h("li", { class: "claude" }, [shotView(t, s, "After the fix" + (s.commit ? ", commit " + s.commit.slice(0, 7) : "") + " · " + when(s.ts))]));
     });
     (t.history || []).forEach(function (s) {
       list.appendChild(h("li", { class: "event", text: s.status + " by " + s.author + " · " + when(s.ts) + (s.note ? ": " + s.note : "") }));

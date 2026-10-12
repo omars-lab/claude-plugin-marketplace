@@ -205,6 +205,33 @@ textarea {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* A picture of the element, under the first message or as Claude's after shot. */
+.shot {
+  margin: 6px 0 0;
+}
+.shot img {
+  display: block;
+  max-width: 100%;
+  max-height: 40vh;
+  object-fit: contain;
+  border: 1px solid var(--pc-line);
+  border-radius: 6px;
+}
+.shot figcaption,
+.shot-none {
+  color: var(--pc-muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+.shot-links {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+.shot-links a {
+  color: var(--pc-accent);
+}
 .badge {
   display: inline-block;
   padding: 0 6px;
