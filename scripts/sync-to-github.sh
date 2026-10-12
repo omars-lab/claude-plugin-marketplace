@@ -49,7 +49,9 @@ PRIVATE_PATHS=(.claude/plans .claude/memory .claude/never-public.txt)
 NEVER_PUBLIC_CHECK="$REPO_ROOT/scripts/check-never-public.sh"
 EXCLUDES=()
 for p in "${PRIVATE_PATHS[@]}"; do EXCLUDES+=(":(exclude)$p"); done
-STATE_FILE="$REPO_ROOT/.git/github-sync-state"
+# The shared .git folder: in a linked worktree .git is a file, so ask git where it is.
+GIT_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir)
+STATE_FILE="$GIT_COMMON_DIR/github-sync-state"
 SYNC_BRANCH="__github_sync"
 
 echo -e "${BLUE}Incremental sync to GitHub...${NC}"
@@ -172,7 +174,7 @@ echo -e "  ${BLUE}Creating sync branch from GitHub HEAD...${NC}"
 git checkout -b "$SYNC_BRANCH" "$GITHUB_REMOTE_NAME/$BRANCH"
 
 # Prepare to track new mappings
-MAPPING_FILE="$REPO_ROOT/.git/github-sync-mapping"
+MAPPING_FILE="$GIT_COMMON_DIR/github-sync-mapping"
 NEW_MAPPINGS=""
 
 # Apply each new commit's changes (minus PRIVATE_PATHS) with rewritten author.

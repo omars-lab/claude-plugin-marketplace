@@ -104,7 +104,7 @@ check-never-public: ## Block staged lines with Tailscale addresses or private em
 	@./scripts/check-never-public.sh --staged
 
 check-never-public-range: ## Same check over commits not yet on GitHub (RANGE=<a>..<b> to pick others)
-	@./scripts/check-never-public.sh --commits "$${RANGE:-$$(grep '^local:' .git/github-sync-state | cut -d: -f2)..HEAD}"
+	@./scripts/check-never-public.sh --commits "$${RANGE:-$$(grep '^local:' $(GIT_COMMON_DIR)/github-sync-state | cut -d: -f2)..HEAD}"
 
 test-never-public: ## Self-test the never-public check and the GitHub sync on a throwaway repo
 	@./scripts/test-never-public.sh
@@ -309,6 +309,8 @@ doctor: ## Diagnose marketplace and plugin installation issues
 #   - GitHub commit IDs remain stable after initial setup
 GITHUB_REMOTE := git@github.com:omars-lab/claude-plugin-marketplace.git
 GITHUB_REMOTE_NAME := github
+# Where the sync keeps its state: the shared .git folder, which a linked worktree reaches through a file.
+GIT_COMMON_DIR = $(shell git rev-parse --path-format=absolute --git-common-dir)
 GITHUB_AUTHOR_NAME := Omar Eid
 GITHUB_AUTHOR_EMAIL := omar_eid21@yahoo.com
 
@@ -319,24 +321,24 @@ sync-remote: ## Incremental sync: rewrite only NEW commits since last sync
 	@./scripts/sync-to-github.sh "$(GITHUB_REMOTE)" "$(GITHUB_REMOTE_NAME)" "$(GITHUB_AUTHOR_NAME)" "$(GITHUB_AUTHOR_EMAIL)"
 
 sync-remote-status: ## Show GitHub sync state
-	@if [ -f .git/github-sync-state ]; then \
+	@if [ -f $(GIT_COMMON_DIR)/github-sync-state ]; then \
 		echo "$(BLUE)GitHub Sync State:$(NC)"; \
-		grep -v "^#" .git/github-sync-state | grep -v "^$$" | while read line; do \
+		grep -v "^#" $(GIT_COMMON_DIR)/github-sync-state | grep -v "^$$" | while read line; do \
 			key=$$(echo "$$line" | cut -d: -f1); \
 			val=$$(echo "$$line" | cut -d: -f2-); \
 			printf "  $(GREEN)%-10s$(NC) %s\n" "$$key:" "$$val"; \
 		done; \
 		echo ""; \
 		local_head=$$(git rev-parse HEAD); \
-		last_synced=$$(grep "^local:" .git/github-sync-state | cut -d: -f2); \
+		last_synced=$$(grep "^local:" $(GIT_COMMON_DIR)/github-sync-state | cut -d: -f2); \
 		if [ "$$local_head" = "$$last_synced" ]; then \
 			echo "  $(GREEN)✓ Up to date$(NC)"; \
 		else \
 			new_count=$$(git rev-list --count "$$last_synced..$$local_head"); \
 			echo "  $(YELLOW)$$new_count new commit(s) to sync$(NC)"; \
 		fi; \
-		if [ -f .git/github-sync-mapping ]; then \
-			mapping_count=$$(grep -v "^#" .git/github-sync-mapping | grep -v "^$$" | wc -l | tr -d ' '); \
+		if [ -f $(GIT_COMMON_DIR)/github-sync-mapping ]; then \
+			mapping_count=$$(grep -v "^#" $(GIT_COMMON_DIR)/github-sync-mapping | grep -v "^$$" | wc -l | tr -d ' '); \
 			echo "  $(BLUE)$$mapping_count commits mapped$(NC)"; \
 		fi; \
 	else \
@@ -358,7 +360,7 @@ sync-remote-lookup: ## Look up GitHub SHA for a local commit (SHA=<commit>)
 		echo "$(RED)Usage: make sync-remote-lookup SHA=<commit>$(NC)"; \
 		exit 1; \
 	fi
-	@if [ ! -f .git/github-sync-mapping ]; then \
+	@if [ ! -f $(GIT_COMMON_DIR)/github-sync-mapping ]; then \
 		echo "$(RED)No mapping file. Run 'make sync-remote-init' first.$(NC)"; \
 		exit 1; \
 	fi
@@ -367,7 +369,7 @@ sync-remote-lookup: ## Look up GitHub SHA for a local commit (SHA=<commit>)
 		echo "$(RED)Invalid commit: $(SHA)$(NC)"; \
 		exit 1; \
 	fi; \
-	github_sha=$$(grep "^$$full_sha " .git/github-sync-mapping | cut -d' ' -f2); \
+	github_sha=$$(grep "^$$full_sha " $(GIT_COMMON_DIR)/github-sync-mapping | cut -d' ' -f2); \
 	if [ -z "$$github_sha" ]; then \
 		echo "$(YELLOW)No GitHub mapping for $$full_sha$(NC)"; \
 		echo "$(YELLOW)Commit may not have been synced yet.$(NC)"; \

@@ -36,7 +36,9 @@ echo ""
 
 # Check if already initialized
 REPO_ROOT=$(git rev-parse --show-toplevel)
-STATE_FILE="$REPO_ROOT/.git/github-sync-state"
+# The shared .git folder: in a linked worktree .git is a file, so ask git where it is.
+GIT_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir)
+STATE_FILE="$GIT_COMMON_DIR/github-sync-state"
 
 if [ -f "$STATE_FILE" ]; then
     echo -e "${YELLOW}Sync state already exists:${NC}"
@@ -176,7 +178,7 @@ synced:$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
 
 # Build 1:1 commit mapping
-MAPPING_FILE="$REPO_ROOT/.git/github-sync-mapping"
+MAPPING_FILE="$GIT_COMMON_DIR/github-sync-mapping"
 echo -e "  ${BLUE}Building commit mapping...${NC}"
 echo "# Commit mapping: local_sha -> github_sha" > "$MAPPING_FILE"
 echo "# Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$MAPPING_FILE"
