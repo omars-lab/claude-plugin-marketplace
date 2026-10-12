@@ -84,6 +84,8 @@ Each answer is now a decision. The second column is how it was read; correct it 
 | **Commenting from the phone through Tailscale.** | Use `tailscale serve`, which forwards to the Mac's `127.0.0.1`, so the server never listens on the network. Never Tailscale Funnel, which is public. | Section 13 |
 | **Screenshots in iCloud, with a pointer to each.** | Pictures go to `~/Library/Mobile Documents/com~apple~CloudDocs/CloudDesktop/data` by default, the folder Omar named. It is a setting, not hard-coded. The thread stores a path relative to the iCloud Drive root. | Section 14 |
 | **A link that opens the screenshot in the Files app, tested on the iPhone simulator.** | Files has no documented link scheme and no x-callback. Its undocumented `shareddocuments://` scheme worked on the simulator for both a file and a folder. The documented x-callback route goes through a Shortcut, and is kept only as a fallback. | Sections 15 and 16 |
+| **Union merge on thread files is fine** (Omar, 2026-10-12, answering the old question 1 in section 18). | Keep `threads/*.jsonl merge=union` in `.page-comments/.gitattributes`, and never at the repo root. When two branches add lines to the same thread, git keeps both sides' lines. | Section 5 |
+| **Only Omar comments from the phone** (Omar, 2026-10-12, answering the old question 3 in section 18). | The Tailscale allow list holds one login, Omar's own. Nobody else on the tailnet can comment. It matters only from phase 3. | Section 13 |
 
 ## 2. Extend a plugin, or make a new one
 
@@ -263,7 +265,7 @@ each was right about.
 merge reports a conflict. Git's built-in union merge keeps the lines from both sides. Every line
 is a whole event with its own time stamp, and reading sorts by time, so nothing is lost. This
 keeps both sides' work; it is not an "ours" or "theirs" shortcut, which Omar's rules forbid. It is
-listed in section 18 so Omar sees it before it ships.
+Omar approved it on 2026-10-12 (section 1).
 
 ### Git stamps and commits
 
@@ -635,8 +637,8 @@ lives in the review-md repo, because review-md came first. This plugin keeps a p
 | Describe the `element` anchor in review-md's agent guide | So Claude, reading either tool, reads both the same way. |
 
 Until review-md takes these, this plugin writes the schema and its pinned copy, and review-md
-reads only the parts it knows. Whether the two should one day share storage too is question 2
-in section 18.
+reads only the parts it knows. Whether the two should one day share storage too is the open
+question in section 18.
 
 ## 13. Commenting from the phone through Tailscale
 
@@ -839,29 +841,18 @@ in Files. The x-callback route is not needed. It stays as the fallback in sectio
 ## 18. Open questions for Omar
 
 Omar's 2026-10-12 answers settled the earlier questions about closing threads, screenshots in git,
-phone commenting, and sharing a format with review-md (section 1). These are still open. The
-design proceeds on the default for each; answering changes only what is listed.
+phone commenting, sharing a format with review-md, union merge on thread files, and who may
+comment from the phone (section 1). One question is still open. The design proceeds on its
+default; answering changes only what is listed.
 
-**1. Is git's union merge OK for thread files?**
-
-| Option | Pros | Cons | Implications |
-|---|---|---|---|
-| **Yes, `merge=union` on `threads/*.jsonl`** (default) | Two branches that both add comments merge with nothing lost. | It is a merge driver, and your rules ban the "ours" kind. This one keeps both sides, but it is still automatic. | Set in `.page-comments/.gitattributes` only, never at the repo root. |
-| No, merge by hand | Every merge is looked at. | A conflict on every branch that touched the same thread. | Thread files are append-only, so hand merges are easy but frequent. |
-
-**2. Should review-md and this plugin share storage too, not just the thread shape?**
+**Storage: should review-md and this plugin share storage too, not just the thread shape?**
 
 | Option | Pros | Cons | Implications |
 |---|---|---|---|
 | **Share the shape only** (default) | Each tool keeps the storage that suits it: Obsidian's data for notes, git-tracked files for pages. No release of one waits on the other. | Two storage codes to keep. | One reader handles both through `--json`. Section 12 as written. |
 | Share one storage format as well | One library for both. | review-md stores inside Obsidian, which does not fit a repo of web pages. Ties two release cycles. | A larger change to review-md, and a migration for its existing threads. |
 
-**3. Should anyone else on the tailnet be able to comment?**
-
-| Option | Pros | Cons | Implications |
-|---|---|---|---|
-| **Only Omar's own login** (default) | Matches "one person comments". Nothing to manage. | A friend or family member on the tailnet cannot leave a note. | The allow list holds one login. |
-| Named logins, per repo | Others can comment on a trip page from their phones. | Each person needs an author name, and their text is still data, not orders. | Add logins to the repo's allow list. Claude's replies then go to several people. |
+This question is also listed under "Worth revisiting" in the marketplace `CLAUDE.md`.
 
 ## 19. What was checked
 
@@ -960,7 +951,7 @@ design proceeds on the default for each; answering changes only what is listed.
   in phase 3, so partly shared).
 - *Only B:* the platform limits on plugin monitors and `bin/` (both verified); the stale plugin
   path in a make target after updates (verified; solved with the launcher in section 8);
-  `merge=union` (kept, and asked as question 1 in section 18); the shadow root for the bar; the
+  `merge=union` (kept; Omar approved it on 2026-10-12); the shadow root for the bar; the
   `message_edited` event; review-md's half-written-file and two-misses rules (verified); size
   caps and server-chosen file names; the warning when a repo has a public remote; the monday.com
   speed comparison (not re-opened).

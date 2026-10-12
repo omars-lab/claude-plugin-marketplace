@@ -102,6 +102,8 @@ plugins/<plugin-name>/
 | `configure-` | `configure-statusline` | Wires configuration |
 | `monitor-` | `monitor-prices` | Watches something over time; snapshot → re-run → drift report |
 | `manage-` | `manage-skills` | Meta-skill orchestrator |
+| `enable-` | `enable-page-comments` | Turns a feature on in a repo, with an undo |
+| `answer-` | `answer-page-comments` | Responds to a queue of human input |
 | `introduce` | `introduce` | Every plugin's self-description |
 
 ---
@@ -247,3 +249,9 @@ osascript -e 'display notification "<message>" with title "<Title> ⚠️" sound
 **Model:** Use `claude-haiku-4-5-20251001` for background jobs — cheap, fast, sufficient for mechanical tasks.
 
 **zsh background:** Use `&!` (background + disown) so the process survives after the terminal closes.
+
+---
+
+## Worth revisiting
+
+- Should development-manager's page comments and review-md share one storage format, not just the thread shape? Open since 2026-10-12; see docs/design/localhost-comments/design.md section 18.
