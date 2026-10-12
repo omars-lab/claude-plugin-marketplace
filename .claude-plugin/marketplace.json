@@ -27,7 +27,7 @@
       "name": "config-manager",
       "source": "./plugins/config-manager",
       "description": "Manage Claude Code configuration, permissions, and development environment setup",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "category": "utilities",
       "keywords": [
         "permissions",
@@ -43,7 +43,7 @@
       "name": "noteplan-manager",
       "source": "./plugins/noteplan-manager",
       "description": "Complete NotePlan management suite for templates, organization, analysis, and note creation",
-      "version": "3.122.1",
+      "version": "3.122.2",
       "category": "productivity",
       "keywords": [
         "noteplan",
@@ -74,7 +74,7 @@
       "name": "skill-manager",
       "source": "./plugins/skill-manager",
       "description": "Manage Claude skills and CLAUDE.md files - create, update, and organize skills across plugins",
-      "version": "3.0.0",
+      "version": "3.0.1",
       "category": "development",
       "keywords": [
         "meta",
@@ -137,7 +137,7 @@
       "name": "plan-manager",
       "source": "./plugins/plan-manager",
       "description": "Manage Claude Code plans \u2014 inspect quality, move to projects, and produce changelogs",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "category": "productivity",
       "keywords": [
         "plans",
@@ -169,7 +169,7 @@
       "name": "code-quality-manager",
       "source": "./plugins/code-quality-manager",
       "description": "Improve developer experience through documentation quality, Makefiles, and repo standards",
-      "version": "2.2.0",
+      "version": "2.2.1",
       "category": "productivity",
       "keywords": [
         "documentation",
@@ -199,7 +199,7 @@
       "name": "role-manager",
       "source": "./plugins/role-manager",
       "description": "Manage personalbook roles: structure, validate, migrate, reorganize, and archive roles",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "category": "productivity",
       "keywords": [
         "roles",
@@ -266,7 +266,7 @@
       "name": "profile-manager",
       "source": "./plugins/profile-manager",
       "description": "Manage your profiles \u2014 shell environment (browser automation, aliases, setup) and professional profile (resume mission statement, bullet points, VP/IC meeting simulators, multi-run simulations)",
-      "version": "1.15.1",
+      "version": "1.15.2",
       "category": "utilities",
       "keywords": [
         "shell",
@@ -363,7 +363,7 @@
       "name": "consumer",
       "source": "./plugins/consumer",
       "description": "Make durable-good purchase decisions with evidence: weighted decision matrices, honest used-market pricing, price monitoring, and a write-up of the call",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "category": "productivity",
       "keywords": [
         "purchase",
@@ -433,7 +433,7 @@
       "name": "development-manager",
       "source": "./plugins/development-manager",
       "description": "Comment on your local web pages and have Claude answer. Adds a Comment button to pages served on localhost (in front of your dev server, or serving a folder), saves each comment thread as a file in the repo that git tracks, takes a picture of the commented element (kept out of git, in iCloud Drive by default), and runs a watcher so Claude hears new comments, fixes or answers them at the source, replies on the page, and closes a thread only once its fix is committed. You can also comment from your phone through your own Tailscale network (never Funnel), with a touch mode. Comments find their element again after the page changes, flag when it changed, and list the ones they cannot find; a post-commit hook notes which commit took in work a comment was made on. One enable step sets up the repo, proves the loop with a test comment, and undoes cleanly.",
-      "version": "1.3.0",
+      "version": "1.3.1",
       "category": "development",
       "keywords": [
         "localhost",
