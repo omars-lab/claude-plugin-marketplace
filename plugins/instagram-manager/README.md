@@ -30,7 +30,7 @@ public repo.
 
 ## Requirements
 
-- Python 3 (standard library only)
+- Python 3, plus PyYAML for the data check (`shared/scripts/check_data.py`)
 - An Instagram data export (Settings → Your activity → Download your information), HTML or JSON
 
 ---

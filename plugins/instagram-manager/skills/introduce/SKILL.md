@@ -83,10 +83,11 @@ instagram-manager
   shared/scripts/
     ├── home.py      — finds the data repo (INSTAGRAM_HOME)
     ├── log.py       — one greppable ev= line per event
-    └── claude.py    — API key, one model call, the word-for-word quote check
+    ├── claude.py    — API key, one model call, the word-for-word quote check
+    └── check_data.py — the data repo's config and data fit together (its make check)
 ```
 
 ## Requirements
 
-- Python 3 (standard library only).
+- Python 3, plus PyYAML for the data check.
 - An Instagram data export, HTML or JSON.
