@@ -1,4 +1,4 @@
-.PHONY: help test-all test-noteplan-manager test-development-manager test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins validate-governance list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register sync-remote setup-hooks secret-scan secret-scan-staged
+.PHONY: help test-all test-noteplan-manager test-development-manager check-thread-schema test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins validate-governance list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register sync-remote setup-hooks secret-scan secret-scan-staged
 
 # Colors for output
 GREEN := \033[0;32m
@@ -115,6 +115,10 @@ test-workflow: ## Test complete plugin lifecycle (uninstall -> install -> update
 test-development-manager: ## Run development-manager page-comments tests (Node 18 or later, no installs)
 	@echo "$(BLUE)Testing development-manager...$(NC)"
 	@$(or $(NODE),node) --test plugins/development-manager/shared/scripts/test/*.test.mjs
+
+check-thread-schema: ## Check page comments' pinned thread schema still matches review-md's (REVIEW_MD_SCHEMA=<path to review-md's schema/thread.schema.json>)
+	@test -n "$(REVIEW_MD_SCHEMA)" || { echo "Skipped: set REVIEW_MD_SCHEMA to review-md's schema/thread.schema.json to check the pinned copy"; exit 0; }
+	@REVIEW_MD_SCHEMA="$(REVIEW_MD_SCHEMA)" $(or $(NODE),node) --test plugins/development-manager/shared/scripts/test/schema.test.mjs
 
 test-noteplan-manager: ## Run noteplan-manager JS browser tests (requires venv)
 	@echo "$(BLUE)Testing noteplan-manager sweep review portal JS...$(NC)"
