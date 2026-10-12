@@ -123,7 +123,7 @@
         say("");
         // Rebuild only when something changed. Rebuilding every poll swaps the pins
         // out from under the pointer, so a click can miss and a scrolled list resets.
-        if (r.changed || layoutKey() !== lastLayout) render();
+        if (!drawn || r.changed || layoutKey() !== lastLayout) render();
       })
       .catch(function (e) {
         say("Comments are offline: " + e.message);
@@ -571,6 +571,7 @@
   // Where each shown pin's element sits now. If the page moved under the pins,
   // the next poll redraws them.
   var lastLayout = "";
+  var drawn = false; // the first answer always draws, even on a page with no comments
   function layoutKey() {
     return threads
       .filter(visible)
@@ -584,6 +585,7 @@
   }
 
   function render() {
+    drawn = true;
     lastLayout = layoutKey();
     host.hidden = false;
     bar.hidden = hidden;

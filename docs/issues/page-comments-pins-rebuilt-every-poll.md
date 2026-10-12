@@ -22,5 +22,8 @@ small layout key (each shown pin's thread id and its element's position and size
 each redraw, and compared on each poll. Buttons, window resizes and the server's own changes still
 redraw at once.
 
+The first answer from the server always draws, so a page with no comments yet still shows the bar.
+
 Checked in the browser: the same pin element survived two polls, and the test browser's click on
-it then opened the thread.
+it then opened the thread. The bar showed on an empty page in folder mode. There is no automated
+test for the page script yet; these checks were by hand.

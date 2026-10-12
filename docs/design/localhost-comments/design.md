@@ -362,7 +362,7 @@ and nothing notices a comment until the watcher runs. So the monitor starts with
 and the silent exit above keeps that harmless (`docs/issues/page-comments-monitor-runs-always.md`).
 Two sessions still need the Monitor tool: the one that just ran enable (its watcher started
 before `.page-comments/` existed, and exited), and one working from another repo. A Claude Code channel (true push into
-a session) was also rejected for now: channels are a research preview, and a plugin from this
+a session) was rejected for now: channels are a research preview, and a plugin from this
 marketplace would need the `--dangerously-load-development-channels` flag on every start.
 Revisit when that changes.
 

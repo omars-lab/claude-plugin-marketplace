@@ -621,7 +621,8 @@ export async function main(argv) {
   out(`Open:       http://127.0.0.1:${r.port}/   and press C to comment`);
   out(`Check it:   node ${join(HERE, "enable.mjs")} --check --repo ${repo}`);
   out(`Undo it:    node ${join(HERE, "enable.mjs")} --undo --repo ${repo}`);
-  out("Commit .page-comments/, .claude/settings.json, CLAUDE.md and the Makefile so every session in this repo can answer comments.");
+  const toCommit = [".page-comments/", ".claude/settings.json", "CLAUDE.md"].concat(r.makeTarget ? ["the Makefile"] : []);
+  out(`Commit ${toCommit.slice(0, -1).join(", ")} and ${toCommit[toCommit.length - 1]} so every session in this repo can answer comments.`);
   return 0;
 }
 
