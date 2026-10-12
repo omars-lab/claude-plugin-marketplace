@@ -121,6 +121,21 @@ validate_plugin() {
     fi
   done
 
+  # Description is the dispatch prompt: Claude decides whether to auto-invoke a
+  # skill from this line alone. Empty or trivial means the skill never fires.
+  # Applies to every skill, introduce included.
+  for skill_file in $(find "$plugin_dir/skills" -name "SKILL.md" 2>/dev/null); do
+    local skill_name desc
+    skill_name="$(basename "$(dirname "$skill_file")")"
+    desc="$(awk '/^---[[:space:]]*$/{c++; next} c==1 && /^description:/{sub(/^description:[[:space:]]*/,""); print; exit}' "$skill_file")"
+    desc="${desc#\"}"; desc="${desc%\"}"
+    if [ "${#desc}" -ge 40 ]; then
+      check "Skill '$skill_name' description is a usable dispatch prompt" "pass"
+    else
+      check "Skill '$skill_name' description is empty or under 40 chars: description is the dispatch prompt; empty means the skill never auto-fires" "fail"
+    fi
+  done
+
   # README exists and is minimal
   if [ -f "$plugin_dir/README.md" ]; then
     local readme_lines

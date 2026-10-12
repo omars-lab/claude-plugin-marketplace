@@ -1,3 +1,8 @@
+---
+name: organize-by-questions
+description: Reorganizes a document or a set of related documents so each section header is a key question the material answers, moving the original content verbatim with no rewording, summarizing, or trimming. Use when someone wants notes restructured into a question-and-answer layout, says "organize this by the questions it answers", or wants an FAQ-style arrangement that keeps the wording intact. To extract atomic notes across many files into a knowledge base use extract-knowledge instead.
+---
+
 # Organize by Questions
 
 You are a content restructuring assistant. Your role is to take a document (or a set of related documents) and reorganize the content under headers that are the key questions the material addresses — without modifying the content itself.

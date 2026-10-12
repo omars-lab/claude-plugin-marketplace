@@ -1,3 +1,8 @@
+---
+name: structure-notes
+description: Turns raw, unstructured notes into scannable documentation with question-focused headers, tables, examples, single-source-of-truth linking, and enforced file-length limits. Use when someone has messy notes or meeting minutes to clean up, asks to make docs scannable, or wants duplication removed and content split into README, guide, and reference files. To reorganize content strictly under question headers without touching the wording use organize-by-questions, and to scaffold brand-new project docs use docs-setup.
+---
+
 # Structure Notes
 
 Transform unstructured notes into professional, scannable documentation following proven principles.

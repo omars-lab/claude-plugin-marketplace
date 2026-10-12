@@ -13,7 +13,7 @@
       "name": "discover-oeid-plugins",
       "source": "./plugins/discover-oeid-plugins",
       "description": "Discover available personal plugins and see what's installed",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "category": "getting-started",
       "keywords": [
         "discover",
@@ -27,7 +27,7 @@
       "name": "config-manager",
       "source": "./plugins/config-manager",
       "description": "Manage Claude Code configuration, permissions, and development environment setup",
-      "version": "1.1.2",
+      "version": "1.2.0",
       "category": "utilities",
       "keywords": [
         "permissions",
@@ -59,7 +59,7 @@
       "name": "script-manager",
       "source": "./plugins/script-manager",
       "description": "Create and manage Tampermonkey userscripts with best practices",
-      "version": "1.1.2",
+      "version": "1.2.0",
       "category": "development",
       "keywords": [
         "tampermonkey",
@@ -74,7 +74,7 @@
       "name": "claude-manager",
       "source": "./plugins/claude-manager",
       "description": "Manage Claude skills and CLAUDE.md files - create, update, and organize skills across plugins",
-      "version": "2.4.1",
+      "version": "2.7.0",
       "category": "development",
       "keywords": [
         "meta",
@@ -89,7 +89,7 @@
       "name": "spirituality-manager",
       "source": "./plugins/spirituality-manager",
       "description": "Plan and track spiritual practices - Ramadan schedules, Quran memorization (hifz), and dua routines",
-      "version": "1.2.2",
+      "version": "1.3.0",
       "category": "productivity",
       "keywords": [
         "spirituality",
@@ -105,7 +105,7 @@
       "name": "knowledge-manager",
       "source": "./plugins/knowledge-manager",
       "description": "Extract, map, and query knowledge from notes - transform unstructured content into structured knowledge bases with Zettelkasten-style atomic notes",
-      "version": "1.4.0",
+      "version": "1.5.0",
       "category": "productivity",
       "keywords": [
         "knowledge",
@@ -121,7 +121,7 @@
       "name": "note-manager",
       "source": "./plugins/note-manager",
       "description": "Manage and analyze notes, training materials, and documentation - structure notes, analyze transcripts, clean ebook exports, and generate reference guides",
-      "version": "2.1.0",
+      "version": "2.5.0",
       "category": "productivity",
       "keywords": [
         "notes",
@@ -265,8 +265,8 @@
     {
       "name": "profile-manager",
       "source": "./plugins/profile-manager",
-      "description": "Manage your profiles \u2014 shell environment (browser automation, aliases, setup) and professional profile (resume mission statement, bullet points)",
-      "version": "1.5.0",
+      "description": "Manage your profiles \u2014 shell environment (browser automation, aliases, setup) and professional profile (resume mission statement, bullet points, VP/IC meeting simulators, multi-run simulations)",
+      "version": "1.15.1",
       "category": "utilities",
       "keywords": [
         "shell",
@@ -371,6 +371,48 @@
         "naming-conventions",
         "workstreams",
         "quicknote"
+      ]
+    },
+    {
+      "name": "guardrail-manager",
+      "source": "./plugins/guardrail-manager",
+      "description": "Hooks that catch the mistakes sessions make around shared working trees and skipped review steps: warn when other Claude Code sessions are active in the same checkout, restate the branch before a git commit or push, remind about a repo-declared review policy the transcript shows was skipped, warn before spawning a new branch or worktree once the checkout already carries a budget's worth of parallel work (reconcile to main first), send a session that stops to ask \"shall I merge?\" back to merge and continue, and deny any git command that resolves a conflict with -X ours/theirs, -s ours or checkout --ours/--theirs",
+      "version": "1.4.0",
+      "category": "development",
+      "keywords": [
+        "hooks",
+        "guardrails",
+        "concurrent-sessions",
+        "git-branch",
+        "git-worktree",
+        "branch-sprawl",
+        "merge-and-continue",
+        "policy-review",
+        "stop-hook",
+        "git-conflicts"
+      ]
+    },
+    {
+      "name": "wiki-manager",
+      "source": "./plugins/wiki-manager",
+      "description": "Maintain a standing LLM knowledge base compiled from a NotePlan vault, shaped as an FAQ dependency graph and partitioned into domain SPACES (family, work, business, venture, plus a public floor) each bound to a confidentiality/PII tolerance. Each article answers one question and carries a space; derived answers build on other answers within their own space or the public floor only, so the crawl-down-to-base-facts never leaks one domain's confidential content into another. Ingests the Unorganized inbox into grounded, cross-linked articles under Notes/\ud83d\udcda Wiki/<space>/, keeps a hub + per-space indexes + a shared log, answers per space with citations, lints for fidelity, dependency cycles, and cross-space compartment leaks, and reorganizes the inbox without rewording content \u2014 with a git-backed content-preservation linter that proves no original source line is lost across a reorganization or split. No secret enters any space. Keeps pages lean for a first-time reader: a page body is Short answer \u2192 Evidence \u2192 Context \u2192 Gaps and nothing else, cross-links live in frontmatter (depends_on / leads_to) instead of body sections, and a running newcomer verdict per page records what to read, what to skip, and whether the page is lean or bloated \u2014 kept fresh by a content hash. Report-only SessionStart hook, plus advisory Stop hooks for a stale concept map or a stale verdict.",
+      "version": "0.14.1",
+      "category": "productivity",
+      "keywords": [
+        "wiki",
+        "knowledge-base",
+        "faq",
+        "noteplan",
+        "grounding",
+        "ingest",
+        "index",
+        "dependency-graph",
+        "spaces",
+        "compartments",
+        "pii",
+        "confidentiality",
+        "readability",
+        "verdicts"
       ]
     }
   ]

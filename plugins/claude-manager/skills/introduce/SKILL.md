@@ -93,6 +93,8 @@ Based on selection, tell them the skill to invoke and what it does.
 - Research CLAUDE.md patterns — mine session history to surface recurring preferences
 - Generate CLAUDE.md from scratch — for new projects
 - Move sessions — relocate session history between ~/.claude/projects slug dirs after a repo moves, or move a single session
+- Find provenance — pin a claim, number, or decision to the transcript line that proves it; cite by session id, line, timestamp
+- Compact prompt — write a what-only handoff prompt for a fresh session, pointing at the skills and docs that hold the how
 
 ### Meta
 
@@ -149,6 +151,12 @@ This plugin enforces these standards across the ecosystem:
 **"I moved my repo and lost my session history"**
 → `/claude-manager:manage-claude-config` (say "move sessions")
 
+**"Where did this number come from? Which session decided it?"**
+→ `/claude-manager:manage-claude-config` (say "find provenance")
+
+**"Give me a prompt to continue this in a fresh session"**
+→ `/claude-manager:manage-claude-config` (say "compact prompt")
+
 **"How do I actually use AI across all my plugins?"**
 → `/claude-manager:manage-plugins` (say "summarize AI usage")
 
@@ -179,5 +187,7 @@ claude-manager (this plugin)
         ├── fixes → CLAUDE.md (minimize, audit per arXiv:2602.11988)
         ├── researches → CLAUDE.md patterns from session history
         ├── generates → CLAUDE.md for new projects
-        └── moves → session history between project slug dirs
+        ├── moves → session history between project slug dirs
+        ├── cites → the transcript line that proves a claim (find-provenance)
+        └── hands off → a what-only prompt for a fresh session (compact-prompt)
 ```

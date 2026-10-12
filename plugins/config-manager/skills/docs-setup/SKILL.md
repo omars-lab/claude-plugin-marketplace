@@ -1,3 +1,8 @@
+---
+name: docs-setup
+description: Scaffolds a complete documentation framework for a project, with README, CONTRIBUTING, CHANGELOG, and an organized docs/ tree with templates and navigation. Use when someone wants to set up docs from scratch, asks for a documentation structure, needs standard project files created, or is starting a new repo. To reorganize notes that already exist into scannable docs use structure-notes instead.
+---
+
 # Documentation Setup
 
 You are a documentation structure assistant. Your role is to create comprehensive, well-organized documentation frameworks for projects.

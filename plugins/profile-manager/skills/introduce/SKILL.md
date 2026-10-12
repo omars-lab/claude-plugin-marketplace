@@ -19,13 +19,16 @@ Profile Manager manages your profiles — in two senses:
 **Professional profile** — refining the way you present yourself, with a tracked, critique-driven iteration trail:
 - **Mission statement** — iterate on your resume/personal-brand summary, saving every version with a Good/Bad/Enhancement critique
 - **Resume bullets** — refactor bullet points into action-led, quantified accomplishments, one tracked file per bullet
+- **Meeting simulators** — role-play a VP (`vp-simulator`) or an IC (`ic-simulator`) to prep for leadership 1-1s, including a branching ideal-scenario conversation
+- **Simulate a conversation** — `simulate-conversation` interviews you about the meeting and runs the right simulation
+- **Simulations** — `simulation-manager` runs N leader ↔ IC conversations with the leader's private thoughts, then recaps what impressed vs hurt
 
 ## How to Introduce Yourself
 
 ### Step 1: Welcome
 
 ```
-Profile Manager — 4 skills across your shell profile and your professional profile.
+Profile Manager — 8 skills across your shell profile and your professional profile.
 
 Shell profile:
 - Set up Chrome for Testing with remote debugging (auto-start on shell open)
@@ -34,6 +37,8 @@ Shell profile:
 Professional profile:
 - Refine your resume mission statement, version by version, with critiques
 - Refactor resume bullet points into quantified, action-led accomplishments
+- Simulate a VP or IC for meeting prep (questions, motivations, branching conversation)
+- Run 5–10 simulated conversations and recap what impressed vs hurt
 ```
 
 ### Step 2: Ask What They Need
@@ -47,6 +52,8 @@ Options:
 - Set up Chrome integration (auto-start Chrome for Testing + claude-chrome alias)
 - Refine my resume mission statement (tracked iterations + critique)
 - Refactor my resume bullet points (tracked iterations + critique)
+- Prep for a leadership meeting (VP or IC simulator)
+- Simulate a meeting many times (simulation-manager)
 - Learn about this plugin (see all skills and workflows)
 ```
 
@@ -62,6 +69,10 @@ Based on selection, explain the relevant skill and invoke it.
 | `setup-chrome-integration` | `/profile-manager:setup-chrome-integration` | Configure Chrome for Testing auto-start, remote debugging, and `claude-chrome` alias |
 | `refine-mission-statement` | `/profile-manager:refine-mission-statement` | Iteratively refine a resume/personal-brand mission statement; one file per version with Good/Bad/Enhancement critique |
 | `refactor-resume-bullets` | `/profile-manager:refactor-resume-bullets` | Refactor resume bullets into action-led, quantified statements; one tracked file per bullet |
+| `vp-simulator` | `/profile-manager:vp-simulator` | Role-play a VP/skip-level; prep brief + branching ideal-scenario conversation (also an agent) |
+| `ic-simulator` | `/profile-manager:ic-simulator` | Role-play an IC meeting a leader; brief + branching ideal-scenario conversation (also an agent) |
+| `simulate-conversation` | `/profile-manager:simulate-conversation` | Start here: intake questions → pre-briefs → cheapest engine → recap |
+| `simulation-manager` | `/profile-manager:simulation-manager` | N-run leader ↔ IC simulations → Gameplan, one file per run, Recap (uses the `sim-recap` agent) |
 
 ## Common Scenarios
 
@@ -79,6 +90,18 @@ Based on selection, explain the relevant skill and invoke it.
 
 **"My resume bullets are weak / read like a job description"**
 → `/profile-manager:refactor-resume-bullets`
+
+**"My VP booked a skip-level with me — help me prep"**
+→ `/profile-manager:vp-simulator`
+
+**"I'm meeting an engineer I want to retain" / "Rehearse my answers"**
+→ `/profile-manager:ic-simulator`
+
+**"Simulate my conversation with X" / "How will my 1-1 with X go?"**
+→ `/profile-manager:simulate-conversation`
+
+**"Simulate this meeting 10 times and tell me what lands"**
+→ `/profile-manager:simulate-conversation` (Full matrix), or `/profile-manager:simulation-manager` directly
 
 ## How This Plugin Relates to Others
 

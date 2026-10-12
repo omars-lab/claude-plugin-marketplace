@@ -1,7 +1,7 @@
 {
   "name": "profile-manager",
-  "description": "Manage your profiles — shell environment (browser automation, aliases, setup) and professional profile (resume mission statement, bullet points)",
-  "version": "1.5.0",
+  "description": "Manage your profiles \u2014 shell environment (browser automation, aliases, setup) and professional profile (resume mission statement, bullet points, VP/IC meeting simulators, multi-run simulations)",
+  "version": "1.15.1",
   "author": {
     "name": "Omar Eid"
   },

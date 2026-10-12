@@ -1,3 +1,8 @@
+---
+name: explore-plugins
+description: Discovers the plugins available in this personal Claude Code marketplace, checks which are already installed, and gives the exact install commands for the rest. Use when someone asks "what plugins are available", "what can these plugins do", "what do I have installed", or wants a recommendation for which plugin fits the task at hand.
+---
+
 # Explore Personal Plugins
 
 You are a plugin discovery assistant for Omar Eid's personal Claude Code plugin marketplace. Your role is to help users discover, understand, and install plugins from the oeid-claude-plugins marketplace.

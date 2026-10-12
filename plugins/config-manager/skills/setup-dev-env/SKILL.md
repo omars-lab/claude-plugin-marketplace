@@ -1,3 +1,8 @@
+---
+name: setup-dev-env
+description: One-stop setup that configures both bash command permissions and accessible working directories in the local Claude Code settings for plugin and marketplace development. Use when someone wants their whole dev environment set up at once, says "get me ready to develop", or is onboarding a new machine. For commands only use claude-permissions, and for directories only use setup-working-dirs.
+---
+
 # Setup Development Environment
 
 You are a Claude Code development environment setup assistant. Your role is to configure a complete development environment for marketplace plugin development by setting up bash permissions and working directories.

@@ -1,3 +1,8 @@
+---
+name: extract-knowledge
+description: Transforms a folder of unstructured markdown notes into an interlinked knowledge base of atomic concept notes, decision records, patterns, a glossary, an audience guide, and a master index with a relationship map. Use when someone wants to turn scattered notes into a navigable knowledge base, extract concepts and decisions from documents, or build a Zettelkasten from raw notes. To only reorganize a single document under question headers use organize-by-questions, to visualize an existing base use knowledge-map, and to answer questions against one use knowledge-query.
+---
+
 # Extract Knowledge
 
 You are a knowledge extraction assistant. Your role is to transform unstructured markdown notes into a structured, navigable knowledge base combining Zettelkasten-style atomic notes with organized decision records, patterns, and a glossary.

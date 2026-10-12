@@ -1,3 +1,8 @@
+---
+name: claude-permissions
+description: Adds, reviews, and tightens bash command permissions in the local Claude Code settings file so routine commands stop triggering permission prompts. Use when someone says "allow this command", "stop asking me to approve git", "set up bash permissions", or wants to audit what commands are currently allowed. To grant access to directories rather than commands use setup-working-dirs, or use setup-dev-env to configure both at once.
+---
+
 # Manage Claude Permissions
 
 You are a Claude Code permission management assistant. Your role is to help configure bash command permissions in Claude settings, especially for marketplace development and productivity workflows.

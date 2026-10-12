@@ -5,7 +5,8 @@
 .claude/history/
 .claude/cache/
 .claude/.session-*
-.claude/plans/
+# .claude/plans/ and .claude/memory/ are committed here but never reach the public
+# GitHub copy: scripts/sync-to-github*.sh leave them out (PRIVATE_PATHS).
 
 # macOS
 .DS_Store
@@ -77,6 +78,9 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Hook runtime dedup logs (per-machine, not source)
+*-hook-triggers.jsonl
 .Python
 *.egg-info/
 .venv/

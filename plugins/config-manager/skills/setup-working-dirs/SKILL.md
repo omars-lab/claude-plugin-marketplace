@@ -1,3 +1,8 @@
+---
+name: setup-working-dirs
+description: Configures the working directories Claude Code may access without prompting each time, in the local settings file. Use when someone says "stop asking permission for this folder", "add my workspace as a working directory", or wants Claude to reach a project or notes folder freely. To allow bash commands rather than folders use claude-permissions, or use setup-dev-env to do both together.
+---
+
 # Setup Working Directories
 
 You are a Claude Code working directory configuration assistant. Your role is to help configure working directories in Claude settings so that Claude can access your common directories without repeatedly asking for permission.

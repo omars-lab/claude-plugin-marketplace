@@ -417,6 +417,35 @@ When patterns recur, suggest fixes beyond this skill's scope:
 
 **Best fit for:** Skills that fix issues that could be prevented upstream.
 
+### 4. Rubric File Next to the Skill
+
+When a skill judges something (reviews a draft, scores a candidate, grades a design), keep the
+judging criteria in their own file beside `SKILL.md` and have the workflow read it before judging:
+
+```
+skills/refine-post/
+├── SKILL.md              # the workflow: gather, judge, revise, report
+├── RUBRIC.md             # the questions every section must answer, with pass/fail examples
+└── STYLE-GUIDE.md        # the voice rules, each with a before/after
+```
+
+```markdown
+## Before judging
+
+Read `RUBRIC.md` in this directory. Score against it; quote the rubric line that a finding
+violates. When a review surfaces a criterion that is missing from the rubric, append it there
+in the same session, so the next run inherits the lesson.
+```
+
+**Why:** The workflow changes rarely; the criteria change every time someone learns what a good
+result looks like. Splitting them keeps `SKILL.md` short enough to read whole, lets the rubric grow
+by appending without disturbing the steps, and makes a review auditable because each finding
+points at a rubric line instead of at taste.
+
+**Best fit for:** Review, refine, score, and triage skills. A design-post refinement skill kept
+`SECTION-QUESTIONS.md` and `STYLE-GUIDE.md` beside it; a technique-scoring skill keeps `RUBRIC.md`.
+A skill that only executes steps does not need one.
+
 ### Maturity Levels
 
 When creating a skill, the maturity options are:
@@ -427,6 +456,7 @@ When creating a skill, the maturity options are:
 | 1 | Tracks what it does | Add Key Learnings section |
 | 2 | Grows knowledge | Add shared artifact maintenance |
 | 3 | Self-improves | Add recurrence detection and root cause suggestions |
+| any | Judges work | Add a rubric file beside SKILL.md and read it before judging |
 
 **Default:** Level 0 (mandatory patterns). Suggest Level 1 for all fix/sync skills. Offer Level 2-3 for skills the user expects to run frequently.
 

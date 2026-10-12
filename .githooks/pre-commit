@@ -12,6 +12,12 @@ fi
 echo "Scanning staged changes for secrets..."
 gitleaks protect --staged --redact --verbose
 
+# === Never-public scan (staged) ===
+# gitleaks only knows secrets. This blocks Tailscale addresses and private employer names,
+# which are not secrets but must not reach the public GitHub copy.
+echo "Scanning staged changes for text that must stay private..."
+"$(git rev-parse --show-toplevel)/scripts/check-never-public.sh" --staged
+
 STAGED=$(git diff --cached --name-only)
 
 if echo "$STAGED" | grep -q 'plugins/oeid-noteplan-quicknote/\(script\.js\|plugin\.json\)'; then

@@ -1,0 +1,11 @@
+# Text shapes that must never reach the public GitHub copy of this repo.
+# Read by scripts/check-never-public.sh: one extended regex per line, matched case-insensitively.
+# Specific names (employers and the like) live in .claude/never-public.txt, which is itself
+# kept off the public copy, so this file only holds generic shapes.
+
+# A Tailscale machine name, e.g. some-host.tail1234ab.ts.net
+[a-z0-9-]+\.tail[0-9a-f]{4,}\.ts\.net
+# A Tailscale IPv4 address (100.64.0.0/10)
+(^|[^0-9.])100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}($|[^0-9])
+# A Tailscale IPv6 address
+fd7a:115c:a1e0:

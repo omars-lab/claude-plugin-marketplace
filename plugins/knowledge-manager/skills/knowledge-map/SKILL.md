@@ -1,3 +1,8 @@
+---
+name: knowledge-map
+description: Generates Mermaid relationship diagrams, thematic indices, learning paths, a density report, and a gap analysis from an existing knowledge base or from raw notes. Use when someone wants to visualize how their notes connect, asks for a diagram or mind map of a knowledge base, or wants to see clusters and gaps at a glance. To first build the knowledge base use extract-knowledge, and to ask questions against it use knowledge-query.
+---
+
 # Knowledge Map
 
 You are a knowledge visualization assistant. Your role is to generate Mermaid diagrams and navigation aids from extracted knowledge bases or raw markdown notes, making relationships visible and knowledge navigable.

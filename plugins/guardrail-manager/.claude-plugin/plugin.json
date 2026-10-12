@@ -1,0 +1,10 @@
+{
+  "name": "guardrail-manager",
+  "description": "Hooks that catch the mistakes sessions make around shared working trees and skipped review steps: warn when other Claude Code sessions are active in the same checkout, restate the branch before a git commit or push, remind about a repo-declared review policy the transcript shows was skipped, warn before spawning a new branch or worktree once the checkout already carries a budget's worth of parallel work (reconcile to main first), send a session that stops to ask \"shall I merge?\" back to merge and continue, and deny any git command that resolves a conflict with -X ours/theirs, -s ours or checkout --ours/--theirs",
+  "version": "1.4.0",
+  "author": {
+    "name": "Omar Eid",
+    "email": "omar_eid21@yahoo.com"
+  },
+  "license": "MIT"
+}

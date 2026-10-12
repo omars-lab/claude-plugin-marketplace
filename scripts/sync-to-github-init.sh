@@ -117,13 +117,25 @@ cd "$TEMP_DIR/repo.git"
 COMMIT_COUNT=$(git rev-list --count "$BRANCH")
 echo -e "  ${BLUE}Rewriting $COMMIT_COUNT commits with author: $GITHUB_AUTHOR_NAME <$GITHUB_AUTHOR_EMAIL>${NC}"
 
-# Rewrite all commits
+# Rewrite all commits. Claude's plans and memory, and the never-public list, are dropped from
+# every commit: committed on the internal remote, never published (same list as PRIVATE_PATHS
+# in sync-to-github.sh). NOTE: this republishes every old commit as it was, so private TEXT
+# in old commits (see check-never-public.sh) is not removed here; only the incremental sync
+# checks for it.
+# No --prune-empty, so the by-position commit mapping below stays 1:1.
 FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch -f --env-filter "
     export GIT_AUTHOR_NAME='$GITHUB_AUTHOR_NAME'
     export GIT_AUTHOR_EMAIL='$GITHUB_AUTHOR_EMAIL'
     export GIT_COMMITTER_NAME='$GITHUB_AUTHOR_NAME'
     export GIT_COMMITTER_EMAIL='$GITHUB_AUTHOR_EMAIL'
-" --tag-name-filter cat -- --all
+" --index-filter "git rm -r -q --cached --ignore-unmatch -- .claude/plans .claude/memory .claude/never-public.txt" \
+  --tag-name-filter cat -- --all
+
+if [ -n "$(git ls-tree -r --name-only "$BRANCH" -- .claude/plans .claude/memory .claude/never-public.txt)" ]; then
+    echo -e "${RED}Rewrite left a private path (.claude/plans, .claude/memory) in the tree. Not pushing.${NC}"
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
 
 # Verify rewrite
 REWRITTEN_EMAIL=$(git log -1 --format="%ae" "$BRANCH")

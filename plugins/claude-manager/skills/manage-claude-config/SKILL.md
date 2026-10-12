@@ -19,6 +19,8 @@ Single entry point for all Claude configuration operations:
 | Research CLAUDE.md patterns | "research", "patterns", "session history", "what have I asked" | [research-claude-md/SKILL.md](research-claude-md/SKILL.md) |
 | Generate CLAUDE.md from scratch | "setup", "generate", "new claude.md", "create claude.md" | [setup-claude-md/SKILL.md](setup-claude-md/SKILL.md) |
 | Move sessions between projects | "move session", "moved my repo", "migrate sessions", "project slug" | [move-sessions/SKILL.md](move-sessions/SKILL.md) |
+| Find where a claim came from | "where did this come from", "cite the transcript", "which session decided", "who wrote this number" | [find-provenance/SKILL.md](find-provenance/SKILL.md) |
+| Write a handoff prompt for a fresh session | "prompt for X", "compact prompt", "handoff brief", "summarize for a new session" | [compact-prompt/SKILL.md](compact-prompt/SKILL.md) |
 
 ## Task Management (MANDATORY)
 
@@ -40,6 +42,8 @@ First, check if the user's message clearly signals an operation from the table a
 - "research claude.md" / "what patterns" / "mine session history" → research-claude-md
 - "setup claude.md" / "generate CLAUDE.md" / "new project instructions" → setup-claude-md
 - "move session" / "moved my repo" / "migrate session history" / "project slug dir" → move-sessions
+- "where did this come from" / "cite the transcript" / "which session decided" / "who wrote this" → find-provenance
+- "prompt for X" / "compact prompt" / "handoff brief" / "paste into a fresh session" → compact-prompt
 
 If the intent is **clear** from the message, proceed directly to Phase 2 without asking.
 
@@ -56,7 +60,9 @@ AskUserQuestion({
       { label: "Fix CLAUDE.md", description: "Audit and minimize an existing CLAUDE.md — remove bloat, keep only constraint-level instructions" },
       { label: "Research CLAUDE.md patterns", description: "Mine session logs and existing CLAUDE.md files to surface recurring preferences" },
       { label: "Generate CLAUDE.md", description: "Create a new CLAUDE.md for a project from scratch" },
-      { label: "Move sessions", description: "Relocate session history between ~/.claude/projects slug dirs after a repo moves, or move a single session" }
+      { label: "Move sessions", description: "Relocate session history between ~/.claude/projects slug dirs after a repo moves, or move a single session" },
+      { label: "Find provenance", description: "Pin a claim or decision to the transcript line that proves it and cite it by session, line, and timestamp" },
+      { label: "Compact prompt", description: "Write a what-only handoff prompt that starts the task in a fresh session and points at the skills that hold the how" }
     ],
     multiSelect: false
   }]
@@ -78,6 +84,10 @@ Read the appropriate sub-skill SKILL.md and follow its workflow as if it had bee
 **For setup-claude-md:** Read [setup-claude-md/SKILL.md](setup-claude-md/SKILL.md) and follow its workflow.
 
 **For move-sessions:** Read [move-sessions/SKILL.md](move-sessions/SKILL.md) and follow its workflow.
+
+**For find-provenance:** Read [find-provenance/SKILL.md](find-provenance/SKILL.md) and follow its workflow.
+
+**For compact-prompt:** Read [compact-prompt/SKILL.md](compact-prompt/SKILL.md) and follow its workflow.
 
 ## Recommended Sequence for New Projects
 
