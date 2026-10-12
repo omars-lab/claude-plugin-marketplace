@@ -52,6 +52,21 @@ mkdir -p notes; echo "x" > notes/AcmeCorp.md; git add notes
 expect 1 "private name in a file NAME is blocked" "$CHECK" --staged
 git rm -q -r --cached notes; rm -rf notes
 
+echo "== a plain-string list, limited to one folder (instagram-manager's check) =="
+printf 'example_handle_01\nXq7Code0001\nWeekend Trips\n' > "$T/fixed.txt"
+try_fixed() {  # try_fixed <0|1> <label> <file> <line>
+    mkdir -p "$(dirname "$3")"; echo "$4" > "$3"; git add "$3"
+    expect "$1" "$2" "$CHECK" --staged --fixed-list "$T/fixed.txt" --path plugins/demo
+    git rm -q --cached "$3"; rm -f "$3"
+}
+try_fixed 1 "listed handle is blocked"               plugins/demo/a.md "saved from @example_handle_01"
+try_fixed 1 "listed post code is blocked"            plugins/demo/a.md "https://www.instagram.com/p/Xq7Code0001/"
+try_fixed 1 "listed phrase is blocked in any case"   plugins/demo/a.md "my weekend trips folder"
+try_fixed 0 "a longer word containing it passes"     plugins/demo/a.md "example_handle_012"
+try_fixed 0 "the same text outside the folder passes" other/a.md       "example_handle_01"
+expect 0 "a missing list warns but passes" "$CHECK" --staged --fixed-list "$T/none.txt" --path plugins/demo
+rm -rf plugins other
+
 echo "== first sync (full rewrite) =="
 echo RESET | bash scripts/sync-to-github-init.sh "$T/github.git" github "Pub" "pub@example.com" >"$T/init.log" 2>&1 \
     || { cat "$T/init.log"; exit 1; }

@@ -21,6 +21,15 @@ if [ "$(git branch --show-current)" != "__github_sync" ]; then
   "$(git rev-parse --show-toplevel)/scripts/check-never-public.sh" --staged
 fi
 
+# === instagram-manager: real handles, collection names and post codes ===
+# The plugin is public; the data it reads is not. Its importer writes the account's own names
+# to the private data repo's .cache/never-public.txt. Missing list = a warning, not a block.
+if [ -n "$(git diff --cached --name-only -- plugins/instagram-manager)" ]; then
+  echo "Scanning staged instagram-manager files for real handles and post codes..."
+  "$(git rev-parse --show-toplevel)/scripts/check-never-public.sh" --staged --path plugins/instagram-manager \
+    --fixed-list "${INSTAGRAM_HOME:-$HOME/Workspace/git/instagram}/.cache/never-public.txt"
+fi
+
 STAGED=$(git diff --cached --name-only)
 
 if echo "$STAGED" | grep -q 'plugins/oeid-noteplan-quicknote/\(script\.js\|plugin\.json\)'; then

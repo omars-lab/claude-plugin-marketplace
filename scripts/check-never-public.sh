@@ -18,6 +18,10 @@
 #   -C DIR first runs it on the repo at DIR, as git -C does.
 #   add --list FILE to read the private list from somewhere else (the sync copies it out of
 #   main before it switches to the mirror branch, which does not have the file).
+#   add --fixed-list FILE to check plain strings instead of the two pattern lists: whole
+#   words, any case, matched with grep -F so a list of thousands stays fast. instagram-manager
+#   uses it for the handles and post codes its importer writes outside this repo.
+#   add --path P to check only files under P (default: the whole repo).
 #
 # Exit: 0 nothing found, 1 something found (each hit printed as file:line: text), 2 usage error.
 
@@ -37,7 +41,7 @@ EXCLUDES=(":(exclude).claude/plans" ":(exclude).claude/memory" ":(exclude).claud
           ":(exclude)scripts/never-public.patterns" ":(exclude)scripts/test-never-public.sh"
           ":(exclude)plugins/noteplan-manager/bin/noteplan_sweep/url_enrichment.py")
 
-MODE=""; ARG1=""; ARG2=""
+MODE=""; ARG1=""; ARG2=""; FIXED_LIST=""; ONLY_PATH="."
 while [ $# -gt 0 ]; do
     case "$1" in
         --staged)   MODE=staged; shift ;;
@@ -45,15 +49,20 @@ while [ $# -gt 0 ]; do
         --messages) MODE=messages; ARG1="${2:?--messages needs A..B}"; shift 2 ;;
         --diff)     MODE=diff; ARG1="${2:?--diff needs A B}"; ARG2="${3:?--diff needs A B}"; shift 3 ;;
         --list)     PRIVATE_LIST="${2:?--list needs a file}"; shift 2 ;;
-        *) sed -n '2,21p' "$0"; exit 2 ;;
+        --fixed-list) FIXED_LIST="${2:?--fixed-list needs a file}"; shift 2 ;;
+        --path)     ONLY_PATH="${2:?--path needs a path}"; shift 2 ;;
+        *) sed -n '2,26p' "$0"; exit 2 ;;
     esac
 done
-[ -n "$MODE" ] || { sed -n '2,21p' "$0"; exit 2; }
+[ -n "$MODE" ] || { sed -n '2,26p' "$0"; exit 2; }
 
 PATTERNS=$(mktemp)
 HITS=$(mktemp)
 trap 'rm -f "$PATTERNS" "$HITS"' EXIT
-for f in "$PUBLIC_PATTERNS" "$PRIVATE_LIST"; do
+LISTS=("$PUBLIC_PATTERNS" "$PRIVATE_LIST")
+GREP_MODE=(-iE)
+if [ -n "$FIXED_LIST" ]; then LISTS=("$FIXED_LIST"); GREP_MODE=(-iFw); fi
+for f in "${LISTS[@]}"; do
     if [ -f "$f" ]; then
         grep -vE '^[[:space:]]*(#|$)' "$f" >> "$PATTERNS" || true
     else
@@ -76,7 +85,7 @@ scan() {  # stdin: lines to check; $1: label for the report
     local label="$1"
     # Code often writes an address as a regex or an escaped string (code\.example\.com,
     # "code\\.example\\.com"). Drop the backslashes before a dot so those match too.
-    if sed -E 's/\\+\././g' | grep -iE -f "$PATTERNS" > "$HITS"; then
+    if sed -E 's/\\+\././g' | grep "${GREP_MODE[@]}" -f "$PATTERNS" > "$HITS"; then
         echo "never-public: $label" >&2
         cut -c1-180 "$HITS" | sed 's/^/    /' >&2
         return 1
@@ -88,17 +97,17 @@ diff_opts=(-U0 --no-color --no-ext-diff --no-renames)
 found=0
 case "$MODE" in
     staged)
-        git diff --cached "${diff_opts[@]}" -- . "${EXCLUDES[@]}" | added_lines \
+        git diff --cached "${diff_opts[@]}" -- "$ONLY_PATH" "${EXCLUDES[@]}" | added_lines \
             | scan "staged lines that must not reach the public copy:" || found=1 ;;
     diff)
-        git diff "${diff_opts[@]}" "$ARG1" "$ARG2" -- . "${EXCLUDES[@]}" | added_lines \
+        git diff "${diff_opts[@]}" "$ARG1" "$ARG2" -- "$ONLY_PATH" "${EXCLUDES[@]}" | added_lines \
             | scan "lines added between ${ARG1:0:7} and ${ARG2:0:7} that must not reach the public copy:" || found=1 ;;
     commits|messages)
         for c in $(git rev-list --reverse "$ARG1"); do
             git log -1 --format=%B "$c" | sed 's/^/message: /' \
                 | scan "commit ${c:0:7} message:" || found=1
             if [ "$MODE" = commits ]; then
-                git diff "${diff_opts[@]}" "$c^" "$c" -- . "${EXCLUDES[@]}" | added_lines \
+                git diff "${diff_opts[@]}" "$c^" "$c" -- "$ONLY_PATH" "${EXCLUDES[@]}" | added_lines \
                     | scan "commit ${c:0:7} adds:" || found=1
             fi
         done ;;
@@ -107,7 +116,8 @@ esac
 if [ "$found" = 1 ]; then
     echo "" >&2
     echo "never-public: blocked. Reword or remove the lines above. The lists are" >&2
-    echo "    scripts/never-public.patterns and .claude/never-public.txt." >&2
+    if [ -n "$FIXED_LIST" ]; then echo "    $FIXED_LIST." >&2
+    else echo "    scripts/never-public.patterns and .claude/never-public.txt." >&2; fi
     exit 1
 fi
 exit 0
