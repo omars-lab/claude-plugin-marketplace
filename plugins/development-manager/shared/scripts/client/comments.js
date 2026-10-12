@@ -121,7 +121,9 @@
           version = r.version;
         }
         say("");
-        render();
+        // Rebuild only when something changed. Rebuilding every poll swaps the pins
+        // out from under the pointer, so a click can miss and a scrolled list resets.
+        if (r.changed || layoutKey() !== lastLayout) render();
       })
       .catch(function (e) {
         say("Comments are offline: " + e.message);
@@ -566,7 +568,23 @@
     return t.status === "open" || showResolved;
   }
 
+  // Where each shown pin's element sits now. If the page moved under the pins,
+  // the next poll redraws them.
+  var lastLayout = "";
+  function layoutKey() {
+    return threads
+      .filter(visible)
+      .map(function (t) {
+        var el = locate(t.anchor);
+        if (!el) return t.id + ":lost";
+        var r = el.getBoundingClientRect();
+        return t.id + ":" + Math.round(r.left + scrollX) + "," + Math.round(r.top + scrollY) + "," + Math.round(r.width) + "," + Math.round(r.height);
+      })
+      .join("|");
+  }
+
   function render() {
+    lastLayout = layoutKey();
     host.hidden = false;
     bar.hidden = hidden;
     tab.hidden = !hidden;

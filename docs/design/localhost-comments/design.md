@@ -334,7 +334,7 @@ pointer. The pictures open on any device signed into Omar's iCloud (section 14).
 
 | Way | When | Pros | Cons |
 |---|---|---|---|
-| **Plugin monitor** (primary), in `monitors/monitors.json` with `"when": "on-skill-invoke:answer-page-comments"` | Interactive sessions in the repo that has the pages | Starts the first time the skill runs and lasts the whole session, with no 30-minute limit. | Interactive sessions only. Runs in the session's working directory and gets no plugin settings, so it finds `.page-comments/` by walking up to the git root. |
+| **Plugin monitor** (primary), in `monitors/monitors.json` with `"when": "always"` | Interactive sessions in the repo that has the pages | Starts with every session and lasts the whole session, with no 30-minute limit. Exits silently where comments are off. | Interactive sessions only. Runs in the session's working directory and gets no plugin settings, so it finds `.page-comments/` by walking up to the git root. |
 | **Monitor tool**, started by the skill | Claude is working in a different repo from the pages (`--repo <path>`) | Works from anywhere. | 5 minutes by default, 30 at most, so the skill re-arms it when it ends. |
 | **`page-comments wait`**, run in the background | Where the Monitor tool is not available (some cloud providers, or telemetry turned off) | One clean notification: blocks until something new for Claude arrives, prints it, exits. Keeps a cursor so nothing is missed between runs. | One notification per run, so it is started again each time. |
 | **Session-start notice**, a plugin hook (phase 4) | Any session in a repo with open threads | Claude knows about waiting comments as soon as a session opens. | Only at session start. Does nothing in repos without `.page-comments/`. |
@@ -345,7 +345,7 @@ The monitor entry:
 [{"name": "page-comments",
   "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/shared/scripts/page-comments.mjs watch --exclude-author claude --replay",
   "description": "New comments on localhost pages",
-  "when": "on-skill-invoke:answer-page-comments"}]
+  "when": "always"}]
 ```
 
 **Silent where comments are off.** A plugin's monitor belongs to the plugin, not to a repo. Now
@@ -356,8 +356,12 @@ comments on, the watcher exits at once and prints nothing. It writes no log eith
 there is no `.page-comments/.state/` to write to. A stray line would wake Claude for nothing in
 a repo that has nothing to do with comments. The session-start notice follows the same rule.
 
-`"when": "always"` was rejected for now, because the skill-start trigger is enough. If it is
-turned on later, the silent exit above keeps it harmless. A Claude Code channel (true push into
+**Why `"when": "always"`.** The first draft started the watcher when `answer-page-comments`
+first ran. That never closes the loop: nothing runs the skill until a comment has been noticed,
+and nothing notices a comment until the watcher runs. So the monitor starts with every session,
+and the silent exit above keeps that harmless (`docs/issues/page-comments-monitor-runs-always.md`).
+Two sessions still need the Monitor tool: the one that just ran enable (its watcher started
+before `.page-comments/` existed, and exited), and one working from another repo. A Claude Code channel (true push into
 a session) was also rejected for now: channels are a research preview, and a plugin from this
 marketplace would need the `--dangerously-load-development-channels` flag on every start.
 Revisit when that changes.
@@ -451,6 +455,8 @@ to empty the queue; never write as Omar.
      so the next repo does not ask again. The path is written with `~`. If iCloud Drive is off,
      say so and use the repo's own `.page-comments/shots/` (section 14).
    - **The phone.** Ask only if Omar wants it in this repo. If yes, set it up as in section 13.
+   - Phase 1 asks neither question; they come with the screenshots (phase 2) and the phone
+     (phase 3).
 3. **Add one make target** (or `package.json` script) between marker comments:
 
    ```make
@@ -467,22 +473,54 @@ to empty the queue; never write as Omar.
    in Claude Code's installed-plugins list. That list is internal and undocumented, so it is only
    the fallback. If both fail, it prints "run /development-manager:enable-page-comments to
    refresh".
-4. **Write `install.json`,** listing everything added outside the folder: the make block, and
-   later any Vite or hook entries, each with its file and marker.
-5. **Check it works.** Start the server, open the page, confirm the bar appears, post a test
-   comment, see its `ev=thread_new` line, then remove the test thread.
-6. **Report** in plain words: the URL to open, the make target, how to undo.
+   With no Makefile, phase 1 writes no target and prints the `.page-comments/run serve …`
+   command instead. A `package.json` script waits for the Vite adapter
+   (`docs/issues/page-comments-phase-1-cuts.md`).
+4. **Set up the answering in the same repo,** so every session opened there hears comments
+   (`docs/issues/page-comments-enable-sets-up-answering.md`):
+   - **Turn the plugin on** in the repo's committed `.claude/settings.json`, under
+     `enabledPlugins`, as `development-manager@<marketplace>`. The marketplace name comes from
+     the plugin's own marketplace file. Other keys in the file are left as they were.
+   - **Add a short block to the repo's `CLAUDE.md`,** between `<!-- page-comments:begin -->` and
+     `<!-- page-comments:end -->`. It says comments live in `.page-comments/threads/` and that
+     `development-manager:answer-page-comments` is the routine for them. A missing `CLAUDE.md` is
+     created.
+   - **The skill is not copied** into the repo's `.claude/skills/`. A copy would go stale with each
+     plugin update, and the setting already makes the skill visible.
+   - **Tell Claude to start the watcher now** with the Monitor tool. This session's plugin
+     watcher started before `.page-comments/` existed, so it has already exited.
+5. **Write `install.json`,** listing everything added outside the folder: the make block, the
+   settings key, the `CLAUDE.md` block, and later any Vite or hook entries. Each entry records
+   what was there before: whether the file existed, whether `enabledPlugins` existed, and
+   whether the key was already set. A re-run keeps the first run's record.
+6. **Check it works** (`enable.mjs --check`, run from the repo's folder):
+   1. the settings key is there, and the `CLAUDE.md` block names the skill;
+   2. `claude plugin list --json`, run in that folder, shows the plugin. Where the plugin is not
+      installed on this machine yet, this is a note, not a failure: `enabledPlugins` turns a
+      plugin on but does not install it;
+   3. the plugin's monitor is set to start with every session;
+   4. a throwaway server (`serve --port 0 --throwaway`, which leaves the real server's record
+      alone) takes a test comment starting `[enable check]`;
+   5. `watch --once` prints its `ev=thread_new` line;
+   6. the test thread is deleted and the throwaway server stopped. `answer-page-comments`
+      dismisses any `[enable check]` thread a failed check leaves behind.
+7. **Report** in plain words: the URL to open, the make target, the files to commit, how to undo.
 
 **Undo** (`enable-page-comments --undo`):
 
 - Removes exactly what `install.json` lists, using the marker comments, and checks each touched
   file still parses. Nothing else is touched.
-- Stops a running comment server, using the pid in `.state/`.
+- Stops a running comment server, using the pid in `.state/`, after checking that pid is still
+  the comment server.
+- Takes the plugin key out of `.claude/settings.json` only if enable added it, and drops
+  `enabledPlugins` or the file only if enable created them. Removes the `CLAUDE.md` block, and
+  the file only if enable created it.
 - Turns off the phone entry it added with `tailscale serve`, and only that one (section 13).
 - **Leaves the screenshots in iCloud alone.** It prints their folder, so Omar can delete it by
   hand if he wants.
-- **Keeps `threads/` by default,** because those are Omar's comments. `--purge` deletes the whole
-  folder, and the skill asks first if any thread is still open.
+- **Keeps `threads/` by default,** with `config.json` and `.gitattributes`, because those are
+  Omar's comments. `--purge` deletes the whole folder. If any thread is still open, the script
+  refuses without `--force`, and the skill asks Omar first.
 - If `install.json` is missing, it finds its own changes by the marker comments and shows them
   before removing anything.
 
@@ -546,7 +584,7 @@ The earlbear range-anchor library is private, so its ideas are re-implemented, n
 plugins/development-manager/
   .claude-plugin/plugin.json
   README.md                          pointer to the introduce skill
-  monitors/monitors.json             the watcher, started by answer-page-comments
+  monitors/monitors.json             the watcher, started with every session (silent where comments are off)
   hooks/hooks.json                   session-start notice (phase 4)
   shared/scripts/                    used by more than one skill, the monitor and the hook
     page-comments.mjs                the one command line: serve, watch, wait, list, show, reply …
@@ -582,10 +620,10 @@ plugins/development-manager/
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `enable.mjs --detect` | Says how the repo serves pages and which mode fits, with the reason | First step, or to check an existing setup | `node ${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs --detect --repo .` |
-| `enable.mjs` | Writes `.page-comments/`, the make block, the launcher and `install.json` | After the mode is chosen | `node …/enable.mjs --repo . --target http://127.0.0.1:8765 --port 8766` |
-| `enable.mjs --phone` | Adds the `tailscale serve` entry and the Mac's Tailscale name to `config.json` | When Omar wants to comment from his phone in this repo | `node …/enable.mjs --phone --repo .` |
-| `enable.mjs --check` | Starts the server, posts and removes a test comment, reports | Right after enabling, or when something seems off | `node …/enable.mjs --check --repo .` |
-| `enable.mjs --undo` | Removes exactly what `install.json` lists; keeps threads and screenshots | Undo | `node …/enable.mjs --undo --repo . [--purge]` |
+| `enable.mjs` | Writes `.page-comments/`, the make block, the launcher, the plugin setting, the `CLAUDE.md` block and `install.json` | After the mode is chosen | `node …/enable.mjs --repo . --target http://127.0.0.1:8765 --port 8766` |
+| `enable.mjs --phone` (phase 3) | Adds the `tailscale serve` entry and the Mac's Tailscale name to `config.json` | When Omar wants to comment from his phone in this repo | `node …/enable.mjs --phone --repo .` |
+| `enable.mjs --check` | Checks the setting, the `CLAUDE.md` block and the plugin list, then posts a test comment to a throwaway server, sees `watch` print it, and removes it | Right after enabling, or when something seems off | `node …/enable.mjs --check --repo .` |
+| `enable.mjs --undo` | Removes exactly what `install.json` lists; keeps threads and screenshots | Undo | `node …/enable.mjs --undo --repo . [--purge [--force]]` |
 
 **`answer-page-comments`: Scripts — when to use each**
 
@@ -832,7 +870,7 @@ in Files. The x-callback route is not needed. It stays as the fallback in sectio
 
 | Phase | What ships | Why this order |
 |---|---|---|
-| 1 | The server in both modes, with Host, Origin and token checks. The bar with element and text comments, replies, resolve and dismiss. Per-thread files with union merge, using the shared field names and `--json` shape (section 12). Command line `serve`, `watch`, `wait`, `list`, `show`, `reply`, `resolve`, `stats`. The plugin monitor, silent in repos without `.page-comments/`. `answer-page-comments` with `triage.md` and the close-after-fix rule. `enable-page-comments` with undo and check. `introduce` and `manage-development`. Proven on the adventures planner through the proxy, and on one Vite app for the live-reload socket. | The whole loop: Omar comments, Claude hears, fixes, replies and closes. Nothing before this is useful alone. |
+| 1 | The server in both modes, with Host, Origin and token checks. The bar with element and text comments, replies, resolve and dismiss. Per-thread files with union merge, using the shared field names and `--json` shape (section 12). Command line `serve`, `watch`, `wait`, `list`, `show`, `reply`, `resolve`, `stats`. The plugin monitor, started with every session and silent in repos without `.page-comments/`. `answer-page-comments` with `triage.md` and the close-after-fix rule. `enable-page-comments` with undo and check, which also turns the plugin on in the repo's `.claude/settings.json` and adds the `CLAUDE.md` block that points to `answer-page-comments`. `introduce` and `manage-development`. Proven on the adventures planner through the proxy, and on one Vite app for the live-reload socket (the Vite check is still to do). | The whole loop: Omar comments, Claude hears, fixes, replies and closes. Nothing before this is useful alone. |
 | 2 | In-page element screenshots with the bundled library, saved to iCloud Drive with a pointer (section 14). The server serves them, the page shows them inline, and on an iPhone adds the Files links (section 15). Claude's "after" shots attached to replies. | Pictures make comments faster to act on, but the loop works without them. |
 | 3 | Commenting from the phone through `tailscale serve`, with the login allow list and touch mode (section 13). Check the real-phone items from section 16. | Omar asked for it. It needs the server and the pictures first. |
 | 4 | Per-element "changed" badge, fuzzy text matching, the not-found list and `anchor_lost`. Post-commit re-stamp hook. Session-start notice. | Matters once comments live across many commits. |
