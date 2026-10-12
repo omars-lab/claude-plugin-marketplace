@@ -78,7 +78,9 @@ Add one task per thread once the list is loaded, so nothing is skipped.
      Wait a minute and run `pc show` again; the watcher prints `ev=shot` when the file arrives.
      `brctl` has no download command, so do not wait longer than that.
    - `(not on this Mac)`, or a picture that never arrives, means take a new one of the live page instead, the same way as the after picture in step 9, and say in the reply that the original was not available.
-   - No `Shot:` line at all means the thread is from before pictures, or the comment was left from the command line.
+   - No `Shot:` line yet, right after `ev=thread_new`: the picture is still on its way, because the page sends it only after the comment is saved, and gives up after 8 seconds.
+     Wait for that thread's `ev=shot` line, or run `pc show` again after about 10 seconds, before deciding there is none.
+   - Still no `Shot:` line after that means the thread is from before pictures, or the comment was left from the command line.
 
 3. **Look.**
    The same `pc show` output gives the page, the viewport, and where on the page the comment points: a `data-comment-id`, a CSS path, the element's label, or the quoted text.
