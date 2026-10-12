@@ -19,12 +19,16 @@ Claude hears about it, looks at the picture, fixes or answers it at the source, 
 After a fix that changes the page, Claude adds an after picture to the thread, so the two can be compared.
 Claude closes the thread only once the fix is in.
 
+Omar can also comment from his phone, through his own Tailscale network.
+`enable-page-comments --phone` sets it up: the phone opens the Mac's tailnet address, and on a touch screen a tap picks a part of the page and **Comment here** opens the box.
+Only his own Tailscale login may comment, and nothing is ever put on the public internet.
+
 ## Skills
 
 | Skill | What it does | When to use it |
 |---|---|---|
 | `manage-development` | Sends a request to the right skill below | Not sure which skill fits |
-| `enable-page-comments` | Turns comments on in a repo in one run: the Comment button, the repo setting that lets every session hear comments, a note in `CLAUDE.md`, and where screenshots go. Proves the loop with a test comment. `--undo` takes it all out, but never deletes a screenshot | Once per repo, or to check or remove it |
+| `enable-page-comments` | Turns comments on in a repo in one run: the Comment button, the repo setting that lets every session hear comments, a note in `CLAUDE.md`, and where screenshots go. Proves the loop with a test comment. `--phone` adds commenting from the phone through Tailscale. `--undo` takes it all out, but never deletes a screenshot | Once per repo, or to check or remove it; `--phone` when Omar wants the phone too |
 | `answer-page-comments` | The routine Claude follows for each comment: read the comment's picture, find the source, fix or answer, check, commit, attach an after picture, reply, close when fixed | Whenever the watcher prints a comment, or to go through open comments |
 
 ## How they fit together

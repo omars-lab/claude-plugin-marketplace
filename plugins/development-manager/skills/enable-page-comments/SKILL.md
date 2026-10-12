@@ -1,6 +1,6 @@
 ---
 name: enable-page-comments
-description: Turn on comments for a repo's local web pages, in one step. Adds the Comment button to pages served on localhost, sets the repo up so Claude hears each comment and answers it, and proves the loop with a test comment. Also takes it all out again with --undo. Use when someone wants to comment on, mark up or give feedback on localhost pages, or asks to set up, check or remove page comments.
+description: Turn on comments for a repo's local web pages, in one step. Adds the Comment button to pages served on localhost, sets the repo up so Claude hears each comment and answers it, and proves the loop with a test comment. With --phone, also lets them comment from their phone through their own Tailscale network. Also takes it all out again with --undo. Use when someone wants to comment on, mark up or give feedback on localhost pages, from the Mac or the phone, or asks to set up, check or remove page comments.
 ---
 
 # Enable page comments
@@ -54,7 +54,9 @@ In a repo without `.page-comments/` it stops at once and prints nothing, so it c
 | `scripts/enable.mjs --root <dir>` | Enables, with the comment server serving a folder of pages itself | Plain HTML, no server | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --repo <repo> --root <dir>` |
 | `scripts/enable.mjs --check` | Proves the loop: the setting, the CLAUDE.md note, the watcher, and a test comment it can see | Right after enabling, and whenever comments seem not to arrive | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --check --repo <repo>` |
 | `scripts/enable.mjs --shots-dir <path>` | Enables, with screenshots saved under that folder instead of the default | Omar wants the pictures somewhere else | add `--shots-dir <path>` to the enable command |
-| `scripts/enable.mjs --undo` | Removes everything enable added; keeps comment threads and every screenshot | Someone wants comments off | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --undo --repo <repo>` |
+| `scripts/enable.mjs --phone` | Lets Omar comment from his phone through Tailscale: serves the comment server on the Mac's tailnet name at its own HTTPS port, and writes the phone setting (name, port, allowed login) to `config.json` | Omar wants to comment from his phone in this repo. Comments must already be on, or add `--target`/`--root` to the same run | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --phone --repo <repo>` |
+| `scripts/enable.mjs --phone --undo` | Turns off only the phone: the serve entry enable added, and the phone setting. Comments on the Mac keep working | Omar wants the phone off but comments on | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --phone --undo --repo <repo>` |
+| `scripts/enable.mjs --undo` | Removes everything enable added, the phone included; keeps comment threads and every screenshot | Someone wants comments off | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --undo --repo <repo>` |
 | `scripts/enable.mjs --undo --purge` | Also deletes the threads; screenshots still stay | Only after asking, and `--force` too if any thread is open | add `--purge` (and `--force`) |
 | `scripts/run.template` | The launcher copied to `.page-comments/run`. It finds the installed plugin, so the make target keeps working after plugin updates | Not run by hand | — |
 
@@ -122,10 +124,36 @@ TaskCreate({ subject: "Start listening in this session", description: "Start the
    - that `.page-comments/`, `.claude/settings.json`, `CLAUDE.md` and the Makefile changes are ready to commit, and that this skill did not commit them;
    - how to undo.
 
+## From the phone
+
+Only when Omar asks to comment from his phone. Enabling does not ask, and does not turn it on.
+
+The comment server still listens only on `127.0.0.1`.
+Tailscale Serve, on the Mac, takes HTTPS on the Mac's tailnet name and passes it on, so only devices in Omar's own tailnet can reach it.
+Tailscale tells the server who is on the other end, and only logins on the repo's allow list may comment.
+
+1. **Turn it on.** Run `--phone`.
+   It needs Tailscale installed, running and signed in, with MagicDNS and HTTPS certificates on for the tailnet.
+   If one is missing, it stops and says which, and changes nothing.
+   It serves the comment server's port (8766 unless `--port` said otherwise) as its own HTTPS port, so any other `tailscale serve` entry on the Mac is left alone.
+   If that port already serves something else, it stops and changes nothing.
+   The allow list starts with the login signed in on this Mac, and comments from it carry the repo's author name.
+2. **The comment server must be running** on the Mac (`make comments`) for the phone to load the page.
+   A server that was already running picks up the phone setting by itself.
+3. **Report in plain words.** Say:
+   - the address to open on the phone, `https://<mac>.<tailnet>.ts.net:<port>/`, as enable printed it;
+   - on the phone, **Comment** turns comment mode on, a tap picks a part of the page, and **Comment here** opens the box; selected text gets **Comment on selection**;
+   - the privacy line enable printed about `config.json` and `install.json` naming the Mac's tailnet and the login, word for word;
+   - how to turn the phone off: `--phone --undo`, or `tailscale serve --https=<port> off`.
+
+**Never Tailscale Funnel.** Funnel puts a local port on the public internet.
+enable refuses any Funnel flag and never runs a Funnel command, and it never runs `tailscale serve reset`, which would remove every entry on the Mac.
+
 ## Undo
 
 Run `--undo`.
 It stops a running comment server, but only if that process really is the comment server.
+If the phone was on, it turns off the `tailscale serve` entry, but only if enable added it and it still points at the comment server.
 It removes the make target, the `CLAUDE.md` section and the settings entry, exactly as `install.json` recorded them.
 A file or folder that enable created is removed only if it is now empty of anything else.
 If the plugin was already on in the settings before enable ran, that setting stays.
@@ -141,4 +169,5 @@ If any thread is still open, use `AskUserQuestion` first, then run `--undo --pur
 - Don't copy the answering skill into the repo's `.claude/skills/`. A second copy would drift from the plugin's.
 - Don't commit for the person. Enabling changes files that are theirs to review.
 - Don't edit the marked blocks by hand. Re-run enable or undo instead.
-- Don't start the comment server on anything but `127.0.0.1`.
+- Don't start the comment server on anything but `127.0.0.1`. The phone reaches it through `tailscale serve`, never by listening on the network.
+- Don't use Tailscale Funnel, and don't run `tailscale serve reset`.

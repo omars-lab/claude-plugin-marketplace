@@ -43,6 +43,21 @@ Each comment's picture is a PNG saved outside the repo, so it never reaches git:
 - iCloud Drive is stored on Apple's servers, and Apple can read it unless Advanced Data Protection is on. Pick a local folder if that matters for a repo.
 - The picture is taken in the browser by [modern-screenshot](https://github.com/qq15725/modern-screenshot) 4.7.0 (MIT), bundled in the plugin. If it fails, the comment still saves and the thread says why there is no picture.
 
+## From your phone
+
+You can comment from your phone through your own Tailscale network:
+
+```text
+/development-manager:enable-page-comments --phone
+```
+
+- The comment server still listens only on `127.0.0.1`. `tailscale serve` passes HTTPS on the Mac's tailnet name to it, on its own port, so other entries you serve are left alone. Only devices in your tailnet can reach it, and never through Tailscale Funnel.
+- Open `https://<mac>.<tailnet>.ts.net:8766/` on the phone while the comment server runs on the Mac.
+- Only the Tailscale login signed in on the Mac may comment; the server refuses any other.
+- On a touch screen, **Comment** turns comment mode on, a tap picks a part of the page, and **Comment here** opens the box. Selected text gets **Comment on selection**.
+- The Mac's tailnet name and your login are written to `.page-comments/config.json` and `install.json`, which are committed with the repo. Think twice before pushing them to a public remote.
+- `--phone --undo` turns off only the phone; `--undo` turns off everything, the phone included.
+
 ## Skills
 
 | Skill | What it does |
