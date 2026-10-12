@@ -89,6 +89,7 @@ export function foldThread(id, events) {
     viewport: open.viewport || null,
     messages: [{ author: str(open.author), ts: str(open.ts), body: str(open.body) }],
     history: [],
+    shots: [],
     lost: false,
   };
   for (const e of rest) {
@@ -107,12 +108,33 @@ export function foldThread(id, events) {
       t.history.push({ status: e.status, author: str(e.author), ts: str(e.ts), note: e.note ? str(e.note) : undefined });
     } else if (e.ev === "anchor") {
       t.lost = e.state === "lost";
+    } else if (e.ev === "shot" && (e.role === "comment" || e.role === "after")) {
+      t.shots.push(foldShot(e));
     }
   }
   t.resolved = t.status !== "open";
   const last = t.messages[t.messages.length - 1];
   t.waiting = t.status === "open" ? (last && last.author === "claude" ? "human" : "claude") : null;
   return t;
+}
+
+/**
+ * One `shot` event as the thread shape keeps it: the role, when, who, and
+ * either a pointer (`icloud` or `local`) with the picture's `sha`, or an `error`.
+ */
+function foldShot(e) {
+  const s = { role: e.role, ts: str(e.ts) };
+  if (e.author) s.author = str(e.author);
+  if (typeof e.error === "string") {
+    s.error = e.error;
+    return s;
+  }
+  if (typeof e.icloud === "string") s.icloud = e.icloud;
+  else if (typeof e.local === "string") s.local = e.local;
+  else s.error = "the shot event has no pointer";
+  if (typeof e.sha === "string") s.sha = e.sha;
+  if (typeof e.commit === "string") s.commit = e.commit;
+  return s;
 }
 
 export function readThread(store, id) {
@@ -143,6 +165,7 @@ export function publicThread(t) {
     waiting: t.waiting,
   };
   if (t.history.length) out.history = t.history;
+  if (t.shots && t.shots.length) out.shots = t.shots;
   if (t.lost) out.lost = true;
   return out;
 }

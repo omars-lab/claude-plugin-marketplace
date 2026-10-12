@@ -11,6 +11,12 @@
 //     server's own and a JSON content type (stops other sites and other tabs).
 // Requests passed through to the target get only the Host check, so the
 // target's own API (a PUT from its page, say) keeps working unchanged.
+//
+// Screenshots (design section 14): the page sends the picture of a thread's
+// element as a PNG body, with the same token and Origin checks as any write.
+// The server names the file and picks its folder. A picture is read back by an
+// <img>, which cannot send a header, so that one GET takes the token in the
+// query string instead.
 
 import { createServer, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -21,6 +27,7 @@ import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { paths, readConfig } from "./repo.mjs";
 import { addReply, cleanAnchor, cleanBody, cleanPage, cleanViewport, createThread, isThreadId, publicThread, readAll, readThread, setStatus, STATUSES } from "./store.mjs";
+import { hasCommentShot, isPng, isShotName, recordShotError, saveShot, shotFileState, shotPath, SHOT_MAX } from "./shots.mjs";
 import { gitStamp } from "./git.mjs";
 import { fileLogger, nowIso } from "./log.mjs";
 
@@ -75,6 +82,32 @@ function sameToken(a, b) {
   return timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
+/** Read a raw body of at most `limit` bytes. Past the limit the request is refused (413). */
+function readRaw(req, limit) {
+  return new Promise((resolveBody, reject) => {
+    const tooLarge = () => Object.assign(new Error("too large"), { status: 413 });
+    if (Number(req.headers["content-length"]) > limit) return reject(tooLarge());
+    const chunks = [];
+    let size = 0;
+    let done = false;
+    req.on("data", (c) => {
+      if (done) return;
+      size += c.length;
+      if (size > limit) {
+        // Stop keeping it; the answer goes out with "connection: close".
+        done = true;
+        chunks.length = 0;
+        return reject(tooLarge());
+      }
+      chunks.push(c);
+    });
+    req.on("end", () => {
+      if (!done) resolveBody(Buffer.concat(chunks));
+    });
+    req.on("error", reject);
+  });
+}
+
 function readBody(req) {
   return new Promise((resolveBody, reject) => {
     const chunks = [];
@@ -96,7 +129,7 @@ function readBody(req) {
 /** A short fingerprint of the store, so the page can ask "anything new?" cheaply. */
 function storeVersion(threads) {
   let n = 0;
-  for (const t of threads) n += t.messages.length * 7 + t.history.length * 3 + t.messages.reduce((s, m) => s + m.body.length, 0);
+  for (const t of threads) n += t.messages.length * 7 + t.history.length * 3 + t.shots.length * 11 + t.messages.reduce((s, m) => s + m.body.length, 0);
   return `${threads.length}.${n}`;
 }
 
@@ -133,6 +166,8 @@ export function startServer(store, { target, root, port = 8766, record = true } 
     // content type makes the browser ask first for any cross-site call, and this
     // server answers no such ask, so the browser never sends the write.
     if (req.headers.origin !== `http://${req.headers.host}`) return sendJson(res, 403, { error: "wrong origin" });
+    const shot = /^threads\/([^/]+)\/shot$/.exec(path);
+    if (shot) return await postShot(req, res, shot[1]);
     if (!/^application\/json\b/i.test(req.headers["content-type"] || "")) return sendJson(res, 415, { error: "send JSON" });
     let body;
     try {
@@ -175,16 +210,94 @@ export function startServer(store, { target, root, port = 8766, record = true } 
     return sendJson(res, 200, { thread: publicThread(readThread(store, id)) });
   }
 
-  function clientFile(res, name) {
-    const file = { "client.js": "comments.js", "client.css": "comments.css" }[name];
-    if (!file) return sendJson(res, 404, { error: "not found" });
+  /**
+   * The comment's own picture, sent by the page after the comment saves: a PNG
+   * body, or a JSON `{ "error": "<why>" }` when the capture failed. Only the
+   * thread's first message gets a picture, so a second one is refused (409).
+   */
+  async function postShot(req, res, id) {
+    if (!isThreadId(id)) return sendJson(res, 404, { error: "not found" });
+    if (!readThread(store, id)) return sendJson(res, 404, { error: `no thread ${id}` });
+    const type = req.headers["content-type"] || "";
+    const json = /^application\/json\b/i.test(type);
+    if (!json && !/^image\/png\b/i.test(type)) return sendJson(res, 415, { error: "send a PNG picture, or JSON with an error" });
+    let body;
+    try {
+      body = json ? await readBody(req) : await readRaw(req, SHOT_MAX);
+    } catch (err) {
+      res.setHeader("connection", "close");
+      return sendJson(res, err.status || 400, { error: err.status === 413 ? `the picture is over ${SHOT_MAX / 1024 / 1024} MB` : "could not read the picture" });
+    }
+    if (hasCommentShot(readThread(store, id))) return sendJson(res, 409, { error: "this thread already has its picture" });
+    if (json) {
+      let reason;
+      try {
+        reason = JSON.parse(body).error;
+      } catch {
+        return sendJson(res, 400, { error: "not JSON" });
+      }
+      if (typeof reason !== "string" || !reason.trim()) return sendJson(res, 400, { error: "say why the capture failed in `error`" });
+      recordShotError(store, id, { role: "comment", reason, author });
+      log("shot_error", { thread: id, msg: reason.slice(0, 200) });
+      return sendJson(res, 200, { thread: publicThread(readThread(store, id)) });
+    }
+    if (!isPng(body)) return sendJson(res, 400, { error: "not a PNG picture" });
+    let e;
+    try {
+      e = saveShot(store, id, body, { role: "comment", author });
+    } catch (err) {
+      log("shot_error", { thread: id, msg: err.message });
+      recordShotError(store, id, { role: "comment", reason: `the server could not save it: ${err.message}`, author });
+      return sendJson(res, 500, { error: "could not save the picture" });
+    }
+    log("shot", { thread: id, sha: e.sha, kind: e.icloud ? "icloud" : "local" });
+    return sendJson(res, 201, { thread: publicThread(readThread(store, id)) });
+  }
+
+  /**
+   * GET /__page-comments/shots/<thread-id>/<name>?token=…  A picture, read only
+   * from where one of that thread's own `shot` events points.
+   */
+  function getShot(req, res, rest, query) {
+    if (req.method !== "GET" && req.method !== "HEAD") return sendJson(res, 405, { error: "method not allowed" });
+    if (!sameToken(query.get("token"), token)) return sendJson(res, 403, { error: "missing or wrong token" });
+    const m = /^shots\/([^/]+)\/([^/]+)$/.exec(rest);
+    if (!m || !isThreadId(m[1]) || !isShotName(m[2])) return sendJson(res, 404, { error: "not found" });
+    const [, id, name] = m;
+    const thread = readThread(store, id);
+    if (!thread) return sendJson(res, 404, { error: "not found" });
+    // The newest shot with this name wins (an after shot can be retaken).
+    const shot = [...thread.shots].reverse().find((s) => !s.error && (s.icloud || s.local || "").split("/").pop() === name);
+    const file = shot && shotPath(store, shot);
+    if (!file || shotFileState(file) !== "ok") return sendJson(res, 404, { error: "the picture is not on this Mac" });
     let data;
     try {
-      data = readFileSync(join(CLIENT_DIR, file));
+      data = readFileSync(file);
+    } catch {
+      return sendJson(res, 404, { error: "the picture is not on this Mac" });
+    }
+    res.writeHead(200, { "content-type": "image/png", "content-length": data.length, "cache-control": "no-store", "x-content-type-options": "nosniff" });
+    res.end(req.method === "HEAD" ? undefined : data);
+  }
+
+  // What the page loads from this server. client.js is the Files link helper
+  // followed by the bar itself, so the bar is one request.
+  const CLIENT_FILES = {
+    "client.js": ["files-link.js", "comments.js"],
+    "client.css": ["comments.css"],
+    "vendor/modern-screenshot.js": ["vendor/modern-screenshot.js"],
+  };
+
+  function clientFile(res, name) {
+    const files = CLIENT_FILES[name];
+    if (!files) return sendJson(res, 404, { error: "not found" });
+    let data;
+    try {
+      data = Buffer.concat(files.map((f) => readFileSync(join(CLIENT_DIR, f))));
     } catch {
       return sendJson(res, 404, { error: "client file missing" });
     }
-    res.writeHead(200, { "content-type": MIME[extname(file)], "content-length": data.length, "cache-control": "no-store" });
+    res.writeHead(200, { "content-type": MIME[extname(name)], "content-length": data.length, "cache-control": "no-store" });
     res.end(data);
   }
 
@@ -281,7 +394,8 @@ export function startServer(store, { target, root, port = 8766, record = true } 
     try {
       if (pathname.startsWith(PREFIX)) {
         const rest = pathname.slice(PREFIX.length);
-        if (rest === "client.js" || rest === "client.css") return clientFile(res, rest);
+        if (Object.hasOwn(CLIENT_FILES, rest)) return clientFile(res, rest);
+        if (rest.startsWith("shots/")) return getShot(req, res, rest, new URL(req.url, "http://x").searchParams);
         if (rest === "health") return sendJson(res, 200, { ok: true, mode: targetUrl ? "proxy" : "folder" });
         if (rest === "threads" || rest.startsWith("threads/")) return await api(req, res, rest);
         return sendJson(res, 404, { error: "not found" });

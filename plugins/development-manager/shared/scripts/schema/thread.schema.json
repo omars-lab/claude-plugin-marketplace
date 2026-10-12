@@ -84,6 +84,25 @@
         }
       }
     },
+    "shots": {
+      "type": "array",
+      "description": "Pictures of the element (design section 14). Each has exactly one of icloud, local or error; the code that writes them makes sure of that.",
+      "items": {
+        "type": "object",
+        "required": ["role", "ts"],
+        "properties": {
+          "role": { "enum": ["comment", "after"], "description": "comment: taken when the comment was made; after: Claude's shot after a fix" },
+          "ts": { "type": "string" },
+          "author": { "type": "string" },
+          "icloud": { "type": "string", "description": "path relative to the iCloud Drive root" },
+          "local": { "type": "string", "description": "path relative to the repo's .page-comments/ folder" },
+          "sha": { "type": "string", "description": "first 12 hex characters of the picture's sha256" },
+          "commit": { "type": "string", "description": "after shots: the commit the shot was taken against" },
+          "error": { "type": "string", "description": "why the capture failed, in place of a pointer" },
+          "path": { "type": "string", "description": "show --json only: the full path of the picture on this Mac, ready to open" }
+        }
+      }
+    },
     "lost": { "type": "boolean" }
   }
 }

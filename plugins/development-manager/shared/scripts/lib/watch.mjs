@@ -4,11 +4,17 @@
 //
 // stdout is only ever event lines: every stdout line wakes Claude. Start-up and
 // heartbeat lines go to `.page-comments/.state/watch.log`.
+//
+// Pictures: a new `shot` event prints `ev=shot` with the file's path, or, when
+// the picture is not on this Mac (gone, or only an iCloud `.<name>.icloud`
+// placeholder), `ev=shot_missing`. A picture that goes missing later, or turns
+// up later, prints the same two lines.
 
 import { existsSync, mkdirSync, readFileSync, renameSync, watch as fsWatch, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { readAll } from "./store.mjs";
 import { paths } from "./repo.mjs";
+import { shotFileState, shotPath } from "./shots.mjs";
 import { fileLogger, formatLogLine, nowIso } from "./log.mjs";
 
 /** What one look at the store saw, per thread id. */
@@ -22,9 +28,29 @@ export function takeSnapshot(store) {
       messages: t.messages.map((m) => ({ author: m.author, ts: m.ts, body: m.body, edited: m.edited || "" })),
       lastStatusBy: t.history.length ? t.history[t.history.length - 1].author : "",
       waiting: t.waiting,
+      shots: t.shots.map((x) => shotLook(store, x)),
     };
   }
   return snap;
+}
+
+function shotLook(store, x) {
+  const s = { role: x.role, ts: x.ts, author: x.author || "" };
+  if (x.error) return { ...s, error: x.error };
+  const path = shotPath(store, x);
+  return { ...s, sha: x.sha || "", commit: x.commit || "", path: path || "", state: shotFileState(path) };
+}
+
+const shotKey = (s) => `${s.role}\u0000${s.ts}\u0000${s.sha || ""}\u0000${s.error || ""}`;
+
+/** One line for a shot: `shot` when the picture is here, `shot_missing` when not. */
+function shotEvent(page, thread, s) {
+  if (s.error) return { ev: "shot", page, thread, author: s.author, role: s.role, msg: `the capture failed: ${s.error}` };
+  const e = { ev: s.state === "ok" ? "shot" : "shot_missing", page, thread, author: s.author, role: s.role, sha: s.sha };
+  if (s.commit) e.commit = s.commit;
+  if (s.state !== "ok") e.state = s.state;
+  e.path = s.path;
+  return e;
 }
 
 const msgKey = (m) => `${m.author}\u0000${m.ts}\u0000${m.body}`;
@@ -44,6 +70,7 @@ export function diffSnapshots(prev, next, { exclude = [] } = {}) {
       out.push({ ev: "thread_new", page: t.page, thread: id, author: first.author, msg: first.body });
       for (const m of t.messages.slice(1)) out.push({ ev: "message_new", page: t.page, thread: id, author: m.author, msg: m.body });
       if (t.status !== "open") out.push({ ev: STATUS_EV[t.status], page: t.page, thread: id, author: t.lastStatusBy, msg: last.body });
+      for (const s of t.shots || []) out.push(shotEvent(t.page, id, s));
       continue;
     }
     const seen = new Set(old.messages.map(msgKey));
@@ -61,6 +88,11 @@ export function diffSnapshots(prev, next, { exclude = [] } = {}) {
     }
     if (t.status === "open" && t.lost && !old.lost) {
       out.push({ ev: "anchor_lost", page: t.page, thread: id, author: "", msg: last.body });
+    }
+    const before = new Map((old.shots || []).map((s) => [shotKey(s), s]));
+    for (const s of t.shots || []) {
+      const was = before.get(shotKey(s));
+      if (!was || (!s.error && was.state !== s.state && (s.state === "ok" || was.state === "ok"))) out.push(shotEvent(t.page, id, s));
     }
   }
   return out.filter((e) => !(e.author && ex.has(e.author.toLowerCase())));

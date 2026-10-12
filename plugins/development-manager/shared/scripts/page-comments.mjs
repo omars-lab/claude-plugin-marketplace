@@ -6,9 +6,11 @@
 // Exit codes (review-md's agent contract): 0 ok, 2 bad usage, 3 not found,
 // 4 the write did not land.
 
+import { readFileSync } from "node:fs";
 import { storeFor } from "./lib/repo.mjs";
 import { addReply, isThreadId, publicThread, readAll, readThread, setStatus, cleanBody } from "./lib/store.mjs";
 import { runWait, runWatch } from "./lib/watch.mjs";
+import { isPng, saveShot, shotFileState, shotPath, SHOT_MAX } from "./lib/shots.mjs";
 
 const HELP = `page-comments: comments on pages served on this machine.
 
@@ -19,8 +21,11 @@ Commands:
   wait [--exclude-author name] [--timeout s] [--json]
                                                    Block until something new for Claude
   list [--open] [--waiting <name>] [--page <path>] [--json]
-  show <id> [--json]
+  show <id> [--json]                               The thread, with where its pictures are
   reply <id> [--author claude] [--commit sha] "<text>"
+  shot <id> --file <png> --commit <sha> [--author claude]
+                                                   Attach an "after" picture, taken
+                                                   against that commit
   resolve <id> [--reopen] [--author claude] ["note"]
   dismiss <id> [--author claude] ["note"]
   stats [--json]
@@ -30,7 +35,7 @@ from the current folder to the git root, looking for .page-comments/.
 
 Exit codes: 0 ok, 2 bad usage, 3 not found, 4 the write did not land.`;
 
-const VALUE_FLAGS = new Set(["repo", "target", "root", "port", "state", "page", "waiting", "author", "commit", "exclude-author", "heartbeat", "interval", "timeout", "host"]);
+const VALUE_FLAGS = new Set(["repo", "target", "root", "port", "state", "page", "waiting", "author", "commit", "exclude-author", "heartbeat", "interval", "timeout", "host", "file"]);
 const BOOL_FLAGS = new Set(["open", "json", "replay", "once", "reopen", "help", "throwaway"]);
 
 export function parseArgs(argv) {
@@ -156,11 +161,23 @@ function cmdList(flags) {
   return 0;
 }
 
+/** Each shot with `path`: where its picture is on this Mac, so Claude can open it. */
+function shotsWithPaths(store, t) {
+  return t.shots.map((s) => {
+    if (s.error) return s;
+    const path = shotPath(store, s);
+    return path ? { ...s, path } : s;
+  });
+}
+
 function cmdShow(flags, pos) {
   const store = needStore(flags);
   const t = needThread(store, pos[0]);
+  const shots = shotsWithPaths(store, t);
   if (flags.json) {
-    out(JSON.stringify(publicThread(t), null, 2));
+    const pub = publicThread(t);
+    if (shots.length) pub.shots = shots;
+    out(JSON.stringify(pub, null, 2));
     return 0;
   }
   const a = t.anchor || {};
@@ -177,6 +194,18 @@ function cmdShow(flags, pos) {
   if (a.quote) out(`  quote:   "${a.quote.exact}"${a.quote.prefix ? ` after "${a.quote.prefix}"` : ""}${a.quote.suffix ? ` before "${a.quote.suffix}"` : ""}`);
   const g = (t.rev && t.rev.git) || {};
   if (g.commit) out(`Made at:   commit ${g.commit}${g.dirty ? ", with uncommitted changes" : ""}`);
+  for (const s of shots) {
+    const what = s.role === "comment" ? "the comment's picture" : `after picture, commit ${s.commit || "?"}`;
+    if (s.error) {
+      out(`Shot:      ${what} failed: ${s.error}`);
+      continue;
+    }
+    const state = s.path ? shotFileState(s.path) : "missing";
+    const note = state === "ok" ? "" : state === "placeholder" ? "  (in iCloud, not downloaded to this Mac yet)" : "  (not on this Mac)";
+    out(`Shot:      ${what}, sha ${s.sha || "?"}${note}`);
+    out(`  pointer: ${s.icloud ? `icloud:${s.icloud}` : `local:${s.local}`}`);
+    if (s.path) out(`  file:    ${s.path}`);
+  }
   out("");
   for (const m of t.messages) {
     out(`${m.author}, ${m.ts}${m.commit ? `, commit ${m.commit}` : ""}${m.edited ? " (edited)" : ""}:`);
@@ -206,6 +235,35 @@ function cmdReply(flags, pos) {
   const last = after && after.messages[after.messages.length - 1];
   if (!last || last.body !== body || last.author !== author) throw notLanded(`the reply to ${t.id} did not land`);
   out(`${t.id} replied`);
+  return 0;
+}
+
+function cmdShot(flags, pos) {
+  const store = needStore(flags);
+  const t = needThread(store, pos[0]);
+  if (!flags.file) throw usage("shot needs --file <png>: the picture to attach");
+  const commit = String(flags.commit || "").toLowerCase();
+  if (!/^[0-9a-f]{7,40}$/.test(commit)) throw usage("shot needs --commit <sha>: the commit the picture was taken against");
+  let buf;
+  try {
+    buf = readFileSync(flags.file);
+  } catch (err) {
+    throw notFound(`cannot read ${flags.file}: ${err.code || err.message}`);
+  }
+  if (!isPng(buf)) throw usage(`${flags.file} is not a PNG picture`);
+  if (buf.length > SHOT_MAX) throw usage(`${flags.file} is over ${SHOT_MAX / 1024 / 1024} MB`);
+  let e;
+  try {
+    e = saveShot(store, t.id, buf, { role: "after", commit, author: flags.author || "claude" });
+  } catch (err) {
+    throw notLanded(`the picture for ${t.id} did not land: ${err.code || err.message}`);
+  }
+  const s = readThread(store, t.id).shots.find((x) => x.sha === e.sha && x.ts === e.ts);
+  const path = s && shotPath(store, s);
+  if (!path || shotFileState(path) !== "ok") throw notLanded(`the picture for ${t.id} did not land`);
+  out(`${t.id} after picture attached, sha ${e.sha}`);
+  out(`  pointer: ${e.icloud ? `icloud:${e.icloud}` : `local:${e.local}`}`);
+  out(`  file:    ${path}`);
   return 0;
 }
 
@@ -322,6 +380,8 @@ export async function main(argv) {
       return cmdShow(flags, pos);
     case "reply":
       return cmdReply(flags, pos);
+    case "shot":
+      return cmdShot(flags, pos);
     case "resolve":
       return cmdStatus(flags, pos, flags.reopen ? "open" : "resolved");
     case "dismiss":

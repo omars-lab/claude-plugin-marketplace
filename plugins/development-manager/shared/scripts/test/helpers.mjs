@@ -12,6 +12,18 @@ export const CLI = join(SCRIPTS, "page-comments.mjs");
 export const PLUGIN = join(SCRIPTS, "..", "..");
 export const ENABLE = join(PLUGIN, "skills", "enable-page-comments", "scripts", "enable.mjs");
 
+// Screenshots must never reach the real iCloud Drive or the real global config.
+// Every test process that loads these helpers points both at a throwaway folder,
+// before any test runs, and every child it starts inherits that. The fake iCloud
+// Drive root exists, so shots take the iCloud path unless a test says otherwise.
+export const FAKE = mkdtempSync(join(tmpdir(), "pc-shots-"));
+export const FAKE_ICLOUD = join(FAKE, "icloud-drive");
+export const FAKE_CONFIG = join(FAKE, "config", "development-manager", "config.json");
+mkdirSync(FAKE_ICLOUD, { recursive: true });
+process.env.PAGE_COMMENTS_ICLOUD_ROOT = FAKE_ICLOUD;
+process.env.DEVELOPMENT_MANAGER_CONFIG = FAKE_CONFIG;
+process.on("exit", () => rmSync(FAKE, { recursive: true, force: true }));
+
 /** A new git repo in the temp folder. With `comments`, `.page-comments/threads/` too. */
 export function tempRepo({ comments = true, git = true } = {}) {
   const repo = mkdtempSync(join(tmpdir(), "pc-test-"));
