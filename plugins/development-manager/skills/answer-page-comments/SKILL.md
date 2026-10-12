@@ -1,6 +1,6 @@
 ---
 name: answer-page-comments
-description: Answer comments left on a repo's localhost pages. Use when the page-comments watcher prints a line (ev=thread_new, ev=message_new, ev=thread_reopened, ev=thread_open, ev=shot, ev=shot_missing), when a repo's CLAUDE.md says to, or when someone asks to go through, fix or reply to page comments. Reads each thread and the picture of the element it points at, fixes or answers it at the source, commits, attaches an after picture, replies on the page, and closes a thread only once its fix is in.
+description: Answer comments left on a repo's localhost pages. Use when the page-comments watcher prints a line (ev=thread_new, ev=message_new, ev=thread_reopened, ev=thread_open, ev=shot, ev=shot_missing, ev=anchor_lost), when a repo's CLAUDE.md says to, or when someone asks to go through, fix or reply to page comments. Reads each thread and the picture of the element it points at, fixes or answers it at the source, commits, attaches an after picture, replies on the page, and closes a thread only once its fix is in.
 ---
 
 # Answer page comments
@@ -49,6 +49,8 @@ Below, `pc` means `node "${CLAUDE_PLUGIN_ROOT}/shared/scripts/page-comments.mjs"
 | `pc stats` | Counts per page | For the final report |
 | `pc serve --target <url>` or `--root <dir>` | The comment server | If it is not running and Omar is commenting |
 | `pc watch --exclude-author claude --replay` | Prints one line per new comment, reply or picture | Start with the Monitor tool when the plugin's own watcher is not running |
+| `pc restamp` | Notes which commit took in the uncommitted work a comment was made on | Never by hand; the post-commit hook that enable installs runs it after each commit |
+| `pc notice` | One line saying how many threads wait on Claude, or nothing | Never by hand; the session-start hook runs it when a session opens in the repo |
 
 ## Task management
 
@@ -85,6 +87,12 @@ Add one task per thread once the list is loaded, so nothing is skipped.
 3. **Look.**
    The same `pc show` output gives the page, the viewport, and where on the page the comment points: a `data-comment-id`, a CSS path, the element's label, or the quoted text.
    If the picture is not enough, open the page at the stored viewport through the comment server and take a screenshot.
+   Two more lines in `pc show` say how the page moved on since the comment:
+   - `Not found:` (and the watcher's `ev=anchor_lost` line, and `, not found on the page` in `pc list`) means the page could no longer find the element the comment was on.
+     The page never pins such a comment to a guess; it lists it under "Not found on this page".
+     See "When the element is not found" below before acting.
+   - `Landed in: commit X` means the comment was made on uncommitted work, and commit X took that work in.
+     Read the page's source at commit X, not at `Made at:`, to see what Omar was looking at.
 
 4. **Find the source.**
    Search the repo for the `data-comment-id`, the quoted text, or the label.
@@ -130,6 +138,20 @@ Add one task per thread once the list is loaded, so nothing is skipped.
     Otherwise leave it open and say in the reply what it is waiting on.
 
 12. **Report** in the chat: fixed and closed, answered and left open, waiting on Omar, and why for each.
+
+## When the element is not found
+
+The page reports "not found" once per page load, and only after the answer has held for a couple of seconds, so a page still loading does not count.
+It means the element's id, its saved place in the page, its label and its quoted text (even loosely, at about 80% alike) all failed.
+Work out why from the comment's picture, its quote and `git log -p` on the page's source since `Made at:` (or `Landed in:`):
+
+- **The element was removed on purpose**, and that removal is what the comment asked for, or makes it moot: reply saying which commit removed it, and close the thread under the usual rule.
+- **The element was removed, but the comment still applies** to something on the page now (its text moved to another element, or the page was rebuilt): make the fix on the new element, and say in the reply which element it went to.
+- **It was reworded so much that it no longer matches**: if you can tell which element it is now, act on that one and say which in the reply. If you cannot tell, ask one clarifying question in the reply.
+- **It is only gone for now** (a feature flag, a step in a flow, data that did not load): open the page in that state and check; the page reports "found" again by itself when it sees the element.
+
+Never close a not-found thread just because its element is gone; close it only when the comment's request is met or moot, and say which.
+Never edit the thread file to move its anchor.
 
 ## When to ask
 

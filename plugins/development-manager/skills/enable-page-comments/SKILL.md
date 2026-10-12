@@ -23,6 +23,7 @@ The list of changes is kept in `.page-comments/install.json`.
 | `Makefile` | A `comments` target between `# page-comments:begin` and `# page-comments:end` | One command starts the comment server. If the repo has no Makefile, none is made; the report gives the command instead. |
 | `.claude/settings.json` | `"development-manager@<marketplace>": true` under `enabledPlugins`, merged into what is there | Every session opened in this repo, on any machine with the plugin installed, gets the answering skill and the watcher. The skill is not copied into the repo, so there is only one version of it. |
 | `CLAUDE.md` | A short "Page comments" section between `<!-- page-comments:begin -->` and `<!-- page-comments:end -->` | It tells Claude: when the watcher prints a comment, follow `development-manager:answer-page-comments`. |
+| `post-commit` git hook | A small hook in the repo's own hooks folder (`.git/hooks/`, or the `core.hooksPath` folder when that is inside `.git/` or ignored by git). A post-commit hook that was already there is renamed to `post-commit.page-comments-prev` and still runs first, with its exit status kept | After each commit it notes which commit took in the uncommitted work a comment was made on, by adding one line to that comment's thread file. It never changes the commit and never stops it. When the hooks folder is committed to the repo (like `.githooks/`), shared with other repos, or hooks are off, it is skipped and the report says why |
 
 ## Where screenshots go
 
@@ -44,6 +45,7 @@ Pass that line on to Omar in the report, word for word.
 
 The plugin's watcher starts with every Claude Code session.
 In a repo without `.page-comments/` it stops at once and prints nothing, so it costs nothing where comments are off.
+When a session starts or resumes in a repo with comments waiting on Claude, the plugin also prints one line: how many are waiting, how many could not be found on their page, and the command to list them. In any other folder it prints nothing.
 
 ## Scripts — when to use each
 
@@ -59,6 +61,7 @@ In a repo without `.page-comments/` it stops at once and prints nothing, so it c
 | `scripts/enable.mjs --undo` | Removes everything enable added, the phone included; keeps comment threads and every screenshot | Someone wants comments off | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --undo --repo <repo>` |
 | `scripts/enable.mjs --undo --purge` | Also deletes the threads; screenshots still stay | Only after asking, and `--force` too if any thread is open | add `--purge` (and `--force`) |
 | `scripts/run.template` | The launcher copied to `.page-comments/run`. It finds the installed plugin, so the make target keeps working after plugin updates | Not run by hand | — |
+| `scripts/post-commit.template` | The post-commit hook enable installs. It runs the earlier hook first, then `.page-comments/run restamp`, and never fails a commit | Not run by hand | — |
 
 Re-running enable is safe.
 It refreshes the launcher and the plugin path, and leaves everything else as it is.
@@ -121,6 +124,7 @@ TaskCreate({ subject: "Start listening in this session", description: "Start the
    - the URL to open, and that C starts a comment;
    - what the check showed, including the install note if there was one;
    - where screenshots go, and the privacy line if enable printed one;
+   - whether the post-commit hook went in, and if it was skipped, the reason enable gave;
    - that `.page-comments/`, `.claude/settings.json`, `CLAUDE.md` and the Makefile changes are ready to commit, and that this skill did not commit them;
    - how to undo.
 
@@ -155,6 +159,7 @@ Run `--undo`.
 It stops a running comment server, but only if that process really is the comment server.
 If the phone was on, it turns off the `tailscale serve` entry, but only if enable added it and it still points at the comment server.
 It removes the make target, the `CLAUDE.md` section and the settings entry, exactly as `install.json` recorded them.
+It removes the post-commit hook only if it is still the one enable wrote, and puts back the hook that was there before, byte for byte and with its old permissions.
 A file or folder that enable created is removed only if it is now empty of anything else.
 If the plugin was already on in the settings before enable ran, that setting stays.
 Comment threads stay, with `config.json` and `.gitattributes`, because they are Omar's comments.

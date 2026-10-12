@@ -19,6 +19,12 @@ Claude hears about it, looks at the picture, fixes or answers it at the source, 
 After a fix that changes the page, Claude adds an after picture to the thread, so the two can be compared.
 Claude closes the thread only once the fix is in.
 
+Comments keep up with the page as it changes.
+A comment finds its element again after an edit, even when the words changed a little, and shows "changed since this comment" when they did.
+A comment whose element is gone is never pinned to a guess; it is listed under "Not found on this page", and Claude is told.
+A comment made on uncommitted work notes, after the next commit, which commit took that work in.
+When a session starts in a repo with comments waiting, Claude says how many.
+
 Omar can also comment from his phone, through his own Tailscale network.
 `enable-page-comments --phone` sets it up: the phone opens the Mac's tailnet address, and on a touch screen a tap picks a part of the page and **Comment here** opens the box.
 Only his own Tailscale login may comment, and nothing is ever put on the public internet.

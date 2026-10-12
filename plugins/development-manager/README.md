@@ -43,6 +43,14 @@ Each comment's picture is a PNG saved outside the repo, so it never reaches git:
 - iCloud Drive is stored on Apple's servers, and Apple can read it unless Advanced Data Protection is on. Pick a local folder if that matters for a repo.
 - The picture is taken in the browser by [modern-screenshot](https://github.com/qq15725/modern-screenshot) 4.7.0 (MIT), bundled in the plugin. If it fails, the comment still saves and the thread says why there is no picture.
 
+## When the page changes
+
+- A comment finds its element again after edits: by its id, its saved place in the page, then its text, even when the words changed a little (about 80% alike). It is never pinned to a guess.
+- A comment whose element changed since it was made shows an amber dot and "changed since this comment".
+- A comment whose element is gone is listed under "Not found on this page" in the comment list, and Claude's watcher prints one `ev=anchor_lost` line for it.
+- A comment made on uncommitted work notes, after your next commit, which commit took that work in. A post-commit hook does it; an earlier post-commit hook still runs first.
+- When a Claude session starts in a repo with comments waiting, it prints one line saying how many.
+
 ## From your phone
 
 You can comment from your phone through your own Tailscale network:
