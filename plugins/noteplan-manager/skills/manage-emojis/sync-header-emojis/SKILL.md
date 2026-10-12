@@ -27,8 +27,8 @@ NOTE_MAP="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Applicatio
 
 - **If the map exists**: read the "Key Structural Facts" section to get paths, folder names, and workstream/reference-file lists. Use those discovered values instead of the hardcoded defaults below.
 - **If the map is missing**: proceed with the defaults below, then warn:
-  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:discover-structure` to generate it and make this skill structure-aware.
-- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:discover-structure`.
+  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:manage-notes` → discover-structure to generate it and make this skill structure-aware.
+- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:manage-notes` → discover-structure.
 
 ## Problem This Solves
 
@@ -52,8 +52,8 @@ $HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/
 ```
 
 **Example directories:**
-- `🏢 ServiceNow/📆 Plans/🏁 Onboarding/` - Work plan files
-- `🏢 ServiceNow/🔬 Research/🧑🏻‍💻 Development/` - Research notes
+- `🏢 Work/📆 Plans/🏁 Onboarding/` - Work plan files
+- `🏢 Work/🔬 Research/🧑🏻‍💻 Development/` - Research notes
 - `🏡 Personal/🏡📆 Plans/Present/` - Personal plans
 
 ## How It Works
@@ -63,10 +63,10 @@ $HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/
 User provides directory to process:
 ```bash
 # Specific directory
-$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/🔬 Research/🧑🏻‍💻 Development
+$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 Work/🔬 Research/🧑🏻‍💻 Development
 
 # Or process recursively from a parent
-$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 ServiceNow/🔬 Research
+$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3/Notes/🏢 Work/🔬 Research
 ```
 
 ### Step 2: Extract Parent Folder Emoji
@@ -169,7 +169,7 @@ If pending changes found:
 ```
 ⚠️  Found pending changes in NotePlan repository:
 
-M  🏢 ServiceNow/🔬 Research/note1.md
+M  🏢 Work/🔬 Research/note1.md
 M  🏡 Personal/note2.md
 
 Would you like to commit these before syncing headers? (yes/no/show)
@@ -228,7 +228,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 ### When Invoked
 
 ```bash
-/noteplan-manager:sync-header-emojis [directory]
+/noteplan-manager:manage-emojis → sync-header-emojis [directory]
 ```
 
 **Options:**
@@ -400,7 +400,7 @@ Preserve the entire emoji sequence as a unit.
 When processing recursively:
 
 ```bash
-/noteplan-manager:sync-header-emojis --recursive "$HOME/.../🏢 ServiceNow/🔬 Research"
+/noteplan-manager:manage-emojis → sync-header-emojis --recursive "$HOME/.../🏢 Work/🔬 Research"
 ```
 
 **Process:**
@@ -435,28 +435,28 @@ Total: 11 files updated across 3 folders
 ### Basic Usage
 ```bash
 # Interactive mode
-/noteplan-manager:sync-header-emojis
+/noteplan-manager:manage-emojis → sync-header-emojis
 
 # Specify directory
-/noteplan-manager:sync-header-emojis "/path/to/folder"
+/noteplan-manager:manage-emojis → sync-header-emojis "/path/to/folder"
 
 # Recursive processing
-/noteplan-manager:sync-header-emojis --recursive "/path/to/parent"
+/noteplan-manager:manage-emojis → sync-header-emojis --recursive "/path/to/parent"
 ```
 
 ### Advanced Options
 ```bash
 # Dry run (report only, don't modify)
-/noteplan-manager:sync-header-emojis --dry-run
+/noteplan-manager:manage-emojis → sync-header-emojis --dry-run
 
 # Auto-confirm (no prompts)
-/noteplan-manager:sync-header-emojis --yes
+/noteplan-manager:manage-emojis → sync-header-emojis --yes
 
 # Specific strategy
-/noteplan-manager:sync-header-emojis --strategy=replace
+/noteplan-manager:manage-emojis → sync-header-emojis --strategy=replace
 
 # Include plan files
-/noteplan-manager:sync-header-emojis --include-plans
+/noteplan-manager:manage-emojis → sync-header-emojis --include-plans
 ```
 
 ## Safety Features
@@ -473,7 +473,7 @@ Total: 11 files updated across 3 folders
 ### Example 1: Single Directory
 
 ```bash
-/noteplan-manager:sync-header-emojis
+/noteplan-manager:manage-emojis → sync-header-emojis
 
 # User provides directory
 Directory: $HOME/.../🧑🏻‍💻 Development
@@ -501,7 +501,7 @@ Apply changes? yes
 ### Example 2: Recursive Processing
 
 ```bash
-/noteplan-manager:sync-header-emojis --recursive
+/noteplan-manager:manage-emojis → sync-header-emojis --recursive
 
 # User provides parent directory
 Parent directory: $HOME/.../🔬 Research
@@ -528,7 +528,7 @@ Apply all changes? yes
 ### Example 3: Plan Files
 
 ```bash
-/noteplan-manager:sync-header-emojis "$HOME/.../🧑🏻‍💻 Development"
+/noteplan-manager:manage-emojis → sync-header-emojis "$HOME/.../🧑🏻‍💻 Development"
 
 # Detects this is a plan subdirectory
 This is a work plan subdirectory (🧑🏻‍💻 Development)
@@ -589,7 +589,7 @@ Detect file type and apply appropriate strategy:
 
 Process multiple folders at once:
 ```bash
-/noteplan-manager:sync-header-emojis --batch
+/noteplan-manager:manage-emojis → sync-header-emojis --batch
   --folders "Development,Impact,Travel"
 ```
 

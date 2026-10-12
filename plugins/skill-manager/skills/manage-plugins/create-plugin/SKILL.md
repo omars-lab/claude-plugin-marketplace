@@ -325,7 +325,7 @@ Skills: introduce, {first-skill-name}
 Next steps:
 1. Install: /plugin install {plugin-name}@{marketplace}
 2. Test: /{plugin-name}:introduce
-3. Add more skills: /skill-manager:skill-create
+3. Add more skills: /skill-manager:manage-skills → create-skill
 ```
 
 ## Safety Checks
@@ -338,7 +338,7 @@ Next steps:
 ## Example Usage
 
 ```
-User: /skill-manager:create-plugin
+User: /skill-manager:manage-plugins → create-plugin
 
 Claude: I'll help you create a new plugin.
 

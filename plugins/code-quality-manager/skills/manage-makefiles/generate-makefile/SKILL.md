@@ -531,13 +531,13 @@ When invoked:
 
 ```bash
 # Generate Makefile for current project
-/code-quality-manager:generate-makefile
+/code-quality-manager:manage-makefiles → generate-makefile
 
 # Generate with specific focus
-/code-quality-manager:generate-makefile --focus=testing
+/code-quality-manager:manage-makefiles → generate-makefile --focus=testing
 
 # Enhance existing Makefile
-/code-quality-manager:generate-makefile --enhance
+/code-quality-manager:manage-makefiles → generate-makefile --enhance
 ```
 
 ## Output

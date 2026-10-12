@@ -136,6 +136,26 @@ validate_plugin() {
     fi
   done
 
+  # Every /plugin:skill a skill or README names must be something Claude can call.
+  # A skill inside a routing skill's folder is not listed; name the routing skill.
+  local broken_refs
+  if broken_refs=$(python3 "$MARKETPLACE_DIR/scripts/check-skill-refs.py" "$plugin_name"); then
+    check "Every plugin:skill reference names a skill Claude can call" "pass"
+  else
+    check "References to skills Claude cannot call (fix with scripts/check-skill-refs.py --fix $plugin_name):" "fail"
+    echo "$broken_refs" | sed 's/^/      /'
+  fi
+
+  # Hook and monitor commands must quote the plugin path: it can contain a space.
+  local bare_root
+  bare_root=$(grep -n -E '"command": *"[^"\\]*\$\{CLAUDE_PLUGIN_ROOT\}' "$plugin_dir"/hooks/hooks.json "$plugin_dir"/monitors/monitors.json 2>/dev/null || true)
+  if [ -z "$bare_root" ]; then
+    check "Hook and monitor commands quote \${CLAUDE_PLUGIN_ROOT}" "pass"
+  else
+    check "A hook or monitor command uses \${CLAUDE_PLUGIN_ROOT} without quotes:" "fail"
+    echo "$bare_root" | sed 's/^/      /'
+  fi
+
   # README exists and is minimal
   if [ -f "$plugin_dir/README.md" ]; then
     local readme_lines

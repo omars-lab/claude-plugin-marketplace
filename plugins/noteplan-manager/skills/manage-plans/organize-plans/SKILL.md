@@ -26,7 +26,7 @@ This skill **never**:
 ## Invocation
 
 ```
-/noteplan-manager:organize-plans <file-path>
+/noteplan-manager:manage-plans → organize-plans <file-path>
 ```
 
 The file path argument is required.

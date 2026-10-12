@@ -26,8 +26,8 @@ NOTE_MAP="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Applicatio
 
 - **If the map exists**: read the "Key Structural Facts" section to get paths, folder names, and workstream/reference-file lists. Use those discovered values instead of the hardcoded defaults below.
 - **If the map is missing**: proceed with the defaults below, then warn:
-  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:discover-structure` to generate it and make this skill structure-aware.
-- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:discover-structure`.
+  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:manage-notes` → discover-structure to generate it and make this skill structure-aware.
+- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:manage-notes` → discover-structure.
 
 ## Personal Plans Structure
 
@@ -349,7 +349,7 @@ When invoked:
    **b) Check if templates need syncing:**
    - Scan all personal plan files for unique plan type emojis
    - Compare with Personal Plan template plan type list
-   - If new emojis found, suggest: `/noteplan-manager:sync-plan-templates`
+   - If new emojis found, suggest: `/noteplan-manager:manage-templates` → sync-plan-templates
 
    Example check:
    ```
@@ -366,7 +366,7 @@ When invoked:
    New emojis discovered since last template update:
    - 🧘🏻 (found in 2 files) - not in template
 
-   💡 Run /noteplan-manager:sync-plan-templates to update template
+   💡 Run /noteplan-manager:manage-templates → sync-plan-templates to update template
    ```
 
 9. **Offer comprehensive fix:**
@@ -440,7 +440,7 @@ Unlike work plans (organized by workstream), personal plans are organized by tim
 
 ```bash
 # User invokes skill
-/noteplan-manager:fix-personal-emojis
+/noteplan-manager:manage-emojis → fix-personal-emojis
 
 # Claude scans and reports
 Found 5 files with emoji encoding issues in personal plans:
@@ -516,7 +516,7 @@ For comprehensive emoji maintenance of personal plans, run skills in this order:
 
 **1. Fix Encoding First** (this skill)
 ```bash
-/noteplan-manager:fix-personal-emojis
+/noteplan-manager:manage-emojis → fix-personal-emojis
 ```
 - Fixes broken emoji encoding (especially complex sequences)
 - Preserves skin tone modifiers and ZWJ sequences
@@ -534,7 +534,7 @@ For comprehensive emoji maintenance of personal plans, run skills in this order:
 
 **3. Update Templates**
 ```bash
-/noteplan-manager:sync-plan-templates
+/noteplan-manager:manage-templates → sync-plan-templates
 ```
 - Scans all personal plan files for used plan type emojis
 - Keeps Personal Plan template in sync with actual usage

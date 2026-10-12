@@ -391,7 +391,7 @@ Choose option (1-4):
 ## Example Run
 
 ```bash
-/skill-manager:fix-plugins
+/skill-manager:manage-plugins → fix-plugins
 
 # Analysis starts
 Analyzing Claude plugin marketplaces...
@@ -481,16 +481,16 @@ New skills are available in noteplan-manager.
 
 ```bash
 # Dry run (show what would update, don't apply)
-/skill-manager:fix-plugins --dry-run
+/skill-manager:manage-plugins → fix-plugins --dry-run
 
 # Update specific marketplace
-/skill-manager:fix-plugins --marketplace oeid-claude-plugins
+/skill-manager:manage-plugins → fix-plugins --marketplace oeid-claude-plugins
 
 # Force update all
-/skill-manager:fix-plugins --force
+/skill-manager:manage-plugins → fix-plugins --force
 
 # Quiet mode (less output)
-/skill-manager:fix-plugins --quiet
+/skill-manager:manage-plugins → fix-plugins --quiet
 ```
 
 ## Troubleshooting
@@ -554,8 +554,8 @@ update: ## Update all installed plugins using Claude CLI (non-interactive)
 
 ## Related Skills
 
-- **skill-manager:doctor** - Diagnose Claude plugin issues
-- **noteplan-manager:fix-*-emojis** - The skills that triggered this need
+- **`/skill-manager:manage-plugins` → evaluate-plugin** - Diagnose Claude plugin issues
+- **`/noteplan-manager:manage-emojis` → fix-*-emojis** - The skills that triggered this need
 - **discover-*-plugins:explore-plugins** - See what's installed
 
 ## Maintenance Schedule

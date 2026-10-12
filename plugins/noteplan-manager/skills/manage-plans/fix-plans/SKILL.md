@@ -27,8 +27,8 @@ NOTE_MAP="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Applicatio
 
 - **If the map exists**: read the "Key Structural Facts" section to get paths, folder names, and workstream/reference-file lists. Use those discovered values instead of the hardcoded defaults below.
 - **If the map is missing**: proceed with the defaults below, then warn:
-  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:discover-structure` to generate it and make this skill structure-aware.
-- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:discover-structure`.
+  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:manage-notes` → discover-structure to generate it and make this skill structure-aware.
+- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:manage-notes` → discover-structure.
 
 ## Scope Selection
 
@@ -832,7 +832,7 @@ All tasks completed!
 
 ```bash
 # User invokes skill
-/noteplan-manager:fix-plans
+/noteplan-manager:manage-plans → fix-plans
 
 # Claude creates 10 tasks, asks for scope
 Which plan directories should I fix?

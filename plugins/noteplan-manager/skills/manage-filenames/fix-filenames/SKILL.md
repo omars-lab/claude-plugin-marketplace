@@ -630,7 +630,7 @@ All tasks completed!
 
 ```bash
 # User invokes skill
-/noteplan-manager:fix-filenames
+/noteplan-manager:manage-filenames → fix-filenames
 
 # Claude creates tasks, auto-commits pending changes, then scans
 Scanned 5 files with pending changes:

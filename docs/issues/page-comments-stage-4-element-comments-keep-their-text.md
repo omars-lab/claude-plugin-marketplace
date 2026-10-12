@@ -31,3 +31,12 @@ found text, so a quote that sits in a child still lands on the element that was 
 
 Element comments made before 1.3.0 have no quote. They are found by `data-comment-id`, by their
 saved path when the label agrees, or by an exact label, as before.
+
+## Tested since 1.3.1
+
+Cutting the quote out of the page's text moved into `text-match.js` as `quoteAround`, which has no
+page code in it, so the tests can run it. `anchors.test.mjs` checks the 32 characters either side,
+the shorter context at the page's edges, no quote for an element with no words or too much text,
+and that the saved quote finds the element again after a light edit and after a move.
+Finding which part of the page's text is the element's still needs a real page, and is checked
+in the browser.

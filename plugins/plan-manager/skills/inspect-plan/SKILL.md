@@ -162,8 +162,6 @@ After presenting the critique, use `AskUserQuestion`:
 What would you like to do next?
 
 - Fix the issues (I'll help you update the plan)
-- Move this plan to its target project (/plan-manager:move-plan) [coming soon]
-- Generate a changelog from this plan (/plan-manager:plan-changelog) [coming soon]
 - Inspect another plan
 - Done
 ```
@@ -236,5 +234,3 @@ Be honest and direct in critiques. The goal is to catch issues before implementa
 ## Related Skills
 
 - `/plan-manager:introduce` - Overview of all plan-manager capabilities
-- `/plan-manager:move-plan` - Move inspected plan to its target project (coming soon)
-- `/plan-manager:plan-changelog` - Generate changelog from completed plan (coming soon)

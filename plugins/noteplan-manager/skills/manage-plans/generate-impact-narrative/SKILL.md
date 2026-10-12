@@ -14,7 +14,7 @@ Generate a narrative only when the user explicitly asks for one.
 ## Invocation
 
 ```
-/noteplan-manager:generate-impact-narrative [time-period]
+/noteplan-manager:manage-plans → generate-impact-narrative [time-period]
 ```
 
 If no time period is provided, ask:

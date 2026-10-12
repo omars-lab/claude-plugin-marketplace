@@ -1894,7 +1894,7 @@ type: direction-checkpoint
      | Eval Harness Design | Designed stress test mode + session ID logging | INNOVATION | Eval harness doc, implementation plan |
      ```
    - Only include items with at least one next-level signal — purely routine items stay in the brag sheet only
-   - This file is the primary input for `/noteplan-manager:generate-impact-narrative`
+   - This file is the primary input for `/noteplan-manager:manage-plans` → generate-impact-narrative
 
 4. **Personal brag sheet** — `$NOTES_ROOT/🏡 Personal/🏡📋 Lists/🏡📋 Brag Sheet.md`
    - Create if it doesn't exist with header:
@@ -2039,7 +2039,7 @@ type: direction-checkpoint
 | Brag sheets via tasks | Phase 8.5 updates three brag sheets using TaskCreate: `🏢📋 Brag Sheet.md` (work), `🏡📋 Brag Sheet.md` (personal), `👥📋 Progress Log.md` (EarlBear, if EarlBear content was swept). Create a task per sheet before updating, mark completed after. Only concrete, verifiable achievements from the swept notes. |
 | Scribe and guide | Phase 8.5 plays two roles simultaneously: **scribe** (faithfully record what happened — brag sheet, impact timeline, observations) and **guide** (assess career trajectory, spot missing signals, suggest concrete work directions for the next period). Both roles are mandatory every work sweep. |
 | Next-level signal tagging | Work brag sheet entries MUST be tagged with signal types when applicable: `[SCOPE+]` (cross-team/org decisions), `[LEADERSHIP]` (owned process or guided others), `[INNOVATION]` (frontier/novel technical approach), `[VISIBILITY]` (external recognition, leadership exposure), `[IMPACT]` (unblocked others, shipped, moved milestone). Multiple tags allowed per entry. |
-| Impact Timeline maintained | Phase 8.5 also appends to `🏢📋 Impact Timeline.md` — a structured career-framing table. Only entries with at least one next-level signal qualify. This file is the primary input for `/noteplan-manager:generate-impact-narrative`. |
+| Impact Timeline maintained | Phase 8.5 also appends to `🏢📋 Impact Timeline.md` — a structured career-framing table. Only entries with at least one next-level signal qualify. This file is the primary input for `/noteplan-manager:manage-plans` → generate-impact-narrative. |
 | Trajectory assessed for all three domains | Phase 8.5 writes a trajectory note per domain to `Observations.md`: work (signal distribution + suggestion), personal (energy balance + stall detection + suggestion), EarlBear (build-vs-validate + momentum + suggestion). Skip a domain's note only if zero notes from that domain were swept this session. |
 | Git pull before sweep | Phase 2 must run `git pull` before the pre-sweep commit. Stop if pull fails. |
 | Git push after every commit | After every commit in the sweep (pre-sweep, checkpoint, Unsorted re-route, final, reflect), run `git push` immediately. |

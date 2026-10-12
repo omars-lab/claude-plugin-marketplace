@@ -2,69 +2,35 @@
 
 Comment on your local web pages, and have Claude answer.
 
-Open a page on localhost, press C, and leave a comment on an element or on selected text.
-The comment is saved as a file in the repo, so git tracks it.
-The page also takes a picture of the element you commented on, and Claude looks at it first.
-Claude hears about it, fixes or answers it at the source, commits, and replies on the page, with an after picture when the page changed.
+Open a page on localhost, press C, and comment on an element or on selected text.
+The comment is saved as a file in the repo, so git tracks it, with a picture of the element.
+Claude hears about it, fixes or answers it at the source, commits, and replies on the page.
 It closes the thread only once the fix is in.
 
-## Install
+## Install and start
 
 ```text
 /plugin install development-manager@oeid-claude-plugins
-```
-
-Or, from a checkout of this marketplace, `make install` installs every plugin in it.
-
-## Start
-
-Run `/development-manager:introduce` for a tour, or turn comments on in a repo:
-
-```text
 /development-manager:enable-page-comments
 ```
 
-One run sets up everything:
-- the Comment button on the repo's pages, through a small server on `127.0.0.1:8766`;
-- the plugin turned on in the repo's `.claude/settings.json`, so every session there hears comments;
-- a short note in the repo's `CLAUDE.md` that points Claude to `answer-page-comments`.
+One run adds the Comment button (through a small server on `127.0.0.1:8766`), turns the plugin on
+in the repo's `.claude/settings.json`, adds a note to its `CLAUDE.md`, and proves the loop with a
+test comment. `--undo` takes it all out and keeps your comments and screenshots.
+`/development-manager:introduce` gives a tour.
 
-It ends with a check that posts a test comment and confirms Claude would see it.
-`--undo` takes it all out again and keeps your comments and screenshots.
+## Worth knowing
 
-## Screenshots
+- **Screenshots stay out of git.** By default they go to `CloudDesktop/data` in iCloud Drive, so
+  they show in the Files app on a phone. Apple can read iCloud Drive unless Advanced Data
+  Protection is on; pick a local folder with `--shots-dir <path>` if that matters.
+- **Comments follow the page as it changes.** A comment whose element moved is found again; one
+  whose element is gone is listed under "Not found on this page". It is never pinned to a guess.
+- **From your phone,** `--phone` serves the comment server on your own Tailscale network (never
+  Funnel), and only your own login may comment. It writes the Mac's tailnet name and your login
+  into the repo's `.page-comments/` files, so think twice before pushing them to a public remote.
 
-Each comment's picture is a PNG saved outside the repo, so it never reaches git:
-`<shotsDir>/page-comments/<repo>/<thread>/comment.png`, with after pictures next to it.
-
-- The default `shotsDir` is `CloudDesktop/data` in iCloud Drive, so pictures show in the Files app on a phone; on an iPhone or iPad the thread has "Open in Files" links.
-- Set another folder per repo with `enable-page-comments --shots-dir <path>`, or for every repo with `shotsDir` in `~/.config/development-manager/config.json`.
-- Without iCloud Drive, pictures go to `.page-comments/shots/` in the repo, which git ignores.
-- iCloud Drive is stored on Apple's servers, and Apple can read it unless Advanced Data Protection is on. Pick a local folder if that matters for a repo.
-- The picture is taken in the browser by [modern-screenshot](https://github.com/qq15725/modern-screenshot) 4.7.0 (MIT), bundled in the plugin. If it fails, the comment still saves and the thread says why there is no picture.
-
-## When the page changes
-
-- A comment finds its element again after edits: by its id, its saved place in the page, then its text, even when the words changed a little (about 80% alike). It is never pinned to a guess.
-- A comment whose element changed since it was made shows an amber dot and "changed since this comment".
-- A comment whose element is gone is listed under "Not found on this page" in the comment list, and Claude's watcher prints one `ev=anchor_lost` line for it.
-- A comment made on uncommitted work notes, after your next commit, which commit took that work in. A post-commit hook does it; an earlier post-commit hook still runs first.
-- When a Claude session starts in a repo with comments waiting, it prints one line saying how many.
-
-## From your phone
-
-You can comment from your phone through your own Tailscale network:
-
-```text
-/development-manager:enable-page-comments --phone
-```
-
-- The comment server still listens only on `127.0.0.1`. `tailscale serve` passes HTTPS on the Mac's tailnet name to it, on its own port, so other entries you serve are left alone. Only devices in your tailnet can reach it, and never through Tailscale Funnel.
-- Open `https://<mac>.<tailnet>.ts.net:8766/` on the phone while the comment server runs on the Mac.
-- Only the Tailscale login signed in on the Mac may comment; the server refuses any other.
-- On a touch screen, **Comment** turns comment mode on, a tap picks a part of the page, and **Comment here** opens the box. Selected text gets **Comment on selection**.
-- The Mac's tailnet name and your login are written to `.page-comments/config.json` and `install.json`, which are committed with the repo. Think twice before pushing them to a public remote.
-- `--phone --undo` turns off only the phone; `--undo` turns off everything, the phone included.
+The details are in the `enable-page-comments` skill.
 
 ## Skills
 
@@ -75,15 +41,6 @@ You can comment from your phone through your own Tailscale network:
 | `enable-page-comments` | Turns comments on in a repo, checks the loop, or undoes it |
 | `answer-page-comments` | The routine Claude follows for each comment |
 
-## Needs
-
-- Node 18 or later. No packages to install, in the plugin or in your repo.
-- Claude Code with plugin monitors, so the watcher starts with each session.
-
-## Tests
-
-```text
-make test-development-manager
-```
-
-The design is in `docs/design/localhost-comments/design.md` in this marketplace.
+Needs Node 18 or later, and Claude Code with plugin monitors. Tests: `make test-development-manager`.
+Pictures are taken by [modern-screenshot](https://github.com/qq15725/modern-screenshot) 4.7.0 (MIT),
+bundled in the plugin. The design is in `docs/design/localhost-comments/design.md`.

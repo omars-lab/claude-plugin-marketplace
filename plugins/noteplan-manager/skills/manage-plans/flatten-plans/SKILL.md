@@ -377,7 +377,7 @@ EOF
 
 After migration completes and commit is made, remind the user:
 
-> Run `/noteplan-manager:discover-structure` to regenerate `🗺️ Note Map.md` with the new flat structure. Other skills depend on it.
+> Run `/noteplan-manager:manage-notes` → discover-structure to regenerate `🗺️ Note Map.md` with the new flat structure. Other skills depend on it.
 
 ## Related Skills
 

@@ -99,30 +99,30 @@ I use AI to [description of capability].
 ### Notes & Planning  (`noteplan-manager`)
 I use AI to maintain my NotePlan note files and personal plans.
 
-- Fix file names to match heading conventions (skills: `/noteplan-manager:fix-filenames`)
+- Fix file names to match heading conventions (skills: `/noteplan-manager:manage-filenames` → fix-filenames)
   Flow: scan pending git changes → detect naming issues → propose renames → apply with git mv
 
 - Update a plan's status — frontmatter, filename, title emoji, completed date
-  (skills: `/noteplan-manager:update-plan-status`)
+  (skills: `/noteplan-manager:manage-plans` → update-plan-status)
   Flow: identify plan → update status field → rename file → update H1 → record completed date
 
 - Keep header emojis consistent with their parent folder emoji
-  (skills: `/noteplan-manager:sync-header-emojis`)
+  (skills: `/noteplan-manager:manage-emojis` → sync-header-emojis)
   Flow: scan files → detect mismatches → apply folder emoji to header → commit
 
 ### Plugin Ecosystem  (`skill-manager`)
 I use AI to build and maintain my Claude plugin ecosystem.
 
-- Scaffold new plugins from scratch (skills: `/skill-manager:create-plugin`)
+- Scaffold new plugins from scratch (skills: `/skill-manager:manage-plugins` → create-plugin)
   Flow: gather requirements → create directory structure → write introduce skill → register in marketplace
 
-- Fix plugin version drift and run updates (skills: `/skill-manager:fix-plugins`)
+- Fix plugin version drift and run updates (skills: `/skill-manager:manage-plugins` → fix-plugins)
   Flow: confirm scope → compare source vs installed → bump versions if needed → run make update → verify
 
-- Audit compliance with framework standards (skills: `/skill-manager:audit-plugins`)
+- Audit compliance with framework standards (skills: `/skill-manager:manage-plugins` → evaluate-plugin)
   Flow: confirm scope → run scanner → present compliance report → apply approved fixes
 
-- Evaluate individual skill quality (skills: `/skill-manager:evaluate-skill`)
+- Evaluate individual skill quality (skills: `/skill-manager:manage-skills` → evaluate-skill)
   Flow: confirm scope → run scorer → show quality dashboard → implement improvements
 
 ### Research & Analysis  (`experiment-manager`)

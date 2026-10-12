@@ -311,4 +311,4 @@ Disable: `code-mode`, `mcp-add`, `mcp-config-set`, `mcp-exec`, `mcp-find`, `mcp-
 ## Related Skills
 
 - `/profile-manager:setup-chrome-integration` — reference implementation of the opt-in alias pattern
-- `/skill-manager:fix-plugins` — version and install management
+- `/skill-manager:manage-plugins` → fix-plugins — version and install management

@@ -350,4 +350,4 @@ Don't convert a role to a plugin if:
 
 - `/role-manager:extract-skill` - Extract a single skill instead of full role
 - `/role-manager:structure-role` - Structure role before conversion
-- `/skill-manager:create-plugin` - Create a plugin from scratch
+- `/skill-manager:manage-plugins` → create-plugin - Create a plugin from scratch

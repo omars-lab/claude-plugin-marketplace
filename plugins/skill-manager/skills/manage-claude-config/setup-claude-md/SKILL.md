@@ -33,7 +33,7 @@ TaskUpdate({ taskId: "4", addBlockedBy: ["3"] })
 
 When invoked, follow this sequence:
 
-**Tip:** Before generating, consider running `/skill-manager:research-claude-md` first.
+**Tip:** Before generating, consider running `/skill-manager:manage-claude-config` → research-claude-md first.
 It mines your full session history and existing CLAUDE.md files to surface preferences
 you've repeatedly expressed — so the generated file reflects your actual patterns, not
 just what you remember to mention today.

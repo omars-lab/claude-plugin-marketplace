@@ -289,4 +289,4 @@ Run the checks and show ✓/✗ for each before proceeding.
 ## Related Skills
 
 - `/profile-manager:introduce` — overview of this plugin
-- `/skill-manager:setup-claude-md` — configure Claude Code project instructions
+- `/skill-manager:manage-claude-config` → setup-claude-md — configure Claude Code project instructions

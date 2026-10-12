@@ -19,7 +19,7 @@ You never rewrite, paraphrase, delete, or add content. The only new text you int
 ## Invocation
 
 ```
-/noteplan-manager:organize-note [file-path]
+/noteplan-manager:manage-notes → organize-note [file-path]
 ```
 
 If no file path is provided, ask:

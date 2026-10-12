@@ -328,7 +328,6 @@ After presenting the trace, use `AskUserQuestion`:
 What would you like to do with this trace?
 
 - Export as markdown file
-- Generate a changelog from the commits (/plan-manager:plan-changelog) [coming soon]
 - Inspect the plan quality (/plan-manager:inspect-plan)
 - Trace another plan
 - Done
@@ -408,4 +407,3 @@ Searching git history from Jan 12 to now...
 
 - `/plan-manager:inspect-plan` - Analyze plan quality before tracing execution
 - `/plan-manager:introduce` - Overview of all plan-manager capabilities
-- `/plan-manager:plan-changelog` - Generate changelog from traced commits (coming soon)

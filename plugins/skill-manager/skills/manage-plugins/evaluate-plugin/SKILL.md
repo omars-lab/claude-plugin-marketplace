@@ -98,10 +98,10 @@ Errors: 3   Warnings: 7
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 5. SKILL PATTERN GAPS  (mandatory framework rules per skill)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠  note-manager:extract-knowledge   4 phases, no TaskCreate/TaskUpdate
-⚠  note-manager:extract-knowledge   file-modifying, no AskUserQuestion
-⚠  note-manager:extract-knowledge   missing YAML frontmatter
-⚠  config-manager:setup-env         missing AskUserQuestion
+⚠  example-manager:extract-notes    4 phases, no TaskCreate/TaskUpdate
+⚠  example-manager:extract-notes    file-modifying, no AskUserQuestion
+⚠  example-manager:extract-notes    missing YAML frontmatter
+⚠  example-manager:setup-env        missing AskUserQuestion
 ```
 
 #### Suggest evaluate-skill for skills with gaps
@@ -111,7 +111,7 @@ If any issues appear under "Skill Pattern Gaps", close the report with:
 ```
 💡 3 skills have mandatory pattern gaps.
    For full quality scores and improvement suggestions, run:
-   /skill-manager:evaluate-skill  (then choose: note-manager or config-manager)
+   /skill-manager:manage-skills → evaluate-skill  (then choose: note-manager or config-manager)
 ```
 
 Do not run it automatically. Just surface the suggestion.

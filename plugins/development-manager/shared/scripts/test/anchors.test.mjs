@@ -79,6 +79,32 @@ test("the matcher is quick on a long page", () => {
   assert.ok(Date.now() - t0 < 1000, `took ${Date.now() - t0} ms on ${long.length} characters`);
 });
 
+test("an element comment saves the element's text with 32 characters either side", () => {
+  const { quoteAround, findQuote } = matcher();
+  const plain = (...a) => JSON.parse(JSON.stringify(quoteAround(...a)));
+  const words = "Walk the long trail to the falls, then picnic by the river before the shuttle back.";
+  const start = PAGE.indexOf(words);
+  const q = plain(PAGE, start, start + words.length, 600);
+  assert.deepEqual(q, { exact: words, prefix: PAGE.slice(start - 32, start), suffix: PAGE.slice(start + words.length, start + words.length + 32) });
+  assert.equal(q.prefix.length, 32);
+  // At the very start and end of the page the context is shorter, never padded.
+  assert.equal(plain(PAGE, 0, 6, 600).prefix, "");
+  assert.equal(plain(PAGE, PAGE.length - 7, PAGE.length, 600).suffix, "");
+  // No words, or more than the limit: no quote, so the element is found by its place and label.
+  assert.equal(quoteAround("A\n   \nB", 1, 6, 600), null);
+  assert.equal(quoteAround(PAGE, 5, 5, 600), null);
+  assert.equal(quoteAround(PAGE, -1, 10, 600), null);
+  assert.equal(quoteAround(PAGE, 0, PAGE.length, 100), null);
+  // The saved quote finds the element again after a light edit and a move.
+  const edited = PAGE.replace("the long trail", "the long, steep trail");
+  const moved = edited.replace(/^(Day 1\.[^]*?four\. )(Day 2\.[^]*?back\. )/, "$2$1");
+  for (const page of [edited, moved]) {
+    const r = findQuote(page, q);
+    assert.ok(r && r.match.sim >= 0.8 && !r.rival, JSON.stringify(r));
+    assert.match(page.slice(r.match.start, r.match.end), /long, steep trail to the falls/);
+  }
+});
+
 // ---- The thread file: found/not found reports, and the landed commit ---------------------
 
 test("anchor reports and the landed commit fold into the thread shape", () => {

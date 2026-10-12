@@ -231,5 +231,18 @@
     return { match: raw(best), rival: raw(rival) };
   }
 
-  root.__pageCommentsMatch = { findQuote: findQuote, similarity: similarity, THRESHOLD: THRESHOLD };
+  /**
+   * The quote saved for an element comment: the element's whole text, from
+   * `start` to `end` in the page's text, with 32 characters either side. None
+   * for an element with no words, or with more than `max` characters, where a
+   * quote of part of it could later point at a child.
+   */
+  function quoteAround(text, start, end, max) {
+    if (start < 0 || end <= start) return null;
+    var exact = text.slice(start, end);
+    if (!exact.trim() || exact.length > max) return null;
+    return { exact: exact, prefix: text.slice(Math.max(0, start - 32), start), suffix: text.slice(end, end + 32) };
+  }
+
+  root.__pageCommentsMatch = { findQuote: findQuote, quoteAround: quoteAround, similarity: similarity, THRESHOLD: THRESHOLD };
 })(typeof globalThis !== "undefined" ? globalThis : this);

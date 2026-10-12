@@ -457,10 +457,7 @@
       if (start < 0) start = n.start;
       end = n.start + n.node.data.length;
     }
-    if (start < 0) return null;
-    var exact = idx.text.slice(start, end);
-    if (!clean(exact) || exact.length > ELEMENT_QUOTE_MAX) return null;
-    return { exact: exact, prefix: idx.text.slice(Math.max(0, start - 32), start), suffix: idx.text.slice(end, end + 32) };
+    return MATCH ? MATCH.quoteAround(idx.text, start, end, ELEMENT_QUOTE_MAX) : null;
   }
 
   function anchorFor(el, type, quote, evt) {

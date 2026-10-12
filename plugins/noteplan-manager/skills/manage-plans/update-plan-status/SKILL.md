@@ -330,7 +330,7 @@ Show final summary with all files changed.
 ## Example Usage
 
 ```bash
-/noteplan-manager:update-plan-status
+/noteplan-manager:manage-plans → update-plan-status
 
 # User selects: By current status → 🔮 Future
 # Skill finds 12 Future plans, shows list

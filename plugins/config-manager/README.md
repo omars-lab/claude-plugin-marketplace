@@ -69,7 +69,7 @@ Create or enhance Makefiles with common development targets and best practices.
 ### Project Documentation
 
 #### claude-md-setup
-**Usage:** `/config-manager:claude-md-setup`
+**Usage:** `/skill-manager:manage-claude-config` → setup-claude-md (moved to skill-manager)
 
 Create and maintain CLAUDE.md files with project-specific instructions for Claude.
 
@@ -111,7 +111,7 @@ Complete setup for a new project:
 /config-manager:makefile-setup
 
 # 3. Set up project-specific CLAUDE.md
-/config-manager:claude-md-setup
+/skill-manager:manage-claude-config   (then: setup claude.md)
 
 # 4. Create documentation structure
 /config-manager:docs-setup

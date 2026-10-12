@@ -211,9 +211,9 @@ Recommended next steps:
 ```
 
 If there are automatically fixable issues, offer to run the relevant skill:
-- Broken emoji encoding → `/noteplan-manager:fix-work-emojis` or `/noteplan-manager:fix-personal-emojis`
-- Frontmatter issues → `/noteplan-manager:fix-frontmatter`
-- Broken links → identify and fix manually or flag for `/noteplan-manager:fix-reference`
+- Broken emoji encoding → `/noteplan-manager:manage-emojis` → fix-work-emojis or `/noteplan-manager:manage-emojis` → fix-personal-emojis
+- Frontmatter issues → `/noteplan-manager:manage-frontmatter` → fix-frontmatter
+- Broken links → identify and fix manually or flag for `/noteplan-manager:manage-notes` → fix-reference
 
 Mark Task #4 `completed`. Show `TaskList()` to confirm all tasks done.
 

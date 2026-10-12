@@ -26,8 +26,8 @@ NOTE_MAP="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Applicatio
 
 - **If the map exists**: read the "Key Structural Facts" section to get paths, folder names, and workstream/reference-file lists. Use those discovered values instead of the hardcoded defaults below.
 - **If the map is missing**: proceed with the defaults below, then warn:
-  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:discover-structure` to generate it and make this skill structure-aware.
-- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:discover-structure`.
+  > ⚠️  No `🗺️ Note Map.md` found. Run `/noteplan-manager:manage-notes` → discover-structure to generate it and make this skill structure-aware.
+- **If structural discrepancy detected** (e.g. a workstream or folder listed in the map no longer exists on disk): report the diff and offer to refresh the map via `/noteplan-manager:manage-notes` → discover-structure.
 
 ## Work Plans Structure
 
@@ -501,7 +501,7 @@ These checks run in PARALLEL after fixes are complete:
    **b) Check if headers need syncing:**
 
    - Compare header emojis with parent folder emojis
-   - If mismatches found, suggest: `/noteplan-manager:sync-header-emojis`
+   - If mismatches found, suggest: `/noteplan-manager:manage-emojis` → sync-header-emojis
 
    Example check:
    ```
@@ -740,7 +740,7 @@ All tasks completed! ✨
 
 ```bash
 # User invokes skill
-/noteplan-manager:fix-work-emojis
+/noteplan-manager:manage-emojis → fix-work-emojis
 
 # Claude scans and reports
 Found 3 files with emoji encoding issues in work plans:
@@ -802,7 +802,7 @@ For comprehensive emoji maintenance, run skills in this order:
 
 **1. Fix Encoding First** (this skill)
 ```bash
-/noteplan-manager:fix-work-emojis
+/noteplan-manager:manage-emojis → fix-work-emojis
 ```
 - Fixes broken emoji encoding
 - Normalizes emoji variants
@@ -810,7 +810,7 @@ For comprehensive emoji maintenance, run skills in this order:
 
 **2. Sync Headers to Folders**
 ```bash
-/noteplan-manager:sync-header-emojis --recursive "/path/to/📆 Plans"
+/noteplan-manager:manage-emojis → sync-header-emojis --recursive "/path/to/📆 Plans"
 ```
 - Ensures header emojis match parent folder emojis
 - Updates all subdirectories (Development, Impact, etc.)
@@ -818,7 +818,7 @@ For comprehensive emoji maintenance, run skills in this order:
 
 **3. Update Templates**
 ```bash
-/noteplan-manager:sync-plan-templates
+/noteplan-manager:manage-templates → sync-plan-templates
 ```
 - Keeps Work Plan template in sync with current workstreams
 - Adds new categories discovered from folders

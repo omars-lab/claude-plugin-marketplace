@@ -148,7 +148,7 @@ Based on the user's choice:
 
 **Feed into claude-md-setup:**
 1. Store the top enhancements in memory for the current session
-2. Tell the user: "I'll use these as additional context when you run `/skill-manager:claude-md-setup`"
+2. Tell the user: "I'll use these as additional context when you run `/skill-manager:manage-claude-config` → setup-claude-md"
 3. List the enhancements that will be pre-populated
 
 **Show full analysis only:**

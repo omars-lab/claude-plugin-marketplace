@@ -208,7 +208,7 @@ personalbook/
 
 | Skill | Plugin | Invoke |
 |-------|--------|--------|
-| reflecting-on-learnings | role-manager | `/role-manager:reflecting-on-learnings` |
+| reflecting-on-learnings | self-development-manager | `/self-development-manager:reflecting-on-learnings` |
 ```
 
 ## Extraction Checklist
@@ -236,4 +236,4 @@ Don't extract a skill if:
 
 - `/role-manager:convert-role-to-plugin` - Convert an entire role to a plugin
 - `/role-manager:structure-role` - Structure a role before extraction
-- `/skill-manager:skill-create` - Create a new skill from scratch
+- `/skill-manager:manage-skills` → create-skill - Create a new skill from scratch
