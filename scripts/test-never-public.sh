@@ -26,7 +26,7 @@ cd "$T/internal"
 git config user.name "Work Person"; git config user.email "work@example.com"
 mkdir -p scripts .claude
 cp "$SRC/check-never-public.sh" "$SRC/never-public.patterns" "$SRC/sync-to-github.sh" "$SRC/sync-to-github-init.sh" scripts/
-printf '# invented test list\nAcmeCorp\n' > .claude/never-public.txt
+printf '# invented test list\nAcmeCorp\nwiki\\.acme\\.example\n' > .claude/never-public.txt
 echo "readme" > README.md
 git add -A; git commit -q -m "start"
 CHECK=scripts/check-never-public.sh
@@ -41,6 +41,10 @@ try_staged 1 "private name is blocked"              "notes from my time at AcmeC
 try_staged 1 "private name is blocked in any case"  "ACMECORP"
 try_staged 1 "Tailscale host name is blocked"       "http://box.tail1a2b3c.ts.net:8080/x"
 try_staged 1 "Tailscale IPv4 address is blocked"    "ssh 100.101.5.6"
+try_staged 1 "private address is blocked"           "see https://wiki.acme.example/page"
+try_staged 1 "private address in a regex is blocked" "r'|wiki\\.acme\\.example'"
+try_staged 1 "double-escaped address is blocked"    "\"wiki\\\\.acme\\\\.example\""
+try_staged 1 "Tailscale host in a regex is blocked" "r'box\\.tail1a2b3c\\.ts\\.net'"
 try_staged 0 "shopping link passes"                 "https://www.amazon.com/dp/B01"
 try_staged 0 "private IP outside Tailscale passes"  "ssh 10.0.0.1 or 100.2.3.4"
 try_staged 0 "generic .ts.net rule passes"          "r'|\\.ts\\.net(?:[:/]|$)'"

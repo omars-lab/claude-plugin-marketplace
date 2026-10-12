@@ -31,8 +31,11 @@ PRIVATE_LIST="$REPO_ROOT/.claude/never-public.txt"
 # Same list as PRIVATE_PATHS in sync-to-github.sh: never published, so never checked.
 # The public patterns file and the self-test are skipped too: they hold the rules themselves
 # and invented example addresses, which would otherwise match.
+# url_enrichment.py is allowed on purpose: its skip list names internal sites so the note
+# sweep doesn't try to fetch them (Omar, 2026-10-12: fine to keep them there).
 EXCLUDES=(":(exclude).claude/plans" ":(exclude).claude/memory" ":(exclude).claude/never-public.txt"
-          ":(exclude)scripts/never-public.patterns" ":(exclude)scripts/test-never-public.sh")
+          ":(exclude)scripts/never-public.patterns" ":(exclude)scripts/test-never-public.sh"
+          ":(exclude)plugins/noteplan-manager/bin/noteplan_sweep/url_enrichment.py")
 
 MODE=""; ARG1=""; ARG2=""
 while [ $# -gt 0 ]; do
@@ -71,7 +74,9 @@ added_lines() {
 
 scan() {  # stdin: lines to check; $1: label for the report
     local label="$1"
-    if grep -iE -f "$PATTERNS" > "$HITS"; then
+    # Code often writes an address as a regex or an escaped string (code\.example\.com,
+    # "code\\.example\\.com"). Drop the backslashes before a dot so those match too.
+    if sed -E 's/\\+\././g' | grep -iE -f "$PATTERNS" > "$HITS"; then
         echo "never-public: $label" >&2
         cut -c1-180 "$HITS" | sed 's/^/    /' >&2
         return 1
