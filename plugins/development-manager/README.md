@@ -7,6 +7,14 @@ The comment is saved as a file in the repo, so git tracks it.
 Claude hears about it, fixes or answers it at the source, commits, and replies on the page.
 It closes the thread only once the fix is in.
 
+## Install
+
+```text
+/plugin install development-manager@oeid-claude-plugins
+```
+
+Or, from a checkout of this marketplace, `make install` installs every plugin in it.
+
 ## Start
 
 Run `/development-manager:introduce` for a tour, or turn comments on in a repo:
