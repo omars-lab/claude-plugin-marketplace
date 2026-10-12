@@ -236,4 +236,4 @@ Don't extract a skill if:
 
 - `/role-manager:convert-role-to-plugin` - Convert an entire role to a plugin
 - `/role-manager:structure-role` - Structure a role before extraction
-- `/claude-manager:skill-create` - Create a new skill from scratch
+- `/skill-manager:skill-create` - Create a new skill from scratch

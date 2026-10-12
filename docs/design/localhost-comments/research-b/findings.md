@@ -39,7 +39,7 @@ change. It already treats the page as an opaque thing served on a local port.
 | `plugins/code-quality-manager`, `plugins/guardrail-manager` | read (introduce skills) | Repo hygiene and git-safety hooks. Not a fit. |
 | `plugins/wiki-manager` (0.14.1) | read (layout) | Ships a top-level `bin/` and `hooks/`. A precedent for a plugin that carries runnable tools. |
 | `plugins/noteplan-manager` | read (layout) | Ships a `bin/` with a server. Another precedent. |
-| `plugins/claude-manager/skills/manage-living-artifacts` | read | About claude.ai Artifacts. Unrelated to localhost pages. |
+| `plugins/claude-manager/skills/manage-living-artifacts` | read | About claude.ai Artifacts. Unrelated to localhost pages. (The plugin was renamed to skill-manager on 2026-10-12.) |
 | Plugins with `hooks.json` | read (`find`) | Only consumer, guardrail-manager and wiki-manager ship hooks. |
 | `docs/design/` | read (`ls`) | Did not exist. This folder is the first. |
 | `docs/issues/private-text-reaching-the-public-copy.md` and `scripts/check-never-public.sh` | read | A pre-commit check blocks Tailscale addresses and private employer names on added lines and in commit messages. Relevant to what the plugin must never commit by itself (see the design's privacy section). |

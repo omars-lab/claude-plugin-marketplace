@@ -110,15 +110,15 @@ plugins/<plugin-name>/
 
 ## Marketplace Skills
 
-Use `claude-manager` to create and modify plugins and skills in this repo — it handles all the scaffolding, validation, and version bumping automatically:
+Use `skill-manager` to create and modify plugins and skills in this repo — it handles all the scaffolding, validation, and version bumping automatically:
 
 | Task | Skill |
 |---|---|
-| Create a new plugin | `/claude-manager:manage-plugins` |
-| Add a skill to an existing plugin | `/claude-manager:manage-skills` |
-| Configure CLAUDE.md or MCP servers | `/claude-manager:manage-claude-config` |
+| Create a new plugin | `/skill-manager:manage-plugins` |
+| Add a skill to an existing plugin | `/skill-manager:manage-skills` |
+| Configure CLAUDE.md or MCP servers | `/skill-manager:manage-claude-config` |
 
-Run `/claude-manager:introduce` to see the full capability list.
+Run `/skill-manager:introduce` to see the full capability list.
 
 The manual steps below are the underlying mechanics — prefer the skills for day-to-day work.
 

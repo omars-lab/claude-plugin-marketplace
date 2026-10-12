@@ -121,7 +121,7 @@ plan-manager (this plugin)
   +-- moves to --> project directories (any repo)
   +-- generates --> changelogs (for any project)
 
-claude-manager (sibling)
+skill-manager (sibling)
   |
   +-- creates plugins and skills (the build tooling)
 
@@ -130,4 +130,4 @@ doc-manager (sibling)
   +-- organizes documentation (plan-manager feeds into this)
 ```
 
-plan-manager works with plan files. claude-manager builds plugins. doc-manager handles broader documentation.
+plan-manager works with plan files. skill-manager builds plugins. doc-manager handles broader documentation.

@@ -1,0 +1,10 @@
+{
+  "name": "skill-manager",
+  "description": "Manage Claude skills and CLAUDE.md files - create, update, and organize skills across plugins",
+  "version": "3.0.0",
+  "author": {
+    "name": "Omar Eid"
+  },
+  "homepage": "https://github.com/oeid/claude-plugins",
+  "license": "MIT"
+}

@@ -32,7 +32,7 @@ Right after the title, link to the source artifact (e.g. its GitHub file); repea
 2. **Technical documentation** — inputs, outputs, process flow, prerequisites.
 3. **Visual representation** — a component diagram (`graph LR`: inputs → black-box → outputs) and a `sequenceDiagram` (user ↔ system, with approval/validation steps).
 4. **Usage metrics & analytics** — usage stats, performance, feedback, trends (feed from `manage-ai-metadata` if self-updating).
-5. **Maturity assessment** — Experimental / Developing / Mature / Production + quality indicators + improvement areas (see `claude-manager` maturity-dimensions).
+5. **Maturity assessment** — Experimental / Developing / Mature / Production + quality indicators + improvement areas (see `skill-manager` maturity-dimensions).
 6. **Practical examples** — real use cases, before/after, edge cases, integrations.
 
 ## Reusable templates

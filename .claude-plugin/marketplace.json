@@ -71,10 +71,10 @@
       ]
     },
     {
-      "name": "claude-manager",
-      "source": "./plugins/claude-manager",
+      "name": "skill-manager",
+      "source": "./plugins/skill-manager",
       "description": "Manage Claude skills and CLAUDE.md files - create, update, and organize skills across plugins",
-      "version": "2.7.0",
+      "version": "3.0.0",
       "category": "development",
       "keywords": [
         "meta",

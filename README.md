@@ -77,10 +77,10 @@ Create and manage Tampermonkey userscripts with best practices.
 
 ---
 
-#### claude-manager
+#### skill-manager
 Manage Claude skills and CLAUDE.md files — create, update, and organize skills across plugins.
 
-**Skills:** Run `/claude-manager:introduce` to see all skills.
+**Skills:** Run `/skill-manager:introduce` to see all skills.
 
 ---
 
@@ -191,7 +191,7 @@ oeid-claude-plugin-marketplace/
 ### Creating a New Plugin
 
 ```bash
-/claude-manager:create-plugin
+/skill-manager:create-plugin
 ```
 
 ## NotePlan Paths Reference

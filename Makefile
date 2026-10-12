@@ -143,8 +143,8 @@ register: ## Register the marketplace in Claude
 install: ## Install all plugins using Claude CLI (non-interactive)
 	@./scripts/cli install $(MARKETPLACE_NAME)
 
-install-lite: ## Install only claude-manager plugin
-	@./scripts/cli install-single $(MARKETPLACE_NAME) claude-manager
+install-lite: ## Install only skill-manager plugin
+	@./scripts/cli install-single $(MARKETPLACE_NAME) skill-manager
 
 uninstall: ## Uninstall all plugins using Claude CLI (non-interactive)
 	@./scripts/cli uninstall $(MARKETPLACE_NAME)
@@ -185,7 +185,7 @@ version-check: ## Check which plugins need version bumps (dry run)
 version-bump: ## Manually bump a plugin version (PLUGIN=name TYPE=major|minor|patch)
 	@if [ -z "$(PLUGIN)" ] || [ -z "$(TYPE)" ]; then \
 		echo "$(RED)Usage: make version-bump PLUGIN=<name> TYPE=<major|minor|patch>$(NC)"; \
-		echo "$(YELLOW)Example: make version-bump PLUGIN=claude-manager TYPE=minor$(NC)"; \
+		echo "$(YELLOW)Example: make version-bump PLUGIN=skill-manager TYPE=minor$(NC)"; \
 		exit 1; \
 	fi
 	@./scripts/cli version-bump $(MARKETPLACE_NAME) $(PLUGIN) $(TYPE) --commit

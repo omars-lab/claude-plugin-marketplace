@@ -169,6 +169,6 @@ code-quality-manager (this plugin)
 version-manager
   └── version-bump   → determines version bumps (code-quality-manager handles the docs side)
 
-claude-manager
+skill-manager
   └── manage-claude-config → fix-claude-md  → focused CLAUDE.md audit (manage-docs includes this as Task 6)
 ```
