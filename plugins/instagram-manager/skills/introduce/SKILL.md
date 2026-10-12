@@ -20,7 +20,8 @@ The pipeline, in order:
 
 1. **import-saves** — read saved posts and collections from the export zip, in memory. Only the
    `saved/` files are opened; messages and the rest of the export are never unpacked.
-2. **tag-saves** — topics and places per save: collection rules first, then Claude Haiku.
+2. **tag-saves** — topics and places per save: collection rules first, then `save-tagger`
+   agents, each reading one batch of saves.
 3. **split-saves** *(coming)* — the items a post names, each with its quote.
 4. **fetch-media** *(coming)* — the post's video or image, slowly, logged out.
 5. **extract-stills** *(coming)* — the best still and a short clip per item.
@@ -35,8 +36,10 @@ Skills available today:
 ## Where data lives
 
 Code lives here, in a public plugin. Your data lives in a private repo found through
-`INSTAGRAM_HOME` (default `~/Workspace/git/instagram`): the export copy, `saves.json` and media
-under its gitignored `.cache/`, and the tags and items it commits.
+`INSTAGRAM_HOME` (default `~/Workspace/git/instagram`): the export copy, `saves.json` and the
+agents' batch files under its gitignored `.cache/`, and the tags and items it commits. Videos,
+stills and clips go to `INSTAGRAM_MEDIA_DIR`, a folder outside git; the data repo keeps pointers
+to them.
 
 ## How to Introduce Yourself
 
@@ -82,17 +85,23 @@ instagram-manager
   ├── introduce      — this skill
   ├── manage-saves   — router across the pipeline
   ├── import-saves   — export zip → <data repo>/.cache/saves.json
-  └── tag-saves      — saves.json → <data repo>/data/tags.yaml
+  └── tag-saves      — saves.json → batches → save-tagger agents → <data repo>/data/tags.yaml
+
+  agents/
+    └── save-tagger  — one batch file in, one answers file out (Haiku)
 
   shared/scripts/
     ├── home.py      — finds the data repo (INSTAGRAM_HOME)
     ├── log.py       — one greppable ev= line per event
-    ├── claude.py    — API key, one model call, the word-for-word quote check
+    ├── quote.py     — the word-for-word quote check
     └── check_data.py — the data repo's config and data fit together (its make check)
 ```
+
+No script calls a model: scripts prepare batches and check answers, and the session starts the
+agents on the plan Claude Code is logged in with.
 
 ## Requirements
 
 - Python 3, plus PyYAML (the tagger and the data check).
-- An Anthropic API key for tag-saves: `ANTHROPIC_API_KEY`, or a LastPass note named by `INSTAGRAM_LPASS_PATH`.
+- Claude Code, for the agents.
 - An Instagram data export, HTML or JSON.

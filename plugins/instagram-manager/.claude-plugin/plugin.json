@@ -1,7 +1,7 @@
 {
   "name": "instagram-manager",
   "description": "Turn your Instagram saved posts into something you use: import them from your data export, tag them by topic and city, pull out the places and ideas each post names, and build a private hub that feeds your other projects.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "Omar Eid",
     "email": "omar_eid21@yahoo.com"

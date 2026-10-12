@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Offline checks for tag_saves.py, on an invented data repo. No key and no network: the model
-call is replaced by canned replies.
+"""Offline checks for tag_saves.py, on an invented data repo. No model: a fake agent answers the
+batch files with canned replies.
 
     python3 skills/tag-saves/scripts/test_tag_saves.py
 
@@ -8,12 +8,12 @@ Every code, handle, collection and place name here is made up (this plugin is pu
 """
 
 import contextlib
+import glob
 import io
 import json
 import os
 import sys
 import tempfile
-import threading
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -51,36 +51,13 @@ SAVES = [
     save("BAD", "BADREPLY", ["Fixture Town"]),
 ]
 
-# Canned model replies, picked by a word in the caption.
+# Canned agent answers, picked by a word in the caption. BADREPLY gets none.
 REPLIES = {
     "picnic": {"topics": ["travel", "parenting-kids"], "cities": ["Fixture State"]},
     "weekend": {"topics": ["travel"], "cities": ["Fixture State"]},
     "Sourdough": {"topics": ["recipes-coffee", "baking-tools"], "cities": [], "other_places": ["Elsewhere"]},
     "cabins": {"topics": [], "cities": []},
 }
-
-
-class FakeModel:
-    def __init__(self):
-        self.calls = []
-        self.lock = threading.Lock()
-
-    def __call__(self, key, system, user_msg, tool, **kw):
-        with self.lock:
-            self.calls.append(user_msg)
-        for word, reply in REPLIES.items():
-            if word in user_msg:
-                return dict(reply)
-        raise ValueError("no tool call in the reply")
-
-
-class RefusingModel(FakeModel):
-    """The account is out of credit: every call is turned down."""
-
-    def __call__(self, key, system, user_msg, tool, **kw):
-        with self.lock:
-            self.calls.append(user_msg)
-        raise tag_saves.claude.Refused("HTTP 400: Your credit balance is too low")
 
 
 class TagSaves(unittest.TestCase):
@@ -97,13 +74,8 @@ class TagSaves(unittest.TestCase):
             json.dump({"saves": SAVES}, fh)
         self.env = os.environ.get("INSTAGRAM_HOME")
         os.environ["INSTAGRAM_HOME"] = root
-        self.model = FakeModel()
-        self.real = tag_saves.claude.call_tool, tag_saves.claude.load_key
-        tag_saves.claude.call_tool = self.model
-        tag_saves.claude.load_key = lambda *a: "test-key"
 
     def tearDown(self):
-        tag_saves.claude.call_tool, tag_saves.claude.load_key = self.real
         if self.env is None:
             os.environ.pop("INSTAGRAM_HOME", None)
         else:
@@ -122,17 +94,55 @@ class TagSaves(unittest.TestCase):
     def read(self, rel):
         return yaml.safe_load(self.text(rel))
 
-    def test_rules_only_tags_the_pilot_without_the_model(self):
-        self.run_tag("--pilot", "fixture", "--rules-only")
+    def batches(self):
+        return sorted(glob.glob(os.path.join(self.tmp.name, ".cache", "batches", "tag", "batch-[0-9][0-9][0-9].json")))
+
+    def agent(self, paths):
+        """What the save-tagger agent does: read each batch, write its answers file."""
+        seen = []
+        for path in paths:
+            with open(path) as fh:
+                batch = json.load(fh)
+            answers = {}
+            for rec in batch["saves"]:
+                seen.append(rec["code"])
+                for word, reply in REPLIES.items():
+                    if word in rec["caption"]:
+                        answers[rec["code"]] = reply
+            with open(batch["answers"], "w") as fh:
+                json.dump({"answers": answers}, fh)
+        return seen
+
+    def tag(self, *scope):
+        out = self.run_tag("--prepare", *scope)
+        seen = self.agent(out.split())
+        self.run_tag("--merge")
+        return seen
+
+    def test_rules_only_tags_the_pilot_without_batches(self):
+        self.run_tag("--rules-only", "--pilot", "fixture")
         tags = self.read("data/tags.yaml")
-        self.assertEqual(self.model.calls, [])
+        self.assertEqual(self.batches(), [])
         self.assertEqual(sorted(tags), ["BAD", "BAY", "SOUR", "TOWN1"])   # FAR is outside the pilot
         self.assertEqual(tags["TOWN1"], {"topics": ["travel"], "cities": ["Fixture State"], "source": "rules"})
         self.assertEqual(tags["BAY"], {"topics": [], "cities": [], "source": "rules", "hints": ["Fixture State"]})
         self.assertEqual(tags["SOUR"]["hints"], ["Fixture State"])          # from the hashtag
 
-    def test_model_adds_tags_and_off_list_names_go_to_review(self):
-        self.run_tag("--pilot", "fixture")
+    def test_prepare_prints_the_batches_and_they_hold_what_the_agent_needs(self):
+        out = self.run_tag("--prepare", "--pilot", "fixture")
+        self.assertEqual(out.split(), self.batches())
+        with open(self.batches()[0]) as fh:
+            batch = json.load(fh)
+        self.assertEqual(batch["topics"]["travel"], "places to go")
+        self.assertIn("Fixture State", batch["places"])
+        self.assertTrue(batch["answers"].endswith("batch-001.answers.json"))
+        town = next(r for r in batch["saves"] if r["code"] == "TOWN1")
+        self.assertEqual(town["already"], {"topics": ["travel"], "cities": ["Fixture State"]})
+        bay = next(r for r in batch["saves"] if r["code"] == "BAY")
+        self.assertEqual(bay["hints"], ["Fixture State"])
+
+    def test_merge_adds_the_answers_and_off_list_names_go_to_review(self):
+        self.tag("--pilot", "fixture")
         tags, review = self.read("data/tags.yaml"), self.read("data/tags-review.yaml")
         self.assertEqual(tags["TOWN1"]["topics"], ["parenting-kids", "travel"])
         self.assertEqual(tags["BAY"], {"topics": ["travel"], "cities": ["Fixture State"], "source": "model",
@@ -141,51 +151,82 @@ class TagSaves(unittest.TestCase):
         self.assertEqual(tags["SOUR"]["cities"], [])
         self.assertEqual(review["SOUR"], {"other_topics": ["baking-tools"], "other_places": ["Elsewhere"]})
 
-    def test_a_bad_reply_does_not_stop_the_run_and_is_retried(self):
-        self.run_tag("--pilot", "fixture")
+    def test_a_missing_answer_keeps_the_rule_tags_and_is_batched_again(self):
+        self.tag("--pilot", "fixture")
         tags, review = self.read("data/tags.yaml"), self.read("data/tags-review.yaml")
         self.assertEqual(tags["BAD"], {"topics": ["travel"], "cities": ["Fixture State"], "source": "rules"})
-        self.assertIn("error", review["BAD"])
-        self.assertEqual(len(self.model.calls), 4)
+        self.assertEqual(review["BAD"], {"error": "no answer for this save"})
         before = self.text("data/tags.yaml")
-        self.run_tag("--pilot", "fixture")
-        self.assertEqual(len(self.model.calls), 5)                          # only BAD is asked again
+        self.assertEqual(self.tag("--pilot", "fixture"), ["BAD"])          # only BAD is read again
         self.assertEqual(self.text("data/tags.yaml"), before)  # no churn
 
-    def test_no_topic_from_the_model_means_other(self):
-        self.run_tag("--all")
+    def test_a_batch_whose_agent_has_not_run_is_left_waiting(self):
+        self.run_tag("--prepare", "--pilot", "fixture")
+        out = self.run_tag("--merge")
+        self.assertIn("1 batches still waiting", out)
+        self.assertEqual({t["source"] for t in self.read("data/tags.yaml").values()}, {"rules"})
+        self.assertEqual(self.read("data/tags-review.yaml"), {})          # no save blamed for it
+
+    def test_merging_after_each_wave_counts_each_batch_once(self):
+        paths = self.run_tag("--prepare", "--all", "--batch-saves", "2").split()
+        self.agent(paths[:2])                                               # wave 1
+        self.assertIn("1 batches still waiting", self.run_tag("--merge"))
+        self.agent(paths[2:])                                               # wave 2
+        self.assertIn("0 batches still waiting", self.run_tag("--merge"))
+        self.run_tag("--merge")                                             # nothing new
+        lines = self.text(".cache/batches/tag/merged.jsonl").splitlines()
+        self.assertEqual([json.loads(x)["batch"] for x in lines], ["batch-001", "batch-002", "batch-003"])
+        self.assertEqual(self.read("data/tags.yaml")["FAR"]["source"], "model")
+
+    def test_an_answer_of_the_wrong_shape_goes_to_review(self):
+        out = self.run_tag("--prepare", "--pilot", "fixture")
+        with open(out.split()[0]) as fh:
+            batch = json.load(fh)
+        with open(batch["answers"], "w") as fh:
+            json.dump({"answers": {"BAY": {"topics": "travel"}}}, fh)
+        self.run_tag("--merge")
+        self.assertIn("answer is not", self.read("data/tags-review.yaml")["BAY"]["error"])
+        self.assertEqual(self.read("data/tags.yaml")["BAY"]["source"], "rules")
+
+    def test_no_topic_from_the_agent_means_other(self):
+        self.tag("--all")
         self.assertEqual(self.read("data/tags.yaml")["FAR"]["topics"], ["other"])
         self.assertNotIn("hints", self.read("data/tags.yaml")["FAR"])
 
-    def test_a_refused_account_stops_the_run_and_keeps_the_rule_tags(self):
-        tag_saves.claude.call_tool = self.model = RefusingModel()
-        with self.assertRaises(SystemExit) as stop:
-            self.run_tag("--pilot", "fixture", "--workers", "1")
-        self.assertIn("refused", str(stop.exception))
-        self.assertEqual(len(self.model.calls), 1)                          # it stopped at the first refusal
-        tags = self.read("data/tags.yaml")
-        self.assertEqual(tags["TOWN1"]["source"], "rules")
-        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "data", "tags-review.yaml"))
-                         and self.read("data/tags-review.yaml"))            # no save blamed for it
+    def test_limit_caps_the_saves_in_a_round(self):
+        self.assertEqual(len(self.tag("--pilot", "fixture", "--limit", "1")), 1)
 
-    def test_limit_caps_the_calls(self):
-        self.run_tag("--pilot", "fixture", "--limit", "1")
-        self.assertEqual(len(self.model.calls), 1)
+    def test_merge_logs_one_line_per_batch_for_the_retro(self):
+        self.tag("--all", "--batch-saves", "2")
+        lines = [json.loads(x) for x in self.text(".cache/batches/tag/merged.jsonl").splitlines()]
+        self.assertEqual([x["batch"] for x in lines], ["batch-001", "batch-002", "batch-003"])
+        self.assertEqual(sum(x["saves"] for x in lines), 5)
+        self.assertEqual(sum(x["missing"] for x in lines), 1)              # BAD
 
-    def test_the_model_sees_the_rule_tags_and_hints(self):
-        self.run_tag("--pilot", "fixture")
-        msg = next(m for m in self.model.calls if "weekend" in m)
-        self.assertIn("Place names found in the text: ['Fixture State']", msg)
-        msg = next(m for m in self.model.calls if "picnic" in m)
-        self.assertIn("Already tagged: topics ['travel'], places ['Fixture State']", msg)
+    def test_a_new_round_replaces_the_last_rounds_batches(self):
+        self.run_tag("--prepare", "--all", "--batch-saves", "1")
+        self.assertEqual(len(self.batches()), 5)
+        self.run_tag("--prepare", "--all")
+        self.assertEqual(len(self.batches()), 1)
 
-    def test_report_calls_out_what_to_check(self):
-        self.run_tag("--pilot", "fixture")
-        out = self.run_tag("--report", "--pilot", "fixture")
-        self.assertRegex(out, r"\| BAY \|.*found outside the collections")
-        self.assertRegex(out, r"\| TOWN1 \|.*2\+ topics or places")
-        self.assertIn("- SOUR hints Fixture State", out)                   # matched, but not a place
-        self.assertNotIn("FAR", out)
+
+class Chunker(unittest.TestCase):
+    def rec(self, code, chars):
+        return {"code": code, "caption": "x" * chars}
+
+    def test_cut_by_count(self):
+        out = tag_saves.chunk([self.rec(str(i), 10) for i in range(7)], max_saves=3, max_chars=10 ** 6)
+        self.assertEqual([len(b) for b in out], [3, 3, 1])
+
+    def test_cut_by_size_and_never_split_a_save(self):
+        recs = [self.rec("a", 400), self.rec("b", 400), self.rec("big", 2000), self.rec("c", 100)]
+        out = tag_saves.chunk(recs, max_saves=40, max_chars=1000)
+        self.assertEqual([[r["code"] for r in b] for b in out], [["a", "b"], ["big"], ["c"]])
+
+    def test_order_is_kept(self):
+        recs = [self.rec(str(i), 50) for i in range(10)]
+        out = tag_saves.chunk(recs, max_saves=4, max_chars=10 ** 6)
+        self.assertEqual([r["code"] for b in out for r in b], [str(i) for i in range(10)])
 
 
 if __name__ == "__main__":
