@@ -1,6 +1,6 @@
 {
   "name": "development-manager",
-  "description": "Comment on your local web pages and have Claude answer: a Comment button on localhost pages, comments saved as files in the repo, and a watcher that tells Claude so it can fix, reply and close when the fix is in",
+  "description": "Comment on your local web pages and have Claude answer: a Comment button on localhost pages, comments saved as files in the repo with a picture of each commented element, and a watcher that tells Claude so it can fix, reply and close when the fix is in",
   "version": "1.1.0",
   "author": {
     "name": "Omar Eid",
