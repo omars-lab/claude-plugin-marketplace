@@ -219,9 +219,12 @@ if [ "$SQUASH" = 1 ]; then
     # List the subjects of the squashed commits, leaving out any that name something private.
     SQUASH_MSG="Sync $NEW_COMMIT_COUNT internal commits as one"$'\n\n'
     SQUASH_MSG+="Published together because some of them carried text that stays private."$'\n'
+    # Comments and blank lines out first: a blank pattern matches every subject.
+    SUBJECT_PATTERNS="$NP_DIR/subject-patterns.txt"
+    grep -vE '^[[:space:]]*(#|$)' "$NP_LIST" > "$SUBJECT_PATTERNS" || true
     for COMMIT in $NEW_COMMITS; do
         SUBJECT=$(git log -1 --format="%s" "$COMMIT")
-        if printf '%s\n' "$SUBJECT" | grep -qiE -f "$NP_LIST"; then
+        if printf '%s\n' "$SUBJECT" | grep -qiE -f "$SUBJECT_PATTERNS"; then
             SQUASH_MSG+=$'\n'"- (subject withheld)"
         else
             SQUASH_MSG+=$'\n'"- $SUBJECT"

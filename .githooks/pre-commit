@@ -15,8 +15,11 @@ gitleaks protect --staged --redact --verbose
 # === Never-public scan (staged) ===
 # gitleaks only knows secrets. This blocks Tailscale addresses and private employer names,
 # which are not secrets but must not reach the public GitHub copy.
-echo "Scanning staged changes for text that must stay private..."
-"$(git rev-parse --show-toplevel)/scripts/check-never-public.sh" --staged
+# Skipped on the sync branch: it has no private list, and sync-to-github.sh runs the full check.
+if [ "$(git branch --show-current)" != "__github_sync" ]; then
+  echo "Scanning staged changes for text that must stay private..."
+  "$(git rev-parse --show-toplevel)/scripts/check-never-public.sh" --staged
+fi
 
 STAGED=$(git diff --cached --name-only)
 

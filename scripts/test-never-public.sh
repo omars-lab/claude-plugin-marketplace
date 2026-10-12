@@ -71,6 +71,7 @@ git fetch -q github main
 [ $(( $(git rev-list --count github/main) - before )) = 1 ] && ok "two commits published as one" || fail "range was not squashed"
 [ -z "$(git log -p github/main | grep -i acmecorp || true)" ] && ok "private name nowhere in github history" || fail "private name reached github history"
 git log -1 --format=%B github/main | grep -q "subject withheld" && ok "private commit subject withheld" || fail "private subject not withheld"
+git log -1 --format=%B github/main | grep -qx -- "- tidy" && ok "clean commit subject kept" || fail "clean subject was withheld too"
 [ "$(git show github/main:code.txt)" = "$(git show main:code.txt)" ] && ok "end state matches internal" || fail "end state differs"
 
 echo "== private text still present blocks the sync =="
