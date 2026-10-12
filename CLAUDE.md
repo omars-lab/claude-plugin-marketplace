@@ -254,4 +254,4 @@ osascript -e 'display notification "<message>" with title "<Title> ⚠️" sound
 
 ## Worth revisiting
 
-- Should development-manager's page comments and review-md share one storage format, not just the thread shape? Open since 2026-10-12; see docs/design/localhost-comments/design.md section 18.
+- Should development-manager's page comments and review-md share one storage format, not just the thread shape? Omar chose the shape only on 2026-10-12 (no rework, separate releases, page files stay append-only); sharing storage is left open for later. See docs/design/localhost-comments/design.md section 18.

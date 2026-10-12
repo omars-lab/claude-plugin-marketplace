@@ -29,6 +29,8 @@ test comment. `--undo` takes it all out and keeps your comments and screenshots.
 - **From your phone,** `--phone` serves the comment server on your own Tailscale network (never
   Funnel), and only your own login may comment. It writes the Mac's tailnet name and your login
   into the repo's `.page-comments/` files, so think twice before pushing them to a public remote.
+- **Other ways in:** `--vite` adds the button through a Vite dev server, `--userscript` writes a
+  Tampermonkey script for pages you can't proxy, and an MCP server gives Claude the commands as tools.
 
 The details are in the `enable-page-comments` skill.
 

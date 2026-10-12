@@ -48,8 +48,10 @@ Below, `pc` means `node "${CLAUDE_PLUGIN_ROOT}/shared/scripts/page-comments.mjs"
 | `pc dismiss <id> "note"` | Closes a thread with no change, such as a duplicate | Only when Omar said so, or it is an `[enable check]` leftover |
 | `pc stats` | Counts per page | For the final report |
 | `pc serve --target <url>` or `--root <dir>` | The comment server | If it is not running and Omar is commenting |
+| `pc serve --api-only [--rotate-token]` | The comment server for the Tampermonkey userscript: only the comment API. `--rotate-token` makes a new repo token and writes the userscript again; Omar then re-imports it | The repo was enabled with `--userscript`; rotate if the token may have leaked |
 | `pc watch --exclude-author claude --replay` | Prints one line per new comment, reply or picture | Start with the Monitor tool when the plugin's own watcher is not running |
 | `pc restamp` | Notes which commit took in the uncommitted work a comment was made on | Never by hand; the post-commit hook that enable installs runs it after each commit |
+| MCP tools `list`, `show`, `stats`, `reply`, `resolve`, `dismiss`, `shot` | The same commands as tools, from the plugin's `page-comments` MCP server (`shared/scripts/mcp.mjs`, started from `.mcp.json`). Each takes an optional `repo`; `reply`, `resolve` and `dismiss` default the author to `claude` | When the tools are listed and shell commands are awkward; the rules for each command above still hold |
 | `pc notice` | One line saying how many threads wait on Claude, or nothing | Never by hand; the session-start hook runs it when a session opens in the repo |
 
 ## Task management

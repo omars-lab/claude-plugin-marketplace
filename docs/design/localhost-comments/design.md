@@ -101,7 +101,9 @@ common dev task among many, so the plugin should be reusable for the others.
 
 Also looked at, and still rejected:
 - a web-page mode for review-md, which is a separate marketplace that writes only through
-  Obsidian;
+  Obsidian. It keeps each note's threads in a git-tracked file next to the note,
+  `<dir>/.<name>.comments.md`, with the threads in its YAML header, but every write goes
+  through Obsidian;
 - `script-manager`, whose job is writing userscripts. The new plugin can still use
   `script-manager:tampermonkey-create` as one way in (phase 5).
 
@@ -144,8 +146,8 @@ Selecting text and pressing C pins it to the text.
 |---|---|---|---|
 | **Proxy in front of an existing local server** (`serve --target`, phase 1) | Works with any stack, including the adventures planner server and its API. The target repo's server is untouched. The comment API shares the page's origin, so the security check is one comparison. Nothing can reach a production build. Undo is "stop running it". | Omar opens a second port. It must pass live-reload WebSocket upgrades through, ask the target for uncompressed HTML, and fix `Content-Length` after adding the tag. A strict content security policy with nonces may block the script. | Tested in phase 1 on the adventures planner server (plain HTTP). Tested on a Vite 6.3 dev server on 2026-10-12: its live-reload socket connects through the proxy, and an edit reloads the page with the bar on it. |
 | **Folder server** (`serve --root`, phase 1) | No server needed at all. Same origin, same checks. | Only for a folder of files. No API of the site's own. | Same script, a different flag. Covers plain HTML mock-ups. |
-| Dev-only Vite plugin (phase 5) | No second port. The framework's own HTML hook. Earlier dev-only Vite plugins in Omar's private work prove the pattern. | Vite only. Edits `vite.config`. | Only adds the tag and forwards `/__page-comments/` to the same request handler. |
-| Userscript matched to `http://localhost/*` and `http://127.0.0.1/*` (phase 5) | No change to any repo. One install covers every local page. | Needs Tampermonkey. The page and the API are on different origins, so the server must answer cross-origin requests. | Built with `script-manager:tampermonkey-create`. Needs the token scheme in section 9. |
+| Dev-only Vite plugin (phase 5, **built in 1.4.0**) | No second port. The framework's own HTML hook. Earlier dev-only Vite plugins in Omar's private work prove the pattern. | Vite only. Edits `vite.config`. | Only adds the tag and forwards `/__page-comments/` to the same request handler. `enable.mjs --vite` adds one import and one `pageComments()` call to the config, and `--vite --undo` takes exactly those out. It runs under `vite` (dev) only; a `vite build` has none of it. |
+| Userscript matched to the exact local origins listed in `config.json` (phase 5, **built in 1.4.0**) | No change to the repo's pages or server. | Needs Tampermonkey. The page and the API are on different origins, so the server must answer cross-origin requests. | `enable.mjs --userscript --origin <url>` writes `.page-comments/.state/page-comments.user.js`, which Omar imports into Tampermonkey; the server runs with `serve --api-only`. It matches only the listed origins, not every local page, because each one is allowed to call the comment server. Follows `script-manager:tampermonkey-create` where it fits. Uses the token scheme in section 9. |
 | Bookmarklet | Touches nothing. | Lost on every reload, and live reload reloads on every save. Many content security policies block it. It cannot learn a per-run token. | **Not offered.** See section 9 for how the token gap is closed. |
 | Script tag added to the page source by hand | Simple to understand. | Easy to forget and ship. The "only on localhost" guard ends up in production pages. | A documented manual fallback only. Setup never does this. |
 
@@ -559,6 +561,19 @@ phase-5 userscript, which also runs on a page from a different origin. For that 
   (for example `http://127.0.0.1:8765`), and only with that token;
 - `page-comments serve --rotate-token` makes a new one, and setup regenerates the userscript.
 
+**Built in 1.4.0.** As planned, with these details:
+- the token is 48 hex characters, and the file is readable only by Omar's user (mode 600);
+- the userscript is a file Omar imports into Tampermonkey. The server never serves it, so no
+  page can read the token from it;
+- a listed origin must bring the repo token; the page's own origin must bring the per-run token.
+  A listed origin's answer carries `Access-Control-Allow-Origin` with that exact origin and
+  `Vary: Origin`; a preflight from any other origin gets 403;
+- for the userscript the server runs with `serve --api-only`: it answers only the comment API,
+  with no proxy or folder behind it;
+- changes to the listed origins or the token take effect without a restart;
+- proven with curl: the right token from a listed origin is let in, and a wrong token, an
+  unlisted origin, no token and no origin are all refused (`docs/issues/page-comments-stage-5-*.md`).
+
 ## 10. What to reuse, and what to build
 
 | Piece | Reuse from | Build new |
@@ -573,8 +588,8 @@ phase-5 userscript, which also runs on a page from a different origin. For that 
 | Several anchors per comment; never show on a guessed element | W3C Web Annotation; earlbear designs | Anchor builder and re-finder. |
 | "Changed" badge | review-md's body hash | Per-element hash in the page. |
 | Post-commit re-stamp hook | review-md | Optional, phase 4. |
-| MCP wrapper over the command line | review-md's `reviews-mcp.mjs` | Phase 5, at `shared/scripts/mcp.mjs`. |
-| Userscript way in | `script-manager:tampermonkey-create` | Phase 5. |
+| MCP wrapper over the command line | review-md's `reviews-mcp.mjs` | Phase 5, at `shared/scripts/mcp.mjs` (built in 1.4.0). |
+| Userscript way in | `script-manager:tampermonkey-create` | Phase 5 (built in 1.4.0). |
 
 The earlbear range-anchor library is private, so its ideas are re-implemented, not imported.
 
@@ -583,29 +598,35 @@ The earlbear range-anchor library is private, so its ideas are re-implemented, n
 ```text
 plugins/development-manager/
   .claude-plugin/plugin.json
+  .mcp.json                          starts the MCP server (phase 5)
   README.md                          pointer to the introduce skill
   monitors/monitors.json             the watcher, started with every session (silent where comments are off)
   hooks/hooks.json                   session-start notice (phase 4)
   shared/scripts/                    used by more than one skill, the monitor and the hook
     page-comments.mjs                the one command line: serve, watch, wait, list, show, reply …
     lib/store.mjs  lib/watch.mjs  lib/server.mjs  lib/git.mjs  lib/shots.mjs
+    lib/userscript.mjs               the per-repo token and the Tampermonkey script (phase 5)
     client/comments.js  client/comments.css
     vendor/modern-screenshot.js      with LICENSE and VERSION
     schema/thread.schema.json        pinned copy of the shared thread shape (section 12)
-    mcp.mjs                          phase 5
+    mcp.mjs                          the MCP server over the command line (phase 5)
+    vite.mjs                         the dev-only Vite plugin (phase 5)
+    test/*.test.mjs                  node:test, no dependencies
   skills/
     introduce/SKILL.md
     manage-development/SKILL.md      routes a request to the right skill; does no work itself
     enable-page-comments/SKILL.md
     enable-page-comments/scripts/enable.mjs      detect, enable, check, undo
     enable-page-comments/scripts/run.template    the launcher copied to .page-comments/run
+    enable-page-comments/scripts/vite.template   the loader copied to .page-comments/vite.mjs (phase 5)
     answer-page-comments/SKILL.md
     answer-page-comments/triage.md                the rubric, read at run time
 ```
 
 - **No top-level `bin/`.** Claude Code's plugin docs say claude.ai and Cowork will not install a
-  plugin that has one. The MCP server, when it comes, is started from `.mcp.json` as
-  `node ${CLAUDE_PLUGIN_ROOT}/shared/scripts/mcp.mjs`.
+  plugin that has one. The MCP server is started from `.mcp.json` with `command: "node"` and
+  `args: ["${CLAUDE_PLUGIN_ROOT}/shared/scripts/mcp.mjs"]`, the same form review-md uses. The path
+  is one argument, so a space in it cannot split it.
 - **Scripts live with their skill** (Omar's rule). `enable.mjs` is used only by
   `enable-page-comments`, so it lives in that skill's `scripts/`. The command line is used by
   both page-comment skills, the monitor and the hook, so it sits in `shared/scripts/`. A later
@@ -622,6 +643,8 @@ plugins/development-manager/
 | `enable.mjs --detect` | Says how the repo serves pages and which mode fits, with the reason | First step, or to check an existing setup | `node ${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs --detect --repo .` |
 | `enable.mjs` | Writes `.page-comments/`, the make block, the launcher, the plugin setting, the `CLAUDE.md` block and `install.json` | After the mode is chosen | `node …/enable.mjs --repo . --target http://127.0.0.1:8765 --port 8766` |
 | `enable.mjs --phone` (phase 3, built) | Adds the `tailscale serve` entry on the comment server's own HTTPS port, and the Mac's Tailscale name, port and allowed login to `config.json` | When Omar wants to comment from his phone in this repo | `node …/enable.mjs --phone --repo .`; off: `node …/enable.mjs --phone --undo --repo .` |
+| `enable.mjs --vite` (phase 5, built) | Copies the loader to `.page-comments/vite.mjs` and adds its import and `pageComments()` to `vite.config`, or makes a config if there is none; refuses a CommonJS config or one without a single `plugins: [` and says what to add by hand | When the repo runs on Vite and Omar would rather not open a second port | `node …/enable.mjs --vite --repo . [--vite-config <file>]`; off: `--vite --undo` |
+| `enable.mjs --userscript` (phase 5, built) | Lists the origins in `config.json`, makes the repo token and writes the Tampermonkey script | When the page's own server cannot be changed or proxied | `node …/enable.mjs --userscript --origin http://127.0.0.1:8765 --repo .`; off: `--userscript --undo` |
 | `enable.mjs --check` | Checks the setting, the `CLAUDE.md` block and the plugin list, then posts a test comment to a throwaway server, sees `watch` print it, and removes it | Right after enabling, or when something seems off | `node …/enable.mjs --check --repo .` |
 | `enable.mjs --undo` | Removes exactly what `install.json` lists; keeps threads and screenshots | Undo | `node …/enable.mjs --undo --repo . [--purge [--force]]` |
 
@@ -634,6 +657,8 @@ plugins/development-manager/
 | `page-comments.mjs reply` / `resolve` | Writes the answer and closes the thread | After the fix is committed and checked | `.page-comments/run reply t_8f3a2c --author claude --commit 9c41d0e "…"` |
 | `page-comments.mjs watch` | Prints one `ev=` line per event; prints nothing and exits where comments are off | Run by the plugin monitor; by hand under the Monitor tool from another repo | `node ${CLAUDE_PLUGIN_ROOT}/shared/scripts/page-comments.mjs watch --repo <path> --exclude-author claude --replay` |
 | `page-comments.mjs wait` | Blocks until something new, then exits | In the background where the Monitor tool is unavailable | `.page-comments/run wait` |
+| `page-comments.mjs serve --api-only` (phase 5, built) | Runs only the comment API, for the userscript; `--rotate-token` makes a new repo token and writes the userscript again | With the userscript way in | `.page-comments/run serve --api-only --port 8766 [--rotate-token]` |
+| `mcp.mjs` (phase 5, built) | An MCP server with the tools `list`, `show`, `stats`, `reply`, `resolve` (and reopen), `dismiss` and `shot`, each running the command line | Started by Claude Code from `.mcp.json`; use its tools where shell commands are awkward | `node ${CLAUDE_PLUGIN_ROOT}/shared/scripts/mcp.mjs` |
 
 ## 12. One thread format shared with review-md
 
@@ -651,8 +676,10 @@ tools hand it out**, not the files they store.
 - The verbs (`list`, `show`, `reply`, `resolve`, `watch`) and the exit codes 0, 2, 3 and 4 with
   review-md's meanings.
 
-**What is not shared.** Each tool keeps its own storage. review-md stores threads inside
-Obsidian's data. This plugin stores one append-only file per thread (section 5). The command line
+**What is not shared.** Each tool keeps its own storage. review-md keeps each note's threads in
+a git-tracked file next to the note, `<dir>/.<name>.comments.md`, with the threads in its YAML
+header, and writes it only through Obsidian. This plugin stores one append-only file per thread
+(section 5). The command line
 folds a thread file's events into the shared shape when it prints.
 
 **Changes on this side,** already made in section 4:
@@ -660,9 +687,14 @@ folds a thread file's events into the shared shape when it prints.
 - the element hash in `rev.bodyHash`;
 - the commit stamp in `rev.git`.
 
-**The written contract.** A JSON schema, `thread.schema.json`, describes the shared shape. It
-lives in the review-md repo, because review-md came first. This plugin keeps a pinned copy in
-`shared/scripts/schema/`, and a test fails when the two copies differ.
+**The written contract.** A JSON schema, `thread.schema.json`, describes the shared shape. Its
+source now lives in the review-md repo, at `schema/thread.schema.json` (review-md PR #28, which
+Omar made), because review-md came first. This plugin keeps a byte-for-byte pinned copy in
+`shared/scripts/schema/`. The tests check every page-comment thread against it, and also check
+what the shared schema leaves optional but page comments always set: a `status`, a `rev`, and an
+`element` or `text` anchor. To check the copy still matches the source, run
+`make check-thread-schema REVIEW_MD_SCHEMA=<path to review-md's schema/thread.schema.json>`; without
+the path it says it skipped. No local path is written into the repo.
 
 **Changes review-md would need.** Each one only adds; nothing review-md does today changes.
 
@@ -674,9 +706,8 @@ lives in the review-md repo, because review-md came first. This plugin keeps a p
 | Readers ignore anchor types and events they do not know | This plugin adds `thread_dismissed`, `anchor_lost`, `shot` and `shot_missing`. |
 | Describe the `element` anchor in review-md's agent guide | So Claude, reading either tool, reads both the same way. |
 
-Until review-md takes these, this plugin writes the schema and its pinned copy, and review-md
-reads only the parts it knows. Whether the two should one day share storage too is the open
-question in section 18.
+review-md PR #28 takes the schema. Whether the two should one day share storage too was the
+question in section 18; Omar chose to share the shape only.
 
 ## 13. Commenting from the phone through Tailscale
 
@@ -878,23 +909,25 @@ in Files. The x-callback route is not needed. It stays as the fallback in sectio
 | 2 | In-page element screenshots with the bundled library, saved to iCloud Drive with a pointer (section 14). The server serves them, the page shows them inline, and on an iPhone adds the Files links (section 15). Claude's "after" shots attached to replies. **Built in development-manager 1.1.0 (2026-10-12):** modern-screenshot 4.7.0 bundled; `shot` events in the thread file; `show` prints each picture's path; `page-comments shot` attaches an after picture; the watcher prints `ev=shot` and `ev=shot_missing`; enable takes `--shots-dir` and prints the iCloud privacy line; undo never deletes a picture. Proven in headless Chromium on a Vite page, with throwaway folders and once against the real iCloud folder. Departures: `docs/issues/page-comments-stage-2-*.md`. | Pictures make comments faster to act on, but the loop works without them. |
 | 3 | Commenting from the phone through `tailscale serve`, with the login allow list and touch mode (section 13). Check the real-phone items from section 16. **Built in development-manager 1.2.0 (2026-10-12):** `enable.mjs --phone` serves the comment server on the Mac's tailnet name at its own HTTPS port (`tailscale serve --bg --https=8766 http://127.0.0.1:8766`), so other serve entries are left alone, and writes `phone` (name, port, allowed logins) to `config.json`; `--phone --undo` and `--undo` turn off only the entry enable added (`tailscale serve --https=8766 off`); no Funnel flag or command is possible. The server accepts the phone's `Host` (`<mac>.<tailnet>.ts.net:<port>`, as seen behind Serve) only with an allowed `Tailscale-User-Login`, checks the Origin per request, refuses and logs everything else, and re-reads `config.json` without a restart. Touch mode: Comment toggles comment mode, a tap picks and **Comment here** confirms, **Comment on selection**, 44px targets, no hover outline; the desktop is unchanged. Proven on the real tailnet with curl, a forged-Host request, and Chromium with an iPhone 13 profile and touch; live reload works through Serve. Not yet checked on a real iPhone. Departures: `docs/issues/page-comments-stage-3-*.md`. | Omar asked for it. It needs the server and the pictures first. |
 | 4 | Per-element "changed" badge, fuzzy text matching, the not-found list and `anchor_lost`. Post-commit re-stamp hook. Session-start notice. **Built in development-manager 1.3.0 (2026-10-12):** a pin whose element's hash differs shows an amber dot and "changed since this comment" in its title, the list and the thread. The quoted text is found again at about 0.8 similarity (`client/text-match.js`), with the 32 characters around it breaking ties; two places too close to call count as not found. The saved place in the page is trusted only when the tag matches and the label is the same, or 80% alike with no near-copy of that tag on the page. Comments on a whole element now save its text as their quote. Comments nothing finds go under "Not found on this page (N)" in the list and "N open · M not found" in the bar. The page writes one `anchor` lost or found line only when the answer changed, after the page loaded and the answer held for 2 seconds, at most once per thread per load; the server drops repeats; the watcher prints `ev=anchor_lost` with who reported it; `list` and `show` say "not found". enable installs a post-commit hook that runs an earlier hook first and then `page-comments restamp`, which appends a `landed` line (`rev.landed`) to threads made on uncommitted work on the new commit's parent; it never amends or rewrites, skips merges, rebases and commits of only `.page-comments/`, and `--undo` puts the earlier hook back byte for byte. It follows `core.hooksPath` and skips a committed or shared hooks folder. A `SessionStart` hook prints one line with the number of threads waiting on Claude (and how many are not found) and the list command, and nothing in other folders: about 45 ms with comments, 9 ms without. Proven in headless Chromium (a lightly edited card still found with the badge, a deleted one listed as not found with exactly one lost line over four reloads, an untouched one with no badge, and a found line when the card came back), by a real commit with an earlier hook in a throwaway repo, and by timing the notice. Departures: `docs/issues/page-comments-stage-4-*.md`. | Matters once comments live across many commits. |
-| 5 | Vite adapter. Userscript way in with the per-repo token. MCP wrapper. `thread.schema.json` taken into review-md. The Shortcut fallback, only if the plain Files link breaks. A Claude Code channel, once channels leave preview. | Comfort for frequent repos and one-off pages, and work that waits on others. |
+| 5 | Vite adapter. Userscript way in with the per-repo token. MCP wrapper. `thread.schema.json` taken into review-md. The Shortcut fallback, only if the plain Files link breaks. A Claude Code channel, once channels leave preview. **Built in development-manager 1.4.0 (2026-10-12):** the dev-only Vite plugin (`shared/scripts/vite.mjs`, which does not import Vite) adds the script tag and sends `/__page-comments/` to the same request handler as the comment server; `enable.mjs --vite` and `--vite --undo` edit `vite.config` and take the edit back byte for byte. The userscript way in: `enable.mjs --userscript --origin <url>` writes a Tampermonkey script for exactly those origins with the per-repo token from `.page-comments/.state/token` (ignored by git); the server answers those origins cross-origin only with that token, runs with `serve --api-only`, and `serve --rotate-token` makes a new token and writes the script again. The MCP server `shared/scripts/mcp.mjs`, started from `.mcp.json`, with `list`, `show`, `stats`, `reply`, `resolve`, `dismiss` and `shot`. The pinned schema is now a byte-for-byte copy of review-md's (PR #28), with `make check-thread-schema` to compare them. Proven with real Vite 6.3 on another port, a real stdio round trip, and a curl matrix for the token and origins. Not yet tried in a real browser with Tampermonkey. The Shortcut fallback and a channel are still waiting. Departures: `docs/issues/page-comments-stage-5-*.md`. | Comfort for frequent repos and one-off pages, and work that waits on others. |
 
 ## 18. Open questions for Omar
 
 Omar's 2026-10-12 answers settled the earlier questions about closing threads, screenshots in git,
 phone commenting, sharing a format with review-md, union merge on thread files, and who may
-comment from the phone (section 1). One question is still open. The design proceeds on its
-default; answering changes only what is listed.
+comment from the phone (section 1). The last open question is now closed too.
 
 **Storage: should review-md and this plugin share storage too, not just the thread shape?**
 
+**Decision (Omar, 2026-10-12): share the thread shape only.** The reasons: nothing has to be
+reworked, the two tools keep separate releases, and page-comment files stay append-only (one
+file per thread, safe to merge). The other options Omar was shown, sharing storage as well, stay
+open for later; the table below keeps them.
+
 | Option | Pros | Cons | Implications |
 |---|---|---|---|
-| **Share the shape only** (default) | Each tool keeps the storage that suits it: Obsidian's data for notes, git-tracked files for pages. No release of one waits on the other. | Two storage codes to keep. | One reader handles both through `--json`. Section 12 as written. |
-| Share one storage format as well | One library for both. | review-md stores inside Obsidian, which does not fit a repo of web pages. Ties two release cycles. | A larger change to review-md, and a migration for its existing threads. |
-
-This question is also listed under "Worth revisiting" in the marketplace `CLAUDE.md`.
+| **Share the shape only** (chosen) | Each tool keeps the storage that suits it: one git-tracked file per note for review-md, written through Obsidian; one append-only file per thread for pages. No release of one waits on the other. | Two storage codes to keep. | One reader handles both through `--json`. Section 12 as written. |
+| Share one storage format as well | One library for both. | review-md keeps all of a note's threads in one YAML header written through Obsidian; page comments need append-only files that merge cleanly in git. Ties two release cycles. | A larger change to review-md, and a migration for its existing threads. Left open for later. |
 
 ## 19. What was checked
 
