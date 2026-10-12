@@ -118,6 +118,12 @@ cmd_install() {
   echo "Installing all plugins from $mp_name ..."
   local failed=0
   while IFS= read -r plugin; do
+    # A folder without .claude-plugin/plugin.json is not a Claude Code plugin (the NotePlan
+    # quicknote plugin is listed here but installs into NotePlan), so the CLI would refuse it.
+    if [[ ! -f "$mp_root/plugins/$plugin/.claude-plugin/plugin.json" ]]; then
+      echo "  –  $plugin: not a Claude Code plugin, skipping"
+      continue
+    fi
     echo "  Installing $plugin@$mp_name ..."
     if env -u CLAUDECODE claude plugin install "$plugin@$mp_name" --scope user; then
       echo "  ✓ $plugin installed"
