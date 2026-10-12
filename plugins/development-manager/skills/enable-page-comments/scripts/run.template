@@ -1,0 +1,34 @@
+#!/bin/sh
+# Page comments launcher, written by development-manager's enable-page-comments.
+# It finds the installed plugin and runs its page-comments command on this repo:
+#   .page-comments/run serve --target http://127.0.0.1:8765
+#   .page-comments/run list --open
+# Remove it with the enable script's --undo.
+set -e
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(dirname "$here")
+root=""
+# 1. Where the plugin was when enable ran on this machine.
+if [ -f "$here/.state/plugin-root" ]; then
+  root=$(cat "$here/.state/plugin-root")
+fi
+# 2. Otherwise, where Claude Code installed it (a fresh clone has no .state/).
+if [ -z "$root" ] || [ ! -f "$root/shared/scripts/page-comments.mjs" ]; then
+  root=$(node -e '
+    const fs = require("fs"), path = require("path"), os = require("os");
+    try {
+      const f = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"), "plugins", "installed_plugins.json");
+      const all = JSON.parse(fs.readFileSync(f, "utf8")).plugins || {};
+      for (const [id, list] of Object.entries(all)) {
+        if (!id.startsWith("development-manager@")) continue;
+        for (const p of list) if (fs.existsSync(path.join(p.installPath, "shared/scripts/page-comments.mjs"))) { console.log(p.installPath); process.exit(0); }
+      }
+    } catch (e) {}
+  ' 2>/dev/null || true)
+fi
+if [ -z "$root" ] || [ ! -f "$root/shared/scripts/page-comments.mjs" ]; then
+  echo "page comments: the development-manager plugin is not installed on this machine." >&2
+  echo "Install it from the oeid-claude-plugins marketplace, or run /development-manager:enable-page-comments to refresh this launcher." >&2
+  exit 3
+fi
+exec node "$root/shared/scripts/page-comments.mjs" --repo "$repo" "$@"

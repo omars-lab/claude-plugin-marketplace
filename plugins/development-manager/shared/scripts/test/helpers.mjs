@@ -19,7 +19,7 @@ export function tempRepo({ comments = true, git = true } = {}) {
     execFileSync("git", ["init", "-q", repo]);
     execFileSync("git", ["-C", repo, "config", "user.name", "Test Person"]);
     execFileSync("git", ["-C", repo, "config", "user.email", "test@example.com"]);
-    execFileSync("git", ["-C", repo, "commit", "-q", "--allow-empty", "-m", "start"]);
+    execFileSync("git", ["-C", repo, "-c", "core.hooksPath=/dev/null", "commit", "-q", "--allow-empty", "-m", "start"]);
   }
   if (comments) mkdirSync(join(repo, ".page-comments", "threads"), { recursive: true });
   return { repo, store: { repo, dir: join(repo, ".page-comments") }, cleanup: () => rmSync(repo, { recursive: true, force: true }) };

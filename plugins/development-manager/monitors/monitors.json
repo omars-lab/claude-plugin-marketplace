@@ -1,0 +1,8 @@
+[
+  {
+    "name": "page-comments",
+    "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/shared/scripts/page-comments.mjs watch --exclude-author claude --replay",
+    "description": "New comments on localhost pages",
+    "when": "always"
+  }
+]

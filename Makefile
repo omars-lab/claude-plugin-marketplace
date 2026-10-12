@@ -1,4 +1,4 @@
-.PHONY: help test-all test-noteplan-manager test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins validate-governance list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register sync-remote setup-hooks secret-scan secret-scan-staged
+.PHONY: help test-all test-noteplan-manager test-development-manager test-discover test-config-manager test-templates test-organizer test-analyzer test-creator test-workflow validate validate-plugins validate-governance list-plugins tree install install-lite uninstall install-symlinks update update-all update-force version-check version-bump version-bump-all version-init clean verify-installs doctor register sync-remote setup-hooks secret-scan secret-scan-staged
 
 # Colors for output
 GREEN := \033[0;32m
@@ -112,6 +112,10 @@ test-never-public: ## Self-test the never-public check and the GitHub sync on a 
 test-workflow: ## Test complete plugin lifecycle (uninstall -> install -> update)
 	@./scripts/cli test-workflow $(MARKETPLACE_NAME)
 
+test-development-manager: ## Run development-manager page-comments tests (Node 18 or later, no installs)
+	@echo "$(BLUE)Testing development-manager...$(NC)"
+	@$(or $(NODE),node) --test plugins/development-manager/shared/scripts/test/*.test.mjs
+
 test-noteplan-manager: ## Run noteplan-manager JS browser tests (requires venv)
 	@echo "$(BLUE)Testing noteplan-manager sweep review portal JS...$(NC)"
 	@cd plugins/noteplan-manager/bin && .venv/bin/python -m pytest noteplan_sweep/tests/test_sweep_review_js.py -v
@@ -128,6 +132,8 @@ test-all: ## Run all plugin tests
 	@make --no-print-directory test-analyzer
 	@echo ""
 	@make --no-print-directory test-creator
+	@echo ""
+	@make --no-print-directory test-development-manager
 	@echo ""
 	@make --no-print-directory test-noteplan-manager
 

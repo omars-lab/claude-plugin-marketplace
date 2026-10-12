@@ -31,7 +31,7 @@ from the current folder to the git root, looking for .page-comments/.
 Exit codes: 0 ok, 2 bad usage, 3 not found, 4 the write did not land.`;
 
 const VALUE_FLAGS = new Set(["repo", "target", "root", "port", "state", "page", "waiting", "author", "commit", "exclude-author", "heartbeat", "interval", "timeout", "host"]);
-const BOOL_FLAGS = new Set(["open", "json", "replay", "once", "reopen", "help"]);
+const BOOL_FLAGS = new Set(["open", "json", "replay", "once", "reopen", "help", "throwaway"]);
 
 export function parseArgs(argv) {
   const flags = { "exclude-author": [] };
@@ -292,7 +292,7 @@ async function cmdServe(flags) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw usage("--port takes a port number");
   if (flags.target && !/^https?:\/\//.test(flags.target)) throw usage("--target takes a URL, like http://127.0.0.1:8765");
   const { startServer } = await import("./lib/server.mjs");
-  const srv = await startServer(store, { target: flags.target, root: flags.root, port });
+  const srv = await startServer(store, { target: flags.target, root: flags.root, port, record: !flags.throwaway });
   out(`Comment server on ${srv.url}  (${flags.target ? `in front of ${flags.target}` : `serving ${flags.root}`})`);
   out("Press C on a page to comment. Stop with Ctrl-C.");
   return new Promise((resolveDone) => {

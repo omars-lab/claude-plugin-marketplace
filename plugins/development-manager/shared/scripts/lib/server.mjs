@@ -104,7 +104,7 @@ function storeVersion(threads) {
  * Start the server. Options: { target, root, port, host }.
  * Resolves to { url, port, token, close() }.
  */
-export function startServer(store, { target, root, port = 8766 } = {}) {
+export function startServer(store, { target, root, port = 8766, record = true } = {}) {
   const token = randomBytes(16).toString("hex");
   const log = fileLogger(paths(store).serverLog);
   const config = readConfig(store);
@@ -333,7 +333,7 @@ export function startServer(store, { target, root, port = 8766 } = {}) {
       allowedHosts = new Set([`127.0.0.1:${actual}`, `localhost:${actual}`, `[::1]:${actual}`]);
       const url = `http://127.0.0.1:${actual}/`;
       const statePath = paths(store).server;
-      try {
+      if (record) try {
         mkdirSync(dirname(statePath), { recursive: true });
         writeFileSync(statePath, JSON.stringify({ pid: process.pid, port: actual, url, mode: targetUrl ? "proxy" : "folder", target: target || null, root: root || null, started: nowIso() }));
       } catch {
