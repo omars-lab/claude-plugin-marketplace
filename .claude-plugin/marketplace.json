@@ -418,8 +418,8 @@
     {
       "name": "development-manager",
       "source": "./plugins/development-manager",
-      "description": "Comment on your local web pages and have Claude answer. Adds a Comment button to pages served on localhost (in front of your dev server, or serving a folder), saves each comment thread as a file in the repo that git tracks, takes a picture of the commented element (kept out of git, in iCloud Drive by default), and runs a watcher so Claude hears new comments, fixes or answers them at the source, replies on the page, and closes a thread only once its fix is committed. One enable step sets up the repo, proves the loop with a test comment, and undoes cleanly.",
-      "version": "1.1.0",
+      "description": "Comment on your local web pages and have Claude answer. Adds a Comment button to pages served on localhost (in front of your dev server, or serving a folder), saves each comment thread as a file in the repo that git tracks, takes a picture of the commented element (kept out of git, in iCloud Drive by default), and runs a watcher so Claude hears new comments, fixes or answers them at the source, replies on the page, and closes a thread only once its fix is committed. You can also comment from your phone through your own Tailscale network (never Funnel), with a touch mode. One enable step sets up the repo, proves the loop with a test comment, and undoes cleanly.",
+      "version": "1.2.0",
       "category": "development",
       "keywords": [
         "localhost",
