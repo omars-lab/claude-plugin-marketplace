@@ -65,13 +65,22 @@ class FakeModel:
         self.calls = []
         self.lock = threading.Lock()
 
-    def __call__(self, key, system, user_msg, **kw):
+    def __call__(self, key, system, user_msg, tool, **kw):
         with self.lock:
             self.calls.append(user_msg)
         for word, reply in REPLIES.items():
             if word in user_msg:
-                return json.dumps(reply)
-        return "sorry, no JSON here"
+                return dict(reply)
+        raise ValueError("no tool call in the reply")
+
+
+class RefusingModel(FakeModel):
+    """The account is out of credit: every call is turned down."""
+
+    def __call__(self, key, system, user_msg, tool, **kw):
+        with self.lock:
+            self.calls.append(user_msg)
+        raise tag_saves.claude.Refused("HTTP 400: Your credit balance is too low")
 
 
 class TagSaves(unittest.TestCase):
@@ -89,12 +98,12 @@ class TagSaves(unittest.TestCase):
         self.env = os.environ.get("INSTAGRAM_HOME")
         os.environ["INSTAGRAM_HOME"] = root
         self.model = FakeModel()
-        self.real = tag_saves.claude.call_claude, tag_saves.claude.load_key
-        tag_saves.claude.call_claude = self.model
+        self.real = tag_saves.claude.call_tool, tag_saves.claude.load_key
+        tag_saves.claude.call_tool = self.model
         tag_saves.claude.load_key = lambda *a: "test-key"
 
     def tearDown(self):
-        tag_saves.claude.call_claude, tag_saves.claude.load_key = self.real
+        tag_saves.claude.call_tool, tag_saves.claude.load_key = self.real
         if self.env is None:
             os.environ.pop("INSTAGRAM_HOME", None)
         else:
@@ -147,6 +156,17 @@ class TagSaves(unittest.TestCase):
         self.run_tag("--all")
         self.assertEqual(self.read("data/tags.yaml")["FAR"]["topics"], ["other"])
         self.assertNotIn("hints", self.read("data/tags.yaml")["FAR"])
+
+    def test_a_refused_account_stops_the_run_and_keeps_the_rule_tags(self):
+        tag_saves.claude.call_tool = self.model = RefusingModel()
+        with self.assertRaises(SystemExit) as stop:
+            self.run_tag("--pilot", "fixture", "--workers", "1")
+        self.assertIn("refused", str(stop.exception))
+        self.assertEqual(len(self.model.calls), 1)                          # it stopped at the first refusal
+        tags = self.read("data/tags.yaml")
+        self.assertEqual(tags["TOWN1"]["source"], "rules")
+        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "data", "tags-review.yaml"))
+                         and self.read("data/tags-review.yaml"))            # no save blamed for it
 
     def test_limit_caps_the_calls(self):
         self.run_tag("--pilot", "fixture", "--limit", "1")

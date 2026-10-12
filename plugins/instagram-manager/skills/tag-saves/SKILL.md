@@ -20,9 +20,13 @@ two places. The tags feed the split, media and hub steps.
    above, and picks topics and places from the lists. Anything it names outside the lists goes to
    `data/tags-review.yaml` for a person to look at. It never goes into the tags.
 
+The model answers through a forced tool call (`tag`), so its reply comes back as the four lists,
+never as text to parse.
+
 A save the model has tagged is skipped next time, so a rerun only pays for new saves. If a reply
 can't be used, the save keeps its collection tags, the reason goes in the review file, and the
-next run tries again.
+next run tries again. If the API turns the account down (out of credit, a bad key), the run stops
+at once, keeps what it tagged, and prints the API's message; rerun once that is fixed.
 
 ## Steps
 

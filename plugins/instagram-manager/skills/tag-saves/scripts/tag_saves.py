@@ -38,6 +38,7 @@ import json
 import os
 import re
 import sys
+import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared", "scripts"))
@@ -52,8 +53,7 @@ REVIEW = os.path.join("data", "tags-review.yaml")
 CAPTION_CHARS = 2500
 SAVE_EVERY = 20
 
-SYSTEM = """You sort one person's saved Instagram posts. Reply with one JSON object and nothing else:
-{{"topics": [], "cities": [], "other_topics": [], "other_places": []}}
+SYSTEM = """You sort one person's saved Instagram posts. Answer with the tag tool.
 
 topics: every topic below that the post is about, at least one. Use the slugs exactly.
 {topics}
@@ -64,6 +64,11 @@ names exactly. A place inside a listed state or country counts as that state or 
 
 other_topics, other_places: a topic or place the post is clearly about that is not listed.
 Leave them empty otherwise. Keep everything under "Already tagged"; add to it, never drop it."""
+
+_LIST = {"type": "array", "items": {"type": "string"}}
+TOOL = {"name": "tag", "description": "The topics and places of one saved post.",
+        "input_schema": {"type": "object", "required": ["topics", "cities"], "properties": {
+            "topics": _LIST, "cities": _LIST, "other_topics": _LIST, "other_places": _LIST}}}
 
 
 def load_yaml(rel):
@@ -140,8 +145,7 @@ def user_message(save, topics, cities, hints):
 
 def ask_model(key, system, save, topics_known, places_known, rule_topics, rule_cities, hints):
     """(topics, cities, review) from one model call. review is None when nothing needs a look."""
-    text = claude.call_claude(key, system, user_message(save, rule_topics, rule_cities, hints), max_tokens=300)
-    d = claude.parse_json(text)
+    d = claude.call_tool(key, system, user_message(save, rule_topics, rule_cities, hints), TOOL)
     said_topics = [t for t in d.get("topics") or [] if isinstance(t, str)]
     said_places = [c for c in d.get("cities") or [] if isinstance(c, str)]
     topics = {t for t in said_topics if t in topics_known} | rule_topics
@@ -258,17 +262,33 @@ def main(argv=None):
     log("tag_start", scope=args.pilot or "all", already_tagged=kept, to_ask=len(todo), rules_only=args.rules_only)
 
     asked = failed = 0
+    refused = None
     if todo:
         key = claude.load_key()
         system = system_prompt(topics_known, places_known)
+        stop = threading.Event()
+
+        def ask(*a):  # after one refusal no new call starts; only those already in flight finish
+            if stop.is_set():
+                raise claude.Refused("stopped after an earlier refusal")
+            try:
+                return ask_model(*a)
+            except claude.Refused:
+                stop.set()
+                raise
+
         with cf.ThreadPoolExecutor(max_workers=args.workers) as pool:
-            futures = {pool.submit(ask_model, key, system, s, set(topics_known), set(places_known),
+            futures = {pool.submit(ask, key, system, s, set(topics_known), set(places_known),
                                    rt, rc, h): (s, h) for s, rt, rc, h in todo}
             for i, fut in enumerate(cf.as_completed(futures), 1):
                 s, hints = futures[fut]
                 code = s["code"]
                 try:
                     topics, cities, extra = fut.result()
+                except claude.Refused as e:  # no credit or a bad key: every other call would fail too
+                    refused = refused or e
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    break
                 except Exception as e:  # a bad reply must not stop the run
                     failed += 1
                     review[code] = {"error": f"{type(e).__name__}: {e}"[:200]}
@@ -290,6 +310,9 @@ def main(argv=None):
     u = claude.USAGE
     log("tag_done", tagged=asked, failed=failed, already_tagged=kept, calls=u["calls"],
         tokens_in=u["tokens_in"], tokens_out=u["tokens_out"], review=len(review), out=os.path.join(home(), TAGS))
+    if refused:
+        log("tag_stopped", reason="refused", msg=str(refused))
+        sys.exit(f"stopped: the API refused the account ({refused}). What was tagged is saved; rerun to go on.")
     return 0
 
 
