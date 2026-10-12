@@ -19,10 +19,28 @@ The list of changes is kept in `.page-comments/install.json`.
 
 | Where | What | Why |
 |---|---|---|
-| `.page-comments/` | `threads/` (one file per comment thread), `config.json`, `.gitattributes`, `.gitignore`, and the `run` launcher | Comments are saved here and tracked in git like any other file. |
+| `.page-comments/` | `threads/` (one file per comment thread), `config.json`, `.gitattributes`, `.gitignore`, and the `run` launcher | Comments are saved here and tracked in git like any other file. `config.json` also says where screenshots go (`shotsDir`). |
 | `Makefile` | A `comments` target between `# page-comments:begin` and `# page-comments:end` | One command starts the comment server. If the repo has no Makefile, none is made; the report gives the command instead. |
 | `.claude/settings.json` | `"development-manager@<marketplace>": true` under `enabledPlugins`, merged into what is there | Every session opened in this repo, on any machine with the plugin installed, gets the answering skill and the watcher. The skill is not copied into the repo, so there is only one version of it. |
 | `CLAUDE.md` | A short "Page comments" section between `<!-- page-comments:begin -->` and `<!-- page-comments:end -->` | It tells Claude: when the watcher prints a comment, follow `development-manager:answer-page-comments`. |
+
+## Where screenshots go
+
+When Omar saves a comment, the page takes a picture of the element and saves it as a PNG.
+Pictures are not kept in the repo, so they never reach git.
+They go to one folder per repo and thread: `<shotsDir>/page-comments/<repo>/<thread>/`.
+
+`shotsDir` is chosen in this order:
+1. `--shots-dir <path>`, when given;
+2. what the repo's `config.json` already says;
+3. `shotsDir` in the global config, `~/.config/development-manager/config.json`;
+4. the default, `CloudDesktop/data` in iCloud Drive (`~/Library/Mobile Documents/com~apple~CloudDocs/CloudDesktop/data`), so the pictures show up in the Files app on the phone.
+
+If iCloud Drive is not on this Mac, or the folder is not inside it, pictures go to `.page-comments/shots/` instead, which git ignores.
+The report says which.
+
+When the pictures go to iCloud Drive and the setting is new or changed, enable prints a privacy line: Apple keeps a copy of everything in iCloud Drive and can read it unless Advanced Data Protection is on.
+Pass that line on to Omar in the report, word for word.
 
 The plugin's watcher starts with every Claude Code session.
 In a repo without `.page-comments/` it stops at once and prints nothing, so it costs nothing where comments are off.
@@ -35,8 +53,9 @@ In a repo without `.page-comments/` it stops at once and prints nothing, so it c
 | `scripts/enable.mjs --target <url>` | Enables, with the comment server in front of the repo's own server | The repo has a dev server (make target, npm script, Python server) | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --repo <repo> --target http://127.0.0.1:<port>` |
 | `scripts/enable.mjs --root <dir>` | Enables, with the comment server serving a folder of pages itself | Plain HTML, no server | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --repo <repo> --root <dir>` |
 | `scripts/enable.mjs --check` | Proves the loop: the setting, the CLAUDE.md note, the watcher, and a test comment it can see | Right after enabling, and whenever comments seem not to arrive | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --check --repo <repo>` |
-| `scripts/enable.mjs --undo` | Removes everything enable added; keeps comment threads | Someone wants comments off | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --undo --repo <repo>` |
-| `scripts/enable.mjs --undo --purge` | Also deletes the threads | Only after asking, and `--force` too if any thread is open | add `--purge` (and `--force`) |
+| `scripts/enable.mjs --shots-dir <path>` | Enables, with screenshots saved under that folder instead of the default | Omar wants the pictures somewhere else | add `--shots-dir <path>` to the enable command |
+| `scripts/enable.mjs --undo` | Removes everything enable added; keeps comment threads and every screenshot | Someone wants comments off | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --undo --repo <repo>` |
+| `scripts/enable.mjs --undo --purge` | Also deletes the threads; screenshots still stay | Only after asking, and `--force` too if any thread is open | add `--purge` (and `--force`) |
 | `scripts/run.template` | The launcher copied to `.page-comments/run`. It finds the installed plugin, so the make target keeps working after plugin updates | Not run by hand | — |
 
 Re-running enable is safe.
@@ -99,6 +118,7 @@ TaskCreate({ subject: "Start listening in this session", description: "Start the
    - the command to start the comment server (`make comments`, or the printed command);
    - the URL to open, and that C starts a comment;
    - what the check showed, including the install note if there was one;
+   - where screenshots go, and the privacy line if enable printed one;
    - that `.page-comments/`, `.claude/settings.json`, `CLAUDE.md` and the Makefile changes are ready to commit, and that this skill did not commit them;
    - how to undo.
 
@@ -110,6 +130,8 @@ It removes the make target, the `CLAUDE.md` section and the settings entry, exac
 A file or folder that enable created is removed only if it is now empty of anything else.
 If the plugin was already on in the settings before enable ran, that setting stays.
 Comment threads stay, with `config.json` and `.gitattributes`, because they are Omar's comments.
+Screenshots always stay, even with `--purge`: in iCloud Drive they are never touched, and in `.page-comments/shots/` the folder stays with the `.gitignore` that keeps it out of git.
+Delete them by hand if they are no longer wanted.
 
 Delete the threads only when asked.
 If any thread is still open, use `AskUserQuestion` first, then run `--undo --purge --force`.

@@ -14,7 +14,9 @@ Its first feature is **page comments**.
 
 Omar opens a local page, presses C, and leaves a comment on an element or on selected text.
 The comment is saved as a file in the repo, so git tracks it.
-Claude hears about it, fixes or answers it at the source, commits, and replies on the page.
+The page also takes a picture of the element and saves it outside the repo, by default in iCloud Drive so it shows in the Files app on the phone.
+Claude hears about it, looks at the picture, fixes or answers it at the source, commits, and replies on the page.
+After a fix that changes the page, Claude adds an after picture to the thread, so the two can be compared.
 Claude closes the thread only once the fix is in.
 
 ## Skills
@@ -22,8 +24,8 @@ Claude closes the thread only once the fix is in.
 | Skill | What it does | When to use it |
 |---|---|---|
 | `manage-development` | Sends a request to the right skill below | Not sure which skill fits |
-| `enable-page-comments` | Turns comments on in a repo in one run: the Comment button, the repo setting that lets every session hear comments, and a note in `CLAUDE.md`. Proves the loop with a test comment. `--undo` takes it all out | Once per repo, or to check or remove it |
-| `answer-page-comments` | The routine Claude follows for each comment: look, find the source, fix or answer, check, commit, reply, close when fixed | Whenever the watcher prints a comment, or to go through open comments |
+| `enable-page-comments` | Turns comments on in a repo in one run: the Comment button, the repo setting that lets every session hear comments, a note in `CLAUDE.md`, and where screenshots go. Proves the loop with a test comment. `--undo` takes it all out, but never deletes a screenshot | Once per repo, or to check or remove it |
+| `answer-page-comments` | The routine Claude follows for each comment: read the comment's picture, find the source, fix or answer, check, commit, attach an after picture, reply, close when fixed | Whenever the watcher prints a comment, or to go through open comments |
 
 ## How they fit together
 

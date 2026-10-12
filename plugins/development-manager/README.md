@@ -4,7 +4,8 @@ Comment on your local web pages, and have Claude answer.
 
 Open a page on localhost, press C, and leave a comment on an element or on selected text.
 The comment is saved as a file in the repo, so git tracks it.
-Claude hears about it, fixes or answers it at the source, commits, and replies on the page.
+The page also takes a picture of the element you commented on, and Claude looks at it first.
+Claude hears about it, fixes or answers it at the source, commits, and replies on the page, with an after picture when the page changed.
 It closes the thread only once the fix is in.
 
 ## Install
@@ -29,7 +30,18 @@ One run sets up everything:
 - a short note in the repo's `CLAUDE.md` that points Claude to `answer-page-comments`.
 
 It ends with a check that posts a test comment and confirms Claude would see it.
-`--undo` takes it all out again and keeps your comments.
+`--undo` takes it all out again and keeps your comments and screenshots.
+
+## Screenshots
+
+Each comment's picture is a PNG saved outside the repo, so it never reaches git:
+`<shotsDir>/page-comments/<repo>/<thread>/comment.png`, with after pictures next to it.
+
+- The default `shotsDir` is `CloudDesktop/data` in iCloud Drive, so pictures show in the Files app on a phone; on an iPhone or iPad the thread has "Open in Files" links.
+- Set another folder per repo with `enable-page-comments --shots-dir <path>`, or for every repo with `shotsDir` in `~/.config/development-manager/config.json`.
+- Without iCloud Drive, pictures go to `.page-comments/shots/` in the repo, which git ignores.
+- iCloud Drive is stored on Apple's servers, and Apple can read it unless Advanced Data Protection is on. Pick a local folder if that matters for a repo.
+- The picture is taken in the browser by [modern-screenshot](https://github.com/qq15725/modern-screenshot) 4.7.0 (MIT), bundled in the plugin. If it fails, the comment still saves and the thread says why there is no picture.
 
 ## Skills
 
