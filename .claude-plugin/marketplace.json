@@ -43,7 +43,7 @@
       "name": "noteplan-manager",
       "source": "./plugins/noteplan-manager",
       "description": "Complete NotePlan management suite for templates, organization, analysis, and note creation",
-      "version": "3.122.0",
+      "version": "3.122.1",
       "category": "productivity",
       "keywords": [
         "noteplan",
@@ -286,7 +286,7 @@
       "name": "code-repository-manager",
       "source": "./plugins/code-repository-manager",
       "description": "Manage code repository documentation \u2014 publish co-design docs to GitHub Wiki and GitHub Pages, rebuild navigation, and sync across targets",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "category": "development",
       "keywords": [
         "documentation",
