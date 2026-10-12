@@ -165,6 +165,7 @@ whose caption names nothing on the list is missed until `--all` runs.
 | `scripts/tag_saves.py --merge` | Checks the agents' answers and folds them into `tags.yaml`; says how many batches still wait | After every wave of agents | `python3 scripts/tag_saves.py --merge` |
 | `scripts/tag_saves.py --report` | The pilot as a table, what to check first | Spot-checking a round | `python3 scripts/tag_saves.py --report --pilot <name>` |
 | `scripts/tag_saves.py --moves` | The saves filed in the wrong collection, with where to move them | After a merge that found moves | `python3 scripts/tag_saves.py --moves` |
+| `scripts/moves_page.py` | The moves list as a page: per save the collection it is in, where to move it, the caption with the quote marked, a link to the post and a "Moved" tick kept in the browser | When there are saves to move and you want to work through them in the app | `python3 scripts/moves_page.py` (writes `.cache/hub/moves.html`; `--out PATH` for elsewhere) |
 | `scripts/add_places.py` | Looks up unlisted places on OpenStreetMap and adds them, with map links and the place each sits in | After a round leaves places in review, then `--merge` | `python3 scripts/add_places.py --dry-run` first, then without |
 | `scripts/test_tag_saves.py` | Offline tests, with a fake agent writing canned answers | After any change to the tagger | `python3 scripts/test_tag_saves.py` |
 

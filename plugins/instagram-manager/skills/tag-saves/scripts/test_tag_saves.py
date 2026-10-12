@@ -18,6 +18,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import add_places  # noqa: E402
+import moves_page  # noqa: E402
 import tag_saves  # noqa: E402
 from places import Places  # noqa: E402
 import yaml  # noqa: E402
@@ -266,6 +267,20 @@ class PlacesAndMoves(Home):
         self.assertIn("(1 moved since the last run)", self.run_tag("--merge"))
         self.assertEqual(self.read("data/moves.yaml"), {})
         self.assertEqual(self.read("data/tags.yaml")["MIS"]["cities"], ["Faraway Land"])
+
+    def test_the_moves_page_shows_each_move_with_its_quote_marked(self):
+        mis = save("MIS", "A road trip through Faraway Land <b>soon</b>", ["Fixture Town"])
+        self.write(".cache/saves.json", {"saves": SAVES + [mis]})
+        self.tag("--all")
+        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+            moves_page.main([])
+        page = self.text(".cache/hub/moves.html")
+        self.assertIn('data-code="MIS"', page)
+        self.assertIn('<span class="chip to">Fixture Abroad</span>', page)
+        self.assertIn("<mark>road trip through Faraway Land</mark>", page)
+        self.assertIn("1 saved post sits in", page)
+        self.assertIn("&lt;b&gt;soon", page)                               # captions are escaped
+        self.assertEqual(moves_page.excerpt("x" * 1000, "")[-1], "…")
 
     def test_a_misfiled_flag_without_a_real_quote_is_not_a_move(self):
         self.write(".cache/saves.json", {"saves": SAVES + [save("ELSE", "Elsewhere for a week", ["Fixture Town"])]})
