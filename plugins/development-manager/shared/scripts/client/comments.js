@@ -1,6 +1,9 @@
 // The comment bar the comment server adds to every page it serves.
 // A classic script (not a module), loaded with `defer`, so that
 // document.currentScript can read the per-run token from its own tag.
+// The userscript (design section 9) loads it from the comment server onto a
+// page of another origin; its tag then carries the repo token and a
+// `data-base` naming that server, and every call goes there.
 // Everything it draws lives in a shadow root, and all comment text is set with
 // textContent, never as HTML.
 //
@@ -25,7 +28,7 @@
 
   var me = document.currentScript;
   var TOKEN = (me && me.dataset.token) || "";
-  var BASE = "/__page-comments/";
+  var BASE = (me && me.dataset.base) || "/__page-comments/";
   var POLL_MS = 4000;
   var PATH = location.pathname;
   var DRAFT_KEY = "page-comments:draft:" + PATH;

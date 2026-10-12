@@ -1,7 +1,8 @@
 # Claude Code Settings
 # Ignore local settings but keep default settings
 .claude/settings.local.json
-.mcp.json
+# The repo-root .mcp.json is local and may hold keys; a plugin's own .mcp.json ships with it.
+/.mcp.json
 .claude/history/
 .claude/cache/
 .claude/.session-*

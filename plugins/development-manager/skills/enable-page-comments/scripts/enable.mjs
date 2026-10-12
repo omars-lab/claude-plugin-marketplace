@@ -8,6 +8,10 @@
 //   enable.mjs --undo [--repo .] [--purge [--force]]
 //   enable.mjs --phone [--repo .] [--target <url> | --root <dir>] [--port 8766]
 //   enable.mjs --phone --undo [--repo .]
+//   enable.mjs --vite [--repo .] [--vite-config <file>]
+//   enable.mjs --vite --undo [--repo .]
+//   enable.mjs --userscript --origin <url> [--origin <url>]... [--repo .]
+//   enable.mjs --userscript --undo [--repo .]
 //
 // Enabling writes into the target repo, and every change outside
 // `.page-comments/` is listed in `.page-comments/install.json`, so --undo
@@ -29,7 +33,15 @@
 //     off, or when the hooks folder is shared outside the repo or committed in it;
 //   - with --phone, one `tailscale serve` entry (https on the comment server's port) and
 //     a `phone` block in config.json with the Mac's tailnet name and the allowed logins.
-//     Undo turns off that one entry only.
+//     Undo turns off that one entry only;
+//   - with --vite (phase 5), `.page-comments/vite.mjs` and two marked edits to the
+//     repo's vite.config (an import line and `pageComments(), ` in `plugins: [`),
+//     or a new vite.config.mjs when there is none. A config it cannot edit safely
+//     (no `plugins: [`, more than one, or CommonJS) is left alone, with what to add;
+//   - with --userscript (phase 5), the page origins in config.json's
+//     `userscript.origins`, the repo token in `.state/token` and the Tampermonkey
+//     script in `.state/page-comments.user.js`. Both files are in `.state/`, which
+//     git ignores, because the script carries the token.
 //
 // Undo never deletes a screenshot: not in the iCloud folder, and not in
 // `.page-comments/shots/`, which stays with the .gitignore that keeps it out of git.
@@ -42,6 +54,7 @@ import { request } from "node:http";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { contractHome, expandHome, shotsSetting, shotTarget } from "../../../shared/scripts/lib/shots.mjs";
+import { cleanOrigin, tokenPath, userscriptOrigins, userscriptPath, writeUserscript } from "../../../shared/scripts/lib/userscript.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const PLUGIN_ROOT = resolve(HERE, "..", "..", "..");
@@ -56,6 +69,9 @@ const PRIVACY =
   "Screenshots go to iCloud Drive. Apple's servers keep a copy of everything there, which Apple can read unless Advanced Data Protection is on.";
 const HOOK_MARK = "# page-comments:post-commit";
 const HOOK_PREV = "post-commit.page-comments-prev";
+const VITE_NAMES = ["vite.config.js", "vite.config.mjs", "vite.config.ts", "vite.config.mts"];
+const VITE_MARK = "// page-comments";
+const VITE_CALL = "pageComments(), ";
 const CHECK_TEXT = "[enable check] A test comment from enable-page-comments. It is removed right away; ignore it.";
 
 // ---- Small helpers ---------------------------------------------------------------------
@@ -69,9 +85,9 @@ class Exit extends Error {
 const out = (s = "") => process.stdout.write(s + "\n");
 
 function parseArgs(argv) {
-  const values = new Set(["repo", "target", "root", "port", "marketplace", "author", "plugin-root", "shots-dir"]);
-  const bools = new Set(["detect", "check", "undo", "purge", "force", "json", "help", "phone"]);
-  const flags = {};
+  const values = new Set(["repo", "target", "root", "port", "marketplace", "author", "plugin-root", "shots-dir", "vite-config", "origin"]);
+  const bools = new Set(["detect", "check", "undo", "purge", "force", "json", "help", "phone", "vite", "userscript"]);
+  const flags = { origin: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith("--") && /funnel/i.test(a)) throw new Exit(2, NO_FUNNEL);
@@ -81,7 +97,8 @@ function parseArgs(argv) {
     else if (values.has(name)) {
       if (value === undefined) value = argv[++i];
       if (value === undefined) throw new Exit(2, `--${name} needs a value`);
-      flags[name] = value;
+      if (name === "origin") flags.origin.push(value);
+      else flags[name] = value;
     } else throw new Exit(2, `unknown flag --${name}`);
   }
   return flags;
@@ -620,6 +637,184 @@ export function undoPhone(repo) {
   return did;
 }
 
+// ---- The Vite plugin (phase 5) -------------------------------------------------------------
+//
+// vite.config imports `.page-comments/vite.mjs`, a small tracked file that finds the
+// installed plugin (as `run` does) and loads its shared/scripts/vite.mjs. The plugin
+// is dev-only: Vite's build and preview never run it.
+
+/** The vite.config enable makes when the repo has none. */
+function newViteConfig(importLine) {
+  return `${importLine}\n\n// Made by enable-page-comments --vite; add your own settings here.\nexport default {\n  plugins: [${VITE_CALL}],\n};\n`;
+}
+
+function viteHowTo(importPath) {
+  return `add these two lines by hand: \`import pageComments from "${importPath}";\` at the top, and \`pageComments(),\` first in \`plugins: [ … ]\``;
+}
+
+export function enableVite(repo, flags = {}) {
+  const dir = join(repo, FOLDER);
+  const installPath = join(dir, "install.json");
+  const install = readJson(installPath);
+  if (!install || !existsSync(join(dir, "config.json"))) throw new Exit(3, "page comments are not turned on here; run enable with --target or --root first, or add one of them to this --vite run");
+  writeFileSync(join(dir, "vite.mjs"), readFileSync(join(HERE, "vite.template"), "utf8"));
+  mkdirSync(join(dir, ".state"), { recursive: true });
+  writeFileSync(join(dir, ".state", "plugin-root"), PLUGIN_ROOT + "\n");
+  const did = [`${FOLDER}/vite.mjs: loads the plugin's dev-only Vite plugin (commit it with the config)`];
+
+  let file = flags["vite-config"] ? resolve(repo, flags["vite-config"]) : VITE_NAMES.map((n) => join(repo, n)).find((f) => existsSync(f));
+  if (flags["vite-config"] && !existsSync(file)) throw new Exit(3, `no such file: ${flags["vite-config"]}`);
+  const created = !file;
+  if (created) file = join(repo, "vite.config.mjs");
+  const rel = relative(repo, file).split("\\").join("/");
+  let importPath = relative(dirname(file), join(dir, "vite.mjs")).split("\\").join("/");
+  if (!importPath.startsWith("../")) importPath = `./${importPath}`; // `.page-comments/…` alone would be a package name
+  const importLine = `import pageComments from "${importPath}"; ${VITE_MARK}`;
+  const record = (change) => {
+    install.changes = install.changes.filter((c) => c.kind !== "vite-config").concat(change);
+    install.updated = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    writeJson(installPath, install);
+  };
+
+  if (created) {
+    writeFileSync(file, newViteConfig(importLine));
+    record({ kind: "vite-config", file: rel, importLine, call: VITE_CALL, createdFile: true });
+    did.push(`${rel}: new, with the page-comments plugin (there was no vite.config)`);
+    return { did, file: rel, edited: true };
+  }
+  const text = readFileSync(file, "utf8");
+  if (text.includes(importPath)) {
+    did.push(`${rel}: already loads the page-comments plugin`);
+    return { did, file: rel, edited: false };
+  }
+  const plugins = text.match(/\bplugins\s*:\s*\[/g) || [];
+  const why = /\.c[jt]s$/.test(file) || (/\brequire\s*\(/.test(text) && !/^\s*import\s/m.test(text))
+    ? "it is CommonJS"
+    : plugins.length === 0
+      ? "it has no `plugins: [` list"
+      : plugins.length > 1
+        ? "it has more than one `plugins: [` list"
+        : null;
+  if (why) {
+    did.push(`${rel}: left alone, because ${why}; ${viteHowTo(importPath)}`);
+    return { did, file: rel, edited: false };
+  }
+  const out = `${importLine}\n` + text.replace(/\bplugins\s*:\s*\[/, (m) => m + VITE_CALL);
+  writeFileSync(file, out);
+  record({ kind: "vite-config", file: rel, importLine, call: VITE_CALL, createdFile: false });
+  did.push(`${rel}: imports the plugin and puts pageComments() first in plugins (dev server only)`);
+  return { did, file: rel, edited: true };
+}
+
+/** Undo one vite-config change: only the two marked edits, or the file enable made. */
+function undoVite(repo, c) {
+  const path = join(repo, c.file);
+  const text = readText(path);
+  if (text === null) return null;
+  if (c.createdFile && text === newViteConfig(c.importLine)) {
+    rmSync(path);
+    return `${c.file}: removed (enable made it)`;
+  }
+  let t = text.replace(`${c.importLine}\n`, "");
+  const hadImport = t !== text;
+  const before = t;
+  t = t.replace(c.call || VITE_CALL, "");
+  const hadCall = t !== before;
+  if (t !== text) writeFileSync(path, t);
+  if (hadImport && hadCall) return `${c.file}: took out the page-comments plugin`;
+  if (!hadImport && !hadCall) return null;
+  return `${c.file}: took out what was still there; check it for a leftover \`pageComments\``;
+}
+
+/** --vite --undo: only the Vite plugin; comments stay on. */
+export function undoViteOnly(repo) {
+  const dir = join(repo, FOLDER);
+  const installPath = join(dir, "install.json");
+  const install = readJson(installPath);
+  const did = [];
+  if (install && Array.isArray(install.changes)) {
+    for (const c of install.changes.filter((x) => x.kind === "vite-config")) {
+      const d = undoVite(repo, c);
+      if (d) did.push(d);
+    }
+    install.changes = install.changes.filter((x) => x.kind !== "vite-config");
+    writeJson(installPath, install);
+  }
+  if (existsSync(join(dir, "vite.mjs"))) {
+    rmSync(join(dir, "vite.mjs"));
+    did.push(`${FOLDER}/vite.mjs: removed`);
+  }
+  return did;
+}
+
+// ---- The userscript (phase 5) ---------------------------------------------------------------
+//
+// For pages the repo's own server serves, on a port the comment server is not in front
+// of. The server answers those origins only, and only with the repo token (design
+// section 9). Nothing outside .page-comments/ changes, and git never sees the token.
+
+export function enableUserscript(repo, flags = {}) {
+  const dir = join(repo, FOLDER);
+  const configPath = join(dir, "config.json");
+  const config = readJson(configPath);
+  if (!config || !existsSync(join(dir, "install.json"))) throw new Exit(3, "page comments are not turned on here; run enable with --target or --root first, or add one of them to this --userscript run");
+  const given = flags.origin || [];
+  const bad = given.filter((o) => !cleanOrigin(o));
+  if (bad.length) throw new Exit(2, `not a page origin: ${bad.join(", ")}. Pass the page's scheme, host and port, like --origin http://127.0.0.1:8765`);
+  const port = Number((config.serve && config.serve.port) || 8766);
+  const origins = [...new Set(userscriptOrigins(config).concat(given.map(cleanOrigin)))];
+  if (!origins.length) throw new Exit(2, "say which pages the userscript runs on: --origin http://127.0.0.1:8765 (the page's own address, not the comment server's)");
+  const own = origins.filter((o) => o === `http://127.0.0.1:${port}` || o === `http://localhost:${port}`);
+  if (own.length) throw new Exit(2, `${own.join(", ")} is the comment server itself, whose pages already have the bar; pass the origin of the page the userscript runs on`);
+  config.userscript = { ...(config.userscript && typeof config.userscript === "object" ? config.userscript : {}), origins };
+  writeJson(configPath, config);
+  const u = writeUserscript({ repo, dir });
+  return {
+    did: [
+      `${FOLDER}/config.json: the userscript may call from ${origins.join(", ")}`,
+      u.madeToken ? `${FOLDER}/.state/token: a new repo token (git ignores .state/)` : `${FOLDER}/.state/token: the repo token already there`,
+      `${FOLDER}/.state/page-comments.user.js: the Tampermonkey script, with that token`,
+    ],
+    path: u.path,
+    origins,
+    server: u.server,
+  };
+}
+
+export function undoUserscript(repo) {
+  const dir = join(repo, FOLDER);
+  const configPath = join(dir, "config.json");
+  const did = [];
+  const config = readJson(configPath);
+  if (config && config.userscript) {
+    delete config.userscript;
+    writeJson(configPath, config);
+    did.push(`${FOLDER}/config.json: removed the userscript's origins, so the server answers no other origin`);
+  }
+  const store = { repo, dir };
+  for (const [f, what] of [[userscriptPath(store), "the userscript"], [tokenPath(store), "the repo token"]]) {
+    if (existsSync(f)) {
+      rmSync(f, { force: true });
+      did.push(`${FOLDER}/.state/${basename(f)}: removed ${what}`);
+    }
+  }
+  return did;
+}
+
+function userscriptReport(repo, u) {
+  out("The userscript is ready.");
+  for (const d of u.did) out(`  - ${d}`);
+  out("");
+  out("Install it in Tampermonkey: Dashboard, Utilities, Import from file, and pick");
+  out(`  ${u.path}`);
+  out(`It runs on ${u.origins.join(", ")} and calls the comment server at ${u.server}.`);
+  out(`Start that with:  .page-comments/run serve --api-only --port ${u.server.split(":").pop()}`);
+  out("              (or the usual make target, if the comment server is also in front of a page)");
+  out("New token:       .page-comments/run serve --api-only --rotate-token   (then install the script again)");
+  out(`Userscript off:  node ${join(HERE, "enable.mjs")} --userscript --undo --repo ${repo}`);
+  return 0;
+}
+
 // ---- Check ----------------------------------------------------------------------------------
 
 function httpCall(port, { method = "GET", path = "/", headers = {}, body } = {}) {
@@ -792,6 +987,10 @@ export function undo(repo, flags) {
     const mp = marketplaceName(PLUGIN_ROOT, flags.marketplace);
     if (mp) changes.push({ kind: "settings", file: ".claude/settings.json", pluginId: `${PLUGIN}@${mp}`, createdFile: false, createdObject: false, keyWasThere: false });
     const place = hookPlace(repo);
+    for (const n of VITE_NAMES) {
+      const line = ((readText(join(repo, n)) || "").split("\n").find((l) => l.startsWith("import pageComments from ") && l.endsWith(VITE_MARK)));
+      if (line) changes.push({ kind: "vite-config", file: n, importLine: line, call: VITE_CALL });
+    }
     if (!place.skip && ourHook(place.hook)) changes.push({ kind: "post-commit-hook", file: relative(repo, place.hook), prev: relative(repo, place.prev), hadPrevious: existsSync(place.prev) });
     if (!changes.length && !existsSync(dir)) throw new Exit(3, "page comments are not turned on here; nothing to undo");
     out("No install.json, so these were found by their markers:");
@@ -845,6 +1044,9 @@ export function undo(repo, flags) {
       } else if (text !== null) {
         did.push(`${c.file}: removed the post-commit hook`);
       }
+    } else if (c.kind === "vite-config") {
+      const d = undoVite(repo, c);
+      if (d) did.push(d);
     } else if (c.kind === "settings") {
       const settings = readJson(path);
       if (!settings || !settings.enabledPlugins || !(c.pluginId in settings.enabledPlugins)) continue;
@@ -887,8 +1089,8 @@ export function undo(repo, flags) {
       }
       did.push(`${FOLDER}/: removed${threads.length ? `, with its ${threads.length} thread(s)` : " (it held no comments)"}${localShots ? `, except shots/ and its .gitignore` : ""}`);
     } else {
-      for (const f of ["install.json", "run", ".state"].concat(localShots ? [] : [".gitignore"])) rmSync(join(dir, f), { recursive: true, force: true });
-      did.push(`${FOLDER}/: removed the launcher and machine state; kept ${threads.length} thread(s), config.json and .gitattributes${localShots ? ", and shots/ with its .gitignore" : ""}. Run with --purge to delete them too`);
+      for (const f of ["install.json", "run", "vite.mjs", ".state"].concat(localShots ? [] : [".gitignore"])) rmSync(join(dir, f), { recursive: true, force: true });
+      did.push(`${FOLDER}/: removed the launchers and machine state; kept ${threads.length} thread(s), config.json and .gitattributes${localShots ? ", and shots/ with its .gitignore" : ""}. Run with --purge to delete them too`);
     }
   }
   if (cloudShots) did.push(`screenshots in ${cloudShots}/ were left alone; delete them by hand if you want them gone`);
@@ -908,6 +1110,12 @@ const HELP = `enable-page-comments: turn page comments on in a repo, check them,
   enable.mjs --phone [--repo .]                     Comment from your phone too, through Tailscale (add
                                                     --target/--root/--port to enable at the same time)
   enable.mjs --phone --undo [--repo .]              Turn the phone off; the rest stays on
+  enable.mjs --vite [--repo .] [--vite-config <f>]  The bar in Vite's own dev server, no second port
+  enable.mjs --vite --undo [--repo .]               Turn the Vite plugin off; the rest stays on
+  enable.mjs --userscript --origin <url>... [--repo .]
+                                                    A Tampermonkey script for pages on another port,
+                                                    with a per-repo token kept out of git
+  enable.mjs --userscript --undo [--repo .]         Turn the userscript off; the rest stays on
 
 Other flags: --author <name> (who page comments are from; default: your git first name),
 --shots-dir <path> (where screenshots go; default: the global config's shotsDir, else
@@ -941,6 +1149,18 @@ export async function main(argv) {
     for (const d of did) out(`  - ${d}`);
     return 0;
   }
+  if (flags.userscript && flags.undo) {
+    const did = undoUserscript(repo);
+    out(did.length ? "The userscript is off in this repo; the rest stays on. Remove it from Tampermonkey too." : "The userscript was not on in this repo; nothing to undo.");
+    for (const d of did) out(`  - ${d}`);
+    return 0;
+  }
+  if (flags.vite && flags.undo) {
+    const did = undoViteOnly(repo);
+    out(did.length ? "The Vite plugin is off in this repo; the rest stays on. Restart the Vite dev server." : "The Vite plugin was not on in this repo; nothing to undo.");
+    for (const d of did) out(`  - ${d}`);
+    return 0;
+  }
   if (flags.undo) {
     const did = undo(repo, flags);
     out("Page comments are off in this repo.");
@@ -954,7 +1174,13 @@ export async function main(argv) {
     out(failed ? `${failed} check(s) failed.` : "The loop works: a comment on the page reaches Claude.");
     return failed ? 1 : 0;
   }
-  if (flags.phone && !flags.target && !flags.root && !flags.port) return phoneReport(repo, enablePhone(repo));
+  const extrasOnly = !flags.target && !flags.root && !flags.port;
+  if (extrasOnly && (flags.phone || flags.vite || flags.userscript)) {
+    if (flags.vite) viteReport(enableVite(repo, flags));
+    if (flags.userscript) userscriptReport(repo, enableUserscript(repo, flags));
+    if (flags.phone) return phoneReport(repo, enablePhone(repo));
+    return 0;
+  }
   const r = enable(repo, flags);
   out(`Page comments are on in ${basename(repo)}.`);
   for (const d of r.did) out(`  - ${d}`);
@@ -969,10 +1195,25 @@ export async function main(argv) {
   out(`Undo it:    node ${join(HERE, "enable.mjs")} --undo --repo ${repo}`);
   const toCommit = [".page-comments/", ".claude/settings.json", "CLAUDE.md"].concat(r.makeTarget ? ["the Makefile"] : []);
   out(`Commit ${toCommit.slice(0, -1).join(", ")} and ${toCommit[toCommit.length - 1]} so every session in this repo can answer comments.`);
+  if (flags.vite) {
+    out("");
+    viteReport(enableVite(repo, flags));
+  }
+  if (flags.userscript) {
+    out("");
+    userscriptReport(repo, enableUserscript(repo, flags));
+  }
   if (flags.phone) {
     out("");
     return phoneReport(repo, enablePhone(repo));
   }
+  return 0;
+}
+
+function viteReport(v) {
+  out(v.edited ? "The Vite plugin is on." : "The Vite plugin:");
+  for (const d of v.did) out(`  - ${d}`);
+  if (v.edited) out("Restart the Vite dev server; its pages then have the bar, on Vite's own port. Builds are not changed.");
   return 0;
 }
 

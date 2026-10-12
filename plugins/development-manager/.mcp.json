@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "page-comments": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/shared/scripts/mcp.mjs"]
+    }
+  }
+}

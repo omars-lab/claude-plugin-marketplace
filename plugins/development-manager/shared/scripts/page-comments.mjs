@@ -16,7 +16,11 @@ import { isPng, saveShot, shotFileState, shotPath, SHOT_MAX } from "./lib/shots.
 const HELP = `page-comments: comments on pages served on this machine.
 
 Commands:
-  serve --target <url> | --root <dir> [--port n]   Run the comment server on 127.0.0.1
+  serve --target <url> | --root <dir> | --api-only [--port n] [--rotate-token]
+                                                   Run the comment server on 127.0.0.1.
+                                                   --api-only answers only the comment API,
+                                                   for the userscript; --rotate-token makes
+                                                   a new repo token and writes the userscript again
   watch [--exclude-author name]... [--replay] [--once --state <file>] [--json]
         [--heartbeat s] [--interval s]             Print one ev= line per change
   wait [--exclude-author name] [--timeout s] [--json]
@@ -42,7 +46,7 @@ from the current folder to the git root, looking for .page-comments/.
 Exit codes: 0 ok, 2 bad usage, 3 not found, 4 the write did not land.`;
 
 const VALUE_FLAGS = new Set(["repo", "target", "root", "port", "state", "page", "waiting", "author", "commit", "exclude-author", "heartbeat", "interval", "timeout", "host", "file"]);
-const BOOL_FLAGS = new Set(["open", "json", "replay", "once", "reopen", "help", "throwaway"]);
+const BOOL_FLAGS = new Set(["open", "json", "replay", "once", "reopen", "help", "throwaway", "api-only", "rotate-token"]);
 
 export function parseArgs(argv) {
   const flags = { "exclude-author": [] };
@@ -388,14 +392,29 @@ async function cmdWait(flags) {
 
 async function cmdServe(flags) {
   const store = needStore(flags);
-  if (!!flags.target === !!flags.root) throw usage("serve needs exactly one of --target <url> or --root <dir>");
+  if ([flags.target, flags.root, flags["api-only"]].filter(Boolean).length !== 1) throw usage("serve needs exactly one of --target <url>, --root <dir> or --api-only");
   const port = flags.port === undefined ? 8766 : Number(flags.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw usage("--port takes a port number");
   if (flags.target && !/^https?:\/\//.test(flags.target)) throw usage("--target takes a URL, like http://127.0.0.1:8765");
+  // The userscript (design section 9): --rotate-token makes a new repo token;
+  // either way a listed origin with no token yet (a fresh clone) gets one.
+  const { readRepoToken, rotateToken, userscriptOrigins, writeUserscript } = await import("./lib/userscript.mjs");
+  const { readConfig } = await import("./lib/repo.mjs");
+  const listed = userscriptOrigins(readConfig(store)).length > 0;
+  if (flags["rotate-token"] || (listed && !readRepoToken(store))) {
+    const u = flags["rotate-token"] ? rotateToken(store) : writeUserscript(store);
+    if (u) {
+      out(`New repo token. The userscript for ${u.origins.join(", ")} is written again:`);
+      out(`  ${u.path}`);
+      out("  Install it in Tampermonkey again (Dashboard, Utilities, Import from file); the old one stops working.");
+    } else {
+      out("New repo token. No userscript: config.json lists no origins for it (enable.mjs --userscript --origin <url> adds one).");
+    }
+  }
   const { startServer } = await import("./lib/server.mjs");
   const srv = await startServer(store, { target: flags.target, root: flags.root, port, record: !flags.throwaway });
-  out(`Comment server on ${srv.url}  (${flags.target ? `in front of ${flags.target}` : `serving ${flags.root}`})`);
-  out("Press C on a page to comment. Stop with Ctrl-C.");
+  out(`Comment server on ${srv.url}  (${flags.target ? `in front of ${flags.target}` : flags.root ? `serving ${flags.root}` : "the comment API only, for the userscript"})`);
+  out(`Press C on a page${flags["api-only"] ? " the userscript runs on" : ""} to comment. Stop with Ctrl-C.`);
   return new Promise((resolveDone) => {
     const quit = () => srv.close().then(() => resolveDone(0));
     process.once("SIGTERM", quit);

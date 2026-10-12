@@ -27,6 +27,16 @@
 // The server names the file and picks its folder. A picture is read back by an
 // <img>, which cannot send a header, so that one GET takes the token in the
 // query string instead.
+//
+// The same request handler (createHandler) answers /__page-comments/ inside
+// this server and inside the dev-only Vite plugin (vite.mjs), which adds the tag
+// to Vite's own pages instead of running a second port.
+//
+// The userscript (design section 9; lib/userscript.mjs) runs on a page from
+// another origin. A call whose Origin is listed exactly in config.json's
+// `userscript.origins` must carry the per-repo token from `.state/token`, not
+// the per-run one, and gets CORS headers naming that origin; any other origin
+// gets none, so the browser keeps refusing it.
 
 import { createServer, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -40,6 +50,7 @@ import { addReply, ANCHOR_STATES, cleanAnchor, cleanBody, cleanPage, cleanViewpo
 import { hasCommentShot, isPng, isShotName, recordShotError, saveShot, shotFileState, shotPath, SHOT_MAX } from "./shots.mjs";
 import { gitStamp } from "./git.mjs";
 import { fileLogger, nowIso } from "./log.mjs";
+import { readRepoToken, tokenPath, userscriptOrigins } from "./userscript.mjs";
 
 const CLIENT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "client");
 export const PREFIX = "/__page-comments/";
@@ -188,31 +199,40 @@ function storeVersion(threads) {
   return `${threads.length}.${n}`;
 }
 
-/**
- * Start the server. Options: { target, root, port, host }.
- * Resolves to { url, port, token, close() }.
- */
-export function startServer(store, { target, root, port = 8766, record = true } = {}) {
-  const token = randomBytes(16).toString("hex");
-  const log = fileLogger(paths(store).serverLog);
-  const targetUrl = target ? new URL(target) : null;
-  const rootDir = root ? realpathSync(resolve(store.repo, root)) : null;
-  let allowedHosts = new Set();
+/** A stat stamp, so a file is read again only when it changed. */
+function stampOf(path) {
+  try {
+    const st = statSync(path);
+    return `${st.mtimeMs}:${st.size}`;
+  } catch {
+    return "none";
+  }
+}
 
-  // config.json is read again when it changes, so `enable --phone` takes effect
+/**
+ * The handler for /__page-comments/, shared by the comment server and the
+ * Vite plugin. Options: { token, log, localHosts, mode }, where `localHosts(req)`
+ * returns the Set of this server's own Host values (known only once it listens)
+ * and `mode` is what /health reports.
+ * Returns { handle(req, res) → Promise<boolean>, ask(req) }: handle answers a
+ * request under PREFIX and resolves true, or resolves false for any other path.
+ */
+export function createHandler(store, { token, log = () => {}, localHosts, mode = "api" }) {
+  // config.json and the repo token are read again when they change, so
+  // `enable --phone`, `enable --userscript` and a rotated token take effect
   // without a restart.
-  let config = { stamp: null, author: "me", phone: null };
+  let config = { stamp: null, author: "me", phone: null, origins: new Set(), repoToken: null };
   function settings() {
-    let stamp = null;
-    try {
-      const st = statSync(paths(store).config);
-      stamp = `${st.mtimeMs}:${st.size}`;
-    } catch {
-      stamp = "none";
-    }
+    const stamp = `${stampOf(paths(store).config)}|${stampOf(tokenPath(store))}`;
     if (stamp !== config.stamp) {
       const c = readConfig(store);
-      config = { stamp, author: typeof c.author === "string" && c.author ? c.author : "me", phone: phoneSetting(c) };
+      config = {
+        stamp,
+        author: typeof c.author === "string" && c.author ? c.author : "me",
+        phone: phoneSetting(c),
+        origins: new Set(userscriptOrigins(c)),
+        repoToken: readRepoToken(store),
+      };
     }
     return config;
   }
@@ -220,16 +240,29 @@ export function startServer(store, { target, root, port = 8766, record = true } 
   /** whoIsAsking for this request, logging any refusal. */
   function ask(req) {
     const s = settings();
-    const who = whoIsAsking(req.headers, { localHosts: allowedHosts, phone: s.phone, author: s.author });
+    const who = whoIsAsking(req.headers, { localHosts: localHosts(req), phone: s.phone, author: s.author });
     if (!who.ok) log("reject", { reason: who.reason, host: String(req.headers.host || ""), ...(who.login ? { login: who.login } : {}) });
     return who;
+  }
+
+  /** The request's Origin when it is one the userscript may call from, else null. */
+  function listedOrigin(req, who) {
+    const o = req.headers.origin;
+    return typeof o === "string" && o !== who.origin && settings().origins.has(o) ? o : null;
   }
 
   // ---- The comment API ------------------------------------------------------------
 
   async function api(req, res, path, who) {
     const author = who.author;
-    if (!sameToken(req.headers["x-page-comments-token"], token)) return sendJson(res, 403, { error: "missing or wrong token" });
+    // A listed origin (the userscript) must bring the repo token; everyone else
+    // the per-run one. Neither token works for the other.
+    const cross = listedOrigin(req, who);
+    const want = cross ? settings().repoToken : token;
+    if (!want || !sameToken(req.headers["x-page-comments-token"], want)) {
+      if (cross) log("reject", { reason: "repo_token", origin: cross });
+      return sendJson(res, 403, { error: "missing or wrong token" });
+    }
     const url = new URL(req.url, "http://x");
     if (req.method === "GET" && path === "threads") {
       const page = url.searchParams.get("page");
@@ -244,7 +277,8 @@ export function startServer(store, { target, root, port = 8766, record = true } 
     // content type makes the browser ask first for any cross-site call, and this
     // server answers no such ask, so the browser never sends the write.
     // From the phone the page is https://<tailnet name>:<port>, so that is its Origin.
-    if (req.headers.origin !== who.origin) return sendJson(res, 403, { error: "wrong origin" });
+    // The userscript's page is a listed origin, already held to the repo token above.
+    if (!cross && req.headers.origin !== who.origin) return sendJson(res, 403, { error: "wrong origin" });
     const shot = /^threads\/([^/]+)\/shot$/.exec(path);
     if (shot) return await postShot(req, res, shot[1], author);
     if (!/^application\/json\b/i.test(req.headers["content-type"] || "")) return sendJson(res, 415, { error: "send JSON" });
@@ -347,7 +381,11 @@ export function startServer(store, { target, root, port = 8766, record = true } 
    */
   function getShot(req, res, rest, query) {
     if (req.method !== "GET" && req.method !== "HEAD") return sendJson(res, 405, { error: "method not allowed" });
-    if (!sameToken(query.get("token"), token)) return sendJson(res, 403, { error: "missing or wrong token" });
+    // An <img> sends no Origin, so either token will do: the page's own, or the
+    // repo token the userscript carries.
+    const given = query.get("token");
+    const repoToken = settings().repoToken;
+    if (!sameToken(given, token) && !(repoToken && sameToken(given, repoToken))) return sendJson(res, 403, { error: "missing or wrong token" });
     const m = /^shots\/([^/]+)\/([^/]+)$/.exec(rest);
     if (!m || !isThreadId(m[1]) || !isShotName(m[2])) return sendJson(res, 404, { error: "not found" });
     const [, id, name] = m;
@@ -387,6 +425,69 @@ export function startServer(store, { target, root, port = 8766, record = true } 
     res.writeHead(200, { "content-type": MIME[extname(name)], "content-length": data.length, "cache-control": "no-store" });
     res.end(data);
   }
+
+  async function handle(req, res) {
+    const pathname = req.url.split("?")[0];
+    if (!pathname.startsWith(PREFIX)) return false;
+    const who = ask(req);
+    if (!who.ok) {
+      sendJson(res, who.status, { error: who.error });
+      return true;
+    }
+    const cross = listedOrigin(req, who);
+    if (cross) {
+      res.setHeader("access-control-allow-origin", cross);
+      res.setHeader("vary", "Origin");
+    }
+    const rest = pathname.slice(PREFIX.length);
+    try {
+      // The browser asks before a cross-origin call with the token header. Only
+      // a listed origin gets a yes; the call itself must still bring the token.
+      if (req.method === "OPTIONS") {
+        if (!cross) {
+          log("reject", { reason: "cors", origin: String(req.headers.origin || "") });
+          sendJson(res, 403, { error: "this origin is not on the userscript list" });
+          return true;
+        }
+        res.writeHead(204, {
+          "access-control-allow-methods": "GET, POST",
+          "access-control-allow-headers": "X-Page-Comments-Token, Content-Type",
+          "access-control-max-age": "600",
+          "cache-control": "no-store",
+        });
+        res.end();
+        return true;
+      }
+      if (Object.hasOwn(CLIENT_FILES, rest)) clientFile(res, rest);
+      else if (rest.startsWith("shots/")) getShot(req, res, rest, new URL(req.url, "http://x").searchParams);
+      else if (rest === "health") sendJson(res, 200, { ok: true, mode });
+      else if (rest === "threads" || rest.startsWith("threads/")) await api(req, res, rest, who);
+      else sendJson(res, 404, { error: "not found" });
+    } catch (err) {
+      log("error", { msg: err && err.message });
+      if (!res.headersSent) sendJson(res, 500, { error: "server error" });
+      else res.destroy();
+    }
+    return true;
+  }
+
+  return { handle, ask };
+}
+
+/**
+ * Start the server. Options: { target, root, port, record }. With neither
+ * target nor root it answers only the comment API, for the userscript.
+ * Resolves to { url, port, token, close() }.
+ */
+export function startServer(store, { target, root, port = 8766, record = true } = {}) {
+  const token = randomBytes(16).toString("hex");
+  const log = fileLogger(paths(store).serverLog);
+  const targetUrl = target ? new URL(target) : null;
+  const rootDir = root ? realpathSync(resolve(store.repo, root)) : null;
+  const mode = targetUrl ? "proxy" : rootDir ? "folder" : "api";
+  let allowedHosts = new Set();
+  const handler = createHandler(store, { token, log, localHosts: () => allowedHosts, mode });
+  const ask = handler.ask;
 
   // ---- Serving pages ----------------------------------------------------------------
 
@@ -473,19 +574,13 @@ export function startServer(store, { target, root, port = 8766, record = true } 
   // ---- The server ---------------------------------------------------------------------
 
   const server = createServer(async (req, res) => {
-    const who = ask(req);
-    if (!who.ok) return sendJson(res, who.status, { error: who.error });
-    const pathname = req.url.split("?")[0];
     try {
-      if (pathname.startsWith(PREFIX)) {
-        const rest = pathname.slice(PREFIX.length);
-        if (Object.hasOwn(CLIENT_FILES, rest)) return clientFile(res, rest);
-        if (rest.startsWith("shots/")) return getShot(req, res, rest, new URL(req.url, "http://x").searchParams);
-        if (rest === "health") return sendJson(res, 200, { ok: true, mode: targetUrl ? "proxy" : "folder" });
-        if (rest === "threads" || rest.startsWith("threads/")) return await api(req, res, rest, who);
-        return sendJson(res, 404, { error: "not found" });
-      }
-      return targetUrl ? proxy(req, res) : serveFile(req, res);
+      if (await handler.handle(req, res)) return;
+      const who = ask(req);
+      if (!who.ok) return sendJson(res, who.status, { error: who.error });
+      if (targetUrl) return proxy(req, res);
+      if (rootDir) return serveFile(req, res);
+      return sendJson(res, 404, { error: "this comment server answers only the comment API (started with --api-only)" });
     } catch (err) {
       log("error", { msg: err && err.message });
       if (!res.headersSent) sendJson(res, 500, { error: "server error" });
@@ -534,11 +629,11 @@ export function startServer(store, { target, root, port = 8766, record = true } 
       const statePath = paths(store).server;
       if (record) try {
         mkdirSync(dirname(statePath), { recursive: true });
-        writeFileSync(statePath, JSON.stringify({ pid: process.pid, port: actual, url, mode: targetUrl ? "proxy" : "folder", target: target || null, root: root || null, started: nowIso() }));
+        writeFileSync(statePath, JSON.stringify({ pid: process.pid, port: actual, url, mode, target: target || null, root: root || null, started: nowIso() }));
       } catch {
         // the state file is a convenience for --undo and --check; serving still works
       }
-      log("start", { port: actual, mode: targetUrl ? "proxy" : "folder", target: target || "", root: root || "" });
+      log("start", { port: actual, mode, target: target || "", root: root || "" });
       resolveStart({
         url,
         port: actual,
