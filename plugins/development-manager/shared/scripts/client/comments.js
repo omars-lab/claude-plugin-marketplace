@@ -413,7 +413,12 @@
     var el = byCss(a.css);
     if (el && labelAgrees(el, a)) return el;
     el = byQuote(a.quote);
-    if (el) return (a.tag && el.tagName.toLowerCase() !== a.tag && el.closest(a.tag)) || el;
+    if (el) {
+      // The quote's words sit in the element or in one of its children.
+      var hit = !a.tag || el.tagName.toLowerCase() === a.tag ? el : el.closest(a.tag);
+      if (hit) return hit;
+      if (a.type === "text") return el;
+    }
     return byLabel(a.tag, a.label);
   }
 
@@ -435,6 +440,29 @@
     };
   }
 
+  /**
+   * An element comment's own text as a quote (design section 4's example): the
+   * element's whole text with 32 characters either side, so a light edit or a
+   * move can still find it. Left out for an element with more text than
+   * ELEMENT_QUOTE_MAX, where a quote of part of it could point at a child.
+   */
+  var ELEMENT_QUOTE_MAX = 600;
+  function elementQuote(el) {
+    var idx = textIndex();
+    var start = -1;
+    var end = -1;
+    for (var i = 0; i < idx.nodes.length; i++) {
+      var n = idx.nodes[i];
+      if (!el.contains(n.node)) continue;
+      if (start < 0) start = n.start;
+      end = n.start + n.node.data.length;
+    }
+    if (start < 0) return null;
+    var exact = idx.text.slice(start, end);
+    if (!clean(exact) || exact.length > ELEMENT_QUOTE_MAX) return null;
+    return { exact: exact, prefix: idx.text.slice(Math.max(0, start - 32), start), suffix: idx.text.slice(end, end + 32) };
+  }
+
   function anchorFor(el, type, quote, evt) {
     var r = el.getBoundingClientRect();
     var a = {
@@ -444,6 +472,7 @@
       tag: el.tagName.toLowerCase(),
       label: labelOf(el),
     };
+    if (!quote && type === "element") quote = elementQuote(el);
     if (quote) a.quote = quote;
     if (evt && r.width && r.height) a.box = { fx: round((evt.clientX - r.left) / r.width), fy: round((evt.clientY - r.top) / r.height) };
     return a;
