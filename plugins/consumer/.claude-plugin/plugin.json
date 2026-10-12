@@ -1,7 +1,7 @@
 {
   "name": "consumer",
   "description": "Make durable-good purchase decisions with evidence: weighted decision matrices, honest used-market pricing, price monitoring, and a write-up of the call",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "Omar Eid",
     "email": "omar_eid21@yahoo.com"
