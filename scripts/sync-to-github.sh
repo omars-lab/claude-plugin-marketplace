@@ -186,7 +186,14 @@ for COMMIT in $NEW_COMMITS; do
     SHORT_SHA="${COMMIT:0:7}"
     COMMIT_SUBJECT=$(git log -1 --format="%s" "$COMMIT" | head -c 50)
 
-    git diff --binary "$COMMIT^" "$COMMIT" -- . "${EXCLUDES[@]}" > "$PATCH_FILE"
+    if [ -n "$(git rev-parse -q --verify "$COMMIT^2")" ]; then
+        # A merge. Its diff from the first parent repeats the other side's commits, which are
+        # already on the mirror, so the patch would not apply. Bring the mirror to the merge's
+        # own files instead.
+        git diff --binary HEAD "$COMMIT" -- . "${EXCLUDES[@]}" > "$PATCH_FILE"
+    else
+        git diff --binary "$COMMIT^" "$COMMIT" -- . "${EXCLUDES[@]}" > "$PATCH_FILE"
+    fi
     if [ -s "$PATCH_FILE" ] && ! git apply --index "$PATCH_FILE"; then
         echo -e "    ${RED}✗${NC} $SHORT_SHA - apply failed"
         echo -e "${RED}Conflict detected. Aborting.${NC}"

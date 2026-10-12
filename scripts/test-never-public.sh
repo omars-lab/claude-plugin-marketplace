@@ -93,6 +93,20 @@ git log -1 --format=%B github/main | grep -q "subject withheld" && ok "private c
 git log -1 --format=%B github/main | grep -qx -- "- tidy" && ok "clean commit subject kept" || fail "clean subject was withheld too"
 [ "$(git show github/main:code.txt)" = "$(git show main:code.txt)" ] && ok "end state matches internal" || fail "end state differs"
 
+echo "== a branch that merged already-published main work syncs =="
+git switch -q -c side
+git switch -q main
+echo "main work" > main.txt; git add main.txt; git commit -q -m "main work"
+bash scripts/sync-to-github.sh "$T/github.git" github "Pub" "pub@example.com" >"$T/s3.log" 2>&1 \
+    || { cat "$T/s3.log"; exit 1; }
+git switch -q side
+echo "side work" > side.txt; git add side.txt; git commit -q -m "side work"
+git merge -q --no-edit main
+git switch -q main; git merge -q --ff-only side; git branch -q -D side
+expect 0 "sync publishes the merge" bash scripts/sync-to-github.sh "$T/github.git" github "Pub" "pub@example.com"
+git fetch -q github main
+[ -z "$(git diff github/main main -- . ':(exclude).claude')" ] && ok "merge end state matches internal" || fail "merge end state differs"
+
 echo "== private text still present blocks the sync =="
 before_sha=$(git rev-parse github/main)
 echo "AcmeCorp again" >> code.txt; git add code.txt; git commit -q -m "oops"
