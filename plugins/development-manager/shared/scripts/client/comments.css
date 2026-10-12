@@ -41,8 +41,15 @@ button {
   padding: 4px 10px;
   cursor: pointer;
 }
-button:hover {
-  border-color: var(--pc-accent);
+/* Hover only where there is a pointer that hovers: on a phone a tapped button would
+   otherwise keep its hover look. */
+@media (hover: hover) {
+  button:hover {
+    border-color: var(--pc-accent);
+  }
+  .panel li:hover {
+    background: var(--pc-claude);
+  }
 }
 button.primary,
 button.on {
@@ -281,9 +288,67 @@ textarea {
   border-top: 1px solid var(--pc-line);
   cursor: pointer;
 }
-.panel li:hover {
-  background: var(--pc-claude);
-}
 .panel .text {
   flex: 1 1 100%;
+}
+/* Touch: "Comment here" sits next to the element a tap picked. */
+.here {
+  position: absolute;
+  box-shadow: var(--pc-shadow);
+  white-space: nowrap;
+}
+/* A finger, not a mouse: targets at least 44px, 16px text so iOS does not zoom into the
+   box, and the bar clear of the home indicator. */
+@media (pointer: coarse) {
+  :host {
+    font-size: 15px;
+  }
+  button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 6px 14px;
+  }
+  .bar {
+    right: 8px;
+    left: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    max-width: none;
+  }
+  .tab {
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  .status {
+    flex: 1 1 100%;
+    font-size: 13px;
+  }
+  textarea {
+    font-size: 16px;
+  }
+  .panel {
+    right: 8px;
+    width: calc(100vw - 16px);
+    max-height: 50vh;
+  }
+  .panel li {
+    min-height: 44px;
+    padding: 10px 4px;
+  }
+  .pin {
+    min-width: 28px;
+    min-height: 28px;
+    width: 28px;
+    height: 28px;
+    border-radius: 14px 14px 14px 2px;
+    font-size: 12px;
+  }
+  /* A 44px place to tap around a 28px pin. */
+  .pin::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+  }
+  .shot-links a {
+    display: inline-block;
+    padding: 10px 0;
+  }
 }

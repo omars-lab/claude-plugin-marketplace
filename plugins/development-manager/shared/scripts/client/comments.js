@@ -25,6 +25,10 @@
   var SHOT_PAD = 16; // CSS pixels of background around the element
   var SHOT_MAX_W = 600; // CSS pixels: wider elements are scaled down
   var FILES = window.__pageCommentsFiles || null;
+  // A phone or tablet: no hover, no C key. Comment mode then picks on a tap and waits
+  // for "Comment here", so a stray tap never opens a comment (design section 13).
+  var TOUCH = !!(window.matchMedia && matchMedia("(pointer: coarse)").matches);
+  var COMMENT_LABEL = TOUCH ? "Comment" : "Comment (C)";
 
   // ---- State ---------------------------------------------------------------------------
   var threads = [];
@@ -68,23 +72,45 @@
   var chip = h("div", { class: "chip", hidden: "" });
   var pop = h("div", { class: "pop", hidden: "", role: "dialog" });
   var panel = h("div", { class: "panel", hidden: "" });
-  var btnComment = h("button", { type: "button", class: "primary", title: "Comment on an element (C). Select text first to comment on the text.", text: "Comment (C)" });
+  var btnComment = h("button", { type: "button", class: "primary", title: TOUCH ? "Comment on part of the page: tap Comment, tap the part, then Comment here" : "Comment on an element (C). Select text first to comment on the text.", text: COMMENT_LABEL });
+  var btnSelection = h("button", { type: "button", class: "primary", hidden: "", text: "Comment on selection" });
+  var btnHere = h("button", { type: "button", class: "primary here", hidden: "", text: "Comment here" });
   var btnOpen = h("button", { type: "button", text: "0 open" });
   var btnResolved = h("button", { type: "button", "aria-pressed": "false", text: "Show resolved" });
   var btnHide = h("button", { type: "button", title: "Hide the bar and pins", text: "Hide" });
   var status = h("span", { class: "status", role: "status" });
-  var bar = h("div", { class: "bar" }, [btnComment, btnOpen, btnResolved, btnHide, status]);
+  var bar = h("div", { class: "bar" }, [btnComment, btnSelection, btnOpen, btnResolved, btnHide, status]);
   var tab = h("button", { type: "button", class: "tab", hidden: "", title: "Show page comments", text: "Comments" });
   root.appendChild(pins);
   root.appendChild(outline);
   root.appendChild(chip);
+  root.appendChild(btnHere);
   root.appendChild(pop);
   root.appendChild(panel);
   root.appendChild(bar);
   root.appendChild(tab);
 
   btnComment.addEventListener("click", function () {
-    if (!startTextComment()) setMode(!mode);
+    // On touch the button only turns comment mode on and off; selected text has its own button.
+    if (TOUCH || !startTextComment()) setMode(!mode);
+  });
+  // Keep the page's selection when the button is pressed with a mouse; a tap may still
+  // clear it, so the click uses the range saved when the selection was made.
+  btnSelection.addEventListener("mousedown", function (e) {
+    e.preventDefault();
+  });
+  btnSelection.addEventListener("click", function () {
+    var range = lastRange;
+    hideSelectionButton();
+    if (range) {
+      setMode(false);
+      startTextComment(range);
+    }
+  });
+  btnHere.addEventListener("click", function () {
+    var p = picked;
+    setMode(false);
+    if (p) openComposer(p.anchor, p.el);
   });
   btnOpen.addEventListener("click", function () {
     panelOpen = !panelOpen;
@@ -312,15 +338,20 @@
 
   // ---- Comment mode ------------------------------------------------------------------------
   var hoverEl = null;
+  var picked = null; // touch: { el, anchor } chosen by a tap, waiting for "Comment here"
+  var lastPointer = ""; // "mouse", "touch" or "pen": what the last press was made with
 
   function setMode(on) {
     mode = on;
     btnComment.classList.toggle("on", on);
-    btnComment.textContent = on ? "Click an element (Esc)" : "Comment (C)";
+    btnComment.textContent = on ? (TOUCH ? "Cancel" : "Click an element (Esc)") : COMMENT_LABEL;
+    if (TOUCH) say(on ? "Tap the part to comment on." : "");
     if (!on) {
       outline.hidden = true;
       chip.hidden = true;
+      btnHere.hidden = true;
       hoverEl = null;
+      picked = null;
     }
   }
 
@@ -338,30 +369,57 @@
     box.style.height = rect.height + "px";
   }
 
+  function showOutline(el) {
+    var r = el.getBoundingClientRect();
+    place(outline, r);
+    outline.hidden = false;
+    var label = labelOf(el);
+    chip.textContent = "<" + el.tagName.toLowerCase() + ">" + (label ? " " + (label.length > 40 ? label.slice(0, 39) + "…" : label) : "");
+    chip.style.left = r.left + scrollX + "px";
+    chip.style.top = Math.max(0, r.top + scrollY - 24) + "px";
+    chip.hidden = false;
+  }
+
   document.addEventListener(
     "mousemove",
     function (e) {
-      if (!mode) return;
+      // No outline that follows the finger: on touch the outline shows what a tap picked.
+      if (!mode || TOUCH || lastPointer === "touch") return;
       var el = pageTarget(e);
       if (!el || el === hoverEl) return;
       hoverEl = el;
-      var r = el.getBoundingClientRect();
-      place(outline, r);
-      outline.hidden = false;
-      var label = labelOf(el);
-      chip.textContent = "<" + el.tagName.toLowerCase() + ">" + (label ? " " + (label.length > 40 ? label.slice(0, 39) + "…" : label) : "");
-      chip.style.left = r.left + scrollX + "px";
-      chip.style.top = Math.max(0, r.top + scrollY - 24) + "px";
-      chip.hidden = false;
+      showOutline(el);
     },
     true,
   );
+
+  /** Touch: a tap only picks. "Comment here", next to where the finger was, opens it. */
+  function pick(el, e) {
+    picked = { el: el, anchor: anchorFor(el, "element", null, e) };
+    showOutline(el);
+    btnHere.hidden = false;
+    var w = btnHere.offsetWidth || 140;
+    var hgt = btnHere.offsetHeight || 44;
+    var x = Math.min(Math.max(8, e.clientX - w / 2), innerWidth - w - 8);
+    var y = e.clientY + 16;
+    if (y + hgt > innerHeight - 80) y = Math.max(8, e.clientY - hgt - 16);
+    btnHere.style.left = x + scrollX + "px";
+    btnHere.style.top = y + scrollY + "px";
+    say("Tap Comment here, or tap another part.");
+  }
 
   function swallow(e) {
     if (!mode || !pageTarget(e)) return;
     e.preventDefault();
     e.stopPropagation();
   }
+  document.addEventListener(
+    "pointerdown",
+    function (e) {
+      lastPointer = e.pointerType || "";
+    },
+    true,
+  );
   ["mousedown", "mouseup", "pointerdown", "pointerup"].forEach(function (t) {
     document.addEventListener(t, swallow, true);
   });
@@ -373,16 +431,46 @@
       if (!el) return;
       e.preventDefault();
       e.stopPropagation();
+      if (lastPointer === "touch" || lastPointer === "pen" || (TOUCH && lastPointer !== "mouse")) return pick(el, e);
       setMode(false);
       openComposer(anchorFor(el, "element", null, e), el);
     },
     true,
   );
 
-  function startTextComment() {
+  // Touch: selected text gets its own button in the bar, since there is no C key.
+  var lastRange = null;
+  var selectionTimer = null;
+  function selectedRange() {
     var sel = window.getSelection && window.getSelection();
-    if (!sel || sel.isCollapsed || !sel.rangeCount || !clean(sel.toString())) return false;
+    if (!sel || sel.isCollapsed || !sel.rangeCount || !clean(sel.toString())) return null;
     var range = sel.getRangeAt(0);
+    var n = range.commonAncestorContainer;
+    if (n.nodeType !== 1) n = n.parentElement;
+    return n && !host.contains(n) ? range : null;
+  }
+  function hideSelectionButton() {
+    clearTimeout(selectionTimer);
+    lastRange = null;
+    btnSelection.hidden = true;
+  }
+  if (TOUCH) {
+    document.addEventListener("selectionchange", function () {
+      var range = selectedRange();
+      clearTimeout(selectionTimer);
+      if (range) {
+        lastRange = range.cloneRange();
+        btnSelection.hidden = false;
+      } else if (lastRange) {
+        // The tap on the button can clear the selection before its click arrives.
+        selectionTimer = setTimeout(hideSelectionButton, 800);
+      }
+    });
+  }
+
+  function startTextComment(given) {
+    var range = given || selectedRange();
+    if (!range || range.collapsed || !clean(range.toString())) return false;
     var el = range.commonAncestorContainer;
     if (el.nodeType !== 1) el = el.parentElement;
     if (!el || host.contains(el)) return false;
@@ -807,10 +895,12 @@
     });
 
     panel.hidden = !panelOpen || hidden;
+    // The touch bar wraps onto more rows, so the panel sits above wherever it ends.
+    if (TOUCH && !panel.hidden) panel.style.bottom = Math.round(innerHeight - bar.getBoundingClientRect().top + 8) + "px";
     panel.textContent = "";
     if (panelOpen) {
       var shown = threads.filter(visible);
-      panel.appendChild(h("div", { class: "title", text: shown.length ? "Comments on this page" : "No comments on this page yet. Press C to add one." }));
+      panel.appendChild(h("div", { class: "title", text: shown.length ? "Comments on this page" : "No comments on this page yet. " + (TOUCH ? "Tap Comment to add one." : "Press C to add one.") }));
       var ul = h("ul");
       shown.forEach(function (t) {
         var isLost = lost.indexOf(t) >= 0;
