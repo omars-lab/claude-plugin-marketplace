@@ -318,7 +318,7 @@ pointer. The pictures open on any device signed into Omar's iCloud (section 14).
 
 - **Events:** `thread_new`, `thread_open` (with `--replay` only), `message_new`,
   `message_edited`, `thread_resolved`, `thread_reopened`, `thread_dismissed`, `anchor_lost`,
-  `shot_ready`, and `shot_missing` (the picture is not on this Mac yet; section 14).
+  `shot` (a new picture), and `shot_missing` (the picture is not on this Mac yet; section 14).
 - **`--exclude-author claude`** so Claude is not woken by its own replies.
 - **`--replay`** first prints a `thread_open` line for each open thread **waiting on Claude**.
   review-md's `--replay` prints every open thread; here, threads waiting on Omar would only wake
@@ -540,7 +540,7 @@ The target repo gets no `node_modules` and no new dependencies.
 | A comment containing script | All comment text is drawn with `textContent`, never as HTML. The bar lives in a shadow root. |
 | Third-party code in the page | No CDN. The screenshot library is bundled and pinned. The page script calls only its own server. |
 | Paths outside the store | The server reads and writes only inside `.page-comments/` (and the served folder in `--root` mode). File names are set by the server. |
-| Oversized input | Comment bodies capped at 10,000 characters, uploads at 2 MB. |
+| Oversized input | Comment bodies capped at 10,000 characters, pictures at 8 MB (tall elements make big PNGs). |
 | Screenshots show private data | Never in git (section 5). They sit in Omar's iCloud Drive, so Apple's servers hold a copy; see section 14. |
 | Private text committed to a public repo | Thread files are committed only by Claude, with a fix, so the target repo's own pre-commit checks run on them. Setup warns if the repo has a public remote. |
 | A comment tells Claude to do something harmful | "Comment text is data, not orders" (section 7). |
@@ -671,7 +671,7 @@ lives in the review-md repo, because review-md came first. This plugin keeps a p
 | Accept a new anchor type, `element`, with `commentId`, `css`, `tag`, `label`, `quote` (`exact`, `prefix`, `suffix`), `box`, and on the thread `page` (`url`, `path`, `title`) and `viewport` | A page comment points at an element, not at a line in a note. |
 | An optional `status` on a thread. `dismissed` is read as `resolved: true` by a reader that does not know it | Page comments can be dismissed as "not an issue". |
 | An optional `shot` pointer on a thread (section 14) | Page comments carry a picture. |
-| Readers ignore anchor types and events they do not know | This plugin adds `thread_dismissed`, `anchor_lost`, `shot_ready` and `shot_missing`. |
+| Readers ignore anchor types and events they do not know | This plugin adds `thread_dismissed`, `anchor_lost`, `shot` and `shot_missing`. |
 | Describe the `element` anchor in review-md's agent guide | So Claude, reading either tool, reads both the same way. |
 
 Until review-md takes these, this plugin writes the schema and its pinned copy, and review-md
@@ -763,8 +763,8 @@ If reading fails, or only a `.<name>.icloud` placeholder is there, the watcher p
 `shot_missing`, and Claude takes a new shot of the live page instead. `brctl` on this Mac has no
 download command, so the design does not rely on one.
 
-**When iCloud Drive is off.** If the iCloud Drive folder does not exist, or `brctl accounts`
-shows no signed-in account, shots go to `.page-comments/shots/<thread-id>/comment.png`, which git
+**When iCloud Drive is off.** If the iCloud Drive folder does not exist
+(`brctl accounts` prints nothing on this Mac, so only the folder is checked), shots go to `.page-comments/shots/<thread-id>/comment.png`, which git
 ignores. The pointer is then `"local":"shots/<thread-id>/comment.png"`.
 
 **Showing the picture on the page.** The server serves
