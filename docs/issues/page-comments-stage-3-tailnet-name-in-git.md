@@ -29,8 +29,12 @@ enable says so out loud. After `--phone` it prints:
 
 The skill passes that line on word for word, and the person decides whether to commit it.
 
+**Confirmed by the owner, 2026-10-12:** it is fine for the comment files and settings to carry the
+Tailscale address of the Mac that hosts the comments. The setting stays in `config.json` and the
+warning stays, so someone pushing to a public remote still sees it.
+
 ## If this needs to change
 
 For a public repo, the clean fix is a `config.local.json` that git ignores, read after
-`config.json`, with the phone setting moved there. That was not built, because no repo with page
-comments is public today.
+`config.json`, with the phone setting moved there. That was not built: page comments are meant
+for private repos, and the owner confirmed the address in git is fine there.
