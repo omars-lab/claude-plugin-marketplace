@@ -17,7 +17,9 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import add_places  # noqa: E402
 import tag_saves  # noqa: E402
+from places import Places  # noqa: E402
 import yaml  # noqa: E402
 
 TOPICS = """topics:
@@ -29,6 +31,7 @@ TOPICS = """topics:
 COLLECTIONS = """collections:
   Fixture Town:    {topics: [travel], cities: [Fixture State]}
   Fixture Recipes: {topics: [recipes-coffee], cities: []}
+  Fixture Abroad:  {topics: [travel], cities: [Faraway Land]}
 pilots:
   fixture: {collections: [Fixture Town], cities: [Fixture State]}
 """
@@ -57,10 +60,18 @@ REPLIES = {
     "weekend": {"topics": ["travel"], "cities": ["Fixture State"]},
     "Sourdough": {"topics": ["recipes-coffee", "baking-tools"], "cities": [], "other_places": ["Elsewhere"]},
     "cabins": {"topics": [], "cities": []},
+    "Brunch": {"topics": ["travel"], "cities": ["Fixture City"]},
+    "Faraway": {"topics": ["travel"], "cities": ["Faraway Land"],
+                "misfiled": {"not": ["Fixture State"], "quote": "road trip through Faraway Land"}},
+    "Elsewhere": {"topics": ["travel"], "cities": [],
+                  "misfiled": {"not": ["Fixture State"], "quote": "words that are not in the caption"}},
 }
+NESTED = {"places": {"Fixture City": {"kind": "city", "in": "Fixture State"}}}
 
 
-class TagSaves(unittest.TestCase):
+class Home(unittest.TestCase):
+    """An invented data repo in a temp folder; no tests of its own."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         root = self.tmp.name
@@ -94,6 +105,15 @@ class TagSaves(unittest.TestCase):
     def read(self, rel):
         return yaml.safe_load(self.text(rel))
 
+    def write(self, rel, data):
+        path = os.path.join(self.tmp.name, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as fh:
+            if rel.endswith(".json"):
+                json.dump(data, fh)
+            else:
+                yaml.safe_dump(data, fh)
+
     def batches(self):
         return sorted(glob.glob(os.path.join(self.tmp.name, ".cache", "batches", "tag", "batch-[0-9][0-9][0-9].json")))
 
@@ -119,6 +139,8 @@ class TagSaves(unittest.TestCase):
         self.run_tag("--merge")
         return seen
 
+
+class TagSaves(Home):
     def test_rules_only_tags_the_pilot_without_batches(self):
         self.run_tag("--rules-only", "--pilot", "fixture")
         tags = self.read("data/tags.yaml")
@@ -208,6 +230,130 @@ class TagSaves(unittest.TestCase):
         self.assertEqual(len(self.batches()), 5)
         self.run_tag("--prepare", "--all")
         self.assertEqual(len(self.batches()), 1)
+
+
+class PlacesAndMoves(Home):
+    def test_a_city_brings_the_state_it_sits_in(self):
+        self.write("data/places.yaml", NESTED)
+        self.write(".cache/saves.json", {"saves": SAVES + [save("CITY", "Brunch spots in Fixture City")]})
+        out = self.run_tag("--prepare", "--all")
+        with open(out.split()[0]) as fh:
+            self.assertEqual(json.load(fh)["places"]["Fixture City"], "Fixture State")  # the agent sees nesting
+        self.agent(out.split())
+        self.run_tag("--merge")
+        self.assertEqual(self.read("data/tags.yaml")["CITY"]["cities"], ["Fixture City", "Fixture State"])
+
+    def test_a_suggested_place_moves_into_the_tags_once_it_is_listed(self):
+        self.tag("--all")
+        self.assertEqual(self.read("data/tags-review.yaml")["SOUR"]["other_places"], ["Elsewhere"])
+        self.write("data/places.yaml", {**NESTED, "aliases": {"Elsewhere": "Fixture City"}})
+        self.assertIn("1 saves got a place from the review list", self.run_tag("--merge"))
+        self.assertEqual(self.read("data/tags.yaml")["SOUR"]["cities"], ["Fixture City", "Fixture State"])
+        self.assertEqual(self.read("data/tags-review.yaml")["SOUR"], {"other_topics": ["baking-tools"]})
+
+    def test_a_misfiled_save_goes_on_the_moves_list_and_comes_off_once_moved(self):
+        mis = save("MIS", "A road trip through Faraway Land", ["Fixture Town"])
+        self.write(".cache/saves.json", {"saves": SAVES + [mis]})
+        self.tag("--all")
+        move = self.read("data/moves.yaml")["MIS"]
+        self.assertEqual(move["not"], ["Fixture State"])
+        self.assertEqual(move["to"], ["Fixture Abroad"])
+        self.assertEqual(move["fits"]["cities"], ["Faraway Land"])
+        self.assertIn("Fixture State", self.read("data/tags.yaml")["MIS"]["cities"])  # kept until moved
+        self.assertIn("MIS", self.run_tag("--moves"))
+        mis["collections"] = ["Fixture Abroad"]                             # moved in the app, new export
+        self.write(".cache/saves.json", {"saves": SAVES + [mis]})
+        self.assertIn("(1 moved since the last run)", self.run_tag("--merge"))
+        self.assertEqual(self.read("data/moves.yaml"), {})
+        self.assertEqual(self.read("data/tags.yaml")["MIS"]["cities"], ["Faraway Land"])
+
+    def test_a_misfiled_flag_without_a_real_quote_is_not_a_move(self):
+        self.write(".cache/saves.json", {"saves": SAVES + [save("ELSE", "Elsewhere for a week", ["Fixture Town"])]})
+        self.tag("--all")
+        self.assertEqual(self.read("data/moves.yaml"), {})
+        self.assertIn("quote is not in the caption", self.read("data/tags-review.yaml")["ELSE"]["misfiled"]["error"])
+
+    def test_a_tag_not_from_the_collection_cannot_be_called_misfiled(self):
+        self.write(".cache/saves.json", {"saves": SAVES + [save("MIS", "A road trip through Faraway Land")]})
+        self.tag("--all")
+        self.assertEqual(self.read("data/moves.yaml"), {})
+
+    def test_a_move_suggests_the_collection_for_the_most_specific_place(self):
+        places = Places({"A": {"cities": ["Fixture State"]}, "B": {"cities": ["Fixture City"]}},
+                        {}, NESTED)
+        colls = {"Here": {"topics": ["travel"], "cities": ["Fixture State"]},
+                 "City": {"topics": ["travel"], "cities": ["Fixture City"]},
+                 "Food": {"topics": ["recipes-coffee"], "cities": []}}
+        move = {"fits": {"topics": ["travel"], "cities": ["Fixture City", "Fixture State"]}}
+        self.assertEqual(tag_saves.suggest(move, colls, places, ["Elsewhere"])[0], "City")
+        self.assertEqual(places.resolve("fixture city, Fixture State"), "Fixture City")
+        food = {"fits":{"topics": ["recipes-coffee"], "cities": []}}
+        self.assertEqual(tag_saves.suggest(food, colls, places, []), ["Food"])
+
+
+def hit(name, addresstype, lat=1.0, **address):
+    return [{"name": name, "addresstype": addresstype, "lat": lat, "lon": 2.0,
+             "display_name": f"{name}, somewhere", "address": address}]
+
+
+class AddPlaces(Home):
+    """add_places.py with a fake OpenStreetMap: no network."""
+
+    ANSWERS = {
+        "Fixture State": hit("Fixture State", "state", country="Exampleland", country_code="us"),
+        "Faraway Land": hit("Faraway Land", "country", country="Faraway Land", country_code="fl"),
+        "Fixture Village": hit("Fixture Village", "town", state="Fixture State", country_code="us",
+                               country="Exampleland"),
+        "Fixture Quarter": hit("Fixture Quarter", "suburb", city="Fixture City", state="Fixture State",
+                               country_code="us", country="Exampleland"),
+        "Fixture City, Fixture State": hit("Fixture City", "city", state="Fixture State",
+                                           country_code="us", country="Exampleland"),
+        "Fixture Road": hit("Fixture Road", "road", state="Fixture State", country_code="us"),
+    }
+
+    def fetch(self, query):
+        self.asked.append(query)
+        return self.ANSWERS.get(query, [])
+
+    def run_add(self, *argv):
+        self.asked = []
+        real = add_places.geocode.fetch
+        add_places.geocode.fetch = self.fetch
+        try:
+            with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()) as out:
+                add_places.main(list(argv))
+        finally:
+            add_places.geocode.fetch = real
+        return out.getvalue()
+
+    def test_places_from_review_are_added_with_the_place_they_sit_in(self):
+        self.write("data/tags-review.yaml", {
+            "A": {"other_places": ["Fixture Village", "Fixture Quarter"]},
+            "B": {"other_places": ["Fixture Road", "Nowhere At All"]}})
+        out = self.run_add()
+        data = self.read("data/places.yaml")
+        self.assertEqual(data["places"]["Fixture Village"]["in"], "Fixture State")
+        self.assertIn("google.com/maps", data["places"]["Fixture Village"]["map"])
+        self.assertEqual(data["aliases"], {"Fixture Quarter": "Fixture City"})  # a part of a city is the city
+        self.assertEqual(data["places"]["Fixture City"]["in"], "Fixture State")
+        self.assertNotIn("Fixture Road", data["places"])                        # a road stays in review
+        self.assertIn("| Fixture Road |", out)
+        self.assertIn("not found", out)
+
+    def test_a_name_is_asked_once(self):
+        self.write("data/tags-review.yaml", {"A": {"other_places": ["Nowhere At All"]}})
+        self.run_add("--dry-run")
+        self.assertIn("Nowhere At All", self.asked)
+        self.run_add("--dry-run")
+        self.assertNotIn("Nowhere At All", self.asked)                         # cached, misses too
+        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "data", "places.yaml")))
+
+    def test_then_merge_moves_the_suggestions_into_the_tags(self):
+        self.tag("--all")
+        self.write("data/tags-review.yaml", {"SOUR": {"other_places": ["Fixture Village"]}})
+        self.run_add()
+        self.run_tag("--merge")
+        self.assertEqual(self.read("data/tags.yaml")["SOUR"]["cities"], ["Fixture State", "Fixture Village"])
 
 
 class Chunker(unittest.TestCase):

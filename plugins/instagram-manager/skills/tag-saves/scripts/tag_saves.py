@@ -7,26 +7,40 @@ save-tagger subagent in batches. This script never calls a model.
     tag_saves.py --merge                    check the agents' answers and write them into the tags
     tag_saves.py --rules-only --pilot NAME  rule tags only, no batches (sizing a pilot, checking config)
     tag_saves.py --report --pilot NAME      the pilot's tags as a table; tags nothing
+    tag_saves.py --moves                    the saves filed in the wrong collection, as a table
     options: --limit N (saves in this round), --retag (read again), --batch-saves N, --batch-chars N
 
 Reads   $INSTAGRAM_HOME/.cache/saves.json (from import-saves)
         $INSTAGRAM_HOME/config/topics.yaml, collections.yaml, places.yaml
+        $INSTAGRAM_HOME/data/places.yaml        looked-up places and aliases (from add_places.py)
 Writes  $INSTAGRAM_HOME/data/tags.yaml          code → {topics[], cities[], source, hints[]}
         $INSTAGRAM_HOME/data/tags-review.yaml   code → what the agent named outside the lists, or why
                                                 its answer could not be used
+        $INSTAGRAM_HOME/data/moves.yaml         code → {collections, not[], quote, fits, to[]}: saves the
+                                                agent says sit in the wrong collection
         $INSTAGRAM_HOME/.cache/batches/tag/     batch-NNN.json (in), batch-NNN.answers.json (out),
                                                 renamed .answers.merged.json once merged
         $INSTAGRAM_HOME/.cache/batches/tag/merged.jsonl   one line per merged batch, for the retro
 
 How a save is tagged
   1. Collections (collections.yaml). A save in a mapped collection gets that entry's topics and
-     cities. These are always kept.
+     cities. These are kept unless the agent says the save is misfiled (see Moves).
   2. Place hints (places.yaml). A listed name in the caption (whole words, any case) or a listed
      hashtag. A hint is not a tag: it pulls a save into a pilot, and it is shown to the agent.
   3. The save-tagger agent (Haiku) reads a batch: caption, hashtags, creator, collections and the
      two above for each save, and answers topics and places from the fixed lists. --merge keeps
      only names on the lists; anything else goes to tags-review.yaml, never into the tags.
-  Final tags = collection tags + the agent's. "cities" means places: a city, a state or a country.
+  Final tags = collection tags + the agent's, plus every place each one sits in (a city brings
+  its state: places.py). "cities" means places: a city, a park, a state or a country. A name the
+  agent gives that is not listed yet goes to review; add_places.py looks it up, and the next
+  --merge moves it into the tags.
+
+Moves
+  The agent may say a collection's tags are wrong for a save ("misfiled": the tags, and words
+  copied from the caption that show it). With a real quote, the save goes on data/moves.yaml with
+  up to three collections that fit better. Both tags stay until a new export shows the save has
+  left the flagged collection; then the wrong tags are dropped and the move comes off the list.
+  Without a real quote, the claim goes to review and nothing changes.
 
 Batches are cut by size: saves are added until the next one would pass --batch-chars characters
 (about 4 characters a token) or --batch-saves saves. Captions are cut at 2,500 characters, so one
@@ -54,9 +68,12 @@ import yaml  # noqa: E402
 
 from home import cache, home  # noqa: E402
 from log import log  # noqa: E402
+from places import Places  # noqa: E402
+from quote import quote_ok  # noqa: E402
 
 TAGS = os.path.join("data", "tags.yaml")
 REVIEW = os.path.join("data", "tags-review.yaml")
+MOVES = os.path.join("data", "moves.yaml")
 CAPTION_CHARS = 2500
 BATCH_SAVES = 40
 BATCH_CHARS = 60000
@@ -93,12 +110,7 @@ def write_json(path, data):
 def load_config():
     topics = load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {}
     coll = load_yaml(os.path.join("config", "collections.yaml"))
-    places = load_yaml(os.path.join("config", "places.yaml")).get("places") or {}
-    return topics, coll.get("collections") or {}, coll.get("pilots") or {}, places
-
-
-def known_places(collections, places):
-    return sorted({c for rule in collections.values() for c in rule.get("cities") or []} | set(places))
+    return topics, coll.get("collections") or {}, coll.get("pilots") or {}, Places.load()
 
 
 def collection_tags(save, collections):
@@ -155,22 +167,101 @@ def chunk(records, max_saves=BATCH_SAVES, max_chars=BATCH_CHARS):
     return batches
 
 
-def apply_answer(d, topics_known, places_known, rule_topics, rule_cities):
-    """(topics, cities, review) from one answer. review is None when nothing needs a look."""
+def apply_answer(d, topics_known, places, rule_topics, rule_cities):
+    """(topics, cities, review) from one answer. review is None when nothing needs a look.
+    A place the agent named that means a listed place counts as it; every place brings the places
+    it sits in."""
     if not isinstance(d, dict) or not isinstance(d.get("topics"), list) or not isinstance(d.get("cities", []), list):
         raise ValueError("answer is not {topics: [...], cities: [...]}")
     said_topics = [t for t in d.get("topics") or [] if isinstance(t, str)]
-    said_places = [c for c in d.get("cities") or [] if isinstance(c, str)]
+    said_places = [c for c in (d.get("cities") or []) + (d.get("other_places") or []) if isinstance(c, str)]
     topics = {t for t in said_topics if t in topics_known} | rule_topics
-    cities = {c for c in said_places if c in places_known} | rule_cities
+    cities = places.fold({places.resolve(c) for c in said_places if places.resolve(c)} | rule_cities)
     other_topics = sorted({t for t in said_topics if t not in topics_known}
                           | {t for t in d.get("other_topics") or [] if isinstance(t, str)})
-    other_places = sorted({c for c in said_places if c not in places_known}
-                          | {c for c in d.get("other_places") or [] if isinstance(c, str)})
+    other_places = sorted({c for c in said_places if not places.resolve(c)})
     if not topics:
         topics = {"other"} if "other" in topics_known else set()
     review = {k: v for k, v in (("other_topics", other_topics), ("other_places", other_places)) if v}
     return topics, cities, review or None
+
+
+def misfiled(d, save, rule_topics, rule_cities, topics, cities):
+    """A move from one answer, or None. The agent may say a tag that came from the save's collection
+    is wrong for it ("not"), with words copied from the caption that show it. The tag stays until the
+    save is moved in the app; the move goes on the moves list for the owner to do or ignore."""
+    m = d.get("misfiled") if isinstance(d, dict) else None
+    if not isinstance(m, dict):
+        return None
+    wrong = sorted({x for x in m.get("not") or [] if isinstance(x, str) and x in rule_topics | rule_cities})
+    quote = m.get("quote") if isinstance(m.get("quote"), str) else ""
+    if not wrong:
+        return None
+    if not quote_ok(quote, save.get("caption") or ""):
+        return {"error": "misfiled, but its quote is not in the caption", "not": wrong}
+    return {"collections": save.get("collections") or [], "not": wrong, "quote": quote.strip()[:300],
+            "fits": {"topics": sorted(topics - set(wrong)), "cities": sorted(cities - set(wrong))}}
+
+
+def suggest(move, collections, places, current):
+    """Up to three collections the save fits better: a collection whose city it is about, the most
+    specific first; with no city, a collection whose topic it is about and that names no city."""
+    fit_cities, fit_topics = set(move["fits"]["cities"]), set(move["fits"]["topics"])
+    scored = []
+    for name, rule in collections.items():
+        if name in current:
+            continue
+        rc, rt = set(rule.get("cities") or []), set(rule.get("topics") or [])
+        if rc & fit_cities:
+            scored.append((-max(places.depth(c) for c in rc & fit_cities), name))
+        elif not rc and not fit_cities and rt & fit_topics:
+            scored.append((0, name))
+    return [name for _, name in sorted(scored)[:3]]
+
+
+def settle_moves(by_code, tags, moves, collections, places):
+    """A save that has left a collection it was flagged in has been moved: drop the tags that came
+    only from that collection, and take it off the list."""
+    done = 0
+    for code, m in list(moves.items()):
+        s = by_code.get(code)
+        if s is None or not set(m["collections"]) - set(s.get("collections") or []):
+            continue
+        rule_topics, rule_cities = collection_tags(s, collections)
+        t = tags.get(code)
+        if t:
+            gone = {x for x in m["not"] if x not in rule_topics | rule_cities}
+            topics = set(t["topics"]) - gone
+            base = set(t["cities"]) - places.fold(gone & set(t["cities"]))
+            cities = places.fold(base | rule_cities)
+            tags[code] = entry(topics or {"other"}, cities, t["source"], t.get("hints"))
+        del moves[code]
+        done += 1
+        log("move_done", code=code)
+    return done
+
+
+def recheck_review(tags, review, places):
+    """Suggested places that are listed now (add_places.py added them) move into the tags."""
+    moved = 0
+    for code, r in list(review.items()):
+        said = r.get("other_places") if isinstance(r, dict) else None
+        if not said or code not in tags:
+            continue
+        hit = {places.resolve(p) for p in said} - {None}
+        if not hit:
+            continue
+        t = tags[code]
+        tags[code] = entry(set(t["topics"]), places.fold(set(t["cities"]) | hit), t["source"], t.get("hints"))
+        rest = [p for p in said if not places.resolve(p)]
+        if rest:
+            r["other_places"] = rest
+        else:
+            r.pop("other_places")
+        if not r:
+            del review[code]
+        moved += 1
+    return moved
 
 
 def entry(topics, cities, source, hints):
@@ -225,7 +316,21 @@ def report(saves, tags, pilot, compiled):
           f"topics or places, {len(rejected)} place matches the agent turned down.")
 
 
-def prepare(args, saves, topics_known, collections, places, places_known, compiled, pilot, tags):
+def print_moves(saves, moves):
+    """The moves list as a table: where each save is, where it fits, and the words that show it."""
+    by_code = {s["code"]: s for s in saves}
+    print("| post | in collection | not about | move to | the caption says |")
+    print("|---|---|---|---|---|")
+    for code, m in sorted(moves.items(), key=lambda kv: (kv[1]["collections"], kv[0])):
+        url = (by_code.get(code) or {}).get("url") or f"https://www.instagram.com/p/{code}/"
+        print(f"| [{code}]({url}) | {', '.join(m['collections'])} | {', '.join(m['not'])} "
+              f"| {', '.join(m.get('to') or []) or '(no collection fits)'} | {m['quote'][:80]!r} |")
+    print(f"\n{len(moves)} saves to move")
+    return 0
+
+
+def prepare(args, saves, topics_known, collections, places, compiled, pilot, tags, moves):
+    settle_moves({s["code"]: s for s in saves}, tags, moves, collections, places)
     todo, kept = [], 0
     for s in saves:
         hints = place_hints(s, compiled)
@@ -234,13 +339,15 @@ def prepare(args, saves, topics_known, collections, places, places_known, compil
         rule_topics, rule_cities = collection_tags(s, collections)
         old = tags.get(s["code"])
         if old and old.get("source") == "model" and not args.retag:
-            tags[s["code"]] = entry(set(old["topics"]) | rule_topics, set(old["cities"]) | rule_cities, "model", hints)
+            tags[s["code"]] = entry(set(old["topics"]) | rule_topics, places.fold(set(old["cities"]) | rule_cities),
+                                    "model", hints)
             kept += 1
             continue
         if not old or old.get("source") != "model":  # a retag keeps the old tags until an answer lands
-            tags[s["code"]] = entry(rule_topics, rule_cities, "rules", hints)
+            tags[s["code"]] = entry(rule_topics, places.fold(rule_cities), "rules", hints)
         todo.append((s, rule_topics, rule_cities, hints))
     write_yaml(TAGS, tags)
+    write_yaml(MOVES, moves)
     if args.rules_only:
         log("tag_rules", scope=args.pilot or "all", already_tagged=kept, rule_tagged=len(todo))
         return 0
@@ -254,7 +361,7 @@ def prepare(args, saves, topics_known, collections, places, places_known, compil
     for old in glob.glob(os.path.join(out, "batch-*.json")):  # a new round replaces the last one
         os.remove(old)
     lists = {"topics": {slug: t.get("about") or t.get("label", "") for slug, t in topics_known.items()},
-             "places": places_known}
+             "places": places.listing()}
     for i, recs in enumerate(batches, 1):
         name = f"batch-{i:03d}"
         path = os.path.join(out, name + ".json")
@@ -267,10 +374,12 @@ def prepare(args, saves, topics_known, collections, places, places_known, compil
     return 0
 
 
-def merge(saves, topics_known, collections, places_known, compiled, tags, review):
+def merge(saves, topics_known, collections, places, compiled, tags, review, moves):
     by_code = {s["code"]: s for s in saves}
     out = batch_dir()
     answered = missing = pending = done = 0
+    rechecked = recheck_review(tags, review, places)
+    settled = settle_moves(by_code, tags, moves, collections, places)
     for path in sorted(glob.glob(os.path.join(out, "batch-[0-9][0-9][0-9].json"))):
         with open(path, encoding="utf-8") as fh:
             batch = json.load(fh)
@@ -300,7 +409,7 @@ def merge(saves, topics_known, collections, places_known, compiled, tags, review
             try:
                 if code not in answers:
                     raise ValueError(why)
-                topics, cities, extra = apply_answer(answers[code], set(topics_known), set(places_known),
+                topics, cities, extra = apply_answer(answers[code], set(topics_known), places,
                                                      rule_topics, rule_cities)
             except ValueError as e:
                 miss += 1
@@ -309,6 +418,12 @@ def merge(saves, topics_known, collections, places_known, compiled, tags, review
                 continue
             got += 1
             tags[code] = entry(topics, cities, "model", hints)
+            move = misfiled(answers[code], s, rule_topics, places.fold(rule_cities), topics, cities)
+            if move and "error" in move:
+                extra = {**(extra or {}), "misfiled": move}
+            elif move:
+                moves[code] = {**move, "to": suggest(move, collections, places, set(s.get("collections") or []))}
+                log("tag_move", code=code, wrong=",".join(move["not"]))
             if extra:
                 review[code] = extra
                 log("tag_review", code=code, reason="outside_lists")
@@ -325,9 +440,14 @@ def merge(saves, topics_known, collections, places_known, compiled, tags, review
         os.replace(ans_path, merged_path)
     write_yaml(TAGS, tags)
     write_yaml(REVIEW, review)
+    write_yaml(MOVES, moves)
     log("tag_merge", answered=answered, missing=missing, batches_waiting=pending, batches_merged_before=done,
-        review=len(review), out=os.path.join(home(), TAGS))
+        review=len(review), places_from_review=rechecked, moves=len(moves), moves_done=settled,
+        out=os.path.join(home(), TAGS))
     print(f"merged {answered} answers ({missing} unusable); {pending} batches still waiting for their agent")
+    if rechecked:
+        print(f"{rechecked} saves got a place from the review list")
+    print(f"{len(moves)} saves on the moves list ({settled} moved since the last run)")
     return 0
 
 
@@ -338,6 +458,7 @@ def main(argv=None):
     action.add_argument("--merge", action="store_true", help="check the agents' answers into the tags")
     action.add_argument("--rules-only", action="store_true", help="rule tags only, no batches")
     action.add_argument("--report", action="store_true", help="print the pilot's tags; tag nothing")
+    action.add_argument("--moves", action="store_true", help="print the saves filed in the wrong collection")
     scope = ap.add_mutually_exclusive_group()
     scope.add_argument("--pilot", help="a pilot name from config/collections.yaml")
     scope.add_argument("--all", action="store_true", help="every save")
@@ -355,8 +476,7 @@ def main(argv=None):
     with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
         saves = json.load(fh)["saves"]
     topics_known, collections, pilots, places = load_config()
-    places_known = known_places(collections, places)
-    compiled = compile_places(places)
+    compiled = compile_places(places.config)
     pilot = None
     if args.pilot:
         if args.pilot not in pilots:
@@ -364,13 +484,16 @@ def main(argv=None):
         pilot = pilots[args.pilot]
     tags = load_yaml(TAGS)
     review = load_yaml(REVIEW)
+    moves = load_yaml(MOVES)
 
     if args.report:
         report(saves, tags, pilot, compiled)
         return 0
+    if args.moves:
+        return print_moves(saves, moves)
     if args.merge:
-        return merge(saves, topics_known, collections, places_known, compiled, tags, review)
-    return prepare(args, saves, topics_known, collections, places, places_known, compiled, pilot, tags)
+        return merge(saves, topics_known, collections, places, compiled, tags, review, moves)
+    return prepare(args, saves, topics_known, collections, places, compiled, pilot, tags, moves)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,8 @@ two places. The tags feed the split, media and hub steps.
 ## How a save gets its tags
 
 1. **Collections.** `config/collections.yaml` maps a collection name to topics and places. A save
-   in a mapped collection always keeps those tags.
+   in a mapped collection keeps those tags, unless the agent shows it was filed in the wrong one
+   (see Moves).
 2. **Place names.** `config/places.yaml` lists names to look for in a caption (whole words, any
    case) and hashtags. A match is only a hint: it brings the save into a pilot, and the agent is
    told about it. A sourdough post tagged with a beach town's hashtag stays a recipe.
@@ -20,6 +21,34 @@ two places. The tags feed the split, media and hub steps.
    hashtags, creator, collections and the two above — and picks topics and places from the lists.
    Anything it names outside the lists goes to `data/tags-review.yaml` for a person to look at. It
    never goes into the tags.
+4. **Places sit in places.** A tag on a city also tags the state it is in (a US city) or the
+   country (anywhere else): `shared/scripts/places.py` folds the chain. The agent picks the most
+   specific listed place and the merge adds the rest.
+
+## Places: adding the missing ones
+
+The agent names places that are not listed yet under `other_places` ("Example Falls, Example
+State"). `scripts/add_places.py` looks each one up on OpenStreetMap (free, no key, one request a
+second, every answer cached in `.cache/geocode.json`) and adds the cities, parks, regions, states
+and countries to `data/places.yaml`. Each place gets its kind, latitude and longitude, a Google
+Maps link (a plain search link, no key) and the place it sits in. A part of a city ("West
+Example City") maps to the city. A road or a venue stays in review. Run `--merge` after it: the
+saves whose suggestion is now listed get the place.
+
+OpenStreetMap's first answer is often the wrong place of the same name, so the lookup asks for
+five and ranks them (city, park, state, country first; then region; then a part of a city; then
+by OpenStreetMap's importance score). Read the printed table every time. To fix a wrong match:
+`lookup: "Name, State"` on a listed place in `config/places.yaml`, or a line in its `aliases:` map
+for a name the agent uses.
+
+## Moves: saves in the wrong collection
+
+When a collection's tags are clearly wrong for a save (a park in another state saved to a city's
+collection), the agent adds `misfiled: {not: [the wrong tags], quote: "words from the caption"}`.
+The merge checks the quote is really in the caption, then puts the save on `data/moves.yaml` with
+up to three collections that fit better. The tags are not changed yet: both stay until a new
+export shows the save has left that collection, then the wrong tags are dropped and the move comes
+off the list. `--moves` prints the list; the moves page shows it with links to open each post.
 
 **No script calls a model.** The script writes batch files and checks the answers; this session
 starts the agents. They run on the plan Claude Code is logged in with, so there is no API key.
@@ -93,12 +122,15 @@ Each agent reads a whole batch, so many at once can hit the plan's usage limits.
 ## What the files hold
 
 ```
-.cache/batches/tag/batch-001.json            {batch, answers: <path>, topics: {slug: about}, places: [...], saves: [...]}
-.cache/batches/tag/batch-001.answers.json    written by the agent: {"answers": {<code>: {topics, cities, other_topics?, other_places?}}}
+.cache/batches/tag/batch-001.json            {batch, answers: <path>, topics: {slug: about}, places: {name: sits in}, saves: [...]}
+.cache/batches/tag/batch-001.answers.json    written by the agent: {"answers": {<code>: {topics, cities, other_topics?, other_places?, misfiled?}}}
 .cache/batches/tag/batch-001.answers.merged.json   the same, renamed once merged (so it is never merged twice)
 .cache/batches/tag/merged.jsonl              one line per merged batch: saves, answered, missing, chars (for the batch review)
 data/tags.yaml                               <code>: {topics: [travel, parenting-kids], cities: [Example State], source: model, hints: [Example State]}
 data/tags-review.yaml                        <code>: {other_topics: [...], other_places: [...]} or {error: "..."}
+data/places.yaml                             places: {<name>: {kind, in, lat, lon, found, map}}, aliases: {<said>: <name>}
+data/moves.yaml                              <code>: {collections, not: [...], quote, fits: {topics, cities}, to: [...]}
+.cache/geocode.json                          every OpenStreetMap answer, misses too, so a name is asked once
 ```
 
 `source` is `model` (an agent tagged it) or `rules` (collection tags only: `--rules-only`, or no
@@ -132,6 +164,8 @@ whose caption names nothing on the list is missed until `--all` runs.
 | `scripts/tag_saves.py --prepare` | Rule tags, then batch files for the agents; prints their paths | The start of every round | `python3 scripts/tag_saves.py --prepare --pilot <name>` (or `--all --limit 1000`) |
 | `scripts/tag_saves.py --merge` | Checks the agents' answers and folds them into `tags.yaml`; says how many batches still wait | After every wave of agents | `python3 scripts/tag_saves.py --merge` |
 | `scripts/tag_saves.py --report` | The pilot as a table, what to check first | Spot-checking a round | `python3 scripts/tag_saves.py --report --pilot <name>` |
+| `scripts/tag_saves.py --moves` | The saves filed in the wrong collection, with where to move them | After a merge that found moves | `python3 scripts/tag_saves.py --moves` |
+| `scripts/add_places.py` | Looks up unlisted places on OpenStreetMap and adds them, with map links and the place each sits in | After a round leaves places in review, then `--merge` | `python3 scripts/add_places.py --dry-run` first, then without |
 | `scripts/test_tag_saves.py` | Offline tests, with a fake agent writing canned answers | After any change to the tagger | `python3 scripts/test_tag_saves.py` |
 
 Other options: `--retag`, `--limit N` (saves per round), `--batch-saves N` (default 40),

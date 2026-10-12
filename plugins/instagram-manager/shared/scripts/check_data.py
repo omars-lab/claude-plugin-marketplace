@@ -9,8 +9,10 @@ Checks, each one only when its file exists:
                            with .cache/saves.json present, every collection name is in the export
                            (a typo would silently tag nothing)
   config/places.yaml       a `places:` map, each with names[] and hashtags[] lists
+  data/places.yaml         every `in:` and every alias names a known place
   data/tags.yaml           code → {topics[], cities[]}, topics and places known, codes in the export
-  (a known place is a city in collections.yaml or a key in places.yaml; so are pilot cities)
+  data/moves.yaml          codes in the export, each `to` a collection with an entry
+  (a known place is a city in collections.yaml or a key in config/ or data/places.yaml)
 
 Prints one ev= line per problem and exits 1 if there is any.
 """
@@ -71,7 +73,11 @@ def check():
                 if not isinstance(v, dict) or not all(isinstance(v.get(k) or [], list) for k in ("names", "hashtags")):
                     bad("check_fail", file="config/places.yaml", place=place, msg="needs names[] and hashtags[] lists")
 
+    looked = load("data/places.yaml") or {}
+    places_known |= set(looked.get("places") or {})
+
     cols = load("config/collections.yaml")
+    mapping = {}
     if cols is not None:
         mapping = cols.get("collections") or {}
         for name, rule in mapping.items():
@@ -93,6 +99,14 @@ def check():
                     bad("check_fail", file="config/collections.yaml", pilot=pilot, collection=name,
                         msg="pilot names a collection with no entry above")
 
+    for place, v in (looked.get("places") or {}).items():
+        if isinstance(v, dict) and v.get("in") and v["in"] not in places_known:
+            bad("check_fail", file="data/places.yaml", place=place, sits_in=v["in"], msg="sits in an unknown place")
+    hand = (places or {}).get("aliases") or {}
+    for said, place in {**(looked.get("aliases") or {}), **hand}.items():
+        if place not in places_known:
+            bad("check_fail", file="data/places.yaml", alias=said, place=place, msg="alias names an unknown place")
+
     tags = load("data/tags.yaml")
     if tags is not None:
         for code, t in tags.items():
@@ -107,6 +121,14 @@ def check():
                     bad("check_fail", file="data/tags.yaml", code=code, city=city, msg="unknown place")
             if codes is not None and code not in codes:
                 bad("check_fail", file="data/tags.yaml", code=code, msg="not a save in the export")
+
+    moves = load("data/moves.yaml")
+    for code, m in (moves or {}).items():
+        if codes is not None and code not in codes:
+            bad("check_fail", file="data/moves.yaml", code=code, msg="not a save in the export")
+        for name in (m or {}).get("to") or []:
+            if mapping and name not in mapping:
+                bad("check_fail", file="data/moves.yaml", code=code, collection=name, msg="move to a collection with no entry")
 
     log("check", home=home(), problems=len(problems))
     return 1 if problems else 0
