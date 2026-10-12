@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { storeFor } from "./lib/repo.mjs";
 import { addReply, isThreadId, publicThread, readAll, readThread, setStatus, cleanBody } from "./lib/store.mjs";
 import { runWait, runWatch } from "./lib/watch.mjs";
+import { restamp } from "./lib/restamp.mjs";
 import { isPng, saveShot, shotFileState, shotPath, SHOT_MAX } from "./lib/shots.mjs";
 
 const HELP = `page-comments: comments on pages served on this machine.
@@ -29,6 +30,11 @@ Commands:
   resolve <id> [--reopen] [--author claude] ["note"]
   dismiss <id> [--author claude] ["note"]
   stats [--json]
+  restamp                                          After a commit: note which commit
+                                                   landed the uncommitted work a comment
+                                                   was made on (the post-commit hook runs it)
+  notice                                           One line when threads wait on Claude;
+                                                   nothing otherwise (the session-start hook)
 
 Every command takes --repo <path>; without it the repo is found by walking up
 from the current folder to the git root, looking for .page-comments/.
@@ -153,7 +159,7 @@ function cmdList(flags) {
       const last = t.messages[t.messages.length - 1];
       const waiting = t.waiting ? ` waiting on ${t.waiting}` : "";
       const where = t.anchor.label ? ` on <${t.anchor.tag}> "${oneLine(t.anchor.label, 40)}"` : t.anchor.tag ? ` on <${t.anchor.tag}>` : "";
-      out(`  ${t.id}  ${t.status}${waiting}${where}`);
+      out(`  ${t.id}  ${t.status}${waiting}${t.lost ? ", not found on the page" : ""}${where}`);
       out(`    ${first.author}: ${oneLine(first.body)}`);
       if (last !== first) out(`    last, ${last.author}: ${oneLine(last.body)}`);
     }
@@ -182,6 +188,7 @@ function cmdShow(flags, pos) {
   }
   const a = t.anchor || {};
   out(`${t.id}  ${t.status}${t.waiting ? `, waiting on ${t.waiting}` : ""}`);
+  if (t.lost) out("Not found: the page last reported it could not find this comment's element.");
   out(`Page:      ${t.page.url || t.page.path}${t.page.title ? `  (${t.page.title})` : ""}`);
   if (t.viewport) {
     const v = t.viewport;
@@ -194,6 +201,7 @@ function cmdShow(flags, pos) {
   if (a.quote) out(`  quote:   "${a.quote.exact}"${a.quote.prefix ? ` after "${a.quote.prefix}"` : ""}${a.quote.suffix ? ` before "${a.quote.suffix}"` : ""}`);
   const g = (t.rev && t.rev.git) || {};
   if (g.commit) out(`Made at:   commit ${g.commit}${g.dirty ? ", with uncommitted changes" : ""}`);
+  if (t.rev && t.rev.landed) out(`Landed in: commit ${t.rev.landed.commit} (the commit that took in those changes)`);
   for (const s of shots) {
     const what = s.role === "comment" ? "the comment's picture" : `after picture, commit ${s.commit || "?"}`;
     if (s.error) {
@@ -307,6 +315,41 @@ function cmdStats(flags) {
   return 0;
 }
 
+/** The post-commit hook. Silent unless it stamped something, and never fails a commit. */
+function cmdRestamp(flags) {
+  const store = storeFor(flags.repo);
+  if (!store) return 0;
+  let r;
+  try {
+    r = restamp(store);
+  } catch (err) {
+    process.stderr.write(`page-comments restamp: ${err.message}\n`);
+    return 0;
+  }
+  if (r.landed && r.landed.length) {
+    const n = r.landed.length;
+    out(`page-comments: ${n} comment${n === 1 ? "" : "s"} made on uncommitted work now point${n === 1 ? "s" : ""} at commit ${r.commit}.`);
+  }
+  return 0;
+}
+
+/** The session-start hook: one line when open threads wait on Claude, nothing otherwise. */
+function cmdNotice(flags) {
+  const store = storeFor(flags.repo);
+  if (!store) return 0;
+  const open = readAll(store).filter((t) => t.status === "open");
+  const waiting = open.filter((t) => t.waiting === "claude");
+  if (!waiting.length) return 0;
+  const lost = waiting.filter((t) => t.lost).length;
+  const n = waiting.length;
+  out(
+    `Page comments: ${n} comment thread${n === 1 ? " is" : "s are"} waiting on Claude in this repo` +
+      `${lost ? ` (${lost} not found on ${lost === 1 ? "its" : "their"} page)` : ""}. ` +
+      "List them with: .page-comments/run list --open --waiting claude",
+  );
+  return 0;
+}
+
 function seconds(v, name) {
   if (v === undefined) return undefined;
   const n = Number(v);
@@ -388,6 +431,10 @@ export async function main(argv) {
       return cmdStatus(flags, pos, "dismissed");
     case "stats":
       return cmdStats(flags);
+    case "restamp":
+      return cmdRestamp(flags);
+    case "notice":
+      return cmdNotice(flags);
     default:
       throw usage(`unknown command: ${cmd}. Run page-comments help.`);
   }

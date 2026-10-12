@@ -9,7 +9,15 @@
 // sent after the comment saves. A slow or failed picture never holds up or
 // fails the comment; after 8 seconds it is given up and the reason is sent
 // instead. The server's served client.js starts with files-link.js, which
-// defines window.__pageCommentsFiles (the Files app links on an iPhone).
+// defines window.__pageCommentsFiles (the Files app links on an iPhone),
+// then text-match.js, which defines window.__pageCommentsMatch (finding a
+// comment's text again after the page changed).
+//
+// Finding comments again (design section 4, phase 4): each load hashes every
+// found element and marks a thread "changed since this comment" when the hash
+// differs from the one stored with it. A thread whose element is not found goes
+// in the "Not found on this page" list, and the page tells the server, once,
+// when that differs from what the thread file last said.
 (function () {
   "use strict";
   if (window.__pageComments) return;
@@ -25,6 +33,8 @@
   var SHOT_PAD = 16; // CSS pixels of background around the element
   var SHOT_MAX_W = 600; // CSS pixels: wider elements are scaled down
   var FILES = window.__pageCommentsFiles || null;
+  var MATCH = window.__pageCommentsMatch || null;
+  var SETTLE_MS = 2000; // a found/not found answer must hold this long before it is sent
   // A phone or tablet: no hover, no C key. Comment mode then picks on a tap and waits
   // for "Comment here", so a stray tap never opens a comment (design section 13).
   var TOUCH = !!(window.matchMedia && matchMedia("(pointer: coarse)").matches);
@@ -40,6 +50,9 @@
   var openThreadId = null;
   var composer = null; // { anchor, el, rect }
   var hashes = {}; // thread id -> the element's current hash, when found
+  var pageLoaded = document.readyState === "complete"; // reports wait for the page's own load
+  var settle = {}; // thread id -> { state, since }: what this page has seen, and since when
+  var reported = {}; // thread id -> the state sent during this page load
 
   // ---- Shadow root and bar ---------------------------------------------------------------
   var host = document.createElement("div");
@@ -161,10 +174,42 @@
         // Rebuild only when something changed. Rebuilding every poll swaps the pins
         // out from under the pointer, so a click can miss and a scrolled list resets.
         if (!drawn || r.changed || layoutKey() !== lastLayout) render();
+        reportAnchors();
       })
       .catch(function (e) {
         say("Comments are offline: " + e.message);
       });
+  }
+
+  /**
+   * Tell the server when an open comment's element is found or not found, so
+   * Claude hears about a lost one (the watcher's `ev=anchor_lost`). Only after the
+   * page has loaded, only once the answer has held for SETTLE_MS (a page still
+   * drawing is not a lost element), only when it differs from what the thread
+   * file says, and at most once per thread per page load. The server ignores a
+   * report that changes nothing, so several open tabs still add one line.
+   */
+  function reportAnchors() {
+    if (!pageLoaded) return;
+    var now = Date.now();
+    threads.forEach(function (t) {
+      if (t.status !== "open" || reported[t.id]) return;
+      var state = locate(t.anchor) ? "found" : "lost";
+      var s = settle[t.id];
+      if (!s || s.state !== state) {
+        settle[t.id] = { state: state, since: now };
+        return;
+      }
+      if (now - s.since < SETTLE_MS || (state === "lost") === !!t.lost) return;
+      reported[t.id] = state;
+      call("POST", "threads/" + t.id + "/anchor", { state: state })
+        .then(function (r) {
+          if (r.thread) upsert(r.thread);
+        })
+        .catch(function () {
+          /* the next page load tries again */
+        });
+    });
   }
 
   function upsert(t) {
@@ -235,21 +280,107 @@
     return { nodes: nodes, text: text };
   }
 
-  function elementAt(idx, pos) {
-    var hit = null;
-    for (var i = 0; i < idx.nodes.length && idx.nodes[i].start <= pos; i++) hit = idx.nodes[i];
-    return hit ? hit.node.parentElement : null;
+  // One look at the page is shared by every thread drawn in the same turn, and
+  // a fuzzy search is only run again once the page's text has changed.
+  var pass = null;
+  var fuzzyMemo = {};
+  function look() {
+    if (!pass) {
+      var idx = textIndex();
+      var sum = 0;
+      for (var i = 0; i < idx.text.length; i++) sum = (sum * 31 + idx.text.charCodeAt(i)) | 0;
+      pass = { idx: idx, key: idx.text.length + ":" + sum, found: new Map() };
+      setTimeout(function () {
+        pass = null;
+      }, 0);
+    }
+    return pass;
   }
 
+  /** Where a text position is: { node, offset } of the text node holding it. */
+  function pointAt(idx, pos, end) {
+    var hit = null;
+    for (var i = 0; i < idx.nodes.length; i++) {
+      var n = idx.nodes[i];
+      if (n.start > pos || (end && n.start === pos && hit)) break;
+      hit = n;
+    }
+    return hit ? { node: hit.node, offset: Math.min(pos - hit.start, hit.node.data.length) } : null;
+  }
+
+  /** The element that holds the text from `start` to `end`, as a selection of it would. */
+  function elementOver(idx, start, end) {
+    var a = pointAt(idx, start, false);
+    var b = pointAt(idx, end, true);
+    if (!a || !b) return null;
+    var n;
+    try {
+      var r = document.createRange();
+      r.setStart(a.node, a.offset);
+      r.setEnd(b.node, b.offset);
+      n = r.collapsed ? a.node : r.commonAncestorContainer;
+    } catch (e) {
+      n = a.node;
+    }
+    return n.nodeType === 1 ? n : n.parentElement;
+  }
+
+  function fuzzy(p, q) {
+    var key = p.key + "|" + q.exact + "|" + (q.prefix || "") + "|" + (q.suffix || "");
+    if (!(key in fuzzyMemo)) {
+      if (Object.keys(fuzzyMemo).length > 200) fuzzyMemo = {};
+      fuzzyMemo[key] = MATCH.findQuote(p.idx.text, q);
+    }
+    return fuzzyMemo[key];
+  }
+
+  /**
+   * The quoted text: the exact words with their context, else the exact words
+   * if they appear once, else (phase 4) a place at least 80% like them. Two
+   * places too close to call, in two different elements, count as not found.
+   */
   function byQuote(q) {
     if (!q || !q.exact) return null;
-    var idx = textIndex();
-    var full = (q.prefix || "") + q.exact + (q.suffix || "");
-    var at = idx.text.indexOf(full);
-    if (at >= 0) return elementAt(idx, at + (q.prefix || "").length);
+    var p = look();
+    var idx = p.idx;
+    var pre = q.prefix || "";
+    var at = idx.text.indexOf(pre + q.exact + (q.suffix || ""));
+    if (at >= 0) return elementOver(idx, at + pre.length, at + pre.length + q.exact.length);
     at = idx.text.indexOf(q.exact);
-    if (at >= 0 && idx.text.indexOf(q.exact, at + 1) < 0) return elementAt(idx, at);
-    return null;
+    if (at >= 0 && idx.text.indexOf(q.exact, at + 1) < 0) return elementOver(idx, at, at + q.exact.length);
+    if (!MATCH) return null;
+    var r = fuzzy(p, q);
+    if (!r) return null;
+    var el = elementOver(idx, r.match.start, r.match.end);
+    if (r.rival && elementOver(idx, r.rival.start, r.rival.end) !== el) return null;
+    return el;
+  }
+
+  /** A label for a quick scan of many elements: no layout, unlike innerText. */
+  function quickLabel(el) {
+    var s = clean((el.getAttribute && el.getAttribute("aria-label")) || el.textContent || "");
+    return s.length > 80 ? s.slice(0, 80) : s;
+  }
+
+  /**
+   * The CSS path's element still fits: the same tag, and the same label, or
+   * (phase 4) one at least 80% like it that no other element of that tag also fits.
+   * A near-copy elsewhere, such as the next card in a list, would make it a guess.
+   */
+  function labelAgrees(el, a) {
+    if (el.tagName.toLowerCase() !== (a.tag || el.tagName.toLowerCase())) return false;
+    if (!a.label) return true;
+    var now = labelOf(el);
+    if (now === a.label) return true;
+    if (!MATCH || MATCH.similarity(now, a.label) < MATCH.THRESHOLD) return false;
+    var others = document.querySelectorAll(a.tag || el.tagName);
+    if (others.length > 2000) return false; // too many to rule out a near-copy
+    for (var i = 0; i < others.length; i++) {
+      var x = others[i];
+      if (x === el || host.contains(x)) continue;
+      if (MATCH.similarity(quickLabel(x), a.label) >= MATCH.THRESHOLD) return false;
+    }
+    return true;
   }
 
   function byLabel(tag, label) {
@@ -263,6 +394,14 @@
   /** Try each anchor in order. Never guess: no match means "not found on this page". */
   function locate(a) {
     if (!a) return null;
+    var p = look();
+    if (p.found.has(a)) return p.found.get(a);
+    var el = find(a);
+    p.found.set(a, el);
+    return el;
+  }
+
+  function find(a) {
     if (a.commentId) {
       try {
         var byId = document.querySelector('[data-comment-id="' + CSS.escape(a.commentId) + '"]');
@@ -272,9 +411,9 @@
       }
     }
     var el = byCss(a.css);
-    if (el && el.tagName.toLowerCase() === (a.tag || el.tagName.toLowerCase()) && (!a.label || labelOf(el) === a.label)) return el;
+    if (el && labelAgrees(el, a)) return el;
     el = byQuote(a.quote);
-    if (el) return a.type === "text" ? el : el.closest(a.tag || "*") || el;
+    if (el) return (a.tag && el.tagName.toLowerCase() !== a.tag && el.closest(a.tag)) || el;
     return byLabel(a.tag, a.label);
   }
 
@@ -767,7 +906,7 @@
     var head = h("div", { class: "where" });
     head.appendChild(h("span", { class: "badge " + t.status, text: t.status === "open" ? (t.waiting === "claude" ? "waiting on Claude" : "waiting on you") : t.status }));
     if (!el) head.appendChild(h("span", { class: "badge lost", text: "not found on this page" }));
-    else if (t.rev && t.rev.bodyHash && hashes[t.id] && hashes[t.id] !== t.rev.bodyHash) head.appendChild(h("span", { class: "badge changed", text: "changed since this comment" }));
+    else if (changed(t)) head.appendChild(h("span", { class: "badge changed", text: "changed since this comment" }));
     pop.appendChild(head);
     var where = t.anchor.type === "text" && t.anchor.quote ? "“" + clip(t.anchor.quote.exact, 80) + "”" : "<" + t.anchor.tag + "> " + clip(t.anchor.label, 60);
     pop.appendChild(h("div", { class: "quote", text: where }));
@@ -852,6 +991,38 @@
       .join("|");
   }
 
+  /** True when the element was found but its hash differs from the one saved with the comment. */
+  function changed(t) {
+    return !!(t.rev && t.rev.bodyHash && hashes[t.id] && hashes[t.id] !== t.rev.bodyHash);
+  }
+
+  var redrawTimer = null;
+  function redrawSoon() {
+    clearTimeout(redrawTimer);
+    redrawTimer = setTimeout(render, 30);
+  }
+
+  function listOf(list, isLost) {
+    var ul = h("ul", { class: isLost ? "lost" : "" });
+    list.forEach(function (t) {
+      var li = h("li", { class: t.status }, [
+        h("span", { class: "badge " + t.status, text: t.status === "open" ? (t.waiting === "claude" ? "waiting on Claude" : "waiting on you") : t.status }),
+        isLost ? h("span", { class: "badge lost", text: "not found on this page" }) : null,
+        !isLost && changed(t) ? h("span", { class: "badge changed", text: "changed since this comment" }) : null,
+        h("span", { class: "text", text: clip(t.messages[t.messages.length - 1].body, 90) }),
+      ]);
+      li.addEventListener("click", function () {
+        var el = locate(t.anchor);
+        if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+        setTimeout(function () {
+          openThread(t);
+        }, el ? 350 : 0);
+      });
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+
   function render() {
     drawn = true;
     lastLayout = layoutKey();
@@ -862,7 +1033,10 @@
     var open = threads.filter(function (t) {
       return t.status === "open";
     });
-    btnOpen.textContent = open.length + " open";
+    var openLost = open.filter(function (t) {
+      return !locate(t.anchor);
+    }).length;
+    btnOpen.textContent = open.length + " open" + (openLost ? " · " + openLost + " not found" : "");
     btnResolved.setAttribute("aria-pressed", String(showResolved));
     btnResolved.classList.toggle("on", showResolved);
 
@@ -878,13 +1052,19 @@
         return;
       }
       (function (num) {
+        // The badge needs the hash, which arrives a moment later: draw again
+        // only when a hash is new or different, so this settles after one pass.
         hashOf(el).then(function (x) {
-          if (x) hashes[t.id] = x;
+          if (x && hashes[t.id] !== x) {
+            hashes[t.id] = x;
+            redrawSoon();
+          }
         });
         var r = el.getBoundingClientRect();
         var fx = t.anchor.box && typeof t.anchor.box.fx === "number" ? t.anchor.box.fx : 1;
         var fy = t.anchor.box && typeof t.anchor.box.fy === "number" ? t.anchor.box.fy : 0;
-        var pin = h("button", { type: "button", class: "pin " + t.status + (t.waiting === "human" ? " answered" : ""), title: clip(t.messages[0].body, 120), text: String(num) });
+        var title = clip(t.messages[0].body, 120) + (changed(t) ? " (changed since this comment)" : "");
+        var pin = h("button", { type: "button", class: "pin " + t.status + (t.waiting === "human" ? " answered" : "") + (changed(t) ? " changed" : ""), title: title, text: String(num) });
         pin.style.left = r.left + scrollX + r.width * fx - 11 + "px";
         pin.style.top = r.top + scrollY + r.height * fy - 11 + "px";
         pin.addEventListener("click", function () {
@@ -900,25 +1080,20 @@
     panel.textContent = "";
     if (panelOpen) {
       var shown = threads.filter(visible);
-      panel.appendChild(h("div", { class: "title", text: shown.length ? "Comments on this page" : "No comments on this page yet. " + (TOUCH ? "Tap Comment to add one." : "Press C to add one.") }));
-      var ul = h("ul");
-      shown.forEach(function (t) {
-        var isLost = lost.indexOf(t) >= 0;
-        var li = h("li", { class: t.status }, [
-          h("span", { class: "badge " + t.status, text: t.status === "open" ? (t.waiting === "claude" ? "waiting on Claude" : "waiting on you") : t.status }),
-          isLost ? h("span", { class: "badge lost", text: "not found on this page" }) : null,
-          h("span", { class: "text", text: clip(t.messages[t.messages.length - 1].body, 90) }),
-        ]);
-        li.addEventListener("click", function () {
-          var el = locate(t.anchor);
-          if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
-          setTimeout(function () {
-            openThread(t);
-          }, el ? 350 : 0);
-        });
-        ul.appendChild(li);
+      var found = shown.filter(function (t) {
+        return lost.indexOf(t) < 0;
       });
-      panel.appendChild(ul);
+      if (!shown.length) panel.appendChild(h("div", { class: "title", text: "No comments on this page yet. " + (TOUCH ? "Tap Comment to add one." : "Press C to add one.") }));
+      if (found.length) {
+        panel.appendChild(h("div", { class: "title", text: "Comments on this page" }));
+        panel.appendChild(listOf(found, false));
+      }
+      // Comments whose element the page could not find: never pinned to a guess.
+      if (lost.length) {
+        panel.appendChild(h("div", { class: "title lost", text: "Not found on this page (" + lost.length + ")" }));
+        panel.appendChild(h("div", { class: "note", text: "The page changed and these comments' elements could not be found. Open one to read, answer or close it." }));
+        panel.appendChild(listOf(lost, true));
+      }
     }
 
     if (openThreadId) {
@@ -934,6 +1109,10 @@
   // ---- Start ---------------------------------------------------------------------------------
   function start() {
     (document.documentElement || document.body).appendChild(host);
+    if (!pageLoaded)
+      addEventListener("load", function () {
+        pageLoaded = true;
+      });
     poll().then(function () {
       try {
         var d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "null");

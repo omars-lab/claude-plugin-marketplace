@@ -36,7 +36,7 @@ import { createReadStream, readFileSync, rmSync, statSync, writeFileSync, mkdirS
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { paths, readConfig } from "./repo.mjs";
-import { addReply, cleanAnchor, cleanBody, cleanPage, cleanViewport, createThread, isThreadId, publicThread, readAll, readThread, setStatus, STATUSES } from "./store.mjs";
+import { addReply, ANCHOR_STATES, cleanAnchor, cleanBody, cleanPage, cleanViewport, createThread, isThreadId, publicThread, readAll, readThread, setAnchorState, setStatus, STATUSES } from "./store.mjs";
 import { hasCommentShot, isPng, isShotName, recordShotError, saveShot, shotFileState, shotPath, SHOT_MAX } from "./shots.mjs";
 import { gitStamp } from "./git.mjs";
 import { fileLogger, nowIso } from "./log.mjs";
@@ -182,7 +182,9 @@ export function whoIsAsking(headers, { localHosts, phone, author }) {
 /** A short fingerprint of the store, so the page can ask "anything new?" cheaply. */
 function storeVersion(threads) {
   let n = 0;
-  for (const t of threads) n += t.messages.length * 7 + t.history.length * 3 + t.shots.length * 11 + t.messages.reduce((s, m) => s + m.body.length, 0);
+  // `events` counts every line, so a "not found" report or a landed commit
+  // changes the fingerprint too, and open pages pick it up.
+  for (const t of threads) n += (t.events || 0) * 13 + t.messages.length * 7 + t.history.length * 3 + t.shots.length * 11 + t.messages.reduce((s, m) => s + m.body.length, 0);
   return `${threads.length}.${n}`;
 }
 
@@ -269,7 +271,7 @@ export function startServer(store, { target, root, port = 8766, record = true } 
       log("thread_new", { thread: id, page: cleanPage(body.page).path, via: who.via });
       return sendJson(res, 201, { thread: publicThread(readThread(store, id)) });
     }
-    const m = /^threads\/([^/]+)\/(replies|status)$/.exec(path);
+    const m = /^threads\/([^/]+)\/(replies|status|anchor)$/.exec(path);
     if (!m || !isThreadId(m[1])) return sendJson(res, 404, { error: "not found" });
     const id = m[1];
     if (!readThread(store, id)) return sendJson(res, 404, { error: `no thread ${id}` });
@@ -278,6 +280,14 @@ export function startServer(store, { target, root, port = 8766, record = true } 
       if (!text) return sendJson(res, 400, { error: "a reply needs text, up to 10,000 characters" });
       addReply(store, id, { author, body: text });
       log("reply", { thread: id });
+    } else if (m[2] === "anchor") {
+      // The page reports whether it found the element. Only a change from the
+      // last report is written, so reloading the page adds nothing.
+      if (!ANCHOR_STATES.includes(body.state)) return sendJson(res, 400, { error: "state is lost or found" });
+      const t = readThread(store, id);
+      if (!!t.lost === (body.state === "lost")) return sendJson(res, 200, { changed: false, thread: publicThread(t) });
+      setAnchorState(store, id, { author, state: body.state });
+      log("anchor", { thread: id, state: body.state });
     } else {
       if (!STATUSES.includes(body.status)) return sendJson(res, 400, { error: "status is open, resolved or dismissed" });
       const note = typeof body.note === "string" && body.note.trim() ? body.note.slice(0, 10000) : undefined;
@@ -358,9 +368,9 @@ export function startServer(store, { target, root, port = 8766, record = true } 
   }
 
   // What the page loads from this server. client.js is the Files link helper
-  // followed by the bar itself, so the bar is one request.
+  // and the text matcher, followed by the bar itself, so the bar is one request.
   const CLIENT_FILES = {
-    "client.js": ["files-link.js", "comments.js"],
+    "client.js": ["files-link.js", "text-match.js", "comments.js"],
     "client.css": ["comments.css"],
     "vendor/modern-screenshot.js": ["vendor/modern-screenshot.js"],
   };

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { addReply, createThread, publicThread, readThread, setStatus } from "../lib/store.mjs";
+import { addLanded, addReply, createThread, publicThread, readThread, setAnchorState, setStatus } from "../lib/store.mjs";
 import { SAMPLE, SCRIPTS, tempRepo } from "./helpers.mjs";
 
 const schema = JSON.parse(readFileSync(join(SCRIPTS, "schema", "thread.schema.json"), "utf8"));
@@ -42,7 +42,11 @@ test("threads in every state fit the shared schema", () => {
     const b = createThread(store, { ...SAMPLE, anchor: { type: "text", css: "p", tag: "p", label: "x", quote: { exact: "walk", prefix: "the ", suffix: " is" } } });
     addReply(store, b, { author: "claude", body: "Done.", commit: "9c41d0e" });
     setStatus(store, b, { author: "claude", status: "resolved", note: "fixed" });
-    for (const id of [a, b]) {
+    // Phase 4: not found on the page, and made on uncommitted work that a later commit landed.
+    const c = createThread(store, { ...SAMPLE, rev: { ...SAMPLE.rev, git: { commit: "abc1234", dirty: true } } });
+    setAnchorState(store, c, { author: "sam", state: "lost" });
+    addLanded(store, c, { commit: "def5678", from: "abc1234" });
+    for (const id of [a, b, c]) {
       const t = JSON.parse(JSON.stringify(publicThread(readThread(store, id))));
       assert.deepEqual(check(schema, t), [], id);
     }

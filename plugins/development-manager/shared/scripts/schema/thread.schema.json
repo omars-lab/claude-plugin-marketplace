@@ -37,6 +37,12 @@
         "git": {
           "type": "object",
           "properties": { "commit": { "type": ["string", "null"] }, "dirty": { "type": ["boolean", "null"] } }
+        },
+        "landed": {
+          "type": "object",
+          "description": "Set by the post-commit hook when the comment was made on uncommitted work: the commit that landed that work. rev.git still says where the comment was made.",
+          "required": ["commit"],
+          "properties": { "commit": { "type": "string" }, "ts": { "type": "string" } }
         }
       }
     },
@@ -103,6 +109,6 @@
         }
       }
     },
-    "lost": { "type": "boolean" }
+    "lost": { "type": "boolean", "description": "true when the page last reported that it could not find the comment's element (an anchor event); left out when found" }
   }
 }

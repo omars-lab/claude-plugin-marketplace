@@ -9,6 +9,10 @@
 // the picture is not on this Mac (gone, or only an iCloud `.<name>.icloud`
 // placeholder), `ev=shot_missing`. A picture that goes missing later, or turns
 // up later, prints the same two lines.
+//
+// Not found: when the page reports that it can no longer find an open
+// comment's element, `ev=anchor_lost` is printed once. The page reports only
+// when the answer differs from what the thread file already says.
 
 import { existsSync, mkdirSync, readFileSync, renameSync, watch as fsWatch, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -71,6 +75,8 @@ export function diffSnapshots(prev, next, { exclude = [] } = {}) {
       for (const m of t.messages.slice(1)) out.push({ ev: "message_new", page: t.page, thread: id, author: m.author, msg: m.body });
       if (t.status !== "open") out.push({ ev: STATUS_EV[t.status], page: t.page, thread: id, author: t.lastStatusBy, msg: last.body });
       for (const s of t.shots || []) out.push(shotEvent(t.page, id, s));
+      // A thread that arrives already lost, such as one merged in from a branch.
+      if (t.status === "open" && t.lost) out.push({ ev: "anchor_lost", page: t.page, thread: id, author: "", msg: last.body });
       continue;
     }
     const seen = new Set(old.messages.map(msgKey));

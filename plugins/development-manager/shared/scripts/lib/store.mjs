@@ -1,7 +1,9 @@
 // One append-only file per thread: `.page-comments/threads/<id>.jsonl`.
 // Each line is one event. The first line opens the thread; later lines are
-// replies, edits and status changes. Nothing is ever rewritten in place, so the
-// server and the command line can both append without taking turns.
+// replies, edits, status changes, pictures, the page's "found" or "not found"
+// reports, and the commit that landed uncommitted work. Nothing is ever
+// rewritten in place, so the server, the command line and the post-commit hook
+// can all append without taking turns.
 
 import { randomBytes } from "node:crypto";
 import { appendFileSync, closeSync, mkdirSync, openSync, readdirSync, readFileSync, writeSync } from "node:fs";
@@ -11,6 +13,7 @@ import { nowIso } from "./log.mjs";
 
 export const BODY_MAX = 10000;
 export const STATUSES = ["open", "resolved", "dismissed"];
+export const ANCHOR_STATES = ["lost", "found"];
 const ID_RE = /^t_[0-9a-f]{6,32}$/;
 
 export function isThreadId(id) {
@@ -91,6 +94,9 @@ export function foldThread(id, events) {
     history: [],
     shots: [],
     lost: false,
+    // How many events the file holds. Not part of the shared shape: the server
+    // uses it so the page notices any new line, including the ones it does not show.
+    events: events.length,
   };
   for (const e of rest) {
     if (e.ev === "reply") {
@@ -106,8 +112,12 @@ export function foldThread(id, events) {
     } else if (e.ev === "status" && STATUSES.includes(e.status)) {
       t.status = e.status;
       t.history.push({ status: e.status, author: str(e.author), ts: str(e.ts), note: e.note ? str(e.note) : undefined });
-    } else if (e.ev === "anchor") {
+    } else if (e.ev === "anchor" && ANCHOR_STATES.includes(e.state)) {
       t.lost = e.state === "lost";
+    } else if (e.ev === "landed" && typeof e.commit === "string" && !t.rev.landed) {
+      // The post-commit hook: the uncommitted work this comment was made on
+      // landed in this commit. `rev.git` keeps where the comment was made.
+      t.rev = { ...t.rev, landed: { commit: e.commit, ts: str(e.ts) } };
     } else if (e.ev === "shot" && (e.role === "comment" || e.role === "after")) {
       t.shots.push(foldShot(e));
     }
@@ -211,6 +221,17 @@ export function addReply(store, id, { author, body, commit }) {
   const e = { ev: "reply", author, body };
   if (commit) e.commit = commit;
   return appendEvent(store, id, e);
+}
+
+/** The page found, or could not find, the thread's element. */
+export function setAnchorState(store, id, { author, state }) {
+  if (!ANCHOR_STATES.includes(state)) throw new Error(`unknown anchor state: ${state}`);
+  return appendEvent(store, id, { ev: "anchor", author, state });
+}
+
+/** The post-commit hook: the commit that landed the uncommitted work a comment was made on. */
+export function addLanded(store, id, { commit, from }) {
+  return appendEvent(store, id, { ev: "landed", author: "git", commit, from });
 }
 
 export function setStatus(store, id, { author, status, note }) {

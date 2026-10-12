@@ -10,6 +10,7 @@
   --pc-accent-fg: #ffffff;
   --pc-open: #d9480f;
   --pc-done: #2b8a3e;
+  --pc-changed: #b26a00;
   --pc-claude: #f1f4fb;
   --pc-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -24,6 +25,7 @@
     --pc-accent: #7a9cff;
     --pc-accent-fg: #0f1115;
     --pc-claude: #262b35;
+    --pc-changed: #f0a830;
   }
 }
 * {
@@ -139,6 +141,18 @@ button:disabled {
   background: var(--pc-done);
   opacity: 0.75;
 }
+/* The element changed since the comment was made: a small amber dot on the pin. */
+.pin.changed::after {
+  content: "";
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--pc-changed);
+  border: 1.5px solid #fff;
+}
 .pop {
   position: absolute;
   display: flex;
@@ -253,9 +267,11 @@ textarea {
 .badge.dismissed {
   color: var(--pc-done);
 }
-.badge.lost,
-.badge.changed {
+.badge.lost {
   color: var(--pc-muted);
+}
+.badge.changed {
+  color: var(--pc-changed);
 }
 .panel {
   position: fixed;
@@ -272,6 +288,14 @@ textarea {
 }
 .panel .title {
   font-weight: 600;
+  margin-bottom: 6px;
+}
+.panel .title.lost {
+  margin-top: 12px;
+}
+.panel .note {
+  color: var(--pc-muted);
+  font-size: 12px;
   margin-bottom: 6px;
 }
 .panel ul {

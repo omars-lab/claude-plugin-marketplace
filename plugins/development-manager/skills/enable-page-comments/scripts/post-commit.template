@@ -1,0 +1,22 @@
+#!/bin/sh
+# page-comments:post-commit
+# Written by development-manager's enable-page-comments; its --undo removes it
+# and puts back the hook that was here before.
+#
+# After each commit, notes which commit landed the uncommitted work a page
+# comment was made on: it appends one line to that comment's thread file. It
+# never changes the commit and never stops it.
+#
+# The post-commit hook that was here before enable runs first, unchanged, with
+# the same arguments, and its exit status is kept.
+hooks=$(dirname "$0")
+status=0
+if [ -x "$hooks/post-commit.page-comments-prev" ]; then
+  "$hooks/post-commit.page-comments-prev" "$@"
+  status=$?
+fi
+top=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -n "$top" ] && [ -x "$top/.page-comments/run" ]; then
+  "$top/.page-comments/run" restamp 2>/dev/null || true
+fi
+exit $status

@@ -21,6 +21,12 @@
 //     every session opened in the repo has the answering skill and the watcher;
 //   - a marked block in the repo's CLAUDE.md that says to follow
 //     `development-manager:answer-page-comments` when the watcher prints a comment;
+//   - a post-commit git hook that notes which commit landed the uncommitted work a
+//     comment was made on (`page-comments restamp`). It goes where git looks for
+//     hooks, which follows core.hooksPath. A post-commit hook already there is
+//     renamed to `post-commit.page-comments-prev` and run first by ours, and undo
+//     renames it back, byte for byte. It is skipped, with a note, when hooks are
+//     off, or when the hooks folder is shared outside the repo or committed in it;
 //   - with --phone, one `tailscale serve` entry (https on the comment server's port) and
 //     a `phone` block in config.json with the Mac's tailnet name and the allowed logins.
 //     Undo turns off that one entry only.
@@ -31,9 +37,9 @@
 // Exit codes: 0 ok, 1 a check failed, 2 bad usage, 3 not found.
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { contractHome, expandHome, shotsSetting, shotTarget } from "../../../shared/scripts/lib/shots.mjs";
 
@@ -48,6 +54,8 @@ const MD_BEGIN = "<!-- page-comments:begin -->";
 const MD_END = "<!-- page-comments:end -->";
 const PRIVACY =
   "Screenshots go to iCloud Drive. Apple's servers keep a copy of everything there, which Apple can read unless Advanced Data Protection is on.";
+const HOOK_MARK = "# page-comments:post-commit";
+const HOOK_PREV = "post-commit.page-comments-prev";
 const CHECK_TEXT = "[enable check] A test comment from enable-page-comments. It is removed right away; ignore it.";
 
 // ---- Small helpers ---------------------------------------------------------------------
@@ -108,6 +116,56 @@ function gitRoot(dir) {
   } catch {
     return null;
   }
+}
+
+function gitOut(repo, args) {
+  try {
+    return execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function real(p) {
+  try {
+    return realpathSync(p);
+  } catch {
+    return resolve(p);
+  }
+}
+
+function inside(child, parent) {
+  const r = relative(real(parent), real(child));
+  return r === "" || (!r.startsWith("..") && !isAbsolute(r));
+}
+
+/**
+ * Where the post-commit hook goes, or why it cannot: git's own answer for the
+ * hooks folder, so core.hooksPath (and a worktree's shared hooks) are followed.
+ * Returns { dir, hook, prev } or { skip: "<why>" }.
+ */
+export function hookPlace(repo) {
+  const common = gitOut(repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (!common) return { skip: "this folder is not a git repo" };
+  const dir = gitOut(repo, ["rev-parse", "--path-format=absolute", "--git-path", "hooks"]);
+  if (!dir || dir === "/dev/null") return { skip: "git hooks are turned off here (core.hooksPath is /dev/null)" };
+  const hook = join(dir, "post-commit");
+  const prev = join(dir, HOOK_PREV);
+  if (inside(dir, common)) return { dir, hook, prev };
+  if (inside(dir, repo)) {
+    // A hooks folder in the work tree is usually committed for the whole team.
+    // A file added there would show as a change in git, and every comment would
+    // then be stamped "with uncommitted changes". Only an ignored path is safe.
+    const rel = relative(real(repo), join(real(dir), "post-commit"));
+    if (gitOut(repo, ["check-ignore", "-q", "--no-index", rel]) !== null) return { dir, hook, prev };
+    return { skip: `core.hooksPath points at ${relative(real(repo), real(dir)) || "."}/, a folder in the repo, so a hook added there would show up in git` };
+  }
+  return { skip: "core.hooksPath points at a hooks folder outside this repo, shared with other repos" };
+}
+
+/** Is our hook in place? */
+function ourHook(path) {
+  return (readText(path) || "").includes(HOOK_MARK);
 }
 
 function repoOf(flags) {
@@ -340,6 +398,34 @@ export function enable(repo, flags) {
   writeFileSync(mdPath, putBlock(readText(mdPath) || "", MD_BEGIN, MD_END, claudeMdBlock()));
   record({ kind: "claude-md", file: mdRel, begin: MD_BEGIN, end: MD_END, createdFile: !mdHad });
   did.push(`${mdRel}: a short "Page comments" section pointing Claude to development-manager:answer-page-comments`);
+
+  // 5. The post-commit hook (phase 4): which commit landed the work a comment was made on.
+  const place = hookPlace(repo);
+  if (place.skip) {
+    did.push(`no post-commit hook: ${place.skip}. Comments still work; they just are not linked to the commit that lands the work`);
+  } else if (ourHook(place.hook)) {
+    did.push("the post-commit hook was already in place");
+  } else if (existsSync(place.prev)) {
+    did.push(`no post-commit hook: ${HOOK_PREV} is already in the hooks folder, so the hook there now could not be kept safely`);
+  } else {
+    const hadPrevious = existsSync(place.hook);
+    let prevMode;
+    if (hadPrevious) {
+      prevMode = statSync(place.hook).mode & 0o7777;
+      renameSync(place.hook, place.prev);
+    }
+    mkdirSync(place.dir, { recursive: true });
+    writeFileSync(place.hook, readFileSync(join(HERE, "post-commit.template"), "utf8"));
+    chmodSync(place.hook, 0o755);
+    const rel = (p) => relative(repo, p).split("\\").join("/");
+    install.changes = install.changes.filter((c) => c.kind !== "post-commit-hook");
+    install.changes.push({ kind: "post-commit-hook", file: rel(place.hook), prev: rel(place.prev), hadPrevious, prevMode });
+    did.push(
+      hadPrevious
+        ? "a post-commit hook that notes which commit landed a comment's work; the post-commit hook already there still runs first"
+        : "a post-commit hook that notes which commit landed a comment's work",
+    );
+  }
 
   install.updated = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   writeJson(installPath, install);
@@ -603,6 +689,9 @@ export async function check(repo, { quiet = false } = {}) {
   const quietRun = spawnSync(process.execPath, [CLI, "watch", "--once", "--state", join(dir, ".state", "check-quiet.json"), "--exclude-author", "claude", "--repo", repo], { encoding: "utf8", timeout: 20000 });
   rmSync(join(dir, ".state", "check-quiet.json"), { force: true });
   ok(quietRun.status === 0, "the watcher finds this repo's comments", quietRun.status === 0 ? "" : quietRun.stderr.trim());
+  const place = hookPlace(repo);
+  if (place.skip) ok(null, "no post-commit hook", place.skip);
+  else ok(ourHook(place.hook), "the post-commit hook notes which commit lands a comment's work", ourHook(place.hook) ? (existsSync(place.prev) ? "the earlier post-commit hook still runs first" : "") : "not in place; run enable again");
 
   // The loop: start a server on a free port, post a comment, see the watcher print it.
   const args = config.serve.target ? ["serve", "--target", config.serve.target] : ["serve", "--root", config.serve.root];
@@ -702,6 +791,8 @@ export function undo(repo, flags) {
     for (const f of ["CLAUDE.md", ".claude/CLAUDE.md"]) if ((readText(join(repo, f)) || "").includes(MD_BEGIN)) changes.push({ kind: "claude-md", file: f, begin: MD_BEGIN, end: MD_END });
     const mp = marketplaceName(PLUGIN_ROOT, flags.marketplace);
     if (mp) changes.push({ kind: "settings", file: ".claude/settings.json", pluginId: `${PLUGIN}@${mp}`, createdFile: false, createdObject: false, keyWasThere: false });
+    const place = hookPlace(repo);
+    if (!place.skip && ourHook(place.hook)) changes.push({ kind: "post-commit-hook", file: relative(repo, place.hook), prev: relative(repo, place.prev), hadPrevious: existsSync(place.prev) });
     if (!changes.length && !existsSync(dir)) throw new Exit(3, "page comments are not turned on here; nothing to undo");
     out("No install.json, so these were found by their markers:");
     for (const c of changes) out(`  - ${c.file} (${c.kind})`);
@@ -738,6 +829,21 @@ export function undo(repo, flags) {
       } else {
         writeFileSync(path, r.text);
         did.push(`${c.file}: removed the Page comments section`);
+      }
+    } else if (c.kind === "post-commit-hook") {
+      const prev = join(repo, c.prev || join(dirname(c.file), HOOK_PREV));
+      const text = readText(path);
+      if (text !== null && !text.includes(HOOK_MARK)) {
+        did.push(`${c.file}: left alone, because it is not page comments' hook any more${existsSync(prev) ? `; the earlier hook is still at ${HOOK_PREV}` : ""}`);
+        continue;
+      }
+      if (text !== null) rmSync(path);
+      if (c.hadPrevious && existsSync(prev)) {
+        renameSync(prev, path);
+        if (Number.isInteger(c.prevMode)) chmodSync(path, c.prevMode);
+        did.push(`${c.file}: put back the post-commit hook that was there before`);
+      } else if (text !== null) {
+        did.push(`${c.file}: removed the post-commit hook`);
       }
     } else if (c.kind === "settings") {
       const settings = readJson(path);
@@ -797,7 +903,8 @@ const HELP = `enable-page-comments: turn page comments on in a repo, check them,
   enable.mjs --repo . --target <url> [--port 8766]  Put the comment server in front of a running server
   enable.mjs --repo . --root <dir> [--port 8766]    Serve a folder of pages with the comment button
   enable.mjs --check [--repo .]                     Prove the loop: setting, CLAUDE.md, a test comment the watcher sees
-  enable.mjs --undo [--repo .] [--purge [--force]]  Remove what enable added; threads stay unless --purge
+  enable.mjs --undo [--repo .] [--purge [--force]]  Remove what enable added, and put back a post-commit
+                                                    hook it moved aside; threads stay unless --purge
   enable.mjs --phone [--repo .]                     Comment from your phone too, through Tailscale (add
                                                     --target/--root/--port to enable at the same time)
   enable.mjs --phone --undo [--repo .]              Turn the phone off; the rest stays on
