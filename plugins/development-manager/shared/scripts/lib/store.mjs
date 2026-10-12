@@ -94,6 +94,9 @@ export function foldThread(id, events) {
     history: [],
     shots: [],
     lost: false,
+    // Who last said found or not found (the person whose page reported it).
+    // Not part of the shared shape; the watcher prints it on ev=anchor_lost.
+    lostBy: "",
     // How many events the file holds. Not part of the shared shape: the server
     // uses it so the page notices any new line, including the ones it does not show.
     events: events.length,
@@ -114,6 +117,7 @@ export function foldThread(id, events) {
       t.history.push({ status: e.status, author: str(e.author), ts: str(e.ts), note: e.note ? str(e.note) : undefined });
     } else if (e.ev === "anchor" && ANCHOR_STATES.includes(e.state)) {
       t.lost = e.state === "lost";
+      t.lostBy = str(e.author);
     } else if (e.ev === "landed" && typeof e.commit === "string" && !t.rev.landed) {
       // The post-commit hook: the uncommitted work this comment was made on
       // landed in this commit. `rev.git` keeps where the comment was made.

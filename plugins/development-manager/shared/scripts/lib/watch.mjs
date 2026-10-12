@@ -29,6 +29,7 @@ export function takeSnapshot(store) {
       page: t.page && t.page.path ? t.page.path : "",
       status: t.status,
       lost: !!t.lost,
+      lostBy: t.lostBy || "",
       messages: t.messages.map((m) => ({ author: m.author, ts: m.ts, body: m.body, edited: m.edited || "" })),
       lastStatusBy: t.history.length ? t.history[t.history.length - 1].author : "",
       waiting: t.waiting,
@@ -76,7 +77,7 @@ export function diffSnapshots(prev, next, { exclude = [] } = {}) {
       if (t.status !== "open") out.push({ ev: STATUS_EV[t.status], page: t.page, thread: id, author: t.lastStatusBy, msg: last.body });
       for (const s of t.shots || []) out.push(shotEvent(t.page, id, s));
       // A thread that arrives already lost, such as one merged in from a branch.
-      if (t.status === "open" && t.lost) out.push({ ev: "anchor_lost", page: t.page, thread: id, author: "", msg: last.body });
+      if (t.status === "open" && t.lost) out.push({ ev: "anchor_lost", page: t.page, thread: id, author: t.lostBy || "", msg: last.body });
       continue;
     }
     const seen = new Set(old.messages.map(msgKey));
@@ -93,7 +94,7 @@ export function diffSnapshots(prev, next, { exclude = [] } = {}) {
       out.push({ ev: STATUS_EV[t.status], page: t.page, thread: id, author: t.lastStatusBy, msg: last.body });
     }
     if (t.status === "open" && t.lost && !old.lost) {
-      out.push({ ev: "anchor_lost", page: t.page, thread: id, author: "", msg: last.body });
+      out.push({ ev: "anchor_lost", page: t.page, thread: id, author: t.lostBy || "", msg: last.body });
     }
     const before = new Map((old.shots || []).map((s) => [shotKey(s), s]));
     for (const s of t.shots || []) {
@@ -114,7 +115,7 @@ export function replayEvents(snap, { exclude = [] } = {}) {
     const last = t.messages[t.messages.length - 1] || { author: "", body: "" };
     if (last.author && ex.has(last.author.toLowerCase())) continue;
     out.push({ ev: "thread_open", page: t.page, thread: id, author: last.author, msg: last.body });
-    if (t.lost) out.push({ ev: "anchor_lost", page: t.page, thread: id, author: "", msg: last.body });
+    if (t.lost) out.push({ ev: "anchor_lost", page: t.page, thread: id, author: t.lostBy || "", msg: last.body });
   }
   return out;
 }

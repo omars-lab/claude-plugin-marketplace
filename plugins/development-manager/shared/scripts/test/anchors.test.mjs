@@ -170,7 +170,7 @@ test("the watcher prints anchor_lost once, for open threads only", () => {
     const s0 = takeSnapshot(store);
     setAnchorState(store, id, { author: "sam", state: "lost" });
     const s1 = takeSnapshot(store);
-    assert.deepEqual(diffSnapshots(s0, s1).map((e) => [e.ev, e.thread]), [["anchor_lost", id]]);
+    assert.deepEqual(diffSnapshots(s0, s1).map((e) => [e.ev, e.thread, e.author]), [["anchor_lost", id, "sam"]]);
     assert.deepEqual(diffSnapshots(s1, takeSnapshot(store)), [], "nothing new, nothing printed");
     // A thread that arrives already lost (merged in from a branch).
     const late = createThread(store, SAMPLE);
