@@ -1,0 +1,262 @@
+/* The comment bar. It lives in a shadow root, so these rules cannot leak into
+   the page and the page's rules cannot reach in. */
+:host {
+  all: initial;
+  --pc-bg: #ffffff;
+  --pc-fg: #1d1f23;
+  --pc-muted: #5f6672;
+  --pc-line: #d5d9e0;
+  --pc-accent: #2f5bd3;
+  --pc-accent-fg: #ffffff;
+  --pc-open: #d9480f;
+  --pc-done: #2b8a3e;
+  --pc-claude: #f1f4fb;
+  --pc-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--pc-fg);
+}
+@media (prefers-color-scheme: dark) {
+  :host {
+    --pc-bg: #1f2228;
+    --pc-fg: #e8eaee;
+    --pc-muted: #a3a9b4;
+    --pc-line: #3a3f48;
+    --pc-accent: #7a9cff;
+    --pc-accent-fg: #0f1115;
+    --pc-claude: #262b35;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+[hidden] {
+  display: none !important;
+}
+button {
+  font: inherit;
+  color: var(--pc-fg);
+  background: var(--pc-bg);
+  border: 1px solid var(--pc-line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+button:hover {
+  border-color: var(--pc-accent);
+}
+button.primary,
+button.on {
+  background: var(--pc-accent);
+  color: var(--pc-accent-fg);
+  border-color: var(--pc-accent);
+}
+button.ghost {
+  border-color: transparent;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.bar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 32px);
+  padding: 8px;
+  background: var(--pc-bg);
+  border: 1px solid var(--pc-line);
+  border-radius: 10px;
+  box-shadow: var(--pc-shadow);
+}
+.status {
+  color: var(--pc-muted);
+  font-size: 12px;
+}
+.status:empty {
+  display: none;
+}
+.tab {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  box-shadow: var(--pc-shadow);
+}
+.outline {
+  position: absolute;
+  pointer-events: none;
+  outline: 2px solid var(--pc-accent);
+  outline-offset: 1px;
+  background: rgba(47, 91, 211, 0.08);
+  border-radius: 2px;
+}
+.chip {
+  position: absolute;
+  pointer-events: none;
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 2px 6px;
+  font-size: 11px;
+  background: var(--pc-accent);
+  color: var(--pc-accent-fg);
+  border-radius: 4px;
+}
+.pins {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.pin {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 11px 11px 11px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--pc-open);
+  color: #fff;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.pin.answered {
+  background: var(--pc-accent);
+}
+.pin.resolved,
+.pin.dismissed {
+  background: var(--pc-done);
+  opacity: 0.75;
+}
+.pop {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  max-height: 70vh;
+  overflow: auto;
+  background: var(--pc-bg);
+  border: 1px solid var(--pc-line);
+  border-radius: 10px;
+  box-shadow: var(--pc-shadow);
+}
+.where,
+.quote {
+  color: var(--pc-muted);
+  font-size: 12px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+textarea {
+  width: 100%;
+  font: inherit;
+  color: var(--pc-fg);
+  background: var(--pc-bg);
+  border: 1px solid var(--pc-line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.err {
+  color: var(--pc-open);
+  font-size: 12px;
+}
+.err:empty {
+  display: none;
+}
+.messages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.messages li {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--pc-line);
+}
+.messages li.claude {
+  background: var(--pc-claude);
+}
+.messages li.event {
+  border: none;
+  padding: 0 8px;
+  color: var(--pc-muted);
+  font-size: 12px;
+}
+.meta {
+  color: var(--pc-muted);
+  font-size: 11px;
+}
+.body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.badge {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 11px;
+  border: 1px solid currentColor;
+}
+.badge.open {
+  color: var(--pc-open);
+}
+.badge.resolved,
+.badge.dismissed {
+  color: var(--pc-done);
+}
+.badge.lost,
+.badge.changed {
+  color: var(--pc-muted);
+}
+.panel {
+  position: fixed;
+  right: 16px;
+  bottom: 70px;
+  width: min(380px, calc(100vw - 32px));
+  max-height: 60vh;
+  overflow: auto;
+  padding: 10px;
+  background: var(--pc-bg);
+  border: 1px solid var(--pc-line);
+  border-radius: 10px;
+  box-shadow: var(--pc-shadow);
+}
+.panel .title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.panel li {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  padding: 6px 4px;
+  border-top: 1px solid var(--pc-line);
+  cursor: pointer;
+}
+.panel li:hover {
+  background: var(--pc-claude);
+}
+.panel .text {
+  flex: 1 1 100%;
+}
