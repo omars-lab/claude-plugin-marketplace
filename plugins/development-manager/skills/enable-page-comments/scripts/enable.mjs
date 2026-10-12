@@ -3,7 +3,7 @@
 // works, or take it all out again. Node 18, no dependencies.
 //
 //   enable.mjs --detect [--repo .] [--json]
-//   enable.mjs --repo . (--target <url> | --root <dir>) [--port 8766]
+//   enable.mjs --repo . (--target <url> | --root <dir>) [--port 8766] [--shots-dir <path>]
 //   enable.mjs --check [--repo .]
 //   enable.mjs --undo [--repo .] [--purge [--force]]
 //
@@ -11,12 +11,17 @@
 // `.page-comments/` is listed in `.page-comments/install.json`, so --undo
 // removes exactly that and nothing else:
 //   - `.page-comments/` with threads/, config.json, .gitattributes, .gitignore
-//     and the `run` launcher;
+//     and the `run` launcher. config.json names the folder for screenshots
+//     (`shotsDir`, written with ~): --shots-dir, else the global config, else
+//     the design default in iCloud Drive;
 //   - a make target between `# page-comments:begin` / `# page-comments:end`;
 //   - the plugin turned on in the repo's committed `.claude/settings.json`, so
 //     every session opened in the repo has the answering skill and the watcher;
 //   - a marked block in the repo's CLAUDE.md that says to follow
 //     `development-manager:answer-page-comments` when the watcher prints a comment.
+//
+// Undo never deletes a screenshot: not in the iCloud folder, and not in
+// `.page-comments/shots/`, which stays with the .gitignore that keeps it out of git.
 //
 // Exit codes: 0 ok, 1 a check failed, 2 bad usage, 3 not found.
 
@@ -25,6 +30,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, rm
 import { request } from "node:http";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { contractHome, expandHome, shotsSetting, shotTarget } from "../../../shared/scripts/lib/shots.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const PLUGIN_ROOT = resolve(HERE, "..", "..", "..");
@@ -35,6 +41,8 @@ const MAKE_BEGIN = "# page-comments:begin";
 const MAKE_END = "# page-comments:end";
 const MD_BEGIN = "<!-- page-comments:begin -->";
 const MD_END = "<!-- page-comments:end -->";
+const PRIVACY =
+  "Screenshots go to iCloud Drive. Apple's servers keep a copy of everything there, which Apple can read unless Advanced Data Protection is on.";
 const CHECK_TEXT = "[enable check] A test comment from enable-page-comments. It is removed right away; ignore it.";
 
 // ---- Small helpers ---------------------------------------------------------------------
@@ -48,7 +56,7 @@ class Exit extends Error {
 const out = (s = "") => process.stdout.write(s + "\n");
 
 function parseArgs(argv) {
-  const values = new Set(["repo", "target", "root", "port", "marketplace", "author", "plugin-root"]);
+  const values = new Set(["repo", "target", "root", "port", "marketplace", "author", "plugin-root", "shots-dir"]);
   const bools = new Set(["detect", "check", "undo", "purge", "force", "json", "help"]);
   const flags = {};
   for (let i = 0; i < argv.length; i++) {
@@ -257,7 +265,13 @@ export function enable(repo, flags) {
   // 1. The folder.
   mkdirSync(join(dir, "threads"), { recursive: true });
   if (!existsSync(join(dir, "threads", ".gitkeep"))) writeFileSync(join(dir, "threads", ".gitkeep"), "");
-  writeJson(configPath, { v: 1, author: config.author || flags.author || defaultAuthor(repo), resolve: config.resolve || "when-fixed", ...config, serve });
+  // Where screenshots go: --shots-dir, else what this repo already has, else the
+  // global config or the design default. Stored with ~ so it never names the person.
+  let shotsDir = config.shotsDir;
+  if (flags["shots-dir"]) shotsDir = contractHome(resolve(expandHome(flags["shots-dir"])));
+  else if (typeof shotsDir !== "string" || !shotsDir.trim()) shotsDir = shotsSetting(null).dir;
+  const shotsChanged = shotsDir !== config.shotsDir;
+  writeJson(configPath, { v: 1, author: config.author || flags.author || defaultAuthor(repo), resolve: config.resolve || "when-fixed", ...config, serve, shotsDir });
   writeFileSync(join(dir, ".gitattributes"), "# Each thread file only ever grows, so git can keep both sides' lines.\nthreads/*.jsonl merge=union\n");
   writeFileSync(join(dir, ".gitignore"), "# Per-machine state and screenshots never go in git.\n.state/\nshots/\n");
   const launcher = readFileSync(join(HERE, "run.template"), "utf8");
@@ -266,6 +280,12 @@ export function enable(repo, flags) {
   mkdirSync(join(dir, ".state"), { recursive: true });
   writeFileSync(join(dir, ".state", "plugin-root"), PLUGIN_ROOT + "\n");
   did.push(`${FOLDER}/ with threads/, config.json, the run launcher, and git settings for the thread files`);
+  const shots = shotTarget({ repo, dir });
+  did.push(
+    shots.kind === "icloud"
+      ? `screenshots go to ${contractHome(shots.base)}/ (iCloud Drive)`
+      : `screenshots go to ${FOLDER}/shots/, which git ignores (${shots.reason})`,
+  );
 
   const record = (change) => {
     const i = install.changes.findIndex((c) => c.kind === change.kind && c.file === change.file);
@@ -318,7 +338,14 @@ export function enable(repo, flags) {
   install.updated = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   writeJson(installPath, install);
 
-  return { did, serve, port, pluginId, makeTarget: (install.changes.find((c) => c.kind === "make") || {}).target || null };
+  return {
+    did,
+    serve,
+    port,
+    pluginId,
+    makeTarget: (install.changes.find((c) => c.kind === "make") || {}).target || null,
+    privacy: shotsChanged && shots.kind === "icloud" ? PRIVACY : null,
+  };
 }
 
 function pick(o, keys) {
@@ -557,16 +584,27 @@ export function undo(repo, flags) {
     }
   }
 
+  // Screenshots are never deleted. Local ones stay in shots/, with the
+  // .gitignore that keeps them out of git; iCloud ones are not touched at all.
+  const cloud = existsSync(dir) ? shotTarget({ repo, dir }) : null;
+  const cloudShots = cloud && cloud.kind === "icloud" && existsSync(cloud.base) ? contractHome(cloud.base) : null;
+  const localShots = existsSync(join(dir, "shots"));
+  const keep = localShots ? ["shots", ".gitignore"] : [];
   if (existsSync(dir)) {
     const threads = threadFiles(dir);
     if (flags.purge || !threads.length) {
-      rmSync(dir, { recursive: true, force: true });
-      did.push(`${FOLDER}/: removed${threads.length ? `, with its ${threads.length} thread(s)` : " (it held no comments)"}`);
+      if (localShots) {
+        for (const f of readdirSync(dir)) if (!keep.includes(f)) rmSync(join(dir, f), { recursive: true, force: true });
+      } else {
+        rmSync(dir, { recursive: true, force: true });
+      }
+      did.push(`${FOLDER}/: removed${threads.length ? `, with its ${threads.length} thread(s)` : " (it held no comments)"}${localShots ? `, except shots/ and its .gitignore` : ""}`);
     } else {
-      for (const f of ["install.json", "run", ".state", ".gitignore"]) rmSync(join(dir, f), { recursive: true, force: true });
-      did.push(`${FOLDER}/: removed the launcher and machine state; kept ${threads.length} thread(s), config.json and .gitattributes. Run with --purge to delete them too`);
+      for (const f of ["install.json", "run", ".state"].concat(localShots ? [] : [".gitignore"])) rmSync(join(dir, f), { recursive: true, force: true });
+      did.push(`${FOLDER}/: removed the launcher and machine state; kept ${threads.length} thread(s), config.json and .gitattributes${localShots ? ", and shots/ with its .gitignore" : ""}. Run with --purge to delete them too`);
     }
   }
+  if (cloudShots) did.push(`screenshots in ${cloudShots}/ were left alone; delete them by hand if you want them gone`);
   return did;
 }
 
@@ -581,7 +619,11 @@ const HELP = `enable-page-comments: turn page comments on in a repo, check them,
   enable.mjs --undo [--repo .] [--purge [--force]]  Remove what enable added; threads stay unless --purge
 
 Other flags: --author <name> (who page comments are from; default: your git first name),
---marketplace <name> (only if it cannot be worked out).`;
+--shots-dir <path> (where screenshots go; default: the global config's shotsDir, else
+~/Library/Mobile Documents/com~apple~CloudDocs/CloudDesktop/data),
+--marketplace <name> (only if it cannot be worked out).
+
+Undo never deletes a screenshot, in iCloud Drive or in .page-comments/shots/.`;
 
 export async function main(argv) {
   const flags = parseArgs(argv);
@@ -616,6 +658,10 @@ export async function main(argv) {
   const r = enable(repo, flags);
   out(`Page comments are on in ${basename(repo)}.`);
   for (const d of r.did) out(`  - ${d}`);
+  if (r.privacy) {
+    out("");
+    out(r.privacy);
+  }
   out("");
   out(`Start it:   ${r.makeTarget ? `make ${r.makeTarget}` : `.page-comments/run serve ${r.serve.target ? `--target ${r.serve.target}` : `--root ${r.serve.root}`} --port ${r.port}`}`);
   out(`Open:       http://127.0.0.1:${r.port}/   and press C to comment`);
