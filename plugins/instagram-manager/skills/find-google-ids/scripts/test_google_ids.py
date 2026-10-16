@@ -153,6 +153,34 @@ class Ids(unittest.TestCase):
         self.assertFalse(google_ids.unchecked_address(old, {"near": "Fixture Town"}))              # no address to check
         self.assertFalse(google_ids.unchecked_address(dict(old, by="hand"), {"address": "412 Orchard Rd"}))
 
+    def test_a_handle_style_name_still_matches(self):
+        where = {("fixture", "town"), ("ftx",), ("tx",)}
+        self.assertTrue(gp.same_name("Example Tacos FTX", "Example Tacos", where))           # the town's tag
+        self.assertFalse(gp.same_name("Example Tacos FTX", "Example Tacos"))                 # only with where
+        self.assertTrue(gp.same_name("Example Tacos Fixture Town TX", "Example Tacos", where))
+        self.assertFalse(gp.same_name("Pho FTX", "Pho", where))                              # still too short
+        self.assertTrue(gp.same_name("Fixture Town", "Fixture Town Hall", where))            # all place words: kept
+        self.assertTrue(gp.same_name("Examplecafe", "Example Cafe"))                         # run together
+        self.assertTrue(gp.same_name("Orchard Burgershake", "Orchard's Burger Shake"))
+        self.assertFalse(gp.same_name("Examplecafe", "Example Grill"))
+        self.assertTrue(gp.same_name("Example Chocolate and Barbecue", "Example Chocolate + Barbecue"))
+        found = [{"id": "T", "name": "Example Tacos", "address": "9 Mill St", "types": []}]
+        self.assertEqual(gp.auto_pick("Example Tacos FTX", found, None, where)["id"], "T")
+        self.assertIsNone(gp.auto_pick("Example Tacos FTX", found, "412 Orchard Rd", where))   # the address still rules
+        places = google_ids.Places({}, {"Fixture Town": {"hashtags": ["ftx"]}}, PLACES)
+        self.assertLessEqual({("fixture", "town"), ("ftx",), ("tx",)}, google_ids.where_words(places))
+
+    def test_a_spot_with_an_address_gets_a_wider_box(self):
+        places = google_ids.Places({}, {}, PLACES)
+        bare = {"name": "Example Deli", "near": "Fixture Town"}
+        self.assertEqual(google_ids.where(bare, places, gp.BOX_KM)[1], gp.TOWN_BOX_KM["city"])
+        self.assertEqual(google_ids.where(dict(bare, address="412 Orchard Rd"), places, gp.BOX_KM)[1],
+                         gp.ADDRESS_BOX_KM)                                                    # guarded by the number
+        self.assertEqual(google_ids.where(dict(bare, address="Orchard Rd"), places, gp.BOX_KM)[1],
+                         gp.TOWN_BOX_KM["city"])                                               # no number, no widening
+        wide = google_ids.Places({}, {"Fixture Town": {"box_km": 35}}, PLACES)
+        self.assertEqual(google_ids.where(bare, wide, gp.BOX_KM)[1], 35.0)                    # a sprawling city
+
     def test_run_keeps_only_ids(self):
         out, err = self.run_ids("--pilot", "fixture")
         text, kept = self.kept()

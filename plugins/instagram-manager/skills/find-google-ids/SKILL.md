@@ -42,8 +42,11 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
 
 1. **Dry run.** `google_ids.py --pilot <name> --dry-run` (`make google-ids GOOGLE_DRY=1`) lists each spot,
    its search text and its box, with no key and no calls. Spots with no pin whose area is a state or
-   a country have no box narrow enough and are left out (`ev=google_no_box`). Two more lists can
-   follow:
+   a country have no box narrow enough and are left out (`ev=google_no_box`). A spot with no pin
+   is searched within 8 km of its town's middle. That misses the far side of a sprawling city
+   (a big city can run 30 km and more from its middle), so such a town sets `box_km:` in
+   `config/places.yaml`, and a spot whose caption gives a house number gets at least 30 km, since
+   the address check keeps a wide box from picking a namesake. Two more lists can follow:
    - **"not searched: filed under the wrong area"**: spots with no pin that the locator says are
      really in another town (`really_in`). A box round the wrong town would waste the search. Fix
      their area first (**resolve-post-location**, "A spot in the wrong area"), then run this again.
@@ -61,7 +64,11 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
      candidate must also be at that number, or it is left for a person: a chain's other branch a
      few kilometres off carries the same name. Google's address is compared in memory and never
      kept; the entry gets `at_address: true`. An id kept by name before this check, for a spot
-     with a house number, is searched once more on the next run;
+     with a house number, is searched once more on the next run. A spot named after its
+     Instagram handle still matches: a town, a town's hashtag (`etx`) or a state code at the end
+     of our name is dropped when the whole name does not match ("Example Tacos ETX" is Google's
+     "Example Tacos"), and a run-together name matches Google's words ("Examplecafe" is
+     "Example Cafe"), so `+` reads as "and";
    - **nothing in the box** (`verdict: none`): not searched again;
    - **everything else** is printed with a link and a `PICK='KEY=PLACE_ID'` line per candidate.
 3. **Look with your own eyes.** Open five or so kept-by-name links and check each opens the place
@@ -103,7 +110,7 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
 |---|---|---|---|
 | `scripts/google_ids.py` | One Google search per spot, keeps an id by name or prints candidates (and keeps their ids in `.cache/google-to-pick.json` for the decisions page); `--pick`/`--none`/`--chain` record a person's choice | After new spots land, or to pick the leftovers | `python3 scripts/google_ids.py --pilot <name>` (`--all`, `--only`, `--limit`, `--refresh`, `--box-km`, `--dry-run`, `--prune`, `--pick KEY=ID`, `--none KEY`, `--chain KEY`, `--by hand\|claude`) |
 | `../../shared/scripts/google_places.py` | The search, the box, the name rule, the waits after a refusal, and the link; build-hub and send-topics use it to put kept ids into links | Imported, not run | — |
-| `scripts/test_google_ids.py` | Offline tests with Google stubbed: the box, the name rule (one match, two, a short name), each spot searched once, the town box, a rerun skipping kept spots, `--pick` keeping Google's current id, `--none`, `--chain` (no id, its search link kept, not searched again), the daily cap, the waits, a spot in the wrong area left unsearched, stale ids listed and pruned (never another area's), and that the file and the spots left for a person hold nothing of Google's but ids | After any change to either script | `python3 scripts/test_google_ids.py` |
+| `scripts/test_google_ids.py` | Offline tests with Google stubbed: the box, the name rule (one match, two, a short name, a handle with a town tag on the end or its words run together), the wider box for a spot with a house number, each spot searched once, the town box, a rerun skipping kept spots, `--pick` keeping Google's current id, `--none`, `--chain` (no id, its search link kept, not searched again), the daily cap, the waits, a spot in the wrong area left unsearched, stale ids listed and pruned (never another area's), and that the file and the spots left for a person hold nothing of Google's but ids | After any change to either script | `python3 scripts/test_google_ids.py` |
 
 In the data repo: `make google-ids` with `GOOGLE_DRY=1`, `GOOGLE_LIMIT=`, `GOOGLE_ONLY=`,
 `GOOGLE_REFRESH=1`, `GOOGLE_BOX=`, `GOOGLE_PRUNE=1`, `PICK=`, `NONE=` and `CHAIN=` (several, space-separated), `PICK_BY=`

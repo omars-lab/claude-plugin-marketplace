@@ -37,6 +37,16 @@ ID_FIELDS = "id,movedPlaceId"                  # Place Details Essentials (IDs O
 CANDIDATES = 3
 BOX_KM = 2.0            # half the box's width round our own pin
 TOWN_BOX_KM = {"city": 8.0, "park": 20.0, "region": 30.0, "other": 10.0}   # round the town, no pin
+# Round the town, no pin, but the caption gives a house number: Google's place must be at that
+# number to be kept by name, so a wide box cannot pick a namesake, and a sprawling city's far side
+# is still in it. A town can set its own width with `box_km` in config/places.yaml.
+ADDRESS_BOX_KM = 30.0
+# Two-letter state codes: like a town's name or hashtag, they end a handle-style spot name
+# ("Example Tacos TX") and say only where it is.
+STATE_CODES = {"al", "ak", "az", "ar", "ca", "co", "ct", "de", "dc", "fl", "ga", "hi", "id", "il", "in",
+               "ia", "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms", "mo", "mt", "ne", "nv", "nh",
+               "nj", "nm", "ny", "nc", "nd", "oh", "ok", "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut",
+               "vt", "va", "wa", "wv", "wi", "wy"}
 KM_PER_DEG = 111.32
 SHOW_KINDS = 3
 CLOSED = "CLOSED_PERMANENTLY"
@@ -144,17 +154,48 @@ def plain(w):
 
 def words(name):
     s = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode().lower()
-    s = s.replace("&", " and ").replace("'", "").replace("’", "")
+    s = s.replace("&", " and ").replace("+", " and ").replace("'", "").replace("’", "")
     return [plain(w) for w in re.split(r"[^a-z0-9]+", s) if w and w != "the"]
 
 
-def same_name(ours, theirs):
-    """Every word of our name is in Google's ("Example Tacos" → "Example Tacos Downtown"), and our
-    name says enough to tell one place from another: two words, or one of five letters or more."""
-    mine = words(ours)
-    if not mine or (len(mine) == 1 and len(mine[0]) < 5):
-        return False
-    return set(mine) <= set(words(theirs))
+def enough(mine):
+    """Our name says enough to tell one place from another: two words, or one of five letters or more."""
+    return bool(mine) and not (len(mine) == 1 and len(mine[0]) < 5)
+
+
+def trimmed(mine, where):
+    """Our name's words with the place words at its end taken off: "Example Tacos Fixture Town TX"
+    → "Example Tacos". where: word tuples, each a place's name, a hashtag or a state code. A name
+    made only of place words is left as it is."""
+    cut = True
+    while cut:
+        cut = False
+        for p in sorted(where, key=len, reverse=True):
+            if len(p) < len(mine) and tuple(mine[-len(p):]) == p:
+                mine, cut = mine[:-len(p)], True
+                break
+    return mine
+
+
+def run_together(mine, theirs):
+    """Our words, joined up, are a run of Google's words joined up: a handle like "Examplecafe" is
+    Google's "Example Cafe"."""
+    joined = "".join(mine)
+    return any("".join(theirs[i:j]) == joined
+               for i in range(len(theirs)) for j in range(i + 2, len(theirs) + 1))
+
+
+def same_name(ours, theirs, where=()):
+    """Every word of our name is in Google's ("Example Tacos" → "Example Tacos Downtown"), or our
+    name joined up is a run of Google's words ("Examplecafe" → "Example Cafe"), and our name says
+    enough to tell one place from another. When the whole name does not match, it is tried again
+    without the place words at its end (`where`): a name taken from a handle often ends in its
+    town's tag ("Example Tacos ETX")."""
+    mine, their = words(ours), words(theirs)
+    for m in (mine, trimmed(mine, where)) if where else (mine,):
+        if enough(m) and (set(m) <= set(their) or run_together(m, their)):
+            return True
+    return False
 
 
 def house_number(address):
@@ -171,12 +212,12 @@ def at_the_house(number, theirs):
     return bool(re.search(rf"(?<![\w-]){re.escape(number)}(?![\w-])", theirs, re.I))
 
 
-def auto_pick(ours, found, address=None):
+def auto_pick(ours, found, address=None, where=()):
     """The one candidate whose name is ours, or None when none or more than one is. When several
     carry the name, areas and stops of that name are set aside first (NOT_A_PLACE). When the
     caption gives a street address with a house number, only a candidate at that number counts:
-    a chain's other branch carries the name too, but not the address."""
-    hits = [c for c in found if same_name(ours, c["name"])]
+    a chain's other branch carries the name too, but not the address. where: see same_name."""
+    hits = [c for c in found if same_name(ours, c["name"], where)]
     number = house_number(address)
     if number:
         hits = [c for c in hits if at_the_house(number, c.get("address"))]

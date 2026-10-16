@@ -15,6 +15,12 @@ and "CLOSED FOR GOOD"; none of that is written anywhere (shared/scripts/google_p
   - When exactly one of the 3 carries every word of our name, its id is kept (`by: auto`). When the
     caption gives a street address with a house number, that one must also be at that number;
     another branch of a chain carries the name but not the address, so it is left for a person.
+    A name taken from a handle is matched too: without a town, hashtag or state code at its end
+    ("Example Tacos ETX" is Google's "Example Tacos"), and run together ("Examplecafe" is
+    "Example Cafe").
+  - A spot with no pin is searched round its town: 8 km for a city, or the town's own `box_km` in
+    config/places.yaml for a sprawling one, and at least 30 km when the caption gives a house
+    number, since Google's place must then be at that number.
   - Otherwise the spot is printed with a `PICK='KEY=PLACE_ID'` line per candidate for a person.
     `--pick` checks the id with Google's free id-only call and keeps it (`by: hand`, or
     `by: claude` with `--by claude` when Claude chose from the list rather than a person).
@@ -101,7 +107,25 @@ def where(e, places, box_km):
     half = gp.TOWN_BOX_KM.get(d.get("kind"))
     if half is None:   # a state or a country: too wide to tell one café from another
         return None
+    own = places.config.get(town)
+    if isinstance(own, dict) and bh.number(own.get("box_km")) is not None:   # a sprawling city says how wide
+        half = float(own["box_km"])
+    if gp.house_number(e.get("address")):   # Google's place must be at the number, so a wide box is safe
+        half = max(half, gp.ADDRESS_BOX_KM)
     return {"lat": d["lat"], "lon": d["lon"]}, half, f"inside {half:g} km of {town} (no pin of our own)"
+
+
+def where_words(places):
+    """The word runs that only say where a spot is: every listed place's name, each place's hashtags
+    in config/places.yaml ("etx") and the state codes. same_name drops them from the end of our
+    name when the whole name does not match."""
+    out = {(c,) for c in gp.STATE_CODES}
+    for name in places.known:
+        out.add(tuple(gp.words(name)))
+    for v in places.config.values():
+        for h in (v.get("hashtags") or []) if isinstance(v, dict) else []:
+            out.add(tuple(gp.words(h)))
+    return {w for w in out if w}
 
 
 def stale_keys(kept, saves, tags, pins, placed):
@@ -294,6 +318,7 @@ def main(argv=None):
         sys.exit("google_ids: no GOOGLE_MAPS_API_KEY (run it through dotenvx: make google-ids)")
 
     auto, left, none, closed = 0, [], 0, []
+    place_words = where_words(places)
     for n, (k, e, q, (pin, half, words)) in enumerate(todo, 1):
         log("google_search", n=n, of=len(todo), key=k)
         try:
@@ -311,7 +336,7 @@ def main(argv=None):
             none += 1
             print("\n".join(gp.show(k, q, found, words)))
         else:
-            hit = gp.auto_pick(e["name"], found, e.get("address"))
+            hit = gp.auto_pick(e["name"], found, e.get("address"), place_words)
             if hit:
                 kept[k] = entry(q, "match", "auto", today, hit["id"])
                 if gp.house_number(e.get("address")):
