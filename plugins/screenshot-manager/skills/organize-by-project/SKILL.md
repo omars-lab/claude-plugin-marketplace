@@ -447,6 +447,22 @@ first: only new screenshots, the folders already moved are gone, and the fingerp
 aliases now answer most of what was asked last time. Groups the user marked "Not sure yet"
 come back in the next review doc; the ones they left blank do too.
 
+### A handful of new screenshots
+
+When only a few new screenshots are on the Desktop (about 5 or fewer) and every folder they
+could go to already has a fingerprint, skip the OCR and the image-check agents:
+
+1. Open each screenshot yourself with Read.
+2. Read the Guidance of the folders they could go to. **Guidance beats the name on screen.**
+   In one run, a Claude Code session screenshot showed one project's name in its status line,
+   but the Guidance said session screenshots go to the techniques folder, whatever project the
+   session was on.
+3. Write a plan by hand in the shape `plan` writes (`root`, and `moves` with `kind: "shot"`,
+   `project`, `src`, `dst`, `why`). Show it as a table and ask once, saying which calls rest on
+   how a page looks rather than a name on screen.
+4. Run `apply --only shots` on it, so the move still gets an undo list.
+5. Add a `note` to each folder whose Guidance didn't already cover what went in.
+
 ## Scripts — when to use each
 
 | Script | What it does | When | Command |
