@@ -17,8 +17,11 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
 ## Before you start
 
 - **Videos.** Only reels with `video:` in `data/media.yaml` get stills (**fetch-media** `--video`).
-  Each Instagram run needs the user's go-ahead: ask with `AskUserQuestion`, saying how many reels,
-  how long the run takes at the pacing caps, and what waiting would mean.
+  `extract_stills.py --need-video --pilot <name>` lists the reels that name 2 or more spots and have
+  no video yet, in `.cache/stills/need-video.txt`. Those are the reels whose spots all share one
+  cover. Posts Instagram already answered with an error are left off. Each Instagram run needs the
+  user's go-ahead: ask with `AskUserQuestion`, saying how many reels and spots, how long the run
+  takes at the pacing caps, and what waiting would mean.
 - **Spots.** The reel needs pins in `data/pins.yaml` (**resolve-post-location**, **read-frames**).
 - **Tools.** ffmpeg, ffprobe and img2webp (`brew install ffmpeg webp`). This ffmpeg has no WebP
   encoder, so ffmpeg writes the clip's frames and img2webp joins them.
@@ -56,9 +59,11 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/extract_stills.py` | A still and a 3 s clip per spot, cut where its name is on screen; writes `data/stills.yaml` | After new videos or spots land, or after a hand-set `t:` | `python3 scripts/extract_stills.py --pilot <name>` (`--all`, `--redo`) |
-| `scripts/test_extract_stills.py` | Offline tests on an invented data folder and an ffmpeg-made video: the moment picked, a spot never on screen, a rerun cutting nothing, a hand time kept, a clip near the end | After any change to the script | `python3 scripts/test_extract_stills.py` |
+| `scripts/extract_stills.py --need-video` | Lists the reels naming 2 or more spots with no video yet; cuts nothing | Before asking to fetch videos for stills | `python3 scripts/extract_stills.py --need-video --pilot <name>` |
+| `scripts/test_extract_stills.py` | Offline tests on an invented data folder and an ffmpeg-made video: the moment picked, a spot never on screen, a rerun cutting nothing, a hand time kept, a clip near the end, the need-video list | After any change to the script | `python3 scripts/test_extract_stills.py` |
 
-In the data repo: `make stills` (`STILLS_REDO=1` to cut again).
+In the data repo: `make stills` (`STILLS_REDO=1` to cut again), `make stills-need-video`, then
+`make media-video VIDEO_LIST=.cache/stills/need-video.txt MEDIA_LIMIT=<n>`.
 
 ## What it can't do yet
 

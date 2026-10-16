@@ -160,6 +160,20 @@ class Stills(unittest.TestCase):
         rows = [line.split() for line in info.splitlines() if re.match(r"\s*\d+:", line)]
         self.assertEqual([int(r[6]) for r in rows], [1000, 2000])
 
+    def test_need_video_lists_the_reels_with_two_spots_and_no_video(self):
+        self.write("data/pins.yaml", {"LISTED": SPOTS, "NOVID": SPOTS[:2], "GONE": SPOTS[:2]})
+        self.write("data/media.yaml", {**MEDIA, "GONE": {"error": "not_found"}})
+        self.write("data/tags.yaml", {**TAGS, "GONE": {"cities": ["Fixture Town"]}})
+        self.write(".cache/saves.json", {"saves": [save("LISTED"), save("NOVID"), save("GONE")]})
+        self.assertIn("1 reels naming 2 spots have no video yet", self.run_stills("--need-video"))
+        with open(self.path(".cache/stills/need-video.txt")) as fh:
+            self.assertEqual(fh.read(), "NOVID\n")   # GONE was not found last time, so it is not asked for again
+        self.write("data/pins.yaml", PINS)   # one spot: its cover is already its picture
+        self.run_stills("--need-video")
+        with open(self.path(".cache/stills/need-video.txt")) as fh:
+            self.assertEqual(fh.read(), "")
+        self.assertFalse(os.path.exists(self.path("data/stills.yaml")))   # nothing was cut
+
     def test_slug(self):
         self.assertEqual(es.slug("Café Example & Co."), "cafe-example-co")
         self.assertEqual(es.slug("!!!"), "spot")

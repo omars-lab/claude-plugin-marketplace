@@ -6,6 +6,8 @@ place's page in the hub shows that place, not the reel's cover. No model is call
     extract_stills.py --pilot NAME    every spot in the pilot whose reel has a video
     extract_stills.py --all           every spot whose reel has a video
     options: --redo (cut again, even spots that have a still)
+    --need-video (with --pilot or --all): list the reels naming 2 or more spots that have no video
+                 yet, in .cache/stills/need-video.txt, for fetch-media --video; cuts nothing
 
 Reads   $INSTAGRAM_HOME/.cache/saves.json            which saves are in the pilot
         $INSTAGRAM_HOME/data/tags.yaml               the same
@@ -53,6 +55,7 @@ from pilot import in_pilot  # noqa: E402
 from places import load_yaml  # noqa: E402
 
 STILLS = os.path.join("data", "stills.yaml")
+NEED_VIDEO = os.path.join("stills", "need-video.txt")
 STILL_WIDTH = 600
 CLIP_WIDTH = 320
 CLIP_SECONDS = 3.0
@@ -159,12 +162,30 @@ def do_post(code, spots, video, old, redo):
     return out, cut
 
 
+def need_video(saves, tags, media, pins, pilot):
+    """The reels whose spots would all share one cover: 2 or more spots, and no video yet."""
+    codes = [s["code"] for s in saves
+             if len(pins.get(s["code"]) or []) >= 2 and (media.get(s["code"]) or {}).get("kind", s.get("kind")) == "reel"
+             and not (media.get(s["code"]) or {}).get("video") and not (media.get(s["code"]) or {}).get("error")
+             and in_pilot(s, tags.get(s["code"]), pilot)]   # an error (gone, login wall) is not tried again
+    path = cache(NEED_VIDEO)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("".join(f"{c}\n" for c in codes))
+    log("stills_need_video", reels=len(codes), spots=sum(len(pins[c]) for c in codes))
+    print(f"{len(codes)} reels naming {sum(len(pins[c]) for c in codes)} spots have no video yet")
+    print(path)
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     scope = ap.add_mutually_exclusive_group(required=True)
     scope.add_argument("--pilot", help="a pilot name from config/collections.yaml")
     scope.add_argument("--all", action="store_true", help="every save")
     ap.add_argument("--redo", action="store_true", help="cut again, even spots that have a still")
+    ap.add_argument("--need-video", action="store_true",
+                    help="list the reels naming 2 or more spots with no video yet, and cut nothing")
     ap.add_argument("--saved", default=None, help="saves.json (default: the data repo's .cache)")
     args = ap.parse_args(argv)
     for tool in ("ffmpeg", "ffprobe", "img2webp"):
@@ -179,6 +200,8 @@ def main(argv=None):
     with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
         saves = json.load(fh)["saves"]
     tags, media, pins = load_yaml(rpl.TAGS), load_yaml(rf.MEDIA), load_yaml(rpl.PINS)
+    if args.need_video:
+        return need_video(saves, tags, media, pins, pilot)
     stills = load_yaml(STILLS)
     reels = cut = shown = hidden = 0
     for s in saves:
