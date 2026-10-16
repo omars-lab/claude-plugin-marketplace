@@ -377,6 +377,17 @@ def address_in(address, caption):
     return len(a) >= 6 and a in squash(caption)
 
 
+UNIT = re.compile(r",?\s+(?:suite|ste\.?|unit|apt\.?|#)\s*[\w-]+(?=\W|$)", re.I)
+UNIT_LETTER = re.compile(r"\b(rd|dr|st|ave|blvd|ln|pkwy|hwy|cir|way|ct|pl)\.?\s+[a-z]\d?(?=,|$)", re.I)
+
+
+def street_only(address):
+    """The address without its suite or unit ("1 Example Rd Suite 5, Example Town" → "1 Example Rd,
+    Example Town"; "1 Example Dr B" → "1 Example Dr"): OpenStreetMap knows the building, not the
+    unit, and finds nothing with it."""
+    return " ".join(UNIT_LETTER.sub(r"\1", UNIT.sub("", address)).split()).strip(", ")
+
+
 def on_screen(said, seen):
     """True when tesseract read these words on the video, letters and digits in order ("EXAMPLE
     CAFE" read as "EXAMPLECAFE" or "Example  Cafe")."""
@@ -461,7 +472,7 @@ def resolve_near(spot, caption, areas, places, reaches, fetcher=None, creator=""
     address = keep.get("address")
     if where == "pin" or not address:
         return where, entry
-    hits = geocode.lookup_near(address, reach.search, fetcher)
+    hits = geocode.lookup_near(street_only(address), reach.search, fetcher)
     hit = next((h for h in hits if reach.ok(h["lat"], h["lon"])), None)
     if hit is None:
         return where, entry
@@ -623,7 +634,8 @@ def move_dropped(pins, review):
 
 def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
     """Review entries a person marked `ok: true` move to pins as found. Ones a person gave a `lookup:`
-    are searched again; found ones move to pins."""
+    are searched again; found ones move to pins. So is, once, one whose address has a suite or unit,
+    looked up before street_only() dropped it."""
     moved = 0
     for code, entries in list(review.items()):
         if not isinstance(entries, list):
@@ -638,8 +650,11 @@ def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
                 moved += 1
                 log("locate_review_ok", code=code, said=pin["said"])
                 continue
-            if not (isinstance(e, dict) and isinstance(e.get("lookup"), str) and e["lookup"].strip()
-                    and not e.get("drop") and isinstance(e.get("said"), str) and isinstance(e.get("near"), str)):
+            by_person = isinstance(e, dict) and isinstance(e.get("lookup"), str) and e["lookup"].strip()
+            unit = (isinstance(e, dict) and isinstance(e.get("address"), str) and not e.get("street_tried")
+                    and street_only(e["address"]) != " ".join(e["address"].split()))
+            if not ((by_person or unit) and not e.get("drop")
+                    and isinstance(e.get("said"), str) and isinstance(e.get("near"), str)):
                 keep.append(e)
                 continue
             caption = (by_code.get(code) or {}).get("caption") or ""
@@ -648,13 +663,16 @@ def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
             if e.get("from"):
                 new["from"] = e["from"]
             if where == "pin":
-                new["lookup"] = e["lookup"]  # still a person's fix once pinned, so a re-read keeps it
+                if by_person:
+                    new["lookup"] = e["lookup"]  # still a person's fix once pinned, so a re-read keeps it
                 pins.setdefault(code, [])
                 if not any(p["said"] == new["said"] and p["near"] == new["near"] for p in pins[code]):
                     pins[code].append(new)
                 moved += 1
                 log("locate_review_fixed", code=code, said=new["said"])
             else:
+                if unit and not by_person:
+                    new["street_tried"] = True   # tried without the unit; not again each merge
                 keep.append(new)
         if keep:
             review[code] = keep
@@ -788,7 +806,7 @@ def merge(saves, tags, places, fetcher=None, frames=False):
           f"{'show' if frames else 'name'} no spot, "
           f"{counts['unanswered']} saves with no usable answer; {pending} batches still waiting for their agent")
     if fixed:
-        print(f"{fixed} review entries a person fixed (ok: true, or found with their lookup) moved to the pins")
+        print(f"{fixed} review entries moved to the pins (a person fixed them with ok: true or a lookup, or the address was found once its suite or unit was dropped)")
     if dropped:
         print(f"{dropped} pins marked drop: true moved to review, and stay out of the pins")
     wrong = wrong_area(review)

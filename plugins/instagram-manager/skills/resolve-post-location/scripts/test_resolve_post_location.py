@@ -324,6 +324,35 @@ class Merge(Home):
         self.assertFalse(rpl.coords_in("at 40.01234, -120.01234", 40.0123, -120.01234))
         self.assertTrue(rpl.coords_in("at 40.012340,-120.01234", 40.01234, -120.01234))
 
+    def test_an_address_with_a_suite_is_looked_up_without_it(self):
+        """OpenStreetMap knows the building, not the unit: "Suite 4" or a trailing "B" finds nothing."""
+        self.write(".cache/saves.json", {"saves": [save("VENUA", "Example Grill 📍12 Example St Suite 4, Fixture Town")]})
+        with mock.patch.dict(OSM, {"12 Example St, Fixture Town": [hit("12", 40.004, -120.003, "house", 22)]}):
+            paths = self.run_script("--prepare", "--all").split()
+            self.agent(paths, {"VENUA": [{"said": "Example Grill", "near": "Fixture Town",
+                                          "address": "12 Example St Suite 4, Fixture Town"}]})
+            self.run_script("--merge")
+        grill = self.spot("data/pins.yaml", "VENUA", "Example Grill")
+        self.assertEqual((grill["kind"], grill["address"]), ("address", "12 Example St Suite 4, Fixture Town"))
+        self.assertIn("12 Example St, Fixture Town", [p["q"] for p in self.asked])
+        # one sent to review before the unit was dropped is tried again, once
+        self.write("data/pins.yaml", {})
+        self.write("data/pins-review.yaml", {"VENUA": [
+            {"said": "Example Grill", "near": "Fixture Town", "why": "not found near Fixture Town",
+             "address": "12 Example St Suite 4, Fixture Town"},
+            {"said": "Example Grill", "near": "Fixture Town", "why": "not found near Fixture Town",
+             "address": "99 Example St Suite 4, Fixture Town"}]})
+        with mock.patch.dict(OSM, {"12 Example St, Fixture Town": [hit("12", 40.004, -120.003, "house", 22)]}):
+            self.run_script("--merge")
+        self.assertEqual(self.spot("data/pins.yaml", "VENUA", "Example Grill")["kind"], "address")
+        left = self.read("data/pins-review.yaml")["VENUA"]
+        self.assertEqual([e.get("street_tried") for e in left], [True])   # not found: not tried again
+        self.assertEqual(rpl.street_only("1 Example Dr B, Fixture Town"), "1 Example Dr, Fixture Town")
+        self.assertEqual(rpl.street_only("1 Example Cir #74, Fixture Town"), "1 Example Cir, Fixture Town")
+        self.assertEqual(rpl.street_only("1 Example Rd Unit 9 Fixture Town"), "1 Example Rd Fixture Town")
+        self.assertEqual(rpl.street_only("1 Example Blvd, Ste 11"), "1 Example Blvd")
+        self.assertEqual(rpl.street_only("4 1/2 Example St"), "4 1/2 Example St")   # no unit to drop
+
     def test_a_spot_outside_the_saves_areas_goes_to_review(self):
         self.locate()
         e = self.spot("data/pins-review.yaml", "TOWNA", "Made Up Spot")
@@ -379,7 +408,7 @@ class Merge(Home):
                 e["lookup"] = "Far Away Tower, Fixture Town"
         self.write("data/pins-review.yaml", review)
         out = self.run_script("--merge")
-        self.assertIn("1 review entries a person fixed", out)
+        self.assertIn("1 review entries moved to the pins", out)
         p = self.spot("data/pins.yaml", "TOWNA", "Far Away Tower")
         self.assertEqual((p["name"], p["asked"]), ("Near Tower", "Far Away Tower, Fixture Town"))
         self.assertNotIn("Far Away Tower", [e["said"] for e in self.read("data/pins-review.yaml")["TOWNA"]])
@@ -392,7 +421,7 @@ class Merge(Home):
                 if e["said"] == "Example Museum":
                     e["ok"] = True                                     # a person says the find is right
             self.write("data/pins-review.yaml", review)
-            self.assertIn("1 review entries a person fixed", self.run_script("--merge"))
+            self.assertIn("1 review entries moved to the pins", self.run_script("--merge"))
             p = self.spot("data/pins.yaml", "LISTA", "Example Museum")
             self.assertEqual((p["name"], p["osm"], p["by"]), ("Example Baguette", "node/21", "hand"))
             self.assertNotIn("why", p)
