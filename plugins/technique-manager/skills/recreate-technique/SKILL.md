@@ -62,6 +62,7 @@ Check the feel by putting a rendered page beside the original. If Chromium can't
 | `footer` | `<Footer>` | `mode` (`auto`/`plan`/`accept-edits`), `text` |
 | `question` | `<Question>` | `header`, `question`, `options: [{label, description, recommended}]`, `selected` (1-based), `hint`; or `question` + `answer` for the answered form |
 | `permission_prompt` | `<PermissionPrompt>` | `title`, `from`, `description`, `command`, `hook: {label, text}`, `question`, `choices`, `selected`, `cut` (a permission or hook confirmation box) |
+| `user_action` | `<UserAction>` | `keys` (e.g. `["shift","tab"]`), `text`, `from`/`to` (footer modes). Something you did that the terminal never printed, such as a key press or an approval; drawn as a margin note, not output |
 | `divider` | `<Divider>` | — |
 
 `status` is one of `pending`, `in_progress`, `completed`, `blocked`. `tone` is one of `path`, `branch`, `model`, `meter`, `cost`, `dim`.

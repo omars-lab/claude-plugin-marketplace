@@ -144,6 +144,11 @@ a { color: var(--cu-link); }
 .cu-meter-bar span { display: block; height: 100%; background: var(--cu-meter); }
 .cu-footer { margin-top: 2px !important; }
 .cu-mode { color: var(--cu-mode); }
+/* user_action: what the person did off-screen. A margin note, not terminal output. */
+.cu-action { border-left: 2px dashed var(--cu-term-accent); padding: 2px 0 2px 10px; color: var(--cu-term-dim); font-style: italic; }
+.cu-action-tag { font-style: normal; text-transform: uppercase; font-size: .8em; letter-spacing: .06em; color: var(--cu-term-accent); margin-right: 6px; }
+.cu-key { font-family: var(--cu-mono); font-style: normal; font-size: .9em; color: var(--cu-term-text); background: var(--cu-term-hl); border: 1px solid var(--cu-term-dim); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; margin: 0 2px; }
+.cu-action-modes { font-style: normal; white-space: nowrap; }
 
 .cu-missing { border: 1px dashed var(--cu-accent); color: var(--cu-accent); padding: 8px; border-radius: 6px; }
 

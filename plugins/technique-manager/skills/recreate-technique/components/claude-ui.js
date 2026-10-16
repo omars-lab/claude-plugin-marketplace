@@ -177,6 +177,19 @@
     return html`<div class="cu-footer">${label ? html`<span class="cu-mode">⏵⏵ ${label}</span> ` : null}<span class="cu-dim">${text}</span></div>`;
   }
 
+  // Something the person did that the terminal never prints: a key press (shift+tab), an
+  // approval. Drawn as a margin note, not terminal output, so nobody mistakes it for a line
+  // Claude Code showed. from/to are footer modes, shown as the mode change the key made.
+  function UserAction(props) {
+    var keys = props.keys || [];
+    var label = { auto: "auto mode on", plan: "plan mode on", "accept-edits": "accept edits on", default: "default mode" };
+    return html`<div class="cu-action"><span class="cu-action-tag">you</span>
+      ${keys.map(function (k, i) { return html`<${React.Fragment} key=${i}>${i ? "+" : null}<kbd class="cu-key">${k}</kbd></${React.Fragment}>`; })}
+      ${props.text ? html` <span><${Inline} text=${props.text} /></span>` : null}
+      ${props.from || props.to ? html` <span class="cu-action-modes"><span class="cu-mode">⏵⏵ ${label[props.from] || props.from}</span> → <span class="cu-mode">⏵⏵ ${label[props.to] || props.to}</span></span>` : null}
+    </div>`;
+  }
+
   function Divider() { return html`<hr class="cu-divider" />`; }
 
   // ── Page furniture ──
@@ -216,6 +229,7 @@
     prompt_input: function (b) { return html`<${PromptInput} text=${b.text} />`; },
     statusline: function (b) { return html`<${StatusLine} segments=${b.segments} right=${b.right} />`; },
     footer: function (b) { return html`<${Footer} mode=${b.mode} text=${b.text} />`; },
+    user_action: function (b) { return html`<${UserAction} keys=${b.keys} text=${b.text} from=${b.from} to=${b.to} />`; },
     divider: function () { return html`<${Divider} />`; }
   };
 
@@ -422,7 +436,8 @@
     { type: "prompt_input", text: "" },
     { type: "statusline", segments: [{ text: "workspace/example-app", tone: "path" }, { text: "feature/lint-hook", tone: "branch" },
       { text: "Opus (1M context)", tone: "model" }, { text: "42%", tone: "meter", pct: 42 }], right: "38% until auto-compact" },
-    { type: "footer", mode: "auto", text: "(shift+tab to cycle)" }
+    { type: "footer", mode: "auto", text: "(shift+tab to cycle)" },
+    { type: "user_action", keys: ["shift", "tab"], text: "You switch out of auto mode", from: "auto", to: "accept-edits" }
   ];
 
   function Catalog() {
