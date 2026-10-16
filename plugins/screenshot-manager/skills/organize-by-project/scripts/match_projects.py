@@ -30,6 +30,10 @@ Why names only: commit-message words ("following", "career", "pattern") show on 
 kind of screen, so a word score picks a project for a recipe or a school form. See
 docs/issues/organize-by-project-word-matching.md.
 
+Screen furniture: a part of a project's name ("career" from workspace-career) that shows on
+more than --furniture of all screenshots is a bookmarks bar or tab title, not a name, and is
+ignored. Full repo names and aliases always count.
+
 Screenshots taken within --burst seconds of each other are judged together: an unclear
 or none shot takes the label of a matched neighbour in the same burst.
 
@@ -78,7 +82,7 @@ OWNED = {"Screenshots", "📸 Screenshots of Techniques"}
 # Folders that hold work folders. Others are found by shape (see is_container).
 WORK_CONTAINERS = {"debugging", "developing"}
 SKIP_DIRS = {"node_modules", ".git", "venv", ".venv", "site-packages", "__pycache__", "dist",
-             "build", ".next", "Pods"}
+             "build", ".next", "Pods", "_review"}
 # A folder named for keys is held even when no file in it looks like one.
 KEY_FOLDER = re.compile(r"(^|[- _])keys?($|[- _])|secret|credential|password", re.I)
 SECRET = re.compile(r"client_secret|\.pem$|\.p12$|\.key$|credentials|service.account|\.env$", re.I)
@@ -128,14 +132,17 @@ def has(text: str, phrase: str) -> bool:
     return re.search(rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])", text) is not None
 
 
-def score_text(text: str, projects: list[dict], weights: dict) -> list[tuple[int, int, float, str, list[str]]]:
-    """(name hits, name-part hits, word score, project, evidence), best first."""
+def score_text(text: str, projects: list[dict], weights: dict,
+               ignore: frozenset[str] = frozenset()) -> list[tuple[int, int, float, str, list[str]]]:
+    """(name hits, name-part hits, word score, project, evidence), best first. Name parts and
+    words in `ignore` (screen furniture, see furniture()) don't count; full names always do."""
     t = norm(text)
     scored = []
     for p in projects:
         hits = [s for s in p["strong"] if has(t, s)]
-        parts = [w for w in p["parts"] if has(t, w)]
-        words = [w for w in weights[p["name"]] if has(t, w) and w not in parts and w not in p["strong"]]
+        parts = [w for w in p["parts"] if w not in ignore and has(t, w)]
+        words = [w for w in weights[p["name"]] if w not in ignore and has(t, w)
+                 and w not in parts and w not in p["strong"]]
         if hits or parts or words:
             scored.append((len(hits), len(parts), round(sum(weights[p["name"]][w] for w in words), 1),
                            p["name"], hits + parts + words))
@@ -152,12 +159,28 @@ def shot_time(name: str) -> datetime | None:
     return datetime.fromisoformat(f"{day}T{h:02d}:{mi}:{se}")
 
 
-def match_shots(ocr: dict, projects: list[dict], orgs: dict[str, list[str]], burst: int) -> list[dict]:
+def furniture(ocr: dict, projects: list[dict], weights: dict, share: float) -> frozenset[str]:
+    """Name parts and words on more than `share` of all screenshots. A bookmarks bar or a tab
+    title shows on every shot taken in that browser ("career", "with"), so it names no
+    project. Needs 40+ shots to tell; full repo names and aliases are never dropped."""
+    texts = [norm(v.get("text") or "") for v in ocr.values()]
+    if len(texts) < 40 or share <= 0:
+        return frozenset()
+    pool = {w for p in projects for w in [*p["parts"], *weights[p["name"]]] if w not in p["strong"]}
+    out = frozenset(w for w in pool if sum(1 for t in texts if has(t, w)) > share * len(texts))
+    if out:
+        print(f"ev=furniture_words share={share} words={','.join(sorted(out))}", file=sys.stderr)
+    return out
+
+
+def match_shots(ocr: dict, projects: list[dict], orgs: dict[str, list[str]], burst: int,
+                share: float = 0.10) -> list[dict]:
     weights = word_weights(projects)
+    ignore = furniture(ocr, projects, weights, share)
     rows = []
     for path, v in ocr.items():
         text = v.get("text") or ""
-        scored = score_text(text, projects, weights)
+        scored = score_text(text, projects, weights, ignore)
         # No project's name shows but an org's does -> the org's own folder.
         if not scored or scored[0][0] == 0:
             t = norm(text)
@@ -422,6 +445,8 @@ def main() -> None:
     ap.add_argument("--sample", type=int, default=5, help="screenshots per undecided folder for the image check")
     ap.add_argument("--desktop", type=Path, default=Path.home() / "Desktop")
     ap.add_argument("--burst", type=int, default=120, help="seconds that make one burst")
+    ap.add_argument("--furniture", type=float, default=0.10,
+                    help="shots: ignore name parts on more than this share of all shots (0 = off)")
     ap.add_argument("--fingerprints", type=Path, action="append", help="fingerprint.py index --out (shots)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--out", type=Path, help="write JSON rows here (to-read: the list of images, one per line)")
@@ -435,7 +460,7 @@ def main() -> None:
     if a.mode == "shots":
         if not ocr:
             sys.exit("shots mode needs --ocr")
-        rows = match_shots(ocr, projects, orgs, a.burst)
+        rows = match_shots(ocr, projects, orgs, a.burst, a.furniture)
         for f in a.fingerprints or []:
             apply_fingerprints(rows, ocr, json.loads(f.read_text()), projects)
     elif a.mode == "folders":

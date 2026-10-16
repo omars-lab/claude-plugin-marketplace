@@ -130,7 +130,7 @@ def project_of(d: Path, root: Path | None, placed: dict[str, str]) -> str:
     the nearest folder the match placed (folders.json / inside.json)."""
     if root and d.is_relative_to(root):
         parts = d.relative_to(root).parts
-        orgs = {p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")}
+        orgs = {p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))}
         if parts and parts[0] in orgs:
             return parts[1] if len(parts) > 1 and (root / parts[0] / parts[1]).is_dir() \
                 and parts[1] not in ("screenshots",) else parts[0]

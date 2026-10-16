@@ -79,6 +79,8 @@ Based on their selection, explain the relevant skills with usage examples.
 
 **Remembers each folder in `fingerprint.md`:** every folder with 3 or more screenshots gets a `fingerprint.md` listing the sites, paths and words its screenshots show, with dates, plus a **Guidance** section. When a screenshot is unclear, it reads the Guidance first, asks you if that doesn't settle it, and writes your answer into Guidance, so the next run already knows. A site or path that only one folder has is a hint for new screenshots, never a decision on its own.
 
+**Asks many questions at once in Obsidian:** when more than a few groups of screenshots are unclear, it writes a review doc in `CloudDesktop/projects/_review/`: each group's pictures side by side, what it saw on each, and a tick box per choice. You tick one box per group, leave a review-md comment when a box isn't enough, and tell Claude you're done; it reads the ticks back as answers, folder rules and key-file decisions.
+
 **Keeps back:** folders with key or secret files (or named for keys), screenshots it can't place, and folders that aren't project work, all listed for you.
 
 **When to use:** Your Desktop mixes screenshots and folders from many projects and you want each project's material in one place, next to the code it belongs to.

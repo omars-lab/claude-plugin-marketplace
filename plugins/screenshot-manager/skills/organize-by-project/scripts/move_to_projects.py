@@ -11,7 +11,7 @@
     # 1. Plan: read the matches, print the table, write the plan. Moves nothing.
     python3 move_to_projects.py plan --root "<projects root>" --shots shots.json \
         --folders folders.json [--inside inside.json] [--vision vision_answers_0.json ...] \
-        --out plan.json
+        [--keys-to ~/Desktop/api-keys --keys-from ~/Desktop/<folder>] --out plan.json
 
     # 2. Apply: write the undo list to <root>/.moves/<UTC time>.json FIRST, then move.
     python3 move_to_projects.py apply --plan plan.json [--only shots|folders]
@@ -27,13 +27,16 @@ org is "personal" for ~/Workspace/git, else the git-<org> folder's name.
 
 A screenshot's project comes from the image check (--vision) when there is one, else from
 the name match. "none" and "unsure" stay on the Desktop, except that a "none" shot showing a
-site only one Desktop folder's fingerprint has goes into that folder.
+site only one Desktop folder's fingerprint has goes into that folder. An answer can name the
+folder itself: {"<file>": {"project": "none", "folder": "<Desktop folder>", "reason": "..."}}.
 A folder the look inside left undecided moves whole when at least 3 of its sampled shots
 (or all, if fewer) are called for one project and none for another. An unsure screenshot taken within
 --burst seconds of a decided one takes that one's project.
 
-Never moved: a folder with key or secret files in it (listed, for you to sort by hand),
-and an iCloud placeholder (".name.icloud": the file is not on this Mac yet).
+Never moved: a folder with key or secret files in it (listed, for you to decide), unless the
+user named it in --keys-from: then its key files move to --keys-to/<folder name>/ first (kind
+"key", run with the folders), and the folder moves without them. A folder named for keys
+(api-keys) is never moved. Also never moved: an iCloud placeholder (".name.icloud": the file is not on this Mac yet).
 """
 import argparse
 import json
@@ -113,6 +116,9 @@ def plan(a) -> None:
     decided = []
     for s in shots:
         v = vision.get(key(s["file"]))
+        if v and v.get("folder"):
+            # The user named a Desktop folder for it (review_doc.py read): file it there.
+            s = {**s, "suggest_folder": v["folder"], "suggest_why": ["the user's answer"]}
         project = v["project"] if v else (s["project"] if s["status"] == "matched" else "none")
         why = (f"image: {v['reason']}" if v else "name on screen: " + ", ".join(s["why"][:3]))
         decided.append({**s, "project": project, "why": why})
@@ -147,11 +153,22 @@ def plan(a) -> None:
         dst = free_name(dest / "screenshots" / src.name, taken)
         taken.add(str(dst))
         moves.append({"kind": "shot", "project": d["project"], "src": str(src), "dst": str(dst), "why": d["why"]})
+    keys_from = {key(str(p.expanduser())) for p in a.keys_from or []}
+
     def move_folder(f: dict, project: str, why: str) -> None:
         src = Path(f["folder"])
         if f.get("secrets"):
-            held.append({"src": str(src), "reason": "has key/secret files", "why": ", ".join(f["secrets"][:3])})
-            return
+            files = [s for s in f["secrets"] if not s.startswith("(")]
+            if not (a.keys_to and key(str(src)) in keys_from and len(files) == len(f["secrets"])):
+                held.append({"src": str(src), "reason": "has key/secret files", "why": ", ".join(f["secrets"][:3])})
+                return
+            # The user said where its keys go: they move out first, then the folder moves
+            # without them. A folder named for keys is never moved this way.
+            for s in files:
+                dst = free_name(a.keys_to.expanduser() / src.name / s, taken)
+                taken.add(str(dst))
+                moves.append({"kind": "key", "project": "", "place": str(a.keys_to), "src": str(src / s),
+                              "dst": str(dst), "why": f"key file out of {src.name} before it moves"})
         dst = free_name(home(project) / src.name, taken)
         taken.add(str(dst))
         moves.append({"kind": "folder", "project": project, "src": str(src), "dst": str(dst),
@@ -198,7 +215,7 @@ def plan(a) -> None:
         rel = (str(home(m["project"]).relative_to(root)) if m["project"]
                else "Desktop: " + str(Path(m["place"]).relative_to(Path.home() / "Desktop")))
         c = by.setdefault(rel, [0, 0, 0])
-        if m["kind"] == "shot":
+        if m["kind"] in ("shot", "key"):
             c[0] += 1
         else:
             c[1] += 1
@@ -231,7 +248,9 @@ def resolve(raw: str) -> Path | None:
 
 def apply(a) -> None:
     pl = json.loads(a.plan.read_text())
-    moves = [m for m in pl["moves"] if not a.only or m["kind"] == a.only.rstrip("s")]
+    # Key files move with the folders pass, and come before their folder in the plan.
+    kinds = {"shots": {"shot"}, "folders": {"key", "folder"}}.get(a.only)
+    moves = [m for m in pl["moves"] if not kinds or m["kind"] in kinds]
     logdir = Path(pl["root"]) / ".moves"
     logdir.mkdir(parents=True, exist_ok=True)
     logfile = logdir / f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
@@ -297,6 +316,9 @@ def main() -> None:
     p.add_argument("--inside", type=Path, help="match_projects.py inside --out")
     p.add_argument("--vision", type=Path, action="append", help="image-check answers (repeatable)")
     p.add_argument("--burst", type=int, default=120)
+    p.add_argument("--keys-to", type=Path, help="where key files go when a --keys-from folder moves")
+    p.add_argument("--keys-from", type=Path, action="append",
+                   help="a held folder with key files the user said may move once its keys are out (repeatable)")
     p.add_argument("--out", type=Path, required=True)
     p = sub.add_parser("apply")
     p.add_argument("--plan", type=Path, required=True)
