@@ -207,6 +207,17 @@ class Ids(unittest.TestCase):
         tacos = [c for c in self.calls if c[0] == "Example Tacos, Fixture Town"][0]
         self.assertEqual((tacos[1], tacos[2]), ({"lat": 10.51, "lon": 20.51}, gp.BOX_KM))
 
+    def test_a_place_several_posts_name_is_searched_at_the_address_one_gives(self):
+        tacos = PINS["EAT1"][0]
+        self.write("data/pins.yaml", {**PINS, "EAT2": [{**tacos, "address": "7 Example Rd"}]})
+        spots = google_ids.spots_in_scope(SAVES, TAGS, self.read_pins(), {}, COLLECTIONS["pilots"]["fixture"])
+        e, codes = spots["osm:node/1"]
+        self.assertEqual((gp.query_for(e), codes), ("Example Tacos, 7 Example Rd", ["EAT1", "EAT2"]))
+
+    def read_pins(self):
+        with open(os.path.join(self.root, "data", "pins.yaml")) as fh:
+            return yaml.safe_load(fh)
+
     def test_rerun_skips_what_is_kept(self):
         self.run_ids("--pilot", "fixture")
         self.calls.clear()

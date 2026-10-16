@@ -83,7 +83,8 @@ HEADER = ("# Google place ids for the spots in data/pins.yaml and data/pins-revi
 
 
 def spots_in_scope(saves, tags, pins, placed, pilot):
-    """key → (spot, [codes]) for every spot of every save in scope, each spot once."""
+    """key → (spot, [codes]) for every spot of every save in scope, each spot once. When several posts
+    name one place, the copy that gives a street address is the one searched: it is the most exact."""
     out = {}
     for s in saves:
         if not in_pilot(s, tags.get(s["code"]), pilot):
@@ -91,7 +92,10 @@ def spots_in_scope(saves, tags, pins, placed, pilot):
         for e in (pins.get(s["code"]) or []) + placed.get(s["code"], []):
             if isinstance(e, dict) and isinstance(e.get("name"), str) and e["name"].strip():
                 k = gp.spot_key(e)
-                out.setdefault(k, (e, []))[1].append(s["code"])
+                spot, codes = out.setdefault(k, (e, []))
+                codes.append(s["code"])
+                if not gp.house_number(spot.get("address")) and gp.house_number(e.get("address")):
+                    out[k] = (e, codes)
     return out
 
 
