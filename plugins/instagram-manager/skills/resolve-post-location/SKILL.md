@@ -52,6 +52,13 @@ answers. **No script calls a model**, and there is no API key: this session star
      searched near it: its spots go to review as "Example Capital has no pin, or is a state or
      country". Give it `kind: city` in `config/places.yaml`; that wins over the looked-up kind, and
      those review entries are searched again at the next merge.
+   - **An area that matched a same-named place far away.** A name alone can find another place
+     of that name (a mountain's name finds a town 300 km off; a city neighbourhood finds a
+     village). The sign is every spot under it "not found near", an agent's `really_in`, or an
+     agent noting the area sits far from the save's other cities. Give it a `lookup:` and `in:` in
+     `config/places.yaml`, delete its line in `data/places.yaml`, and run
+     `add_places.py --listed`. The merge does not search "not found near" spots again when their
+     area moves, so give each of those review entries a `lookup:` too.
    - **Another of the save's areas.** When the spot is found but out of reach, or found under a
      different name, it is tried again near each other area of the save within 60 km of what was
      found, and pinned for the first area where it passes every check. The agent may pick the
