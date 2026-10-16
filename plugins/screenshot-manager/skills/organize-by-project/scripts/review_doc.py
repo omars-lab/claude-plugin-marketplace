@@ -233,7 +233,8 @@ def ticks(doc: Path) -> tuple[dict[str, list[str]], set[str]]:
         if m := HEADING.match(line):
             gid = m.group(1)
             per.setdefault(gid, [])
-        elif line.startswith("## "):
+        elif line.startswith("## ") or line.strip() == "---":
+            # The rule above the "I'm done" box ends the last group, or done reads as its answer.
             gid = None
         elif (m := CHOICE.match(line)) and m.group(1) in "xX":
             (per[gid].append(m.group(2)) if gid else loose.add(m.group(2)))

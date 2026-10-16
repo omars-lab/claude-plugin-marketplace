@@ -82,6 +82,10 @@ Both live in `$ROOT`, not in this repo. This marketplace is public.
 
 `fingerprint.md` files live inside the user's own folders (Desktop and `$ROOT`). They hold
 what is on the user's screenshots, so they are private too: never copy one into this repo.
+The same goes for the review docs: each doc, its pictures (`_review/images/<doc name>/`), its
+comments (`_review/.<doc name>.comments.md`) and its groups file live only in the iCloud
+`$ROOT/_review` vault, and retired rounds in `_review/done/`. Only the scripts that write them
+are checked in.
 
 ## Tasks
 
@@ -542,3 +546,16 @@ come back in the next review doc; the ones they left blank do too.
   that collects those techniques, not to whichever project each session happened to be on.
   Splitting it by what's on screen scattered it across three projects, until the user pointed
   this out and it was put back together with a `_folders` rule. Ask what a folder is *for* before matching what its pictures show.
+- **Not-project screenshots often go to life folders on the Desktop, not stay put.** Asked to
+  look at them, the user sent most into Desktop folders by topic (shopping, career, trips,
+  kids). Before making a folder a comment asks for ("a buying stuff folder"), list the Desktop
+  two levels deep: a match is often already there under another name (`Shopping/Buying`,
+  `Shopping/Returning`). Use it, and say so in the reply. Make a new folder only when the
+  comment says "new" or nothing fits. A file move's `dst` can be any folder, not just `$ROOT`.
+- **A comment on a caption can answer several pictures.** Obsidian treats the whole caption
+  list as one block, so replies meant for pictures 1, 2 and 3 can land in one thread anchored
+  on a single line. They were not in picture order there. Match each reply to the picture whose
+  content fits it, and say which way you read them when you reply.
+- **Name the pictures a group comment leaves out.** A comment that sorts most of a group
+  ("some of this is selling, another is buying…") leaves the rest. Move what it names, and carry
+  the others into a short next round, each with a suggested folder, instead of guessing.
