@@ -181,6 +181,23 @@ class Ids(unittest.TestCase):
         self.run_ids("--pilot", "fixture")
         self.assertEqual(self.calls, [])                     # nothing left to search
 
+    def test_a_chain_is_kept_with_no_id_and_not_searched_again(self):
+        self.run_ids("--pilot", "fixture")
+        out, _ = self.run_ids("--pilot", "fixture", "--chain", "osm:node/3")
+        self.assertIn("1 marked a chain", out)
+        _, kept = self.kept()
+        self.assertEqual(kept["osm:node/3"]["verdict"], "chain")
+        self.assertNotIn("id", kept["osm:node/3"])
+        self.assertFalse(gp.is_chain(kept, {"name": "Other Name", "osm": "node/3"}))   # another search text
+        name, near = kept["osm:node/3"]["query"].split(", ", 1)
+        pins = {"C1": [{"name": name, "near": near, "osm": "node/3"}]}
+        self.assertEqual(gp.apply(pins, kept), 0)
+        self.assertTrue(pins["C1"][0]["google_chain"])
+        self.assertNotIn("map", pins["C1"][0])                           # its search link stays
+        self.calls.clear()
+        self.run_ids("--pilot", "fixture")
+        self.assertNotIn(kept["osm:node/3"]["query"], [q for q, _, _ in self.calls])
+
     def test_spots_left_for_a_person_keep_only_candidate_ids(self):
         self.run_ids("--pilot", "fixture")
         path = os.path.join(self.root, ".cache", google_ids.TO_PICK)

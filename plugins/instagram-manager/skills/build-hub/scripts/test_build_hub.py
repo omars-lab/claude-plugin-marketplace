@@ -186,6 +186,19 @@ class Hub(unittest.TestCase):
         self.assertNotIn("matched by its name", deli)                   # a person chose it
         self.assertIn("query_place_id=ChIJexampleFalls", json.dumps(self.data()))   # the map's link too
 
+    def test_a_chain_keeps_its_search_link_for_every_branch(self):
+        self.write("data/pins-review.yaml", {
+            "TOWN1": [{"said": "Example Deli", "near": "Fixture Town", "why": "not found near Fixture Town",
+                       "asked": "Example Deli", "address": "1 Example Rd"}]})
+        self.write("data/google.yaml", {
+            "spot:example-deli@fixture-town": {"query": "Example Deli, 1 Example Rd", "verdict": "chain",
+                                               "by": "hand", "date": "2026-01-02"}})
+        self.build("--pilot", "fixture")
+        deli = self.page("places/example-deli.html")
+        self.assertIn("query=Example+Deli%2C+1+Example+Rd", deli)        # a search: every branch shows
+        self.assertNotIn("query_place_id", deli)
+        self.assertIn("a chain: every branch near Fixture Town, any will do", deli)
+
     def test_spot_page_groups_posts_by_osm_id_and_marks_the_words(self):
         self.build("--pilot", "fixture")
         spot = self.page("places/example-falls.html")

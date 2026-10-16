@@ -11,7 +11,8 @@ It gathers:
   - **Google's place to pick**, for each spot find-google-ids left for a person
     (.cache/google-to-pick.json). Each candidate is a numbered "open in Google Maps" link that
     carries only Google's place id, so Google's own name and address show on Google's page, never
-    on this one. Choosing one per spot builds a single `make google-ids PICK=… NONE=…` line to copy.
+    on this one. Choosing one per spot builds a single `make google-ids PICK=… NONE=… CHAIN=…` line to
+    copy. CHAIN is for a chain with several branches, where any of them will do.
   - **Spots to check**: entries in data/pins-review.yaml that are neither settled (`ok`, `drop`,
     `lookup`) nor already shown at their town with a Google search by name, and below them, folded
     away, the ones shown at their town that a better name would pin exactly.
@@ -80,7 +81,7 @@ def google_rows(to_pick, kept, spots):
         if v.get("query") != gp.query_for(e):
             continue   # the spot's search text changed: its candidates are for another search
         if isinstance(kept.get(k), dict) and kept[k].get("query") == v["query"]:
-            continue   # picked or marked none after the search
+            continue   # picked, marked none or marked a chain after the search
         rows.append({"key": k, "spot": e, "codes": codes, "query": v["query"],
                      "ids": [i for i in v["ids"] if isinstance(i, str) and i]})
     return rows
@@ -157,7 +158,9 @@ def google_card(n, row, saves, pages):
         f'<li><label><input type="radio" name="g{n}" value="pick" data-key="{esc(k)}" data-id="{esc(pid)}"> '
         f'Option {j}</label> <a href="{esc(gp.maps_link(row["query"], pid))}" target="_blank" rel="noopener">'
         f'open in Google Maps</a></li>' for j, pid in enumerate(row["ids"], 1))
-    opts += (f'<li><label><input type="radio" name="g{n}" value="none" data-key="{esc(k)}"> None of these</label></li>'
+    opts += (f'<li><label><input type="radio" name="g{n}" value="chain" data-key="{esc(k)}"> A chain: any branch'
+             f' near here</label></li>'
+             f'<li><label><input type="radio" name="g{n}" value="none" data-key="{esc(k)}"> None of these</label></li>'
              f'<li><label><input type="radio" name="g{n}" value="" checked> Decide later</label></li>')
     posts = "".join(f'<li>{post_links(c, saves, pages)}</li>' for c in row["codes"])
     where = e.get("address") if isinstance(e.get("address"), str) and e["address"].strip() else e.get("near")
@@ -268,7 +271,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .list { display: grid; gap: .7rem }
 .item { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: .75rem .9rem; min-width: 0;
         overflow-wrap: anywhere }
-.item:has(input[value="pick"]:checked), .item:has(input[value="none"]:checked) { border-color: var(--accent) }
+.item:has(input[value="pick"]:checked), .item:has(input[value="chain"]:checked),
+.item:has(input[value="none"]:checked) { border-color: var(--accent) }
 .item header { display: flex; flex-wrap: wrap; gap: .2rem .8rem; align-items: baseline }
 .where, .muted { color: var(--muted); font-size: .9rem }
 .said, .why, .found { margin: .35rem 0 0 }
@@ -305,7 +309,8 @@ code { font-family: var(--mono); font-size: .88em; background: var(--quote-bg); 
 
   <h2 id="google">Google's place to pick ({{N_GOOGLE}})</h2>
   <p class="how">Google gave more than one place for each of these, so it needs you to choose. Open each option to see
-  which place it is, then pick it here. Pick <b>None of these</b> when no option is the place. Your choices build one
+  which place it is, then pick it here. Pick <b>A chain</b> when it has several branches and any of them will do: its
+  map link then searches every branch nearby. Pick <b>None of these</b> when no option is the place. Your choices build one
   command at the bottom of the page; run it in the data repo and the map links open the exact place.</p>
   <div class="list">{{GOOGLE}}</div>
 
@@ -348,22 +353,26 @@ code { font-family: var(--mono); font-size: .88em; background: var(--quote-bg); 
   });
   function q(s) { return "'" + s.replace(/'/g, "'\\\\''") + "'"; }
   function update() {
-    var picks = [], nones = [], keep = {};
+    var picks = [], nones = [], chains = [], keep = {};
     radios.forEach(function (r) {
       if (!r.checked || !r.value) return;
       keep[r.dataset.key] = {value: r.value, id: r.dataset.id || ""};
       if (r.value === "pick") picks.push(r.dataset.key + "=" + r.dataset.id);
+      else if (r.value === "chain") chains.push(r.dataset.key);
       else nones.push(r.dataset.key);
     });
     try { localStorage.setItem(KEY, JSON.stringify(keep)); } catch (e) {}
-    var tray = document.getElementById("tray"), n = picks.length + nones.length;
+    var tray = document.getElementById("tray"), n = picks.length + nones.length + chains.length;
     tray.hidden = !n;
     if (!n) return;
-    document.getElementById("tally").textContent = (picks.length ? picks.length + " picked" : "") +
-      (picks.length && nones.length ? ", " : "") + (nones.length ? nones.length + " with none that fits" : "") +
-      ". Run this in the data repo:";
+    var said = [];
+    if (picks.length) said.push(picks.length + " picked");
+    if (chains.length) said.push(chains.length + (chains.length === 1 ? " chain" : " chains"));
+    if (nones.length) said.push(nones.length + " with none that fits");
+    document.getElementById("tally").textContent = said.join(", ") + ". Run this in the data repo:";
     document.getElementById("cmd").textContent = "make google-ids PILOT=" +
-      (picks.length ? " PICK=" + q(picks.join(" ")) : "") + (nones.length ? " NONE=" + q(nones.join(" ")) : "");
+      (picks.length ? " PICK=" + q(picks.join(" ")) : "") + (nones.length ? " NONE=" + q(nones.join(" ")) : "") +
+      (chains.length ? " CHAIN=" + q(chains.join(" ")) : "");
   }
   function copy(text, done) {
     var ok = function () { done("Copied."); };

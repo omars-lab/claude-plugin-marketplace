@@ -202,11 +202,21 @@ def kept(google, e):
     return None
 
 
+def is_chain(google, e):
+    """True when a person said this spot is a chain, for the same search text: any branch will do."""
+    g = (google or {}).get(spot_key(e))
+    return isinstance(g, dict) and g.get("verdict") == "chain" and g.get("query") == query_for(e)
+
+
 def apply(pins, google):
-    """Put each kept id into its spot's Google Maps link, in place. pins: code → [spot]."""
+    """Put each kept id into its spot's Google Maps link, in place. pins: code → [spot]. A chain keeps
+    its search link, which shows every branch, and is marked `google_chain`."""
     n = 0
     for spots in (pins or {}).values():
         for e in spots if isinstance(spots, list) else []:
+            if isinstance(e, dict) and isinstance(e.get("name"), str) and is_chain(google, e):
+                e["google_chain"] = True
+                continue
             g = kept(google, e) if isinstance(e, dict) and isinstance(e.get("name"), str) else None
             if g:
                 e["map"] = maps_link(g["query"], g["id"])

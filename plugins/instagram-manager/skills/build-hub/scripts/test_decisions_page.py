@@ -47,6 +47,11 @@ class Rows(unittest.TestCase):
         kept = {diner: {"verdict": "match", "id": "idC", "query": gp.query_for(DINER)}}
         rows = dp.google_rows(to_pick, kept, self.spots)
         self.assertEqual([r["key"] for r in rows], [cafe])
+        kept[cafe] = {"verdict": "chain", "query": gp.query_for(CAFE)}            # marked a chain since
+        self.assertEqual(dp.google_rows(to_pick, kept, self.spots), [])
+        del kept[cafe]
+        rows = dp.google_rows(to_pick, kept, self.spots)
+        self.assertEqual([r["key"] for r in rows], [cafe])
         self.assertEqual(rows[0]["ids"], ["idA", "idB"])
         self.assertEqual(rows[0]["codes"], ["CAFE1", "CAFE2"])
 
@@ -109,6 +114,8 @@ class Page(unittest.TestCase):
         self.assertEqual(counts, {"google": 1, "check": 1, "moves": 1, "merge": 3, "fetch": 1, "links": 1})
         self.assertIn("8 things wait on you.", page)
         self.assertIn('data-key="%s" data-id="idA"' % k, page)
+        self.assertIn('value="chain" data-key="%s"> A chain: any branch near here' % k, page)
+        self.assertIn('" CHAIN=" + q(chains.join(" "))', page)
         self.assertIn(gp.maps_link(gp.query_for(CAFE), "idB").replace("&", "&amp;"), page)
         self.assertIn("Example &lt;Hall&gt;", page)          # escaped
         self.assertNotIn("<Hall>", page)

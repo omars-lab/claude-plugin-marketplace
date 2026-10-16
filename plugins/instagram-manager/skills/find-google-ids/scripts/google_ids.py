@@ -4,6 +4,7 @@
     google_ids.py --pilot NAME [--limit N] [--only KEY,KEY] [--refresh] [--box-km 2] [--dry-run]
     google_ids.py --pilot NAME --pick KEY=PLACE_ID [--pick ...]
     google_ids.py --pilot NAME --none KEY [--none ...]
+    google_ids.py --pilot NAME --chain KEY [--chain ...]
     google_ids.py --pilot NAME --prune [--dry-run]
 
 For each spot (data/pins.yaml, and the venues OpenStreetMap lacks from data/pins-review.yaml) it
@@ -17,6 +18,9 @@ and "CLOSED FOR GOOD"; none of that is written anywhere (shared/scripts/google_p
     `by: claude` with `--by claude` when Claude chose from the list rather than a person).
   - Nothing in the box is kept as `verdict: none`, so it is not searched again. `--none KEY` lets a
     person say the same of a spot whose candidates are all wrong.
+  - `--chain KEY` says the spot is a chain with several branches, so any of them will do. It is kept
+    as `verdict: chain` with no id: its map link stays a search for its name in its area, which
+    shows every branch there, and it is not searched again.
 
 The spots left for a person also go to .cache/google-to-pick.json with their candidates' place ids
 in Google's order, and nothing else of Google's, so build-hub's decisions_page.py can list them as
@@ -63,7 +67,8 @@ STALE_SHOWN = 20   # how many stale keys to list on screen
 HEADER = ("# Google place ids for the spots in data/pins.yaml and data/pins-review.yaml, written by\n"
           "# instagram-manager's find-google-ids. Only the id is kept, with our own search text, the date\n"
           "# and who chose it (auto: the only candidate carrying every word of our name; claude: Claude,\n"
-          "# from Google's list on screen; hand: a person).\n"
+          "# from Google's list on screen; hand: a person). verdict: chain means any branch will do, so\n"
+          "# its link searches the name in its area and no id is kept.\n"
           "# Nothing else of Google's goes in this file: no name, address or position.\n")
 
 
@@ -169,8 +174,10 @@ def main(argv=None):
     ap.add_argument("--box-km", type=float, default=gp.BOX_KM, help="half the box round our pin (default 2)")
     ap.add_argument("--pick", action="append", help="KEY=PLACE_ID: keep this place for this spot")
     ap.add_argument("--none", action="append", help="KEY: none of the candidates is this spot")
+    ap.add_argument("--chain", action="append",
+                    help="KEY: a chain with several branches, any of them will do; its link searches them all")
     ap.add_argument("--by", choices=("hand", "claude"), default="hand",
-                    help="who chose the --pick/--none: a person (hand, the default) or Claude reading the list")
+                    help="who chose the --pick/--none/--chain: a person (hand, the default) or Claude reading the list")
     ap.add_argument("--dry-run", action="store_true", help="list what would be searched; no key, no calls")
     ap.add_argument("--prune", action="store_true", help="drop kept ids that no spot uses any more")
     args = ap.parse_args(argv)
@@ -193,8 +200,9 @@ def main(argv=None):
     today = dt.date.today().isoformat()
 
     picks, nones = pairs(args.pick, "--pick"), [k.strip() for k in args.none or []]
-    if picks or nones:
-        unknown = [k for k in list(picks) + nones if k not in spots]
+    chains = [k.strip() for k in args.chain or []]
+    if picks or nones or chains:
+        unknown = [k for k in list(picks) + nones + chains if k not in spots]
         if unknown:
             sys.exit(f"google_ids: no spot {', '.join(unknown)} in scope (keys are printed by a search run)")
         key = gp.api_key() if picks else ""
@@ -210,11 +218,14 @@ def main(argv=None):
         for k in nones:
             kept[k] = entry(gp.query_for(spots[k][0]), "none", args.by, today)
             log("google_none", key=k, by=args.by)
+        for k in chains:
+            kept[k] = entry(gp.query_for(spots[k][0]), "chain", args.by, today)
+            log("google_chain", key=k, by=args.by)
         write_kept(kept)
-        for k in list(picks) + nones:
+        for k in list(picks) + nones + chains:
             to_pick.pop(k, None)
         write_to_pick(to_pick)
-        print(f"kept {len(picks)} picked and {len(nones)} marked none in {OUT}")
+        print(f"kept {len(picks)} picked, {len(nones)} marked none and {len(chains)} marked a chain in {OUT}")
         return
 
     stale = stale_keys(kept, bh.load_saves(saves_path), tags, pins, placed)

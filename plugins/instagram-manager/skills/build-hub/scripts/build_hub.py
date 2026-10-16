@@ -277,9 +277,12 @@ class Hub:
                                 "map": e.get("map") or maps_link(name, near or ""), "parent": near, "spot": True,
                                 "posts": [], "said": {}, "osm": e.get("osm"), "wikidata": e.get("wikidata"),
                                 "notes": e.get("notes"), "found": e.get("found") if isinstance(e.get("found"), str) else "",
-                                "placed": bool(e.get("placed")), "google_by": e.get("google_by")}
+                                "placed": bool(e.get("placed")), "google_by": e.get("google_by"),
+                                "google_chain": bool(e.get("google_chain"))}
         elif e.get("google_by") and not self.places[key].get("google_by"):   # another post's copy has the id
             self.places[key].update(map=e["map"], google_by=e["google_by"])
+        elif e.get("google_chain"):
+            self.places[key]["google_chain"] = True
         return self.places[key]
 
     def _name_post(self, place, code, said=None):
@@ -595,7 +598,10 @@ def place_page(hub, place):
     where = [f'<a href="{esc(place["map"])}" target="_blank" rel="noopener">Google Maps</a>'
              + {"auto": ' <span class="muted">(this place, matched by its name: check it)</span>',
                 "claude": ' <span class="muted">(this place, picked by Claude from Google\'s list: check it)</span>',
-                "hand": ' <span class="muted">(this place)</span>'}.get(place.get("google_by"), "")]
+                "hand": ' <span class="muted">(this place)</span>'}.get(place.get("google_by"), "")
+             + (' <span class="muted">(a chain: every branch near '
+                f'{esc(parent["name"]) if parent else "here"}, any will do)</span>'
+                if place.get("google_chain") and not place.get("google_by") else "")]
     if isinstance(place.get("osm"), str) and re.match(r"^(node|way|relation)/\d+$", place["osm"]):
         where.append(f'<a href="https://www.openstreetmap.org/{esc(place["osm"])}" target="_blank" '
                      f'rel="noopener">OpenStreetMap</a>')
