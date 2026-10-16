@@ -28,7 +28,16 @@ Date order also doesn't promise that a commit comes after its parents.
 - **Parents first.** Commits are listed with `--topo-order`, so a merge comes after everything it
   brings in.
 - **Three-way fallback.** When a plain patch doesn't fit, it is applied with `git apply --3way`,
-  which merges it using both versions of the file. A real clash still stops the sync.
+  which merges it using both versions of the file.
+- **A real clash takes the commit's own version.** The second run got past f9d5f36 and stopped
+  at e4e0cb9: two branches had both bumped development-manager's version (to 1.4.1 and to
+  1.5.0), and merge 8f3fc95 settled it by hand ("1.5.0 covers both changes"). The replay can't
+  redo a hand-made resolution, but it doesn't need to: the merge step sets the mirror to each
+  merge commit's exact files. So for a side-branch commit whose lines clash, the mirror shows
+  each clashing file as that commit left it, and the merge that follows lays down the settled
+  version. This is the same fix earlier sessions applied by hand (`git checkout $C -- $P`).
+  It never applies to a merge commit, and it can't lose work: the next guard checks the end
+  result.
 - **The end result must match `main`.** Before pushing, the GitHub copy's files are compared with
   `main`'s (leaving out the private paths). Any difference blocks the push, so a three-way merge
   that went wrong can't reach GitHub.

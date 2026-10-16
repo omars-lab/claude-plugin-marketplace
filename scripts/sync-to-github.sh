@@ -207,7 +207,26 @@ for COMMIT in $NEW_COMMITS; do
     fi
     # A commit from a side branch was made before the other side's edits to the same file,
     # so its plain patch may not fit the mirror; --3way merges it using both file versions.
+    APPLIED=1
     if [ -s "$PATCH_FILE" ] && ! git apply --index "$PATCH_FILE" 2>/dev/null && ! git apply --3way --index "$PATCH_FILE"; then
+        APPLIED=0
+        CLASHED=$(git diff --name-only --diff-filter=U)
+        if [ -n "$CLASHED" ] && [ -z "$(git rev-parse -q --verify "$COMMIT^2")" ]; then
+            # Both branches changed the same lines. Whoever merged them settled it by hand in
+            # the merge commit, and the merge step above sets the mirror to that merge's exact
+            # files. Until then, the mirror shows each clashing file as this commit left it.
+            while IFS= read -r P; do
+                if git cat-file -e "$COMMIT:$P" 2>/dev/null; then
+                    git checkout "$COMMIT" -- "$P"
+                else
+                    git rm -q --cached -- "$P" && rm -f -- "$P"
+                fi
+            done <<< "$CLASHED"
+            echo -e "    ${YELLOW}~${NC} $SHORT_SHA - took this commit's version of: $(echo $CLASHED)"
+            APPLIED=1
+        fi
+    fi
+    if [ "$APPLIED" = 0 ]; then
         echo -e "    ${RED}✗${NC} $SHORT_SHA - apply failed"
         echo -e "${RED}Conflict detected. Aborting.${NC}"
         rm -rf "$NP_DIR"
