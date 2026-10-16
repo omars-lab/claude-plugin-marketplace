@@ -11,11 +11,13 @@ Standard library only.
 """
 
 import re
+import unicodedata
 
 
 def norm(s):
-    """Lower-case, straighten curly quotes, collapse whitespace: the quote-matching rule."""
-    s = (s or "").replace("’", "'").replace("‘", "'")
+    """Lower-case, fold styled letters ("𝐁𝐞𝐚𝐜𝐡" is "Beach"), straighten curly quotes, collapse whitespace:
+    the quote-matching rule."""
+    s = unicodedata.normalize("NFKC", s or "").replace("’", "'").replace("‘", "'")
     s = s.replace("“", '"').replace("”", '"')
     return re.sub(r"\s+", " ", s).strip().lower()
 
