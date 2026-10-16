@@ -279,6 +279,14 @@ def is_creator(said, creator):
     return bool(creator) and said.startswith("@") and said[1:].strip().lower() == creator.strip().lower()
 
 
+def address_in(address, caption):
+    """True when the caption gives this address, letters and digits in order: an address over several
+    lines ("1 Example Rd\nExample Town") matches its lines joined with commas."""
+    squash = lambda t: re.sub(r"[\W_]+", "", unicodedata.normalize("NFKC", str(t)).lower())  # noqa: E731
+    a = squash(address)
+    return len(a) >= 6 and a in squash(caption)
+
+
 def coords_in(caption, lat, lon):
     """True when the caption gives these coordinates ("36.55644, -121.91886"), to 5 decimals."""
     nums = [float(n) for n in re.findall(r"-?\d{1,3}\.\d{3,}", caption or "")]
@@ -300,7 +308,7 @@ def resolve(spot, caption, areas, places, reaches, fetcher=None, creator=""):
     by_person = isinstance(spot.get("lookup"), str) and bool(spot["lookup"].strip())
     base = {"said": said, "near": near}
     keep = {k: spot[k] for k in ("lookup", "name", "address") if spot.get(k)}
-    if "address" in keep and not (by_person or quote_ok(keep["address"], caption)):
+    if "address" in keep and not (by_person or address_in(keep["address"], caption)):
         del keep["address"]   # an address the caption doesn't give is a guess
     if not by_person and not (quote_ok(said, caption) or is_creator(said, creator)):
         return "review", {**base, "why": "quote not in caption", **keep}
