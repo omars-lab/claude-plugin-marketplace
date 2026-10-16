@@ -57,7 +57,10 @@ other tools' defaults. The run's log is what shows the real limit.
   rarely fires.
 - **One run at a time.** A lock file (`.cache/fetch-media.lock`). A second run refuses
   (`ev=refused reason=locked`).
-- **At most 100 posts a run, 3 runs a day, 2 hours apart.** The trial is 5 posts.
+- **At most 100 posts a run, 3 runs a day, 2 hours apart.** The trial is 5 posts. The script
+  holds to this itself: `--limit` above 100 is cut to 100, and it reads its own log for past runs,
+  refusing to start less than 2 hours after the last one ended (`ev=refused reason=run_gap`) or a
+  4th time in 24 hours (`reason=day_cap`). The refusal line says when it may start (`may_start=`).
 - **The Mac's home connection.** No VPN, proxy or cloud machine: those get blocked sooner.
 
 ### When it stops

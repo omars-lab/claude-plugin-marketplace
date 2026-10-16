@@ -8,6 +8,7 @@ Every code, handle, collection and place name here is made up (this plugin is pu
 """
 
 import contextlib
+import datetime as dt
 import io
 import json
 import os
@@ -20,6 +21,8 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fetch_media  # noqa: E402
 import yaml  # noqa: E402
+
+REAL_RUN_GAP, REAL_RUNS_PER_DAY = fetch_media.RUN_GAP, fetch_media.RUNS_PER_DAY
 
 COLLECTIONS = """collections:
   Fixture Town: {topics: [travel], cities: [Fixture State]}
@@ -121,7 +124,10 @@ class Home(unittest.TestCase):
         self.env = mock.patch.dict(os.environ, {"INSTAGRAM_HOME": self.root, "INSTAGRAM_MEDIA_DIR": self.media_dir})
         self.env.start()
         self.patches = [mock.patch.object(fetch_media, "download_image", fake_image),
-                        mock.patch.object(fetch_media, "to_jpeg", fake_jpeg)]
+                        mock.patch.object(fetch_media, "to_jpeg", fake_jpeg),
+                        # most tests run several times in a row; RunRules checks the real rules
+                        mock.patch.object(fetch_media, "RUN_GAP", dt.timedelta(0)),
+                        mock.patch.object(fetch_media, "RUNS_PER_DAY", 99)]
         for p in self.patches:
             p.start()
         self.sleeps = []
@@ -267,6 +273,50 @@ class Refusals(Home):
         self.assertEqual(FakeYDL.made, [])
         self.assertIn("reason=locked", self.log_lines("refused")[0])
         self.assertEqual(self.run_main(), 0)   # free again once the first run ends
+
+
+class RunRules(Home):
+    """At most 100 posts a run, 2 hours from one run's end to the next start, 3 runs a day."""
+
+    def setUp(self):
+        super().setUp()
+        for p in [mock.patch.object(fetch_media, "RUN_GAP", REAL_RUN_GAP),
+                  mock.patch.object(fetch_media, "RUNS_PER_DAY", REAL_RUNS_PER_DAY)]:
+            p.start()
+            self.patches.append(p)
+
+    def past(self, *runs):
+        """Write a log holding these runs, each (hours ago it started, hours ago it ended)."""
+        t = fetch_media.now()
+        lines = []
+        for pid, (start, end) in enumerate(runs, 100):
+            lines.append(f"{fetch_media.stamp(t - dt.timedelta(hours=start))} pid={pid} ev=run_start cap=5\n")
+            lines.append(f"{fetch_media.stamp(t - dt.timedelta(hours=end))} pid={pid} ev=run_end ok=5\n")
+        os.makedirs(os.path.join(self.root, ".cache", "logs"), exist_ok=True)
+        with open(os.path.join(self.root, ".cache", "logs", "fetch-media.log"), "w") as fh:
+            fh.writelines(lines)
+
+    def test_two_hours_from_the_last_run_ending(self):
+        self.past((3, 1))   # started 3 hours ago, ended 1 hour ago
+        self.assertEqual(self.run_main(), 5)
+        self.assertEqual(FakeYDL.made, [])
+        self.assertIn("reason=run_gap", self.log_lines("refused")[0])
+        self.past((4, 2.1))
+        self.assertEqual(self.run_main(), 0)
+
+    def test_three_runs_a_day(self):
+        self.past((20, 19), (15, 14), (10, 9))
+        self.assertEqual(self.run_main(), 5)
+        refused = self.log_lines("refused")[0]
+        self.assertIn("reason=day_cap", refused)
+        may = fetch_media.now() + dt.timedelta(hours=4)   # 24 hours after the first of the three
+        self.assertIn(f"may_start={fetch_media.stamp(may)[:13]}", refused)
+        self.past((26, 25), (15, 14), (10, 9))   # the first now falls outside the 24 hours
+        self.assertEqual(self.run_main(), 0)
+
+    def test_at_most_100_posts(self):
+        self.run_main(args=("--pilot", "fixture", "--limit", "500"))
+        self.assertIn("cap=100 ", self.log_lines("run_start")[0])
 
 
 class Pick(unittest.TestCase):

@@ -36,6 +36,9 @@ Pacing (docs/research/instagram-fetch-pacing/consolidated.md in the data repo)
     "watch" warnings. The log line is ev=rate_limited. A stop is never retried inside a run.
   - Cooldown: 24 h after the first stop, 48 h after a second in a row, 3 days after a third. The
     first run after a cooldown fetches one test post only.
+  - Runs: at most 100 posts each, at least 2 hours from the end of one to the start of the next,
+    and at most 3 started in any 24 hours. The script reads its own log for the past runs and
+    refuses to start early (ev=refused reason=run_gap or day_cap, with the time it may start).
 
 Every call that can hang has a timeout: the network (30 s per read, and a hard limit on each post
 and each image), and sips.
@@ -86,6 +89,9 @@ IMAGE_DEADLINE = 60          # s for one image download
 SIPS_TIMEOUT = 60
 THUMB_WIDTH = 600
 COOLDOWN_HOURS = {1: 24, 2: 48, 3: 72}
+MAX_POSTS = 100              # posts in one run
+RUN_GAP = dt.timedelta(hours=2)   # from the end of one run to the start of the next
+RUNS_PER_DAY = 3             # runs started in any 24 hours
 
 # Options that would log in or send cookies. Any of them set means the script will not start.
 LOGIN_KEYS = ("cookiefile", "cookiesfrombrowser", "username", "password", "usenetrc", "netrc_location",
@@ -210,6 +216,39 @@ def write_cooldown(kind):
     until = now() + dt.timedelta(hours=COOLDOWN_HOURS[level])
     write_json(cooldown_path(), {"until": stamp(until), "level": level, "kind": kind, "at": stamp(now())})
     log("cooldown", until=stamp(until), level=level, kind=kind)
+
+
+def past_runs(path):
+    """[start, end] of each run in the log, oldest first; end is None for a run that was cut off."""
+    runs, open_by_pid = [], {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                m = re.match(r"(\S+) pid=(\d+) ev=(run_start|run_end)\b", line)
+                if not m:
+                    continue
+                t = dt.datetime.strptime(m[1], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+                if m[3] == "run_start":
+                    open_by_pid[m[2]] = [t, None]
+                    runs.append(open_by_pid[m[2]])
+                elif m[2] in open_by_pid:
+                    open_by_pid.pop(m[2])[1] = t
+    except OSError:
+        return []
+    return runs
+
+
+def too_soon(runs, t):
+    """(reason, when it may start) if a run may not start at t, else None."""
+    if runs:
+        start, end = runs[-1]
+        last = end or start
+        if t - last < RUN_GAP:
+            return "run_gap", last + RUN_GAP
+    day = [start for start, _ in runs if t - start < dt.timedelta(hours=24)]
+    if len(day) >= RUNS_PER_DAY:
+        return "day_cap", min(day) + dt.timedelta(hours=24)
+    return None
 
 
 # ---------------------------------------------------------------- yt-dlp
@@ -497,7 +536,8 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
     ap.add_argument("--saved", default=None, help="saves.json (default: the data repo's .cache)")
     args = ap.parse_args(argv)
 
-    log_to(cache("logs", "fetch-media.log"))
+    log_path = cache("logs", "fetch-media.log")
+    log_to(log_path)
     requests = collections.deque()
     watcher = Watcher(requests)
     opts = ydl_options(watcher)
@@ -518,6 +558,10 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
                 log("refused", reason="cooldown", until=cd["until"], level=cd.get("level"))
                 return 4
             test_only = True   # the first run after a cooldown tries one post
+        early = too_soon(past_runs(log_path), now())
+        if early:
+            log("refused", reason=early[0], may_start=stamp(early[1]))
+            return 5
 
         with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
             saves = json.load(fh)["saves"]
@@ -528,7 +572,7 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
                 sys.exit(f"no pilot {args.pilot!r} in config/collections.yaml (have: {', '.join(pilots) or 'none'})")
             pilot = pilots[args.pilot]
         media = load_yaml(MEDIA)
-        limit = 1 if test_only else args.limit
+        limit = 1 if test_only else min(args.limit, MAX_POSTS)
         todo, done = pick(saves, pilot, load_yaml(os.path.join("data", "tags.yaml")), media, limit)
 
         if ydl_factory is None:
