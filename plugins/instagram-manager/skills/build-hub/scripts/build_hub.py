@@ -56,6 +56,7 @@ sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared",
 
 from home import cache  # noqa: E402
 from log import log  # noqa: E402
+from pilot import in_pilot  # noqa: E402
 from places import Places, load_yaml  # noqa: E402
 
 MEDIA_DEFAULT = os.path.join("~", "Library", "Mobile Documents", "com~apple~CloudDocs", "CloudDesktop", "data",
@@ -102,15 +103,6 @@ def load_saves(path):
         s["owner"] = literal(s.get("owner"), {})
         s["caption"] = s.get("caption") if isinstance(s.get("caption"), str) else ""
     return saves
-
-
-def in_scope(save, tag, pilot):
-    """A pilot holds the saves in its collections and the saves tagged with one of its places."""
-    if pilot is None:
-        return True
-    if set(save["collections"]) & set(pilot.get("collections") or []):
-        return True
-    return bool(set((tag or {}).get("cities") or []) & set(pilot.get("cities") or []))
 
 
 def slugify(name):
@@ -822,7 +814,7 @@ def main(argv=None):
     media = load_yaml(os.path.join("data", "media.yaml"))
     topics = load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {}
     media_dir = os.path.expanduser(os.environ.get("INSTAGRAM_MEDIA_DIR") or MEDIA_DEFAULT)
-    scoped = [s for s in saves if in_scope(s, tags.get(s["code"]), pilot)]
+    scoped = [s for s in saves if in_pilot(s, tags.get(s["code"]), pilot)]
 
     hub = Hub(scoped, tags, Places.load(), pins, media, topics, media_dir)
     out = os.path.abspath(args.out or cache("hub"))

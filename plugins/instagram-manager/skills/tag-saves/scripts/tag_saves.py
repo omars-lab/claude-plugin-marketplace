@@ -68,6 +68,7 @@ import yaml  # noqa: E402
 
 from home import cache, home  # noqa: E402
 from log import log  # noqa: E402
+from pilot import in_pilot  # noqa: E402
 from places import Places  # noqa: E402
 from quote import quote_ok  # noqa: E402
 
@@ -269,13 +270,6 @@ def entry(topics, cities, source, hints):
     if hints:
         e["hints"] = sorted(hints)
     return e
-
-
-def in_pilot(save, tag, pilot, hints):
-    if set(save.get("collections") or []) & set(pilot.get("collections") or []):
-        return True
-    cities = set(pilot.get("cities") or [])
-    return bool(cities & (hints | set((tag or {}).get("cities") or [])))
 
 
 def report(saves, tags, pilot, compiled):

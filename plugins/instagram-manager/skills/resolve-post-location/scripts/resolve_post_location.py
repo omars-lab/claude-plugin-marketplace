@@ -74,6 +74,7 @@ import yaml  # noqa: E402
 import geocode  # noqa: E402
 from home import cache, home  # noqa: E402
 from log import log  # noqa: E402
+from pilot import in_pilot  # noqa: E402
 from places import load_yaml  # noqa: E402
 from quote import quote_ok  # noqa: E402
 
@@ -303,11 +304,6 @@ def resolve(spot, caption, areas, places, reaches, fetcher=None):
 
 
 # --- prepare -------------------------------------------------------------------------------------
-
-def in_pilot(save, tag, pilot):
-    if set(save.get("collections") or []) & set(pilot.get("collections") or []):
-        return True
-    return bool(set(pilot.get("cities") or []) & set((tag or {}).get("cities") or []))
 
 
 def record(save, areas):

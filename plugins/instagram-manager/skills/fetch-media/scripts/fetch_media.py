@@ -65,6 +65,7 @@ import yaml  # noqa: E402
 
 from home import cache, home  # noqa: E402
 from log import log, log_to  # noqa: E402
+from pilot import in_pilot  # noqa: E402
 
 MEDIA = os.path.join("data", "media.yaml")
 DEFAULT_MEDIA_DIR = os.path.join("~", "Library", "Mobile Documents", "com~apple~CloudDocs", "CloudDesktop",
@@ -156,13 +157,6 @@ def stamp(t):
 
 
 # ---------------------------------------------------------------- which saves
-
-def in_pilot(save, tag, pilot):
-    if set(save.get("collections") or []) & set(pilot.get("collections") or []):
-        return True
-    places = set((tag or {}).get("cities") or []) | set((tag or {}).get("hints") or [])
-    return bool(set(pilot.get("cities") or []) & places)
-
 
 def pick(saves, pilot, tags, media, limit):
     """Saves still to fetch, in export order: (todo, already recorded in media.yaml)."""
