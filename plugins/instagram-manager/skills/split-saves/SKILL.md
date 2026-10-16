@@ -69,6 +69,10 @@ characters; a save is never split across batches. Change it with `--batch-saves`
   start no more agents. Merge what finished and say what is left.
 - A new `--prepare` removes the last round's batch files, so it stops while any answers are not
   merged yet and says to run the merge first.
+- **Check the batch size after a round** with tag-saves' `batch_review.py --kind split`. On the
+  first full run (6,000 saves, haiku) an agent's context grew by about 0.83 tokens per caption
+  character over a 57,000-token start, so batches of about 75,000 characters stay under 120,000
+  tokens. 80,000-character batches went just over and still missed nothing.
 
 ## Steps
 
@@ -126,7 +130,6 @@ item would go to review with "quote is not in the caption", and the blondie woul
 
 - The same dish named in several posts is not yet merged into one item listing all their codes.
 - A save whose caption names nothing (`items: []`) is not yet listed for a look at its video.
-- `scripts/batch_review.py` in tag-saves does not read split runs yet.
 
 ## Scripts — when to use each
 

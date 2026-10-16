@@ -19,11 +19,11 @@ import batch_review  # noqa: E402
 
 
 def transcript(folder, name, batch_file, peak, start, end, error=None, wrote=True, agent="save-tagger",
-               read_chars=1000):
+               read_chars=1000, prompt="Follow /plugin/agents/{agent}.md exactly. Batch: {batch_file}"):
     """An agent's transcript in Claude Code's shape: prompt, a read of the batch, answers, usage."""
     lines = [
         {"type": "user", "timestamp": start,
-         "message": {"role": "user", "content": f"Follow /plugin/agents/{agent}.md exactly. Batch: {batch_file}"}},
+         "message": {"role": "user", "content": prompt.format(agent=agent, batch_file=batch_file)}},
         {"type": "assistant", "timestamp": start, "requestId": "r1",
          "message": {"model": "example-model", "content": [
              {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": batch_file}}],
@@ -141,6 +141,25 @@ class BatchReviewTest(unittest.TestCase):
         self.assertIn("rate_limit", text)
         self.assertIn("look at: 2 runs", text)  # a1 missed saves; a3 hit a limit and went over budget
         self.assertNotIn("an invented error", text)  # no message text is printed
+
+    def test_split_runs_and_a_bare_path_prompt(self):
+        split = os.path.join(self.home, ".cache", "batches", "split")
+        os.makedirs(split)
+        transcript(self.tx, "s1", f"{split}/batch-001.json", 90000, "2026-01-03T10:00:00.000Z",
+                   "2026-01-03T10:01:00.000Z", agent="save-splitter",
+                   prompt="Read /plugin/agents/{agent}.md and follow it on this batch file: {batch_file}. Reply.")
+        transcript(self.tx, "l1", f"{self.home}/.cache/batches/locate/batch-001.json", 80000,
+                   "2026-01-03T10:00:00.000Z", "2026-01-03T10:01:00.000Z", prompt="{batch_file}")
+        with open(os.path.join(split, "merged.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"at": "2026-01-03T10:02:00Z", "batch": "batch-001", "saves": 80, "answered": 80,
+                                 "missing": 0, "chars": 40000}) + "\n")
+        runs = batch_review.join(batch_review.find_runs(self.tx), {"split": batch_review.load_merges("split")})
+        by_name = {r["transcript"]: r for r in runs}
+        s1 = by_name["agent-s1.jsonl"]
+        self.assertEqual((s1["kind"], s1["batch"], s1["agent"]), ("split", "batch-001", "save-splitter"))
+        self.assertEqual(s1["batch_file"], f"{split}/batch-001.json")  # the trailing "." is not the path's
+        self.assertEqual(s1["merge"]["saves"], 80)
+        self.assertEqual(by_name["agent-l1.jsonl"]["kind"], "locate")
 
     def test_no_runs(self):
         out = io.StringIO()

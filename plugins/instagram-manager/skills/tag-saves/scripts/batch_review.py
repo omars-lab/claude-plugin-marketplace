@@ -2,17 +2,18 @@
 """batch_review.py — how the batch agents did, and whether the batches should be bigger or smaller.
 
     batch_review.py                       every agent run found, then a size suggestion per kind
-    batch_review.py --kind tag            only the save-tagger runs (tag, locate or frames)
+    batch_review.py --kind tag            only the save-tagger runs (tag, split, locate or frames)
     batch_review.py --budget 100000       the most context one agent should reach (default 120,000 tokens)
     batch_review.py --transcripts DIR     another folder of Claude Code session transcripts
 
 Reads   ~/.claude/projects/<the data repo's path, / as ->/*/subagents/agent-*.jsonl
             the Claude Code transcript of each agent the session started; only numbers are taken
-            from it: the batch path in its prompt, tokens, times, error kinds. No caption, answer or
-            message text is printed or kept.
+            from it: the batch path in its prompt (with or without a "Batch:" before it), tokens,
+            times, error kinds. No caption, answer or message text is printed or kept.
         $INSTAGRAM_HOME/.cache/batches/<kind>/merged.jsonl
-            one line per merged batch (tag_saves.py --merge, resolve_post_location.py --merge,
-            read_frames.py --merge): saves, chars, and the saves it missed
+            one line per merged batch (tag_saves.py --merge, split_saves.py --merge,
+            resolve_post_location.py --merge, read_frames.py --merge): saves, chars, and the saves
+            it missed
 Writes  nothing; a table on stdout, a summary line on stderr
 
 An agent run is one transcript whose prompt names a batch file under .cache/batches/<kind>/. It is
@@ -38,13 +39,16 @@ sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared",
 from home import cache, home  # noqa: E402
 from log import log  # noqa: E402
 
-KINDS = ("tag", "locate", "frames")
-BATCH = re.compile(r"Batch:\s*(\S+?/batches/(tag|locate|frames)/(batch-\d+)\.json)")
+KINDS = ("tag", "split", "locate", "frames")
+# The batch path anywhere in the prompt: "Batch: <path>", "on this batch file: <path>", or the path alone.
+BATCH = re.compile(r"(/\S*?/batches/(tag|split|locate|frames)/(batch-\d+)\.json)")
 AGENT = re.compile(r"agents/([\w-]+)\.md")
 MERGE_WINDOW = dt.timedelta(hours=12)
 BUDGET = 120000
-# The size knob each kind has, and its default (tag_saves.py, resolve_post_location.py, read_frames.py).
-KNOB = {"tag": ("chars", "--batch-chars", 60000), "locate": ("chars", "--batch-chars", 60000),
+# The size knob each kind has, and its default (tag_saves.py, split_saves.py, resolve_post_location.py,
+# read_frames.py).
+KNOB = {"tag": ("chars", "--batch-chars", 60000), "split": ("chars", "--batch-chars", 60000),
+        "locate": ("chars", "--batch-chars", 60000),
         "frames": ("saves", "--batch-saves", 6)}
 
 

@@ -170,7 +170,7 @@ no changes leaves git clean. A new `--prepare` removes the last round's batch fi
 After each round (and before the first round of `--all`), check the batch size:
 
 ```bash
-python3 <plugin>/skills/tag-saves/scripts/batch_review.py          # --kind tag|locate|frames, --budget N
+python3 <plugin>/skills/tag-saves/scripts/batch_review.py          # --kind tag|split|locate|frames, --budget N
 ```
 
 It finds every batch agent in the data repo's Claude Code transcripts and prints one row per run:
@@ -221,7 +221,7 @@ hand instead.
 | `scripts/tag_saves.py --moves` | The saves filed in the wrong collection, with where to move them | After a merge that found moves | `python3 scripts/tag_saves.py --moves` |
 | `scripts/moves_page.py` | The moves list as a page: per save the collection it is in, where to move it, the caption with the quote marked, a link to the post and a "Moved" tick kept in the browser | When there are saves to move and you want to work through them in the app | `python3 scripts/moves_page.py` (writes `.cache/hub/moves.html`; `--out PATH` for elsewhere) |
 | `scripts/add_places.py` | Looks up unlisted places on OpenStreetMap and adds them, with map links and the place each sits in | After a round leaves places in review, then `--merge` | `python3 scripts/add_places.py --dry-run` first, then without |
-| `scripts/batch_review.py` | One row per batch agent run (tag, locate, frames) from the transcripts and merge logs, then the batch size that fits under a context budget | After a round, and before the first `--all` round | `python3 scripts/batch_review.py` (`--kind tag`, `--budget 100000`, `--transcripts DIR`) |
+| `scripts/batch_review.py` | One row per batch agent run (tag, split, locate, frames) from the transcripts and merge logs, then the batch size that fits under a context budget | After a round, and before the first `--all` round | `python3 scripts/batch_review.py` (`--kind tag`, `--budget 100000`, `--transcripts DIR`) |
 | `scripts/test_tag_saves.py` | Offline tests, with a fake agent writing canned answers | After any change to the tagger | `python3 scripts/test_tag_saves.py` |
 | `scripts/test_batch_review.py` | Offline tests on invented transcripts and merge logs | After any change to the batch review | `python3 scripts/test_batch_review.py` |
 
