@@ -27,7 +27,8 @@ How a save is tagged
   1. Collections (collections.yaml). A save in a mapped collection gets that entry's topics and
      cities. These are kept unless the agent says the save is misfiled (see Moves).
   2. Place hints (places.yaml). A listed name in the caption (whole words, any case) or a listed
-     hashtag. A hint is not a tag: it pulls a save into a pilot, and it is shown to the agent.
+     hashtag; and for every known place, its name run together as a hashtag (#examplefalls).
+     A hint is not a tag: it pulls a save into a pilot, and it is shown to the agent.
   3. The save-tagger agent (Haiku) reads a batch: caption, hashtags, creator, collections and the
      two above for each save, and answers topics, places and purposes (what the post is for: eat,
      stay, get outdoors, see something) from the fixed lists. --merge keeps only names on the
@@ -50,7 +51,8 @@ save always fits. Saves are sorted by collection, so a batch holds similar posts
 
 A save the agent has tagged is not batched again (unless --retag). One it tagged before it was asked
 for purposes (no `purposes` in its tags) is read once more, keeping the topics and places it has:
-they go to the agent under `already`, and the merge keeps everything under `already`. A --retag
+they go to the agent under `already`, and the merge keeps everything under `already`. So is one that
+now has a place hint it was not read with (a place added to the list since, say). A --retag
 sends only the collection's tags as `already`, so a fresh answer can drop a wrong place.
 A save with no usable answer
 keeps its rule tags, the reason goes in the review file, and the next --prepare batches it again.
@@ -130,12 +132,34 @@ def collection_tags(save, collections):
     return topics, cities
 
 
+def run_together(name):
+    """A name as a hashtag would write it: "Example Falls" → "examplefalls"."""
+    return re.sub(r"[\W_]+", "", name).lower()
+
+
 def compile_places(places):
+    """Per place: a caption pattern and the hashtags that hint at it. A hand-listed place
+    (config/places.yaml) matches its names in the caption and its hashtags. Every place, looked-up
+    ones and aliases too, also matches its name run together as a hashtag (#examplefalls), and a
+    looked-up name of two words or more matches the caption. One-word looked-up names do not match
+    the caption: too many are also common words."""
+    config, extra = places.config, {}
+    for name in places.known:
+        extra.setdefault(name, set()).add(name)
+    for name, to in places.aliases.items():
+        if to in places.known and "," not in name:
+            extra.setdefault(to, set()).add(name)
     out = []
-    for place, p in places.items():
-        names = sorted((n for n in p.get("names") or [] if n.strip()), key=len, reverse=True)
+    for place in sorted(set(config) | set(extra)):
+        p = config.get(place) if isinstance(config.get(place), dict) else {}
+        names = set(n for n in p.get("names") or [] if n.strip())
+        if place not in config:
+            names |= {n for n in extra.get(place, ()) if len(n.split()) > 1}
+        names = sorted(names, key=len, reverse=True)
         rx = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(n) for n in names) + r")(?!\w)", re.I) if names else None
-        out.append((place, rx, {h.lower().lstrip("#") for h in p.get("hashtags") or []}))
+        tags = {h.lower().lstrip("#") for h in p.get("hashtags") or []}
+        tags |= {run_together(n) for n in extra.get(place, ()) | set(p.get("names") or [])} - {""}
+        out.append((place, rx, tags))
     return out
 
 
@@ -354,10 +378,15 @@ def prepare(args, saves, topics_known, purposes_known, collections, places, comp
         if model and not args.retag:
             tags[s["code"]] = entry(set(old["topics"]) | rule_topics, places.fold(set(old["cities"]) | rule_cities),
                                     "model", hints, old.get("purposes"))
-            if "purposes" in old:
+            new_hints = hints - set(old.get("hints") or []) - set(tags[s["code"]]["cities"])
+            if "purposes" in old and not new_hints:
                 kept += 1
                 continue
-            # tagged before purposes were asked: read again, keeping what it has
+            # tagged before purposes were asked, or a place hint it has not been read with: read
+            # again, keeping what it has. The old hints stay until the answer lands.
+            if new_hints:
+                tags[s["code"]] = entry(set(tags[s["code"]]["topics"]), set(tags[s["code"]]["cities"]), "model",
+                                        old.get("hints"), old.get("purposes"))
             todo.append((s, set(tags[s["code"]]["topics"]), set(tags[s["code"]]["cities"]), hints))
             continue
         if not model:  # a retag keeps the old tags until an answer lands
@@ -499,7 +528,7 @@ def main(argv=None):
         saves = json.load(fh)["saves"]
     topics_known, collections, pilots, places = load_config()
     purposes_known = load_purposes()
-    compiled = compile_places(places.config)
+    compiled = compile_places(places)
     pilot = None
     if args.pilot:
         if args.pilot not in pilots:

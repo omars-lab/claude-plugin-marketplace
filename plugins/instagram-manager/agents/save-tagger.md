@@ -23,7 +23,11 @@ You sort one person's saved Instagram posts. You get the path of one batch file.
      the most specific one listed: a post about Example City gets `Example City`, not
      `Example State` (the merge adds the state itself). When the town or park is not listed, use
      the listed state or country it is in, and also name the town under `other_places`.
-     Leave it empty when the post is not about a place. A hint is only a clue: a recipe that
+     Leave it empty when the post is not about a place.
+   - **Hashtags name places too.** When the post is about a place (a trip, a beach, a restaurant,
+     something seen there), a place in its hashtags or `hints` counts as much as one in the
+     caption: a shark seen off a beach, captioned "in California" and tagged `#exampletown`, gets
+     `Example Town`. Only a post that is not about going somewhere ignores them: a recipe that
      carries a town's hashtag is still a recipe, not that town.
    - **What counts as a place:** a place the post is about, to visit or to know. A "places to
      visit" list counts every place on it. A tour or event schedule, a list of shipping countries,

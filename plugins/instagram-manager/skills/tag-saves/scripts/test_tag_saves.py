@@ -199,6 +199,31 @@ class TagSaves(Home):
         self.tag("--pilot", "fixture", "--retag")
         self.assertEqual(self.read("data/tags.yaml")["BAY"]["cities"], ["Fixture State"])  # a retag can drop it
 
+    def test_a_listed_place_written_as_a_hashtag_is_a_hint_and_a_new_hint_is_read_once(self):
+        self.write(".cache/saves.json", {"saves": SAVES + [save("TAG", "A weekend away", ["Fixture Town"],
+                                                                ["fixturecity"])]})
+        self.tag("--pilot", "fixture")
+        self.assertNotIn("hints", self.read("data/tags.yaml")["TAG"])        # Fixture City is not listed yet
+        self.write("data/places.yaml", NESTED)
+        out = self.run_tag("--prepare", "--pilot", "fixture")
+        recs = {}
+        for path in out.split():
+            with open(path) as fh:
+                recs.update({r["code"]: r for r in json.load(fh)["saves"]})
+        self.assertEqual(sorted(recs), ["BAD", "TAG"])                       # only the save with a new hint
+        self.assertEqual(recs["TAG"]["hints"], ["Fixture City"])
+        self.agent(out.split())
+        self.run_tag("--merge")
+        self.assertEqual(self.read("data/tags.yaml")["TAG"]["hints"], ["Fixture City"])
+        self.assertEqual(sorted(self.tag("--pilot", "fixture")), ["BAD"])    # read once
+
+    def test_a_one_word_looked_up_name_in_the_caption_is_not_a_hint(self):
+        self.write("data/places.yaml", {"places": {"Fixture City": {"in": "Fixture State"},
+                                                   "Orchard": {"in": "Fixture State"}}})
+        compiled = tag_saves.compile_places(Places.load())
+        hints = tag_saves.place_hints(save("X", "Orchard pie, then lunch in fixture city"), compiled)
+        self.assertEqual(hints, {"Fixture City"})
+
     def test_answers_from_a_batch_that_did_not_ask_for_purposes_add_none(self):
         paths = self.run_tag("--prepare", "--pilot", "fixture").split()
         with open(paths[0]) as fh:

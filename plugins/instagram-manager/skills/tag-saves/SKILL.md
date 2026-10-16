@@ -16,8 +16,12 @@ two places. The tags feed the split, media and hub steps.
    in a mapped collection keeps those tags, unless the agent shows it was filed in the wrong one
    (see Moves).
 2. **Place names.** `config/places.yaml` lists names to look for in a caption (whole words, any
-   case) and hashtags. A match is only a hint: it brings the save into a pilot, and the agent is
-   told about it. A sourdough post tagged with a beach town's hashtag stays a recipe.
+   case) and hashtags. Every listed place, the looked-up ones in `data/places.yaml` too, also
+   matches its name run together as a hashtag (`#examplefalls` → Example Falls), and a looked-up
+   name of two words or more matches the caption (one-word names are too often plain words). A
+   match is only a hint: it brings the save into a pilot, and the agent is told about it. A
+   sourdough post tagged with a beach town's hashtag stays a recipe. A tagged save that gains a
+   hint it was not read with (the place was added since) is read once more, keeping its tags.
 3. **The `save-tagger` agent** (Haiku, `agents/save-tagger.md`) reads a batch of saves — caption,
    hashtags, creator, collections and the two above — and picks topics, places and purposes from
    the lists. The purposes come from `shared/scripts/purposes.py`, or `config/purposes.yaml` when
