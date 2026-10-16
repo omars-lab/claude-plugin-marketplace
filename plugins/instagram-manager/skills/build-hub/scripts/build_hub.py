@@ -562,7 +562,9 @@ function popup(pin){
 
 function icon(level){return L.divIcon({className:'',html:'<div class="pin pin-'+level+'"></div>',iconSize:[18,18],iconAnchor:[9,9]})}
 
-function cluster(c){var n=c.getChildCount(),s=n<10?34:n<50?40:48;
+// A bubble counts posts, not pins: a road-trip post that names 20 places is one post.
+function cluster(c){var seen={},n=0;c.getAllChildMarkers().forEach(function(m){if(!seen[m.post]){seen[m.post]=1;n++}});
+  var s=n<10?34:n<50?40:48;
   return L.divIcon({html:'<div class="bubble"><span>'+n+'</span></div>',className:'',iconSize:[s,s]})}
 
 function showPins(keep){
@@ -657,6 +659,7 @@ layer=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:45,iconCr
 D.pins.forEach(function(pin){
   var p=D.posts[pin[2]],pl=D.places[pin[3]];
   var m=L.marker([pin[0],pin[1]],{icon:icon(pin[4]),title:(p.u?'@'+p.u:'')+' · '+pl.n,alt:pl.n,keyboard:true});
+  m.post=pin[2];
   m.bindPopup(function(){return popup(pin)},{maxWidth:260,minWidth:200,autoPanPadding:[20,20]});
   marks.push(m);
 });
@@ -966,12 +969,15 @@ def main(argv=None):
     pinned = sum(1 for p in hub.posts if p["pins"])
     exact = sum(1 for p in hub.posts if any(style != "wide" for *_, style in p["pins"]))
     spots = sum(1 for p in hub.places.values() if p["spot"])
+    n_pins = sum(len(p["pins"]) for p in hub.posts)   # a post that names 5 places has 5 pins
+    multi = sum(1 for p in hub.posts if len(p["pins"]) > 1)
     if hub.no_pin:
         log("hub_no_pin", places=len(hub.no_pin), names=",".join(sorted(hub.no_pin))[:300])
-    log("hub", scope=args.pilot or "all", saves=len(hub.posts), pinned=pinned, more_exact_than_state=exact,
-        place_pages=len(hub.places), spots=spots, thumbs=thumbs, pins_file=bool(pins), media_file=bool(media),
+    log("hub", scope=args.pilot or "all", saves=len(hub.posts), pinned=pinned, pins=n_pins,
+        posts_with_2plus_pins=multi, more_exact_than_state=exact, place_pages=len(hub.places), spots=spots, thumbs=thumbs, pins_file=bool(pins), media_file=bool(media),
         out=out)
-    print(f"{len(hub.posts)} saves: {pinned} on the map ({exact} at a town, park or spot); "
+    print(f"{len(hub.posts)} saves: {pinned} on the map ({exact} at a town, park or spot) "
+          f"with {n_pins} pins, one per place a post names ({multi} posts have 2 or more); "
           f"{len(hub.places)} place pages ({spots} spots); {thumbs} thumbnails")
     print(os.path.join(out, "index.html"))
     return 0
