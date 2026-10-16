@@ -27,6 +27,14 @@ word in its slug (recipe, design, print, business) and otherwise gets `note`. To
 kinds yourself, add `item_kinds: {kind: what counts}` to it in the data repo's
 `config/topics.yaml`.
 
+**Give every topic a kind for the things people name, not only for advice.** The agent leaves out
+anything that fits none of a topic's kinds, so a topic with only `tip` and `quote` loses every
+book, course, product or piece of gear its posts name, and the save comes out `items: []`. When you
+add a topic, give it a `resource` or `product` kind as well (a book, talk, course, app, tool or
+product named). If you add a kind after a round, delete the entries of that topic's empty saves
+(see "Fixing by hand") and run the round again, so they are read with the new kind; batches made
+before the change carry the old kinds, so make them again with `--prepare` once their wave is in.
+
 ## How a save gets its items
 
 1. **Which saves.** Every tagged save (`data/tags.yaml`) with a topic other than travel, tagged by
