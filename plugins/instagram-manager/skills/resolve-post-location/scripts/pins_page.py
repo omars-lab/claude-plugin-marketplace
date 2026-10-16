@@ -14,6 +14,13 @@ from the caption, what OpenStreetMap found, how far that is from the save's area
 link. Review entries are listed after, with why each one needs a look; the ones OpenStreetMap
 found somewhere are on the map in another colour. The page holds captions' words and post codes,
 so it stays under .cache, never in git.
+
+Each save shows a small preview (extract-stills' previews.py, made here when missing): a 144 x 192
+picture, about 5 KB, that loads only as it nears the screen, and for a reel with a video a flipbook
+of 12 frames from the whole reel, a few dozen KB. A flipbook loads and plays only while its save is
+on screen, at most MAX_PLAYING at once, and turns back into the picture when it scrolls away, so a
+page of hundreds of saves stays light. With reduced motion asked for, a flipbook plays only while
+the pointer is on it. --no-previews leaves them out.
 """
 
 import argparse
@@ -24,11 +31,14 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared", "scripts"))
+sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, "extract-stills", "scripts"))
 
 from home import cache  # noqa: E402
 from log import log  # noqa: E402
 from places import load_yaml  # noqa: E402
 from resolve_post_location import NO_SPOT, PINS, REVIEW  # noqa: E402
+
+MAX_PLAYING = 8   # flipbooks moving at once
 
 TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -71,17 +81,35 @@ def spot_row(i, e, review):
             f'<div class="meta">{dist}{"".join(links)}</div>{tip}</li>')
 
 
-def save_card(code, entries, save, start, review):
+def preview_html(code, save, pv):
+    """The post's picture, and its flipbook to swap in while it is on screen; empty with neither."""
+    if not pv or not pv.get("poster"):
+        return ""
+    anim = f' data-anim="previews/{esc(pv["anim"])}"' if pv.get("anim") else ""
+    return (f'<a class="pv" href="{esc(post_url(code, save))}" target="_blank" rel="noopener" tabindex="-1">'
+            f'<img src="previews/{esc(pv["poster"])}" data-poster="previews/{esc(pv["poster"])}"{anim} '
+            f'width="72" height="96" alt="" loading="lazy" decoding="async"></a>')
+
+
+def save_card(code, entries, save, start, review, pv=None):
     owner = (save.get("owner") or {}).get("username") or ""
     who = f'<span class="who">@{esc(owner)}</span>' if owner else '<span class="who">unknown creator</span>'
     rows = "".join(spot_row(start + j, e, review) for j, e in enumerate(entries))
-    return (f'<article class="save"><header>{who}'
+    fig = preview_html(code, save, pv)
+    return (f'<article class="save{" has-pv" if fig else ""}">{fig}<div class="body"><header>{who}'
             f'<a href="{esc(post_url(code, save))}" target="_blank" rel="noopener">Open the post</a></header>'
-            f'<ul class="spots">{rows}</ul></article>')
+            f'<ul class="spots">{rows}</ul></div></article>')
 
 
-def build(pins, review, no_spot, saves):
-    """The page, and the number of map markers."""
+def codes_shown(pins, review):
+    """The saves that get a card: those with at least one spot entry."""
+    return sorted(c for group in (pins, review) for c in group
+                  if any(isinstance(e, dict) for e in group[c] or []))
+
+
+def build(pins, review, no_spot, saves, previews=None):
+    """The page, and the number of map markers. `previews` is {code: {"poster", "anim"}}."""
+    previews = previews or {}
     markers, cards, review_cards, i = [], [], [], 0
     for group, out, is_review in ((pins, cards, False), (review, review_cards, True)):
         for code in sorted(group):
@@ -89,7 +117,7 @@ def build(pins, review, no_spot, saves):
             if not entries:
                 continue
             save = saves.get(code) or {}
-            out.append(save_card(code, entries, save, i, is_review))
+            out.append(save_card(code, entries, save, i, is_review, previews.get(code)))
             for e in entries:
                 if e.get("lat") is not None and e.get("lon") is not None and not e.get("drop"):
                     markers.append({"i": i, "lat": e["lat"], "lon": e["lon"], "review": is_review,
@@ -111,7 +139,7 @@ def build(pins, review, no_spot, saves):
             .replace("{{PINS}}", "".join(cards) or empty)
             .replace("{{REVIEW}}", "".join(review_cards) or '<p class="empty">Nothing to review.</p>')
             .replace("{{N_REVIEW}}", str(n_review))
-            .replace("{{TILES}}", TILES).replace("{{CREDIT}}", CREDIT).replace("{{DATA}}", data))
+            .replace("{{MAX_PLAYING}}", str(MAX_PLAYING)).replace("{{TILES}}", TILES).replace("{{CREDIT}}", CREDIT).replace("{{DATA}}", data))
     return page, len(markers)
 
 
@@ -148,6 +176,10 @@ h1 { margin: 0; font-size: clamp(1.6rem, 4vw, 2.2rem); line-height: 1.1 }
 .list { display: grid; gap: .8rem; align-content: start; min-width: 0 }
 h2 { margin: .8rem 0 0; font-size: 1.15rem }
 .save { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: .7rem .9rem }
+.save.has-pv { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: .8rem; align-items: start }
+.body { min-width: 0 }
+.pv { position: sticky; top: .7rem; display: block; line-height: 0 }
+.pv img { width: 72px; height: 96px; object-fit: cover; border-radius: 6px; background: var(--line) }
 .save header { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline }
 .who { font-weight: 700 }
 a, .show { color: var(--accent); font-weight: 600 }
@@ -220,6 +252,36 @@ q { display: inline-block; background: var(--quote-bg); padding: .05rem .4rem; b
     b.addEventListener("click", function () { on(+b.dataset.i, true); });
   });
 })();
+// Flipbooks: each loads and plays only while its save is on screen, at most {{MAX_PLAYING}} at once,
+// and turns back into its picture when it scrolls away. With reduced motion, only on pointing.
+(function () {
+  var imgs = Array.prototype.slice.call(document.querySelectorAll("img[data-anim]"));
+  if (!imgs.length) return;
+  var auto = !(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var seen = new Set(), held = null;
+  function show(img, play) {
+    var want = play ? img.dataset.anim : img.dataset.poster;
+    if (img.getAttribute("src") !== want) img.setAttribute("src", want);
+  }
+  function refresh() {
+    var n = 0;
+    imgs.forEach(function (img) {
+      var play = img === held || (auto && seen.has(img) && n < {{MAX_PLAYING}});
+      if (play && img !== held) n++;
+      show(img, play);
+    });
+  }
+  imgs.forEach(function (img) {
+    img.addEventListener("mouseenter", function () { held = img; refresh(); });
+    img.addEventListener("mouseleave", function () { held = null; refresh(); });
+  });
+  if (!("IntersectionObserver" in window)) return;
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) seen.add(e.target); else seen.delete(e.target); });
+    refresh();
+  }, {threshold: 0.6});
+  imgs.forEach(function (img) { io.observe(img); });
+})();
 </script>
 </body>
 </html>
@@ -229,6 +291,7 @@ q { display: inline-block; background: var(--quote-bg); padding: .05rem .4rem; b
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", default=None, help="where to write the page (default .cache/hub/pins.html)")
+    ap.add_argument("--no-previews", action="store_true", help="leave out each save's picture and flipbook")
     args = ap.parse_args(argv)
     pins, review, no_spot = load_yaml(PINS), load_yaml(REVIEW), load_yaml(NO_SPOT)
     try:
@@ -236,12 +299,18 @@ def main(argv=None):
             saves = {s["code"]: s for s in json.load(fh)["saves"]}
     except OSError:
         saves = {}
-    page, n = build(pins, review, no_spot, saves)
     out = args.out or cache(os.path.join("hub", "pins.html"))
+    shown = {}
+    if not args.no_previews:
+        import previews   # extract-stills; needs ffmpeg and img2webp only for posts not made yet
+        shown = previews.make_all(codes_shown(pins, review), os.path.join(os.path.dirname(out), "previews"))
+    page, n = build(pins, review, no_spot, saves, shown)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(page)
-    log("pins_page", saves_with_pins=len(pins), saves_in_review=len(review), markers=n, out=out)
+    log("pins_page", saves_with_pins=len(pins), saves_in_review=len(review), markers=n,
+        previews=sum(1 for v in shown.values() if v.get("poster")),
+        flipbooks=sum(1 for v in shown.values() if v.get("anim")), out=out)
     print(out)
     return 0
 

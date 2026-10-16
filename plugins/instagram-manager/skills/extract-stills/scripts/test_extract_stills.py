@@ -20,6 +20,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import extract_stills as es  # noqa: E402
+import previews  # noqa: E402
 import yaml  # noqa: E402
 
 HAVE_TOOLS = all(shutil.which(t) for t in ("ffmpeg", "ffprobe", "img2webp", "webpmux"))
@@ -47,7 +48,9 @@ def save(code):
 
 
 @unittest.skipUnless(HAVE_TOOLS, "needs ffmpeg and img2webp")
-class Stills(unittest.TestCase):
+class Fixture(unittest.TestCase):
+    """An invented data repo and media folder: LISTED has a video, NOVID only a thumbnail."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.old = {k: os.environ.get(k) for k in ("INSTAGRAM_HOME", "INSTAGRAM_MEDIA_DIR")}
@@ -106,6 +109,14 @@ class Stills(unittest.TestCase):
         cmd += ["-filter_complex", "concat=n=3:v=1:a=0", "-pix_fmt", "yuv420p", self.media(code, "video.mp4")]
         subprocess.run(cmd, check=True, timeout=60)
 
+    def make_thumb(self, code, colour="white"):
+        os.makedirs(self.media(code), exist_ok=True)
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        f"color=c={colour}:s=600x600", "-frames:v", "1", self.media(code, "thumb.jpg")],
+                       check=True, timeout=60)
+
+
+class Stills(Fixture):
     def run_stills(self, *extra):
         with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()) as out:
             es.main(["--pilot", "fixture", *extra])
@@ -212,6 +223,54 @@ class Stills(unittest.TestCase):
     def test_slug(self):
         self.assertEqual(es.slug("Café Example & Co."), "cafe-example-co")
         self.assertEqual(es.slug("!!!"), "spot")
+
+
+class Previews(Fixture):
+    def setUp(self):
+        super().setUp()
+        self.make_thumb("LISTED")
+        self.make_thumb("NOVID", "navy")
+        self.out = os.path.join(self.tmp.name, "previews")
+
+    def run_previews(self, *codes, redo=False):
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            made = previews.make_all(list(codes), self.out, redo)
+        return made, err.getvalue()
+
+    def probe(self, name):
+        return subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                               "stream=width,height", "-of", "csv=p=0", os.path.join(self.out, name)],
+                              capture_output=True, text=True).stdout.strip()
+
+    def test_a_picture_for_each_post_and_a_flipbook_only_with_a_video(self):
+        made, log = self.run_previews("LISTED", "NOVID", "NOMEDIA")
+        self.assertEqual(made["LISTED"], {"poster": "LISTED.jpg", "anim": "LISTED.webp"})
+        self.assertEqual(made["NOVID"], {"poster": "NOVID.jpg", "anim": None})
+        self.assertEqual(made["NOMEDIA"], {"poster": None, "anim": None})   # not in media.yaml
+        self.assertEqual(self.probe("NOVID.jpg"), f"{previews.W},{previews.H}")   # a square thumbnail, cropped
+        info = subprocess.run(["webpmux", "-info", os.path.join(self.out, "LISTED.webp")],
+                              capture_output=True, text=True).stdout
+        self.assertIn(f"Canvas size: {previews.W} x {previews.H}", info)
+        self.assertIn("animation", info.lower())   # it loops, not a single picture
+        self.assertEqual(log.count("ev=preview "), 2)
+
+    def test_a_rerun_makes_nothing_unless_asked_or_the_source_is_newer(self):
+        self.run_previews("LISTED", "NOVID")
+        _, log = self.run_previews("LISTED", "NOVID")
+        self.assertNotIn("ev=preview ", log)
+        _, log = self.run_previews("NOVID", redo=True)
+        self.assertEqual(log.count("ev=preview "), 1)
+        jpg = os.path.join(self.out, "NOVID.jpg")
+        old = os.path.getmtime(self.media("NOVID", "thumb.jpg")) - 100
+        os.utime(jpg, (old, old))   # the thumbnail was fetched again after the picture was made
+        _, log = self.run_previews("NOVID")
+        self.assertEqual(log.count("ev=preview "), 1)
+        self.assertGreaterEqual(os.path.getmtime(jpg), os.path.getmtime(self.media("NOVID", "thumb.jpg")))
+
+    def test_codes_that_differ_by_case_get_files_of_their_own(self):
+        self.write("data/media.yaml", {**MEDIA, "Novid": {"kind": "reel", "thumb": "NOVID/thumb.jpg"}})
+        made, _ = self.run_previews("NOVID", "Novid")
+        self.assertNotEqual(made["NOVID"]["poster"].lower(), made["Novid"]["poster"].lower())
 
 
 if __name__ == "__main__":

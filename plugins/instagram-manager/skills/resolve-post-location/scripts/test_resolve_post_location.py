@@ -495,8 +495,9 @@ class Page(Home):
         self.locate()
         out = self.path(".cache/hub/pins.html")
         with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
-            pins_page.main(["--out", out])
+            pins_page.main(["--out", out, "--no-previews"])
         page = self.text(".cache/hub/pins.html")
+        self.assertNotIn('class="save has-pv"', page)
         self.assertIn("cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js", page)
         self.assertIn("https://tile.openstreetmap.org/{z}/{x}/{y}.png", page)
         self.assertIn("openstreetmap.org/copyright", page)
@@ -506,6 +507,24 @@ class Page(Home):
         self.assertIn("https://www.instagram.com/p/TOWNA/", page)
         self.assertIn("40 km from Fixture Town", page)                         # a review reason
         self.assertIn("quote not in caption", page)
+
+    def test_a_save_with_a_preview_shows_its_picture_and_names_its_flipbook(self):
+        self.locate()
+        pins, review = self.read("data/pins.yaml"), self.read("data/pins-review.yaml")
+        shown = pins_page.codes_shown(pins, review)
+        self.assertIn("TOWNA", shown)
+        pv = {"TOWNA": {"poster": "TOWNA.jpg", "anim": "TOWNA.webp"}, "PARKA": {"poster": "PARKA.jpg", "anim": None},
+              "VENUA": {"poster": None, "anim": None}}
+        page, _ = pins_page.build(pins, review, {}, {}, pv)
+        self.assertIn('<img src="previews/TOWNA.jpg" data-poster="previews/TOWNA.jpg" '
+                      'data-anim="previews/TOWNA.webp" width="72" height="96" alt="" loading="lazy"', page)
+        self.assertIn('<img src="previews/PARKA.jpg" data-poster="previews/PARKA.jpg" width="72"', page)  # a still only
+        self.assertNotIn("previews/VENUA", page)
+        self.assertEqual(page.count('class="save has-pv"'), sum(
+            1 for group in (pins, review) for c in group if c in ("TOWNA", "PARKA")))
+        self.assertIn("IntersectionObserver", page)
+        self.assertIn(f"n < {pins_page.MAX_PLAYING}", page)
+        self.assertEqual(pins_page.preview_html("X", {}, None), "")
 
 
 if __name__ == "__main__":
