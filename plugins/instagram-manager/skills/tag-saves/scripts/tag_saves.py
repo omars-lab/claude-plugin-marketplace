@@ -13,7 +13,8 @@ save-tagger subagent in batches. This script never calls a model.
 Reads   $INSTAGRAM_HOME/.cache/saves.json (from import-saves)
         $INSTAGRAM_HOME/config/topics.yaml, collections.yaml, places.yaml
         $INSTAGRAM_HOME/data/places.yaml        looked-up places and aliases (from add_places.py)
-Writes  $INSTAGRAM_HOME/data/tags.yaml          code → {topics[], cities[], source, hints[]}
+        $INSTAGRAM_HOME/config/purposes.yaml    what a post is for (optional: shared/scripts/purposes.py)
+Writes  $INSTAGRAM_HOME/data/tags.yaml          code → {topics[], cities[], purposes[], source, hints[]}
         $INSTAGRAM_HOME/data/tags-review.yaml   code → what the agent named outside the lists, or why
                                                 its answer could not be used
         $INSTAGRAM_HOME/data/moves.yaml         code → {collections, not[], quote, fits, to[]}: saves the
@@ -28,8 +29,9 @@ How a save is tagged
   2. Place hints (places.yaml). A listed name in the caption (whole words, any case) or a listed
      hashtag. A hint is not a tag: it pulls a save into a pilot, and it is shown to the agent.
   3. The save-tagger agent (Haiku) reads a batch: caption, hashtags, creator, collections and the
-     two above for each save, and answers topics and places from the fixed lists. --merge keeps
-     only names on the lists; anything else goes to tags-review.yaml, never into the tags.
+     two above for each save, and answers topics, places and purposes (what the post is for: eat,
+     stay, get outdoors, see something) from the fixed lists. --merge keeps only names on the
+     lists; anything else goes to tags-review.yaml, never into the tags.
   Final tags = collection tags + the agent's, plus every place each one sits in (a city brings
   its state: places.py). "cities" means places: a city, a park, a state or a country. A name the
   agent gives that is not listed yet goes to review; add_places.py looks it up, and the next
@@ -46,7 +48,11 @@ Batches are cut by size: saves are added until the next one would pass --batch-c
 (about 4 characters a token) or --batch-saves saves. Captions are cut at 2,500 characters, so one
 save always fits. Saves are sorted by collection, so a batch holds similar posts.
 
-A save the agent has tagged is not batched again (unless --retag). A save with no usable answer
+A save the agent has tagged is not batched again (unless --retag). One it tagged before it was asked
+for purposes (no `purposes` in its tags) is read once more, keeping the topics and places it has:
+they go to the agent under `already`, and the merge keeps everything under `already`. A --retag
+sends only the collection's tags as `already`, so a fresh answer can drop a wrong place.
+A save with no usable answer
 keeps its rule tags, the reason goes in the review file, and the next --prepare batches it again.
 
 A pilot looks at the saves in its collections plus any save with a hint for one of its cities.
@@ -70,6 +76,7 @@ from home import cache, home  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import Places  # noqa: E402
+from purposes import load as load_purposes  # noqa: E402
 from quote import quote_ok  # noqa: E402
 
 TAGS = os.path.join("data", "tags.yaml")
@@ -168,10 +175,11 @@ def chunk(records, max_saves=BATCH_SAVES, max_chars=BATCH_CHARS):
     return batches
 
 
-def apply_answer(d, topics_known, places, rule_topics, rule_cities):
-    """(topics, cities, review) from one answer. review is None when nothing needs a look.
+def apply_answer(d, topics_known, places, rule_topics, rule_cities, purposes_known=None):
+    """(topics, cities, purposes, review) from one answer. review is None when nothing needs a look.
     A place the agent named that means a listed place counts as it; every place brings the places
-    it sits in."""
+    it sits in. purposes is None when the agent was not asked (purposes_known is None); asked, an
+    answer without any is an empty list."""
     if not isinstance(d, dict) or not isinstance(d.get("topics"), list) or not isinstance(d.get("cities", []), list):
         raise ValueError("answer is not {topics: [...], cities: [...]}")
     said_topics = [t for t in d.get("topics") or [] if isinstance(t, str)]
@@ -183,8 +191,14 @@ def apply_answer(d, topics_known, places, rule_topics, rule_cities):
     other_places = sorted({c for c in said_places if not places.resolve(c)})
     if not topics:
         topics = {"other"} if "other" in topics_known else set()
+    elif len(topics) > 1:
+        topics.discard("other")  # an older "other" kept under `already` gives way to a real topic
+    purposes = None
+    if purposes_known is not None:
+        said = d.get("purposes") if isinstance(d.get("purposes"), list) else []
+        purposes = {x for x in said if isinstance(x, str) and x in purposes_known}
     review = {k: v for k, v in (("other_topics", other_topics), ("other_places", other_places)) if v}
-    return topics, cities, review or None
+    return topics, cities, purposes, review or None
 
 
 def misfiled(d, save, rule_topics, rule_cities, topics, cities):
@@ -235,7 +249,7 @@ def settle_moves(by_code, tags, moves, collections, places):
             topics = set(t["topics"]) - gone
             base = set(t["cities"]) - places.fold(gone & set(t["cities"]))
             cities = places.fold(base | rule_cities)
-            tags[code] = entry(topics or {"other"}, cities, t["source"], t.get("hints"))
+            tags[code] = entry(topics or {"other"}, cities, t["source"], t.get("hints"), t.get("purposes"))
         del moves[code]
         done += 1
         log("move_done", code=code)
@@ -253,7 +267,8 @@ def recheck_review(tags, review, places):
         if not hit:
             continue
         t = tags[code]
-        tags[code] = entry(set(t["topics"]), places.fold(set(t["cities"]) | hit), t["source"], t.get("hints"))
+        tags[code] = entry(set(t["topics"]), places.fold(set(t["cities"]) | hit), t["source"], t.get("hints"),
+                           t.get("purposes"))
         rest = [p for p in said if not places.resolve(p)]
         if rest:
             r["other_places"] = rest
@@ -265,8 +280,11 @@ def recheck_review(tags, review, places):
     return moved
 
 
-def entry(topics, cities, source, hints):
+def entry(topics, cities, source, hints, purposes=None):
+    """One save's tags. purposes None (never asked) leaves the key out; [] means asked, none fit."""
     e = {"topics": sorted(topics), "cities": sorted(cities), "source": source}
+    if purposes is not None:
+        e["purposes"] = sorted(purposes)
     if hints:
         e["hints"] = sorted(hints)
     return e
@@ -323,7 +341,7 @@ def print_moves(saves, moves):
     return 0
 
 
-def prepare(args, saves, topics_known, collections, places, compiled, pilot, tags, moves):
+def prepare(args, saves, topics_known, purposes_known, collections, places, compiled, pilot, tags, moves):
     settle_moves({s["code"]: s for s in saves}, tags, moves, collections, places)
     todo, kept = [], 0
     for s in saves:
@@ -332,12 +350,17 @@ def prepare(args, saves, topics_known, collections, places, compiled, pilot, tag
             continue
         rule_topics, rule_cities = collection_tags(s, collections)
         old = tags.get(s["code"])
-        if old and old.get("source") == "model" and not args.retag:
+        model = bool(old) and old.get("source") == "model"
+        if model and not args.retag:
             tags[s["code"]] = entry(set(old["topics"]) | rule_topics, places.fold(set(old["cities"]) | rule_cities),
-                                    "model", hints)
-            kept += 1
+                                    "model", hints, old.get("purposes"))
+            if "purposes" in old:
+                kept += 1
+                continue
+            # tagged before purposes were asked: read again, keeping what it has
+            todo.append((s, set(tags[s["code"]]["topics"]), set(tags[s["code"]]["cities"]), hints))
             continue
-        if not old or old.get("source") != "model":  # a retag keeps the old tags until an answer lands
+        if not model:  # a retag keeps the old tags until an answer lands
             tags[s["code"]] = entry(rule_topics, places.fold(rule_cities), "rules", hints)
         todo.append((s, rule_topics, rule_cities, hints))
     write_yaml(TAGS, tags)
@@ -355,6 +378,7 @@ def prepare(args, saves, topics_known, collections, places, compiled, pilot, tag
     for old in glob.glob(os.path.join(out, "batch-*.json")):  # a new round replaces the last one
         os.remove(old)
     lists = {"topics": {slug: t.get("about") or t.get("label", "") for slug, t in topics_known.items()},
+             "purposes": {slug: p.get("about") or p.get("label", "") for slug, p in purposes_known.items()},
              "places": places.listing()}
     for i, recs in enumerate(batches, 1):
         name = f"batch-{i:03d}"
@@ -368,7 +392,7 @@ def prepare(args, saves, topics_known, collections, places, compiled, pilot, tag
     return 0
 
 
-def merge(saves, topics_known, collections, places, compiled, tags, review, moves):
+def merge(saves, topics_known, purposes_known, collections, places, compiled, tags, review, moves):
     by_code = {s["code"]: s for s in saves}
     out = batch_dir()
     answered = missing = pending = done = 0
@@ -400,18 +424,22 @@ def merge(saves, topics_known, collections, places, compiled, tags, review, move
                 continue
             hints = place_hints(s, compiled)
             rule_topics, rule_cities = collection_tags(s, collections)
+            already = rec.get("already") or {}  # the agent keeps these; so does the merge
+            keep_topics = rule_topics | (set(already.get("topics") or []) & set(topics_known))
+            keep_cities = rule_cities | ({places.resolve(c) for c in already.get("cities") or []} - {None})
+            asked = set(purposes_known) if "purposes" in batch else None  # older batches did not ask
             try:
                 if code not in answers:
                     raise ValueError(why)
-                topics, cities, extra = apply_answer(answers[code], set(topics_known), places,
-                                                     rule_topics, rule_cities)
+                topics, cities, purposes, extra = apply_answer(answers[code], set(topics_known), places,
+                                                               keep_topics, keep_cities, asked)
             except ValueError as e:
                 miss += 1
                 review[code] = {"error": str(e)[:200]}
                 log("tag_review", code=code, reason="answer_unusable")
                 continue
             got += 1
-            tags[code] = entry(topics, cities, "model", hints)
+            tags[code] = entry(topics, cities, "model", hints, purposes)
             move = misfiled(answers[code], s, rule_topics, places.fold(rule_cities), topics, cities)
             if move and "error" in move:
                 extra = {**(extra or {}), "misfiled": move}
@@ -470,6 +498,7 @@ def main(argv=None):
     with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
         saves = json.load(fh)["saves"]
     topics_known, collections, pilots, places = load_config()
+    purposes_known = load_purposes()
     compiled = compile_places(places.config)
     pilot = None
     if args.pilot:
@@ -486,8 +515,8 @@ def main(argv=None):
     if args.moves:
         return print_moves(saves, moves)
     if args.merge:
-        return merge(saves, topics_known, collections, places, compiled, tags, review, moves)
-    return prepare(args, saves, topics_known, collections, places, compiled, pilot, tags, moves)
+        return merge(saves, topics_known, purposes_known, collections, places, compiled, tags, review, moves)
+    return prepare(args, saves, topics_known, purposes_known, collections, places, compiled, pilot, tags, moves)
 
 
 if __name__ == "__main__":

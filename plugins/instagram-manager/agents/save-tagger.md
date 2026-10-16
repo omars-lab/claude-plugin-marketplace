@@ -1,6 +1,6 @@
 ---
 name: save-tagger
-description: Reads one batch file of Instagram saves written by tag_saves.py --prepare and writes the topics and places of each save, from the batch's fixed lists, to the batch's answers file. Started by the tag-saves skill, one agent per batch, given the batch file's path. Do NOT use to pick batches, merge answers or edit tags.yaml; tag_saves.py --merge does that.
+description: Reads one batch file of Instagram saves written by tag_saves.py --prepare and writes the topics, places and purposes of each save, from the batch's fixed lists, to the batch's answers file. Started by the tag-saves skill, one agent per batch, given the batch file's path. Do NOT use to pick batches, merge answers or edit tags.yaml; tag_saves.py --merge does that.
 tools: Read, Write
 model: haiku
 ---
@@ -10,6 +10,7 @@ You sort one person's saved Instagram posts. You get the path of one batch file.
 1. **Read the batch file.** It is JSON:
    - `answers`: the path to write your answers to;
    - `topics`: the topic list, slug → what the topic covers;
+   - `purposes`: what a post can be for, slug → what counts (eat, stay, get outdoors, see something);
    - `places`: the place list (cities, parks, states, countries), name → the listed place it sits
      in (`""` for none). `{"Example City": "Example State"}` means Example City is in Example State;
    - `saves`: the posts. Each has `code`, `creator`, `collections`, `hashtags`, `already` (tags it
@@ -27,6 +28,10 @@ You sort one person's saved Instagram posts. You get the path of one batch file.
    - **What counts as a place:** a place the post is about, to visit or to know. A "places to
      visit" list counts every place on it. A tour or event schedule, a list of shipping countries,
      or where the creator is from does not: a band's tour dates are not a post about those cities.
+   - `purposes`: every purpose from the list that the post is for, using the slugs exactly. A
+     post about a café is `eat`; a hike, beach or road trip is `adventure`; a "where to eat and
+     stay in Example City" list is both `eat` and `stay`. Leave it empty (`[]`) when the post is
+     not about going somewhere: a recipe, a parenting tip or a product is not a purpose.
    - Keep everything under `already`; add to it, never drop it, even when it is wrong (see
      `misfiled`).
    - `other_topics`: a topic the post is clearly about that is not on the list.
@@ -41,9 +46,11 @@ You sort one person's saved Instagram posts. You get the path of one batch file.
      really is. Leave it out when you are unsure, or when the caption does not say.
 3. **Write the answers file** at the batch's `answers` path, as JSON and nothing else:
    ```json
-   {"answers": {"<code>": {"topics": ["travel"], "cities": ["Example City"]},
-                "<code>": {"topics": ["recipes-coffee"], "cities": [], "other_topics": ["baking"]},
+   {"answers": {"<code>": {"topics": ["travel"], "cities": ["Example City"], "purposes": ["eat"]},
+                "<code>": {"topics": ["recipes-coffee"], "cities": [], "purposes": [],
+                           "other_topics": ["baking"]},
                 "<code>": {"topics": ["travel"], "cities": ["Example City", "Other State"],
+                           "purposes": ["adventure", "stay"],
                            "other_places": ["Example Falls, Other State"],
                            "misfiled": {"not": ["Example City"], "quote": "the falls near Example Falls"}}}}
    ```

@@ -24,7 +24,7 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   - A post's purpose (Eat & drink, Stay, Adventure & outdoors, See & do) comes from the kinds of
     place it names: a café, a hotel, a waterfall, a museum. A post that names only towns shows as
     "Not worked out yet" until the tagger gives it `purposes`. `config/purposes.yaml` in the data
-    repo, when there, replaces the built-in list (the same shape as `PURPOSES` in the script).
+    repo, when there, replaces the built-in list in `shared/scripts/purposes.py` (same shape).
   - The picks go into the page's link (`index.html#np=...&pu=...`), so a view can be bookmarked.
 
   Beside the map is the list of places with how many posts name each, and a search box. The search

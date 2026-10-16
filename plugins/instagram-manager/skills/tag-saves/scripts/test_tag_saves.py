@@ -58,11 +58,11 @@ SAVES = [
 # Canned agent answers, picked by a word in the caption. BADREPLY gets none.
 REPLIES = {
     "picnic": {"topics": ["travel", "parenting-kids"], "cities": ["Fixture State"]},
-    "weekend": {"topics": ["travel"], "cities": ["Fixture State"]},
+    "weekend": {"topics": ["travel"], "cities": ["Fixture State"], "purposes": ["adventure", "made-up"]},
     "Sourdough": {"topics": ["recipes-coffee", "baking-tools"], "cities": [], "other_places": ["Elsewhere"]},
     "cabins": {"topics": [], "cities": []},
     "Brunch": {"topics": ["travel"], "cities": ["Fixture City"]},
-    "Faraway": {"topics": ["travel"], "cities": ["Faraway Land"],
+    "Faraway": {"topics": ["travel"], "cities": ["Faraway Land"], "purposes": ["stay"],
                 "misfiled": {"not": ["Fixture State"], "quote": "road trip through Faraway Land"}},
     "Elsewhere": {"topics": ["travel"], "cities": [],
                   "misfiled": {"not": ["Fixture State"], "quote": "words that are not in the caption"}},
@@ -157,6 +157,7 @@ class TagSaves(Home):
         with open(self.batches()[0]) as fh:
             batch = json.load(fh)
         self.assertEqual(batch["topics"]["travel"], "places to go")
+        self.assertEqual(sorted(batch["purposes"]), ["adventure", "eat", "see-do", "stay"])
         self.assertIn("Fixture State", batch["places"])
         self.assertTrue(batch["answers"].endswith("batch-001.answers.json"))
         town = next(r for r in batch["saves"] if r["code"] == "TOWN1")
@@ -169,7 +170,8 @@ class TagSaves(Home):
         tags, review = self.read("data/tags.yaml"), self.read("data/tags-review.yaml")
         self.assertEqual(tags["TOWN1"]["topics"], ["parenting-kids", "travel"])
         self.assertEqual(tags["BAY"], {"topics": ["travel"], "cities": ["Fixture State"], "source": "model",
-                                       "hints": ["Fixture State"]})
+                                       "hints": ["Fixture State"], "purposes": ["adventure"]})  # made-up dropped
+        self.assertEqual(tags["TOWN1"]["purposes"], [])                    # asked, none given
         self.assertEqual(tags["SOUR"]["topics"], ["recipes-coffee"])       # the made-up topic stays out
         self.assertEqual(tags["SOUR"]["cities"], [])
         self.assertEqual(review["SOUR"], {"other_topics": ["baking-tools"], "other_places": ["Elsewhere"]})
@@ -182,6 +184,30 @@ class TagSaves(Home):
         before = self.text("data/tags.yaml")
         self.assertEqual(self.tag("--pilot", "fixture"), ["BAD"])          # only BAD is read again
         self.assertEqual(self.text("data/tags.yaml"), before)  # no churn
+
+    def test_a_save_tagged_before_purposes_is_read_again_and_keeps_its_places(self):
+        self.tag("--pilot", "fixture")
+        tags = self.read("data/tags.yaml")
+        del tags["BAY"]["purposes"]                                         # as tagged before purposes
+        tags["BAY"]["cities"] = ["Faraway Land", "Fixture State"]
+        self.write("data/tags.yaml", tags)
+        self.assertEqual(sorted(self.tag("--pilot", "fixture")), ["BAD", "BAY"])
+        bay = self.read("data/tags.yaml")["BAY"]
+        self.assertEqual(bay["purposes"], ["adventure"])
+        self.assertEqual(bay["cities"], ["Faraway Land", "Fixture State"])  # kept though the answer left it out
+        self.assertEqual(sorted(self.tag("--pilot", "fixture")), ["BAD"])  # asked once
+        self.tag("--pilot", "fixture", "--retag")
+        self.assertEqual(self.read("data/tags.yaml")["BAY"]["cities"], ["Fixture State"])  # a retag can drop it
+
+    def test_answers_from_a_batch_that_did_not_ask_for_purposes_add_none(self):
+        paths = self.run_tag("--prepare", "--pilot", "fixture").split()
+        with open(paths[0]) as fh:
+            batch = json.load(fh)
+        del batch["purposes"]
+        self.write(paths[0], batch)
+        self.agent(paths)
+        self.run_tag("--merge")
+        self.assertNotIn("purposes", self.read("data/tags.yaml")["BAY"])
 
     def test_a_batch_whose_agent_has_not_run_is_left_waiting(self):
         self.run_tag("--prepare", "--pilot", "fixture")
@@ -267,6 +293,7 @@ class PlacesAndMoves(Home):
         self.assertIn("(1 moved since the last run)", self.run_tag("--merge"))
         self.assertEqual(self.read("data/moves.yaml"), {})
         self.assertEqual(self.read("data/tags.yaml")["MIS"]["cities"], ["Faraway Land"])
+        self.assertEqual(self.read("data/tags.yaml")["MIS"]["purposes"], ["stay"])  # kept through the move
 
     def test_the_moves_page_shows_each_move_with_its_quote_marked(self):
         mis = save("MIS", "A road trip through Faraway Land <b>soon</b>", ["Fixture Town"])

@@ -10,7 +10,8 @@ Checks, each one only when its file exists:
                            (a typo would silently tag nothing)
   config/places.yaml       a `places:` map, each with names[] and hashtags[] lists
   data/places.yaml         every `in:` and every alias names a known place
-  data/tags.yaml           code → {topics[], cities[]}, topics and places known, codes in the export
+  data/tags.yaml           code → {topics[], cities[], purposes[]?}, topics, places and purposes known,
+                           codes in the export
   data/moves.yaml          codes in the export, each `to` a collection with an entry
   (a known place is a city in collections.yaml or a key in config/ or data/places.yaml)
 
@@ -26,6 +27,7 @@ import yaml  # noqa: E402
 
 from home import cache, home  # noqa: E402
 from log import log  # noqa: E402
+from purposes import load as load_purposes  # noqa: E402
 
 
 def load(rel):
@@ -108,6 +110,7 @@ def check():
             bad("check_fail", file="data/places.yaml", alias=said, place=place, msg="alias names an unknown place")
 
     tags = load("data/tags.yaml")
+    purposes = load_purposes()
     if tags is not None:
         for code, t in tags.items():
             if not isinstance(t, dict):
@@ -119,6 +122,11 @@ def check():
             for city in t.get("cities") or []:
                 if places_known and city not in places_known:
                     bad("check_fail", file="data/tags.yaml", code=code, city=city, msg="unknown place")
+            if not isinstance(t.get("purposes", []), list):
+                bad("check_fail", file="data/tags.yaml", code=code, msg="purposes needs to be a list")
+            for p in t.get("purposes") or []:
+                if p not in purposes:
+                    bad("check_fail", file="data/tags.yaml", code=code, purpose=p, msg="unknown purpose")
             if codes is not None and code not in codes:
                 bad("check_fail", file="data/tags.yaml", code=code, msg="not a save in the export")
 

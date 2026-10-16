@@ -9,7 +9,7 @@ names, a page per place listing every saved post that names it, and a page per p
 Reads   $INSTAGRAM_HOME/.cache/saves.json          caption, creator, link, saved date, collections
         $INSTAGRAM_HOME/config/topics.yaml         topic labels
         $INSTAGRAM_HOME/config/purposes.yaml       what a post is for, by the kinds of place it names
-                                                   (optional: the PURPOSES list below otherwise)
+                                                   (optional: shared/scripts/purposes.py otherwise)
         $INSTAGRAM_HOME/config/collections.yaml    the pilots
         $INSTAGRAM_HOME/data/tags.yaml             code → topics, cities (from tag-saves)
         $INSTAGRAM_HOME/data/places.yaml           each place's kind, pin, the place it sits in
@@ -67,6 +67,7 @@ from home import cache  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import Places, load_yaml  # noqa: E402
+from purposes import NO_PURPOSE, PURPOSES, load as load_purposes  # noqa: E402
 
 MEDIA_DEFAULT = os.path.join("~", "Library", "Mobile Documents", "com~apple~CloudDocs", "CloudDesktop", "data",
                              "instagram")
@@ -80,24 +81,6 @@ WIDE = {"state", "country"}   # kinds that are too big to be a useful pin when a
 NATIONAL = re.compile(r"\bNational (Park|Seashore|Lakeshore|Monument|Historic|Historical|Forest|Recreation|Preserve|"
                       r"Memorial|Wildlife|Scenic)", re.I)
 
-# What a post is for, worked out from the kinds of place it names. config/purposes.yaml, when there,
-# takes the place of this list (same shape). A tagger's `purposes` for a save are added to these.
-PURPOSES = {
-    "eat": {"label": "Eat & drink", "kinds": ["restaurant", "cafe", "coffee", "bakery", "fast_food", "bar", "pub",
-                                              "ice_cream", "food_court", "winery", "brewery", "marketplace"]},
-    "stay": {"label": "Stay", "kinds": ["hotel", "motel", "guest_house", "hostel", "resort", "camp_site",
-                                        "caravan_site", "chalet", "apartment"]},
-    "adventure": {"label": "Adventure & outdoors", "kinds": [
-        "park", "beach", "waterfall", "viewpoint", "peak", "cliff", "lake", "footway", "path", "track", "cycleway",
-        "nature_reserve", "protected_area", "national_park", "meadow", "wood", "forest", "stream", "river", "islet",
-        "island", "tree", "cave_entrance", "hot_spring", "spring", "glacier", "volcano", "valley", "bay", "cape",
-        "arch", "rock", "dune", "picnic_site", "trailhead"]},
-    "see-do": {"label": "See & do", "kinds": [
-        "museum", "aquarium", "zoo", "theme_park", "attraction", "artwork", "gallery", "pier", "lighthouse", "bridge",
-        "tower", "garden", "castle", "monument", "memorial", "ruins", "place_of_worship", "playground", "water_park",
-        "theatre", "marina"]},
-}
-NO_PURPOSE = ("none", "Not worked out yet")
 
 TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -971,7 +954,7 @@ def main(argv=None):
     pins = load_yaml(os.path.join("data", "pins.yaml"))
     media = load_yaml(os.path.join("data", "media.yaml"))
     topics = load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {}
-    purposes = load_yaml(os.path.join("config", "purposes.yaml")).get("purposes") or None
+    purposes = load_purposes()
     media_dir = os.path.expanduser(os.environ.get("INSTAGRAM_MEDIA_DIR") or MEDIA_DEFAULT)
     scoped = [s for s in saves if in_pilot(s, tags.get(s["code"]), pilot)]
 

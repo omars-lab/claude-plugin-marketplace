@@ -5,8 +5,9 @@ description: Tag each Instagram save with its topics (travel, design, recipes...
 
 # Tag Saves
 
-Gives every save its **topics** and its **places**, from fixed lists in the data repo. One save
-can have several of each: a family road trip post can be travel *and* parenting-kids, and sit in
+Gives every save its **topics**, its **places** and its **purposes** (what the post is for: eat,
+stay, get outdoors, see something), from fixed lists in the data repo. One save can have several
+of each: a family road trip post can be travel *and* parenting-kids, and sit in
 two places. The tags feed the split, media and hub steps.
 
 ## How a save gets its tags
@@ -18,7 +19,9 @@ two places. The tags feed the split, media and hub steps.
    case) and hashtags. A match is only a hint: it brings the save into a pilot, and the agent is
    told about it. A sourdough post tagged with a beach town's hashtag stays a recipe.
 3. **The `save-tagger` agent** (Haiku, `agents/save-tagger.md`) reads a batch of saves — caption,
-   hashtags, creator, collections and the two above — and picks topics and places from the lists.
+   hashtags, creator, collections and the two above — and picks topics, places and purposes from
+   the lists. The purposes come from `shared/scripts/purposes.py`, or `config/purposes.yaml` when
+   the data repo has one; the hub's Purpose menu uses the same list. A recipe has none.
    Anything it names outside the lists goes to `data/tags-review.yaml` for a person to look at. It
    never goes into the tags.
 4. **Places sit in places.** A tag on a city also tags the state it is in (a US city) or the
@@ -112,6 +115,9 @@ Each agent reads a whole batch, so many at once can hit the plan's usage limits.
 6. **Fix the lists, not the tags.** A missed place goes in `places.yaml`. A topic or place
    suggested in `tags-review.yaml` is added to the config by a person. Then prepare again;
    `--retag` sends saves already tagged by an agent back through.
+   A save an agent tagged before purposes were asked (no `purposes` in its tags) goes back once by
+   itself, with its topics and places under `already`, so the round adds purposes without dropping
+   a place. A `--retag` sends only the collection's tags under `already`, so it can drop one.
 7. **Go wider** once the user has seen the pilot: `--all`, in rounds of `--limit 1000`. That is a
    change of scope, so ask with `AskUserQuestion`. The options: tag every save now (about 210
    batches over several rounds on the plan, and the later steps can use every topic), or fix the
@@ -122,11 +128,11 @@ Each agent reads a whole batch, so many at once can hit the plan's usage limits.
 ## What the files hold
 
 ```
-.cache/batches/tag/batch-001.json            {batch, answers: <path>, topics: {slug: about}, places: {name: sits in}, saves: [...]}
-.cache/batches/tag/batch-001.answers.json    written by the agent: {"answers": {<code>: {topics, cities, other_topics?, other_places?, misfiled?}}}
+.cache/batches/tag/batch-001.json            {batch, answers: <path>, topics: {slug: about}, purposes: {slug: about}, places: {name: sits in}, saves: [...]}
+.cache/batches/tag/batch-001.answers.json    written by the agent: {"answers": {<code>: {topics, cities, purposes, other_topics?, other_places?, misfiled?}}}
 .cache/batches/tag/batch-001.answers.merged.json   the same, renamed once merged (so it is never merged twice)
 .cache/batches/tag/merged.jsonl              one line per merged batch: saves, answered, missing, chars (for the batch review)
-data/tags.yaml                               <code>: {topics: [travel, parenting-kids], cities: [Example State], source: model, hints: [Example State]}
+data/tags.yaml                               <code>: {topics: [travel, parenting-kids], cities: [Example State], purposes: [adventure], source: model, hints: [Example State]}
 data/tags-review.yaml                        <code>: {other_topics: [...], other_places: [...]} or {error: "..."}
 data/places.yaml                             places: {<name>: {kind, in, lat, lon, found, map}}, aliases: {<said>: <name>}
 data/moves.yaml                              <code>: {collections, not: [...], quote, fits: {topics, cities}, to: [...]}
