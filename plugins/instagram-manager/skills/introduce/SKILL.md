@@ -20,18 +20,23 @@ The pipeline, in order:
 
 1. **import-saves** — read saved posts and collections from the export zip, in memory. Only the
    `saved/` files are opened; messages and the rest of the export are never unpacked.
-2. **tag-saves** — topics and places per save: collection rules first, then `save-tagger`
-   agents, each reading one batch of saves.
-3. **split-saves** *(coming)* — the items a post names, each with its quote.
-4. **fetch-media** *(coming)* — the post's video or image, slowly, logged out.
-5. **extract-stills** *(coming)* — the best still and a short clip per item.
-6. **build-hub** *(coming)* — the private interests hub.
+2. **tag-saves** — topics, purposes and places per save: collection rules and hashtags first,
+   then `save-tagger` agents, each reading one batch of saves. `add_places.py` looks up places
+   that have no pin yet on OpenStreetMap; `moves_page.py` lists saves filed in the wrong
+   collection.
+3. **resolve-post-location** — the spots a caption names (a beach, a café, a trailhead), found
+   on OpenStreetMap near the save's town or park, as map pins. `post-locator` agents read the
+   captions.
+4. **fetch-media** — one thumbnail per post, or with `--video` a reel's video, slowly and logged
+   out.
+5. **read-frames** — for reels whose place is only on screen: frames at each scene change, the
+   words on them, and `frame-reader` agents naming the spots, checked like caption spots.
+6. **build-hub** — the private hub: a map, a page per place, a page per post.
+7. **split-saves** *(coming)* — the items a post names, each with its quote.
+8. **extract-stills** *(coming)* — the best still and a short clip per item.
 
-Skills available today:
-- **introduce** — this skill.
-- **manage-saves** — the router: works out which step comes next.
-- **import-saves** — step 1.
-- **tag-saves** — step 2.
+Skills available today: **introduce** (this skill), **manage-saves** (the router: works out which
+step comes next), and steps 1 to 6.
 
 ## Where data lives
 
@@ -64,6 +69,7 @@ What would you like to do?
 - See what step comes next for my saves     (manage-saves)
 - List my collections and their sizes       (import-saves --list)
 - Sort my saves by topic and place         (tag-saves)
+- Show my saves on a map                    (build-hub)
 - Just explain more
 ```
 
@@ -76,25 +82,37 @@ For a multi-step run, track each step with `TaskCreate` and mark it done as it f
 | I downloaded a new Instagram export | import-saves | `/instagram-manager:import-saves` |
 | Which collections do I have? | import-saves | `/instagram-manager:import-saves` |
 | Sort my saves by topic or city | tag-saves | `/instagram-manager:tag-saves` |
+| Pin the restaurants and beaches a post names | resolve-post-location | `/instagram-manager:resolve-post-location` |
+| The place is only in the video | read-frames | `/instagram-manager:read-frames` |
+| Download thumbnails or videos | fetch-media | `/instagram-manager:fetch-media` |
+| Show my saves on a map | build-hub | `/instagram-manager:build-hub` |
 | What should I run next? | manage-saves | `/instagram-manager:manage-saves` |
 
 ## Plugin Map
 
 ```
 instagram-manager
-  ├── introduce      — this skill
-  ├── manage-saves   — router across the pipeline
-  ├── import-saves   — export zip → <data repo>/.cache/saves.json
-  └── tag-saves      — saves.json → batches → save-tagger agents → <data repo>/data/tags.yaml
+  ├── introduce              — this skill
+  ├── manage-saves           — router across the pipeline
+  ├── import-saves           — export zip → <data repo>/.cache/saves.json
+  ├── tag-saves              — saves.json → save-tagger agents → data/tags.yaml; add_places.py → data/places.yaml
+  ├── resolve-post-location  — tagged saves → post-locator agents → data/pins.yaml, data/pins-review.yaml
+  ├── fetch-media            — thumbnails and videos → $INSTAGRAM_MEDIA_DIR, data/media.yaml
+  ├── read-frames            — videos → frames and their words → frame-reader agents → data/pins.yaml
+  └── build-hub              — data/ → <data repo>/.cache/hub/ (map, place pages, post pages)
 
-  agents/
-    └── save-tagger  — one batch file in, one answers file out (Haiku)
+  agents/ (Haiku, one batch file in, one answers file out)
+    ├── save-tagger    — topics, purposes and places
+    ├── post-locator   — the spots a caption names
+    └── frame-reader   — the spots a video shows
 
   shared/scripts/
-    ├── home.py      — finds the data repo (INSTAGRAM_HOME)
-    ├── log.py       — one greppable ev= line per event
-    ├── quote.py     — the word-for-word quote check
-    └── check_data.py — the data repo's config and data fit together (its make check)
+    ├── home.py        — finds the data repo (INSTAGRAM_HOME)
+    ├── log.py         — one greppable ev= line per event
+    ├── quote.py       — the word-for-word quote check
+    ├── geocode.py     — OpenStreetMap lookups, cached, one a second
+    ├── places.py, pilot.py, purposes.py — the place list, pilot sets, purposes
+    └── check_data.py  — the data repo's config and data fit together (its make check)
 ```
 
 No script calls a model: scripts prepare batches and check answers, and the session starts the
@@ -104,4 +122,5 @@ agents on the plan Claude Code is logged in with.
 
 - Python 3, plus PyYAML (the tagger and the data check).
 - Claude Code, for the agents.
+- For read-frames: ffmpeg and tesseract; on a Mac, Apple Vision reads the frames as well.
 - An Instagram data export, HTML or JSON.
