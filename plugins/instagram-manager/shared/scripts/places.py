@@ -19,7 +19,8 @@ The list comes from three files in the data repo:
                             `aliases`, the names the agent used that mean a listed place
 
 A tag on a place also tags every place it sits in, so a post about a city shows under its state.
-A hand-written `in:` wins over the looked-up one.
+A hand-written `in:` or `kind:` wins over the looked-up one, for every script that reads `data`, so
+the hub's maps and the topic files agree on which places are states.
 """
 
 import os
@@ -40,7 +41,10 @@ def load_yaml(rel):
 class Places:
     def __init__(self, collections=None, config=None, data=None, aliases=None):
         collections, config, data = collections or {}, config or {}, data or {}
-        looked_up = data.get("places") or {}
+        looked_up = dict(data.get("places") or {})
+        for k, v in config.items():   # a hand-written kind wins over the looked-up one, as `in:` does
+            if isinstance(v, dict) and v.get("kind") and isinstance(looked_up.get(k), dict):
+                looked_up[k] = {**looked_up[k], "kind": v["kind"]}
         self.config, self.data = config, looked_up
         self.known = ({c for rule in collections.values() for c in (rule or {}).get("cities") or []}
                       | set(config) | set(looked_up))

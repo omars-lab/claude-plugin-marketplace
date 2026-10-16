@@ -147,6 +147,17 @@ class Hub(unittest.TestCase):
         self.assertIn('<option value="fixture-state/">', self.page("index.html"))
         self.assertIn('href="../fixture-state/">&larr; The map of Fixture State', self.page("places/fixture-park.html"))
 
+    def test_a_hand_written_kind_wins_so_a_district_looked_up_as_a_city_gets_its_own_map(self):
+        places = json.loads(json.dumps(PLACES))
+        places["places"]["Fixture District"] = {"kind": "city", "lat": 12.0, "lon": 22.0}  # as looked up
+        places["places"]["Fixture Capital"] = {"kind": "city", "in": "Fixture District", "lat": 12.1, "lon": 22.1}
+        self.write("data/places.yaml", places)
+        self.write("config/places.yaml", {"places": {"Fixture District": {"kind": "state"}}})
+        self.write("data/tags.yaml", {**TAGS, "CAP1": {"topics": ["travel"], "cities": ["Fixture Capital"]}})
+        self.write(".cache/saves.json", {"saves": SAVES + [save("CAP1", "A day in the capital")]})
+        self.build("--all")
+        self.assertEqual({p["c"] for p in self.data("fixture-district/index.html")["posts"]}, {"CAP1"})
+
     def test_pilot_holds_its_collections_and_its_places(self):
         self.build("--pilot", "fixture")
         posts = sorted(os.listdir(os.path.join(self.out, "posts")))
