@@ -79,4 +79,7 @@ In the data repo: `make stills` (`STILLS_REDO=1` to cut again), `make stills-nee
 - **Spots named only in the caption.** Their still is the reel's cover. Speech doesn't help:
   `heard.py` found these reels are mostly music, with no names said out loud.
 - **Picking the best-looking frame.** The still is the first frame showing the name, which is
-  usually a sign or a caption over the place, not the prettiest shot.
+  usually a small label over the place. That is fine for most reels. Where it isn't (an interview
+  with a profile card over the middle), the card stays for the whole scene and the place is
+  never shown, so no other frame would be better. For a reel where a better frame does exist,
+  set `t:` by hand.
