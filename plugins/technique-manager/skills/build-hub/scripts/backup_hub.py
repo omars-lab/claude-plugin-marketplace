@@ -76,7 +76,9 @@ def main() -> int:
         if args.dry_run:
             cmd.append("--dry-run")
         cmd += [f"{src}/", f"{host}:{remote_path(dest.rstrip('/') + '/' + name + '/')}"]
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        # errors="replace": rsync can print a screenshot's U+202F (before AM/PM) as broken bytes;
+        # only the line count is used, so a mangled name must not crash the backup.
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
         if r.returncode != 0:
             raise SystemExit(f"rsync {name} failed: {r.stderr.strip()}")
         sent = [l for l in r.stdout.splitlines() if l[:1] in "<>c" and not l.endswith("/")]
