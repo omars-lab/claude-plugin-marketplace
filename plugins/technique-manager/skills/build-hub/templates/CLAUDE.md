@@ -7,7 +7,10 @@ techniques. It holds real names, so it is pushed only to the remotes in `hub.jso
 - `make serve` builds the hub and serves it with page comments (press C on any element).
 - `make hub [SLUG=…]` re-renders after a spec edit. Always run it before replying to a comment.
 - Specs: `specs/<slug>.json`. Shared replacements: `specs/_redactions.json`.
-- Built site: `.cache/hub/` (gallery `index.html`, `internal/`, `post/`). Never edit it by hand.
+- Built site: `.cache/hub/` (gallery `index.html`, `waiting.html`, `internal/`, `post/`). Never edit it by hand.
+- Day to day, `/technique-manager:manage-hub` routes the request: what's waiting, comments, back stories, sync.
+- While no session is open, the background responder answers comments (`make responder-on|off|status`,
+  on macOS). It never confirms a suggestion, commits or pushes; unclear comments get a question back.
 
 ## Answering comments
 

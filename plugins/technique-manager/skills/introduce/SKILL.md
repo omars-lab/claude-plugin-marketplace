@@ -28,6 +28,8 @@ Every page, the gallery and the catalog render from **one React component librar
 
 /technique-manager:build-hub             private hub repo: gallery with status, page comments on every
                                          block, sessions archived; the place to pick each post's focus
+/technique-manager:manage-hub            day to day in the hub: what's waiting, answer comments, fetch
+                                         back stories, serve, sync, the background comment responder
 ```
 
 ## How to Introduce Yourself
@@ -35,7 +37,7 @@ Every page, the gallery and the catalog render from **one React component librar
 ### Step 1: Welcome
 
 ```
-Technique Manager: 6 skills that turn Claude technique screenshots into pages.
+Technique Manager: 7 skills that turn Claude technique screenshots into pages.
 
 - recreate-technique: one screenshot (or a group of them) becomes a Claude-style HTML page
 - validate-pages: a headless browser checks every page renders the right content
@@ -86,6 +88,16 @@ Stages the post view plus each technique's redacted JSON and an `index.json`, re
 **Invocation:** `/technique-manager:build-hub`
 
 Sets up the **technique hub**: a private git repo, with its upstream on the user's own machine, that holds the specs, replacements, notes and page-comment threads. It copies every linked Claude Code session into an archive before Claude Code deletes it, and builds a local site: a gallery with each technique's status, and pages with a comment anchor on every terminal block. `make serve` serves it with page comments (development-manager), and the hub's `CLAUDE.md` says which edit each comment asks for (set the focus, fetch context, add a replacement, mark it posted). Once a hub exists, every other skill here uses it as its root.
+
+### `manage-hub`
+**Invocation:** `/technique-manager:manage-hub` (or "what's waiting in the hub", "answer my comments")
+
+The entry point once a hub exists. It routes:
+- "what's waiting" to the waiting page's counts;
+- comments to `development-manager:answer-page-comments` and the hub's routing table;
+- back stories to `research-backstory`;
+- rebuild, serve, backup and sync to the hub's `make` targets;
+- the background responder to `make responder-on`, `responder-off` and `responder-status`. The responder answers comments while no session is open (macOS, launchd).
 
 ### `research-backstory`
 **Invocation:** `/technique-manager:research-backstory <slug>` (or a hub comment such as "fetch what led here")

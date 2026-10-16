@@ -104,6 +104,35 @@ make backup      # → <host>:<dest>/archive and /shots, from hub.json "backup"
 - **On failure:** a macOS notification.
 - **Turn it off for one session:** set `TECHNIQUE_HUB_SYNC=0`.
 
+## Background responder (answers comments while no session is open)
+
+An open Claude session in the hub hears comments through development-manager's watcher. When none is open, a comment from the phone would wait until the next session. The responder covers that gap. **It runs on macOS only**, because it uses launchd, so run these in a Mac terminal:
+
+```bash
+make responder-on       # writes ~/Library/LaunchAgents/com.technique-hub.responder.plist and loads it
+make responder-status   # on or off, what's waiting on Claude, the last log lines
+make responder-off      # unloads it and removes the plist
+```
+
+**When launchd runs `.claude/hooks/respond-comments.sh`:**
+- when a thread file is added or removed;
+- every 5 minutes, because appending a message to an existing thread doesn't change the folder.
+
+**What each run does:**
+1. **Nothing waiting on Claude:** it exits at once, without starting Claude.
+2. **Settles:** it waits `settle` seconds (45 by default) so a burst of comments is answered in one run.
+3. **A session is open:** it skips if a session in the hub is open, meaning a `page-comments.mjs watch` process is running from the hub folder.
+4. **Answers:** it runs `claude -p` with `.claude/hooks/respond-prompt.md`. Tools are limited to reading and editing, `make hub`/`make context`, `python3`, the page-comments tools and read-only git. The session hook is turned off for that run.
+5. **Never asks:** it can't ask, so an unclear comment gets its question as a reply and stays open for the user. It never confirms a suggestion, commits or pushes.
+6. **Finishes:** it runs one studio sync and shows a notification. A failure also shows a notification, and the run never waits.
+
+**Settings:** `hub.json` `"responder": {"model": "…", "settle": 45}`. The model defaults to the background-job model.
+
+**Details:**
+- **Lock:** `/tmp/technique-hub-responder.lock/`.
+- **Log:** `~/Library/Logs/technique-hub-responder.log`.
+- **Desktop access:** a launchd job can't read `~/Desktop`, so rendering reuses the screenshot copy already in `.cache/hub/internal/img/`.
+
 ## Answering comments
 
 The hub's `CLAUDE.md` has the routing table: which edit each comment asks for. Examples:

@@ -4,7 +4,7 @@ TM   := {{TM}}
 PORT ?= 8790
 PY   ?= python3
 
-.PHONY: help hub serve archive backup context sync status
+.PHONY: help hub serve archive backup context sync status responder-on responder-off responder-status
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | sed 's/:.*## /\t/' | expand -t 12
@@ -32,3 +32,12 @@ sync: hub ## Send the post-safe content to the studio
 
 status: ## Each technique's status and focus
 	@$(PY) -c 'import json,glob;[print(f"{(s:=json.load(open(p))).get(\"status\",\"idea\"):9} {s[\"slug\"]}") for p in sorted(glob.glob("specs/[!_]*.json"))]'
+
+responder-on: ## Answer comments in the background while no session is open (macOS)
+	@$(PY) $(TM)/build-hub/scripts/responder.py on --root .
+
+responder-off: ## Stop the background responder
+	@$(PY) $(TM)/build-hub/scripts/responder.py off --root .
+
+responder-status: ## Is it on, what's waiting on Claude, its last log lines
+	@$(PY) $(TM)/build-hub/scripts/responder.py status --root .

@@ -85,19 +85,32 @@ def render(spec_path: Path, root: Path, known: set[str]) -> dict:
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
     problems = check(spec, known)
     image = src = None
+    internal = lib.pages_dir(root, "internal")
     src_name = (spec.get("source") or {}).get("file")
+    # The copy made by an earlier render. A background job (launchd) can't read ~/Desktop, which
+    # macOS protects, so it re-renders from this copy instead of failing.
+    kept = next(iter(sorted((internal / "img").glob(f"{spec.get('slug')}.*"))), None) if (internal / "img").exists() else None
     if src_name:
-        src = find_file(lib.screenshots_dir(root), src_name)
-        if src is None:
-            problems.append(f"screenshot not found in {lib.screenshots_dir(root)}: {src_name}")
+        try:
+            src = find_file(lib.screenshots_dir(root), src_name)
+        except (OSError, SystemExit):
+            src = None
+        if src is None and kept is None:
+            problems.append(f"screenshot not found in the screenshots folder: {src_name}")
     if problems:
         return {"spec": str(spec_path), "problems": problems}
 
-    internal = lib.pages_dir(root, "internal")
     if src is not None:
         (internal / "img").mkdir(parents=True, exist_ok=True)
         image = f"img/{spec['slug']}{src.suffix.lower()}"
-        shutil.copy2(src, internal / image)
+        try:
+            shutil.copy2(src, internal / image)
+        except OSError:
+            if not (internal / image).exists():
+                raise
+        spec["source"]["image"] = image
+    elif kept is not None:
+        image = f"img/{kept.name}"
         spec["source"]["image"] = image
     spec["view"] = "internal"
     spec["applied_redactions"] = lib.redactions_for(spec, root)

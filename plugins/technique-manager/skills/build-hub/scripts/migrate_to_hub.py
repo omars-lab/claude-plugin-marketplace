@@ -26,6 +26,8 @@ import lib  # noqa: E402
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 SKILLS = Path(__file__).resolve().parents[2]
+# This plugin's marketplace name, as plugin ids spell it (<plugin>@<marketplace>).
+MARKETPLACE = json.loads((SKILLS.parents[2] / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))["name"]
 
 
 def main() -> int:
@@ -78,15 +80,20 @@ def main() -> int:
     # (add-only) and studio sync. The settings are merged; anything already there is kept.
     hooks = hub / ".claude" / "hooks"
     hooks.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(TEMPLATES / "sync-hub.sh", hooks / "sync-hub.sh")
+    for name in ("sync-hub.sh", "respond-comments.sh", "respond-prompt.md"):
+        shutil.copy2(TEMPLATES / name, hooks / name)
     os.chmod(hooks / "sync-hub.sh", 0o755)
+    os.chmod(hooks / "respond-comments.sh", 0o755)
     settings_path = hub / ".claude" / "settings.json"
     claude = json.loads(settings_path.read_text(encoding="utf-8")) if settings_path.exists() else {}
+    # Turn the plugin on for every session in the hub, on any machine it is cloned to.
+    claude.setdefault("enabledPlugins", {})[f"technique-manager@{MARKETPLACE}"] = True
     for event, when in (("SessionStart", "start"), ("SessionEnd", "end")):
         claude.setdefault("hooks", {}).setdefault(event, []).append({"hooks": [{
             "type": "command", "command": f'"$CLAUDE_PROJECT_DIR"/.claude/hooks/sync-hub.sh {when}', "timeout": 10}]})
     settings_path.write_text(json.dumps(claude, indent=2) + "\n", encoding="utf-8")
-    files += [".claude/hooks/sync-hub.sh", ".claude/settings.json"]
+    files += [".claude/hooks/sync-hub.sh", ".claude/hooks/respond-comments.sh", ".claude/hooks/respond-prompt.md",
+              ".claude/settings.json"]
 
     hook = hub / ".git" / "hooks" / "pre-push"
     shutil.copy2(TEMPLATES / "pre-push", hook)
