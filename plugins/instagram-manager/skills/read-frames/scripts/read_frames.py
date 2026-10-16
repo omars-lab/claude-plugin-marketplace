@@ -62,7 +62,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared", "scripts"))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, "resolve-post-location", "scripts"))
 import resolve_post_location as rpl  # noqa: E402
-from home import cache  # noqa: E402
+from home import cache, read_saves  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import load_yaml  # noqa: E402
@@ -426,8 +426,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if args.text:
         return text_again()
-    with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
-        saves = json.load(fh)["saves"]
+    saves = read_saves(args.saved)["saves"]
     tags, media = load_yaml(rpl.TAGS), load_yaml(MEDIA)
     places = rpl.load_places()
     if args.stuck:

@@ -505,7 +505,7 @@ def post_google(key: str, body: c.GoogleIn):
     with WRITE:
         saves_path = cache("saves.json")
         if not os.path.exists(saves_path):
-            raise HTTPException(503, "no .cache/saves.json; run make import first")
+            raise HTTPException(503, "no .cache/saves.json yet; import the Instagram export first (the import-saves skill)")
         review = load_yaml(REVIEW)
         spots_all = gi.spots_in_scope(bh.load_saves(saves_path), load_yaml(TAGS), load_yaml("data/pins.yaml"),
                                       bh.placed_spots(review), None)

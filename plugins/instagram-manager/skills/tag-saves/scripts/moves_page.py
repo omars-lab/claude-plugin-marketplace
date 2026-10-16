@@ -22,7 +22,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared", "scripts"))
 
-from home import cache  # noqa: E402
+from home import cache, read_saves  # noqa: E402
 from log import log  # noqa: E402
 from places import load_yaml  # noqa: E402
 from tag_saves import MOVES  # noqa: E402
@@ -194,8 +194,7 @@ def main(argv=None):
     ap.add_argument("--out", default=None, help="where to write the page (default .cache/hub/moves.html)")
     args = ap.parse_args(argv)
     moves = load_yaml(MOVES)
-    with open(cache("saves.json"), encoding="utf-8") as fh:
-        saves = {s["code"]: s for s in json.load(fh)["saves"]}
+    saves = {s["code"]: s for s in read_saves()["saves"]}
     out = args.out or cache(os.path.join("hub", "moves.html"))
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:

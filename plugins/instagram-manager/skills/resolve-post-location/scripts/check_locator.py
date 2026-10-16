@@ -34,7 +34,7 @@ import unicodedata
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import resolve_post_location as rpl  # noqa: E402
-from home import cache  # noqa: E402
+from home import cache, read_saves  # noqa: E402
 from log import log  # noqa: E402
 from places import load_yaml  # noqa: E402
 
@@ -212,8 +212,7 @@ def main(argv=None, fetcher=None):
     ap.add_argument("--saved", default=None, help="saves.json (default: the data repo's .cache)")
     args = ap.parse_args(argv)
     checks = load_checks()
-    with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
-        by_code = {s["code"]: s for s in json.load(fh)["saves"]}
+    by_code = {s["code"]: s for s in read_saves(args.saved)["saves"]}
     tags = load_yaml(rpl.TAGS)
     places = rpl.load_places()
     if args.prepare:

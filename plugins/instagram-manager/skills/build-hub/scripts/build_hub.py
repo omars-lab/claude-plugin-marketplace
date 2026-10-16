@@ -93,7 +93,7 @@ sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, "extract-stills", "s
 
 import google_places  # noqa: E402
 gp = google_places
-from home import cache  # noqa: E402
+from home import cache, read_saves  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import Places, load_yaml  # noqa: E402
@@ -1455,7 +1455,7 @@ def main(argv=None):
         pilot = pilots[args.pilot] or {}
     saved = args.saved or cache("saves.json")
     if not os.path.exists(saved):
-        sys.exit(f"no saves at {saved}: run the import first (make import)")
+        read_saves(saved)  # prints how to import, and exits
     saves = load_saves(saved)
     tags = load_yaml(os.path.join("data", "tags.yaml"))
     if not tags:

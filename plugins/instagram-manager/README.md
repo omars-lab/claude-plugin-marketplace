@@ -4,6 +4,10 @@ Turn your Instagram saved posts into something you use: import them from your da
 them by topic and city, pull out the places and ideas each post names, and build a private hub
 that feeds your other projects.
 
+**What it touches.** It reads only the saved-posts files inside your Instagram export, in memory,
+and never unpacks the rest (messages, logins and the like stay inside the zip). It never logs in
+to Instagram. Everything it makes stays in a folder on your computer.
+
 ## Getting Started
 
 ```bash
@@ -11,7 +15,19 @@ that feeds your other projects.
 /instagram-manager:introduce                            # what it can do
 ```
 
-## Skills (13)
+Then, first time:
+
+1. Ask Instagram for your saves: **Settings → Accounts Center → Your information and permissions →
+   Download your information**, only **Saved**, format **HTML**. Instagram emails a zip.
+2. Make a folder for them, with three starter config files:
+   `python3 <plugin>/skills/import-saves/scripts/setup_home.py --home ~/my-saves`, then
+   `export INSTAGRAM_HOME=~/my-saves`.
+3. Import: `python3 <plugin>/skills/import-saves/scripts/import_saved.py --from-zip <the zip>`.
+4. `/instagram-manager:manage-saves` says what to run next.
+
+The import-saves skill walks through each of these.
+
+## Skills (14)
 
 | Category | Skill | What it does |
 |---|---|---|
@@ -41,13 +57,18 @@ with. No API key.
 
 ## Where your data lives
 
-The plugin holds code only. Your saves and tags live in a private data repo, found through
-`INSTAGRAM_HOME` (default `~/Workspace/git/instagram`). Media goes to a folder of your choosing,
+The plugin holds code only. Your saves and tags live in a private folder (a git repo if you
+like), found through `INSTAGRAM_HOME` (default `~/Workspace/git/instagram`); `setup_home.py`
+makes one. Media goes to a folder of your choosing,
 `INSTAGRAM_MEDIA_DIR`, outside git. Nothing personal goes in this public repo.
 
 ## Requirements
 
-Python 3 with PyYAML, Claude Code, an Instagram data export (HTML or JSON), and ffmpeg for videos.
+- Python 3 with PyYAML, Claude Code, and an Instagram data export (HTML or JSON).
+- For videos and frames: ffmpeg, yt-dlp and tesseract; for stills, img2webp
+  (`brew install ffmpeg yt-dlp tesseract webp`).
+- For Google Maps links: a Google Maps Platform key, and dotenvx to keep it encrypted.
+- For the data API: Docker.
 
 ---
 

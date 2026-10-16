@@ -65,7 +65,7 @@ sys.path.insert(0, os.path.join(SKILLS, os.pardir, "shared", "scripts"))
 sys.path.insert(0, os.path.join(SKILLS, "build-hub", "scripts"))
 import build_hub as bh  # noqa: E402
 import google_places as gp  # noqa: E402
-from home import cache, home, offline  # noqa: E402
+from home import cache, home, offline, read_saves  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import Places, load_yaml  # noqa: E402
@@ -245,7 +245,7 @@ def main(argv=None):
 
     saves_path = cache("saves.json")
     if not os.path.exists(saves_path):
-        sys.exit(f"google_ids: no {saves_path}; run import-saves first")
+        read_saves(saves_path)  # prints how to import, and exits
     tags = load_yaml(os.path.join("data", "tags.yaml"))
     pilot = None
     if args.pilot:

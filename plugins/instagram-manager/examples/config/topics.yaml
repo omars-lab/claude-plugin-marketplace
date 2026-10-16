@@ -1,0 +1,41 @@
+# Your topics: the shelves every save is sorted onto. A save can sit on more than one.
+# The tagging agent may only pick from this list, so a list with no topics tags nothing.
+#
+# Each topic has a short id (the key: lowercase, dashes), and:
+#   label:  the name shown on the hub
+#   about:  one line telling the tagging agent what belongs here; the clearer, the better the sort
+#   feeds:  other repos that read out/<topic>.yaml (send-topics). Leave it [] if none do.
+#   item_kinds (optional): what the split step pulls out of each save for this topic,
+#           kind → what counts. Without it the step guesses from the id, or writes a one-line note.
+#
+# `travel` is special: its saves go to the map, by the places in places.yaml.
+# Keep `other` for what fits nowhere; the agent uses it instead of guessing.
+# Rename, add or delete the rest to fit what you save. Then run the tag-saves skill.
+topics:
+  travel:
+    label: Travel
+    about: places to go, eat, stay or see on a trip; travel tips
+    feeds: []
+  recipes:
+    label: Recipes
+    about: recipes, cooking, baking and drinks to make at home
+    feeds: []
+    item_kinds:
+      dish: a dish, drink or bake the post shows how to make
+      tip: a cooking technique or tip, in a few words
+  home-design:
+    label: Home & design
+    about: interiors, furniture, decor, gardens and building ideas
+    feeds: []
+  business:
+    label: Business
+    about: starting or running a business, side projects, marketing, money
+    feeds: []
+  fitness:
+    label: Fitness
+    about: workouts, stretches, running and sport
+    feeds: []
+  other:
+    label: Other
+    about: anything that fits none of the topics above
+    feeds: []

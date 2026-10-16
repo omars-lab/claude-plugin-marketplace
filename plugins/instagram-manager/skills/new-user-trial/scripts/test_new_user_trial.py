@@ -27,6 +27,9 @@ import make_sandbox  # noqa: E402
 import geocode  # noqa: E402
 import import_saved  # noqa: E402
 import fetch_media  # noqa: E402
+import home  # noqa: E402
+import setup_home  # noqa: E402
+import check_data  # noqa: E402
 
 
 def quiet(fn, *a, **kw):
@@ -98,6 +101,40 @@ class Sandbox(unittest.TestCase):
 
     def test_fetch_media_refuses_offline(self):
         self.assertEqual(quiet(fetch_media.main, ["--all", "--limit", "1"]), 2)
+
+
+    def test_setup_copies_the_starter_config_and_keeps_what_is_there(self):
+        target = os.path.join(self.box, "home")
+        self.assertEqual(quiet(setup_home.setup, target), (list(setup_home.FILES), []))
+        mine = os.path.join(target, "config", "topics.yaml")
+        with open(mine, "w", encoding="utf-8") as fh:
+            fh.write("topics: {mine: {label: Mine, about: x, feeds: []}}\n")
+        copied, kept = quiet(setup_home.setup, target)
+        self.assertEqual((copied, kept), ([], list(setup_home.FILES)))
+        with open(mine, encoding="utf-8") as fh:
+            self.assertIn("Mine", fh.read())
+
+    def test_starter_config_fits_and_names_the_collections_to_rename(self):
+        target = os.path.join(self.box, "home")
+        quiet(setup_home.setup, target)
+        zip_path = os.path.join(self.box, "downloads", make_sandbox.ZIP_NAME)
+        quiet(import_saved.main, ["--from-zip", zip_path, "--out", os.path.join(target, ".cache", "saves.json")])
+        # The only complaints are the invented collections the export lacks, each saying to rename it.
+        probs = quiet(check_data.problems, quiet=True)
+        self.assertTrue(probs)
+        for p in probs:
+            self.assertEqual(p["file"], "config/collections.yaml", p)
+            self.assertIn("rename it to one of yours", p["msg"])
+
+    def test_missing_saves_and_empty_topics_say_what_to_do(self):
+        err = io.StringIO()
+        with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(err):
+            home.read_saves()
+        self.assertIn("import_saved.py --from-zip", str(cm.exception.code))
+        with self.assertRaises(SystemExit) as cm:
+            home.need_topics({})
+        self.assertIn("examples/config/topics.yaml", str(cm.exception.code))
+        self.assertIsNone(home.need_topics({"travel": {}}))
 
 
 if __name__ == "__main__":

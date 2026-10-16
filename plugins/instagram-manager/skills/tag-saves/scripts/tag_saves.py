@@ -83,7 +83,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared", "scripts"))
 import yaml  # noqa: E402
 
-from home import cache, home  # noqa: E402
+from home import cache, home, read_saves, need_topics  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import Places  # noqa: E402
@@ -567,9 +567,10 @@ def main(argv=None):
     if args.report and not args.pilot:
         ap.error("--report needs --pilot")
 
-    with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
-        saves = json.load(fh)["saves"]
+    saves = read_saves(args.saved)["saves"]
     topics_known, collections, pilots, places = load_config()
+    if args.prepare or args.rules_only or args.merge:
+        need_topics(topics_known)
     purposes_known = load_purposes()
     compiled = compile_places(places)
     pilot = None

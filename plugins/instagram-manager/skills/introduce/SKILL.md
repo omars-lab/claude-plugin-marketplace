@@ -18,8 +18,9 @@ files the plugin writes.
 
 The pipeline, in order:
 
-1. **import-saves** — read saved posts and collections from the export zip, in memory. Only the
-   `saved/` files are opened; messages and the rest of the export are never unpacked.
+1. **import-saves** — how to ask Instagram for the export, a folder set up with three starter
+   config files (`setup_home.py`), then the saved posts and collections read from the export zip,
+   in memory. Only the `saved/` files are opened; messages and the rest are never unpacked.
 2. **tag-saves** — topics, purposes and places per save: collection rules and hashtags first,
    then `save-tagger` agents, each reading one batch of saves. `add_places.py` looks up places
    that have no pin yet on OpenStreetMap; `moves_page.py` lists saves filed in the wrong
@@ -40,11 +41,13 @@ The pipeline, in order:
 9. **send-topics** — the files other repos read: one per state or country for travel, each save
    with its spots, and one per other topic. **serve-api** serves the same data as a local web
    API (Swagger, JSON Schema) for other hubs, and takes the hub's decisions as writes.
-10. **split-saves** *(coming)* — the items a non-travel post names (a recipe, an idea), each with
-   its quote. For travel, the items are the spots step 3 already finds.
+10. **split-saves** — the items a non-travel post names (a dish, a technique, an idea, a tip),
+   each with its quote, from `save-splitter` agents. Run it after tag-saves, before send-topics.
+   For travel, the items are the spots step 3 finds.
 
-Skills available today: **introduce** (this skill), **manage-saves** (the router: works out which
-step comes next), and steps 1 to 9.
+Every step above is ready to use, with **introduce** (this skill) and **manage-saves** (the
+router: works out which step comes next). **new-user-trial** has a newcomer try the whole thing
+in a sandbox and a reviewer rank what got in their way.
 
 ## Where data lives
 
@@ -73,6 +76,7 @@ Use `AskUserQuestion`:
 ```
 What would you like to do?
 
+- Get started: export, set up, import       (import-saves)
 - Import a new export                       (import-saves)
 - See what step comes next for my saves     (manage-saves)
 - List my collections and their sizes       (import-saves --list)
@@ -88,9 +92,11 @@ For a multi-step run, track each step with `TaskCreate` and mark it done as it f
 
 | They want... | Skill | Command |
 |---|---|---|
+| I'm new: how do I get my saves out of Instagram? | import-saves | `/instagram-manager:import-saves` |
 | I downloaded a new Instagram export | import-saves | `/instagram-manager:import-saves` |
 | Which collections do I have? | import-saves | `/instagram-manager:import-saves` |
 | Sort my saves by topic or city | tag-saves | `/instagram-manager:tag-saves` |
+| Split my recipes into dishes, my design posts into ideas | split-saves | `/instagram-manager:split-saves` |
 | Pin the restaurants and beaches a post names | resolve-post-location | `/instagram-manager:resolve-post-location` |
 | The place is only in the video | read-frames | `/instagram-manager:read-frames` |
 | Download thumbnails or videos | fetch-media | `/instagram-manager:fetch-media` |
@@ -108,8 +114,9 @@ For a multi-step run, track each step with `TaskCreate` and mark it done as it f
 instagram-manager
   ├── introduce              — this skill
   ├── manage-saves           — router across the pipeline
-  ├── import-saves           — export zip → <data repo>/.cache/saves.json
+  ├── import-saves           — setup_home.py → config/; export zip → <data repo>/.cache/saves.json
   ├── tag-saves              — saves.json → save-tagger agents → data/tags.yaml; add_places.py → data/places.yaml
+  ├── split-saves            — non-travel saves → save-splitter agents → data/items/<topic>.yaml
   ├── resolve-post-location  — tagged saves → post-locator agents → data/pins.yaml, data/pins-review.yaml
   ├── fetch-media            — thumbnails and videos → $INSTAGRAM_MEDIA_DIR, data/media.yaml
   ├── read-frames            — videos → frames and their words → frame-reader agents → data/pins.yaml
@@ -146,8 +153,10 @@ agents on the plan Claude Code is logged in with.
 
 - Python 3, plus PyYAML (the tagger and the data check).
 - Claude Code, for the agents.
+- For fetch-media videos: yt-dlp (`brew install yt-dlp`). Thumbnails need nothing extra.
 - For read-frames: ffmpeg and tesseract; on a Mac, Apple Vision reads the frames as well.
 - For extract-stills: ffmpeg and img2webp (`brew install ffmpeg webp`).
 - For find-google-ids: a Google Maps Platform key with Places API (New), in `GOOGLE_MAPS_API_KEY`
-  (the data repo runs it through dotenvx, so the key stays encrypted on disk).
+  (the data repo runs it through dotenvx, so the key stays encrypted on disk; `brew install dotenvx/brew/dotenvx`).
+- For serve-api: Docker.
 - An Instagram data export, HTML or JSON.

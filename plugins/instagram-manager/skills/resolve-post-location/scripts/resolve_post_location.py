@@ -118,7 +118,7 @@ sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared",
 import yaml  # noqa: E402
 
 import geocode  # noqa: E402
-from home import cache, home  # noqa: E402
+from home import cache, home, read_saves  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import load_yaml  # noqa: E402
@@ -1062,8 +1062,7 @@ def main(argv=None, fetcher=None):
     if args.frames and not args.merge:
         ap.error("--frames goes with --merge; read_frames.py --prepare makes the frame batches")
 
-    with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
-        saves = json.load(fh)["saves"]
+    saves = read_saves(args.saved)["saves"]
     tags = load_yaml(TAGS)
     places = load_places()
     if args.merge:

@@ -137,6 +137,10 @@ def _problems(quiet):
                 if not isinstance(v, dict) or not v.get("label"):
                     bad("check_fail", file="config/topics.yaml", topic=t, msg="needs a label")
 
+    if not known and os.path.exists(cache("saves.json")):
+        bad("check_fail", file="config/topics.yaml",
+            msg="no topics yet, so tagging would tag nothing; copy examples/config/topics.yaml from the plugin")
+
     exported = None
     codes = captions = None
     if os.path.exists(cache("saves.json")):
@@ -172,7 +176,7 @@ def _problems(quiet):
                 if known and t not in known:
                     bad("check_fail", file="config/collections.yaml", collection=name, topic=t, msg="unknown topic")
             if exported is not None and name not in exported:
-                bad("check_fail", file="config/collections.yaml", collection=name, msg="not a collection in the export")
+                bad("check_fail", file="config/collections.yaml", collection=name, msg="not a collection in the export; rename it to one of yours (import_saved.py --list) or delete it")
             places_known |= {c for c in rule.get("cities") or []}
         for pilot, p in (cols.get("pilots") or {}).items():
             for city in p.get("cities") or []:

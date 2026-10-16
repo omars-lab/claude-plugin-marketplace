@@ -57,7 +57,7 @@ sys.path.insert(0, os.path.join(SKILLS, os.pardir, "shared", "scripts"))
 sys.path.insert(0, os.path.join(SKILLS, "build-hub", "scripts"))
 import build_hub as bh  # noqa: E402
 import google_places as gp  # noqa: E402
-from home import cache, home  # noqa: E402
+from home import cache, home, IMPORT_CMD  # noqa: E402
 from items_store import load_items  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
@@ -256,7 +256,7 @@ def load(pilot_name=None):
     serve-api skill builds its answers from this too, so the API and the files say the same thing."""
     saves_path = cache("saves.json")
     if not os.path.exists(saves_path):
-        raise FileNotFoundError(f"no {saves_path}; run import-saves first")
+        raise FileNotFoundError(f"No saves yet: {saves_path} is missing. Import your export first:\n  {IMPORT_CMD}")
     places = Places.load()
     tags = load_yaml(os.path.join("data", "tags.yaml"))
     pilot = None

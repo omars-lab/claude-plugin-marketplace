@@ -81,7 +81,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared", "scripts"))
 import yaml  # noqa: E402
 
-from home import cache, home, offline  # noqa: E402
+from home import cache, home, offline, read_saves  # noqa: E402
 from log import log, log_to  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 
@@ -729,8 +729,7 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
             log("refused", reason=early[0], may_start=stamp(early[1]))
             return 5
 
-        with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
-            saves = json.load(fh)["saves"]
+        saves = read_saves(args.saved)["saves"]
         pilot = None
         if args.pilot:
             pilots = load_yaml(os.path.join("config", "collections.yaml")).get("pilots") or {}

@@ -16,6 +16,7 @@ that is missing is the next step:
 
 | If this is missing... | The next step is |
 |---|---|
+| `config/topics.yaml` (a first-time user has no folder yet) | **import-saves**, steps 1 and 2: get the export, then `setup_home.py` copies the starter config |
 | `.cache/saves.json` | **import-saves** |
 | `data/tags.yaml` | **tag-saves** |
 | a pin in `data/places.yaml` for each tagged place | **tag-saves**, `add_places.py` (`make places`) |
@@ -51,6 +52,7 @@ For more than one step, add a task per step with `TaskCreate` and mark each done
 
 | They say... | Skill |
 |---|---|
+| "I'm new, where do I start?" / "how do I get my saves out of Instagram?" | `import-saves` (steps 1 and 2) |
 | "I have a new export" / "import my saves" | `import-saves` |
 | "which collections do I have?" | `import-saves` (`--list`) |
 | "sort my saves" / "tag the pilot" | `tag-saves` |

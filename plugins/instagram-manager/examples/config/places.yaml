@@ -1,0 +1,25 @@
+# The places your saves are about, so the tagger can spot them in a caption or a hashtag.
+# A match is a hint the agent weighs, not a tag. You do not need every town up front: a place
+# the agent names that is not listed here goes to data/tags-review.yaml, and add_places.py
+# (the tag-saves skill) looks it up on OpenStreetMap and adds it for you.
+#
+# Each key is a place (a state, a country or a town), and:
+#   names:    words to look for in captions (whole words, any case)
+#   hashtags: hashtags to look for, without the #
+#   in:       the bigger place it sits in (a town in its state), so the map can group them
+#   lookup:   what to ask OpenStreetMap when the name alone finds the wrong place
+#   box_km:   how far out from the place a spot may be (default about 25 km)
+#
+# The names below are invented; replace them with yours.
+places:
+  Westmark:
+    names: [Westmark]
+    hashtags: [westmark, visitwestmark, westmarkeats]
+  Port Alder:
+    names: [Port Alder, Alder Bay]
+    hashtags: [portalder]
+    in: Westmark
+  Cedar Hollow:
+    names: [Cedar Hollow]
+    hashtags: [cedarhollow]
+    in: Westmark

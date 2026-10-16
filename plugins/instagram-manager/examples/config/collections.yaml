@@ -1,0 +1,25 @@
+# Your Instagram collections → the topics and places every save in them gets for free.
+# These are rules, applied before any agent reads a caption, so they cost nothing.
+#
+# Write each collection's name exactly as the import listed it (run import_saved.py --list).
+# Two collections with the same name share one entry. A collection left out gets no free tags;
+# the agent decides from the caption. Saves in no collection are tagged from the caption too.
+#
+#   topics: ids from topics.yaml
+#   cities: places from places.yaml (a town, a state or a country)
+#
+# The names below are invented; replace them with yours.
+collections:
+  Westmark trip:   {topics: [travel], cities: [Westmark]}
+  Port Alder eats: {topics: [travel], cities: [Port Alder]}
+  Hikes:           {topics: [travel], cities: []}
+  Recipes:         {topics: [recipes], cities: []}
+  Home ideas:      {topics: [home-design], cities: []}
+  Side hustle:     {topics: [business], cities: []}
+
+# A pilot is a small set to try each step on before the whole library: the saves in these
+# collections, or tagged with these places. Steps take --pilot <name>, or --all for everything.
+pilots:
+  westmark:
+    collections: [Westmark trip, Port Alder eats]
+    cities: [Westmark]

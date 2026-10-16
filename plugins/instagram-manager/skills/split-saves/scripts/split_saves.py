@@ -70,7 +70,7 @@ sys.path.insert(0, os.path.join(SKILLS, os.pardir, "shared", "scripts"))
 sys.path.insert(0, os.path.join(SKILLS, "tag-saves", "scripts"))
 sys.path.insert(0, os.path.join(SKILLS, "resolve-post-location", "scripts"))
 
-from home import cache, home  # noqa: E402
+from home import cache, home, need_topics, read_saves  # noqa: E402
 from items_store import DIR as ITEMS, load_items, write_items  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
@@ -176,8 +176,7 @@ def check_items(answer, caption, own, topics_conf):
 
 
 def load_saves(path):
-    with open(path or cache("saves.json"), encoding="utf-8") as fh:
-        return json.load(fh)["saves"]
+    return read_saves(path)["saves"]
 
 
 def prepare(args, saves, topics_conf, pilot, tags, items):
@@ -329,6 +328,7 @@ def main(argv=None):
 
     saves = load_saves(args.saved)
     topics_conf = load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {}
+    need_topics(topics_conf)
     tags = load_yaml(TAGS)
     items = load_items()
     if args.merge:

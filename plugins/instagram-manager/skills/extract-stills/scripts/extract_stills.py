@@ -58,7 +58,7 @@ sys.path.insert(0, os.path.join(SKILLS, "resolve-post-location", "scripts"))
 sys.path.insert(0, os.path.join(SKILLS, "read-frames", "scripts"))
 import read_frames as rf  # noqa: E402
 import resolve_post_location as rpl  # noqa: E402
-from home import cache, home  # noqa: E402
+from home import cache, home, read_saves  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import load_yaml  # noqa: E402
@@ -352,8 +352,7 @@ def main(argv=None):
         if args.pilot not in pilots:
             sys.exit(f"no pilot {args.pilot!r} in config/collections.yaml (have: {', '.join(pilots) or 'none'})")
         pilot = pilots[args.pilot]
-    with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
-        saves = json.load(fh)["saves"]
+    saves = read_saves(args.saved)["saves"]
     tags, media, pins = load_yaml(rpl.TAGS), load_yaml(rf.MEDIA), load_yaml(rpl.PINS)
     if args.need_video:
         return need_video(saves, tags, media, pins, pilot)
