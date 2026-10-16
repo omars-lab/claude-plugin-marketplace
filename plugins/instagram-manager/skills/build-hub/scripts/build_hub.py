@@ -923,11 +923,13 @@ def index_page(hub, title, extra_links, home=()):
                + '<button id="clear" type="button" hidden>Clear</button></nav></header>'
                '<div class="panes"><aside><form role="search"><input id="q" type="search" autocomplete="off" '
                'placeholder="Search captions, creators and places" aria-label="Search captions, creators and places">'
-               '</form><div class="legend"><span><i class="pin pin-spot"></i>a spot the post names</span>'
+               '</form><div id="out" aria-live="polite"></div></aside>'
+               '<div class="mapcol"><div class="legend" aria-label="What the pins mean">'
+               '<span><i class="pin pin-spot"></i>a spot the post names</span>'
                '<span><i class="pin pin-placed"></i>a spot not on OpenStreetMap, at its town</span>'
                '<span><i class="pin pin-area"></i>a town, park or region</span>'
                '<span><i class="pin pin-wide"></i>only the state or country</span></div>'
-               '<div id="out" aria-live="polite"></div></aside><div id="map"></div></div>')
+               '<div id="map"></div></div></div>')
     js = MAP_JS.replace("__DATA__", data_json(data)).replace("__TILES__", TILES).replace("__CREDIT__", CREDIT)
     flips = previews.player_js() if any(p["pa"] for p in posts) else ""   # before the map script, which uses it
     return shell(title, content, LEAFLET + CLUSTER, f"{flips}<script>{js}</script>", body="hub")
@@ -996,6 +998,9 @@ body.hub{height:100dvh;display:grid;grid-template-rows:auto 1fr}
 .panes{display:grid;grid-template-columns:minmax(17rem,24rem) 1fr;min-height:0}
 aside{overflow:auto;padding:14px 16px;border-right:1px solid var(--line);display:grid;gap:12px;align-content:start;
   background:var(--bg)}
+/* The map column: the legend as one row right above the map. */
+.mapcol{display:grid;grid-template-rows:auto 1fr;min-height:0;min-width:0}
+.mapcol .legend{padding:8px 16px;background:var(--card);border-bottom:1px solid var(--line)}
 #map{min-height:0}
 form{display:flex}
 input{flex:1;width:0;min-width:0;font:inherit;padding:9px 14px;border:1px solid var(--line);border-radius:999px;
@@ -1074,7 +1079,8 @@ ul.inline{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px
 @media (max-width:760px){
   body.hub{height:auto;display:block}
   .panes{display:flex;flex-direction:column}
-  #map{height:58vh;order:-1}
+  .mapcol{order:-1}
+  #map{height:58vh}
   aside{border-right:0;overflow:visible}
   .facts,.post{grid-template-columns:minmax(0,1fr)}
   .post .big{max-width:16rem}

@@ -33,7 +33,8 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
     repo, when there, replaces the built-in list in `shared/scripts/purposes.py` (same shape).
   - The picks go into the page's link (`index.html#np=...&pu=...`), so a view can be bookmarked.
 
-  Beside the map is the list of places with how many posts name each, and a search box. The search
+  A single row right above the map says what each kind of pin means. Beside the map is the list of
+  places with how many posts name each, and a search box. The search
   looks through captions, creators and place names. On a phone, the map sits above the list.
 - **`places/<name>.html`: one page per place.** Each page has:
   - a small map and a Google Maps link;
