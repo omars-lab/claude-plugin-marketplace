@@ -68,6 +68,7 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
 | `scripts/extract_stills.py` | A still and a 3 s clip per spot, cut where its name is on screen; writes `data/stills.yaml` | After new videos or spots land, or after a hand-set `t:` | `python3 scripts/extract_stills.py --pilot <name>` (`--all`, `--redo`) |
 | `scripts/extract_stills.py --need-video` | Lists the reels naming 2 or more spots with no video yet; cuts nothing | Before asking to fetch videos for stills | `python3 scripts/extract_stills.py --need-video --pilot <name>` |
 | `scripts/previews.py` | A small picture (144 × 192, about 5 KB) per post, and for a post with a video a looping flipbook of 12 frames from the whole reel (about 50 KB), in `.cache/hub/previews/`; remade only when the source is newer | For pages that list many posts at once: the pins page and the hub call it themselves (and share its flipbook player, `player_js()`), so run it by hand only to try a post | `python3 scripts/previews.py CODE ...` (`--out DIR`, `--redo`) |
+| `scripts/heard.py` | A check, not a step: turns each reel's sound into words on this Mac (whisper.cpp) and looks for its spots' names among them; writes only to `.cache/whisper/` | Before counting on speech for a new set of reels. In the first trial, 18 of 19 reels were music or silent, and the one voice never said a name | `python3 scripts/heard.py [CODE ...]` (`--prompt`, `--model PATH`); needs `brew install whisper.cpp` and a model |
 | `scripts/test_extract_stills.py` | Offline tests on an invented data folder and an ffmpeg-made video: the moment picked, a spot never on screen, a road-trip spot taking its area's moment (and a title card, one area or a state not counting), a rerun cutting nothing, a hand time kept, a clip near the end, the need-video list; previews: a picture per post, a flipbook only with a video, nothing remade unless newer, codes differing by case | After any change to either script | `python3 scripts/test_extract_stills.py` |
 
 In the data repo: `make stills` (`STILLS_REDO=1` to cut again), `make stills-need-video`, then
@@ -75,6 +76,7 @@ In the data repo: `make stills` (`STILLS_REDO=1` to cut again), `make stills-nee
 
 ## What it can't do yet
 
-- **Spots said out loud only.** A name that is spoken but never shown needs speech-to-text.
+- **Spots named only in the caption.** Their still is the reel's cover. Speech doesn't help:
+  `heard.py` found these reels are mostly music, with no names said out loud.
 - **Picking the best-looking frame.** The still is the first frame showing the name, which is
   usually a sign or a caption over the place, not the prettiest shot.
