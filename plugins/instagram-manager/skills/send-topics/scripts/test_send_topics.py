@@ -190,6 +190,28 @@ class Send(unittest.TestCase):
         self.send("--all")
         self.assertEqual(first, {rel: self.read(rel) for rel in first})
 
+    def test_kept_google_id_goes_into_the_spot(self):
+        self.write("data/google.yaml", {
+            "osm:node/8": {"query": "Example Point, Fixture Coast", "verdict": "match", "id": "ChIJexamplePoint",
+                           "by": "auto", "date": "2026-01-02"},
+            "spot:example-tiny-cafe@fixture-town": {"query": "Example Tiny Cafe, Fixture Town", "verdict": "match",
+                                                    "id": "ChIJexampleCafe", "by": "hand", "date": "2026-01-02"},
+            "osm:node/9": {"query": "an older search text", "verdict": "match", "id": "ChIJstale", "by": "auto",
+                           "date": "2026-01-02"},
+            "osm:way/7": {"query": "Example Cove Beach, Fixture Town", "verdict": "none", "by": "auto",
+                          "date": "2026-01-02"}})
+        self.send("--all")
+        state = self.saves("travel/fixture-state.yaml")
+        point, bluff = state["ROAD1"]["items"]
+        self.assertEqual(point["google_id"], "ChIJexamplePoint")
+        self.assertIn("query_place_id=ChIJexamplePoint", point["map"])
+        self.assertNotIn("google_id", bluff)          # its search text changed since: not used
+        tiny = [i for i in state["TRIP1"]["items"] if i["name"] == "Example Tiny Cafe"][0]
+        self.assertEqual(tiny["google_id"], "ChIJexampleCafe")
+        cove = state["TRIP1"]["items"][0]
+        self.assertNotIn("google_id", cove)           # nothing found: keeps its own link
+        self.assertEqual(cove["map"], "https://maps.example/cove")
+
     def test_all_removes_files_no_longer_written(self):
         stale = os.path.join(self.root, "out", "travel", "gone-state.yaml")
         os.makedirs(os.path.dirname(stale))

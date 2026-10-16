@@ -168,6 +168,24 @@ class Hub(unittest.TestCase):
         self.assertNotIn("Example Baguette", self.page("posts/TOWN1.html"))
         self.assertIn("eat or stay posts: 0 open a spot OpenStreetMap placed, 1 one it doesn't list", out)
 
+    def test_a_kept_google_id_opens_that_exact_place(self):
+        self.write("data/pins-review.yaml", {
+            "TOWN1": [{"said": "Example Deli", "near": "Fixture Town", "why": "not found near Fixture Town",
+                       "asked": "Example Deli", "address": "1 Example Rd"}]})
+        self.write("data/google.yaml", {
+            "osm:node/101": {"query": "Example Falls, Fixture Park", "verdict": "match", "id": "ChIJexampleFalls",
+                             "by": "auto", "date": "2026-01-02"},
+            "spot:example-deli@fixture-town": {"query": "Example Deli, 1 Example Rd", "verdict": "match",
+                                               "id": "ChIJexampleDeli", "by": "hand", "date": "2026-01-02"}})
+        self.build("--pilot", "fixture")
+        falls = self.page("places/example-falls.html")
+        self.assertIn("query_place_id=ChIJexampleFalls", falls)
+        self.assertIn("matched by its name: check it", falls)           # chosen by the script, not a person
+        deli = self.page("places/example-deli.html")
+        self.assertIn("query_place_id=ChIJexampleDeli", deli)
+        self.assertNotIn("matched by its name", deli)                   # a person chose it
+        self.assertIn("query_place_id=ChIJexampleFalls", json.dumps(self.data()))   # the map's link too
+
     def test_spot_page_groups_posts_by_osm_id_and_marks_the_words(self):
         self.build("--pilot", "fixture")
         spot = self.page("places/example-falls.html")

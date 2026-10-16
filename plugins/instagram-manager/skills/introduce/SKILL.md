@@ -33,14 +33,17 @@ The pipeline, in order:
    words on them, and `frame-reader` agents naming the spots, checked like caption spots.
 6. **extract-stills** — for reels with a video: a still and a 3-second clip for each spot, cut
    where its name is on screen, so each place shows its own picture instead of the reel's cover.
-7. **build-hub** — the private hub: a map, a page per place, a page per post.
-8. **send-topics** — the files other repos read: one per state or country for travel, each save
+7. **find-google-ids** — Google's place id for each spot, found by one search near its pin and
+   kept when only one result carries the spot's name (the rest are listed for a person to pick).
+   Only the id is kept, so each Google Maps link opens that exact place.
+8. **build-hub** — the private hub: a map, a page per place, a page per post.
+9. **send-topics** — the files other repos read: one per state or country for travel, each save
    with its spots, and one per other topic.
-9. **split-saves** *(coming)* — the items a non-travel post names (a recipe, an idea), each with
+10. **split-saves** *(coming)* — the items a non-travel post names (a recipe, an idea), each with
    its quote. For travel, the items are the spots step 3 already finds.
 
 Skills available today: **introduce** (this skill), **manage-saves** (the router: works out which
-step comes next), and steps 1 to 8.
+step comes next), and steps 1 to 9.
 
 ## Where data lives
 
@@ -91,6 +94,7 @@ For a multi-step run, track each step with `TaskCreate` and mark it done as it f
 | The place is only in the video | read-frames | `/instagram-manager:read-frames` |
 | Download thumbnails or videos | fetch-media | `/instagram-manager:fetch-media` |
 | A picture of each place a reel names | extract-stills | `/instagram-manager:extract-stills` |
+| A Google Maps link opens a city or a list, not the place | find-google-ids | `/instagram-manager:find-google-ids` |
 | Show my saves on a map | build-hub | `/instagram-manager:build-hub` |
 | Send travel saves to my trip planner | send-topics | `/instagram-manager:send-topics` |
 | What should I run next? | manage-saves | `/instagram-manager:manage-saves` |
@@ -107,6 +111,7 @@ instagram-manager
   ├── fetch-media            — thumbnails and videos → $INSTAGRAM_MEDIA_DIR, data/media.yaml
   ├── read-frames            — videos → frames and their words → frame-reader agents → data/pins.yaml
   ├── extract-stills         — videos + spots → a still and a clip per spot → data/stills.yaml
+  ├── find-google-ids        — spots → one Google search each → data/google.yaml (place ids only)
   ├── build-hub              — data/ → <data repo>/.cache/hub/ (map, place pages, post pages)
   └── send-topics            — data/ → <data repo>/out/travel/<area>.yaml, out/<topic>.yaml for other repos
 
@@ -120,6 +125,7 @@ instagram-manager
     ├── log.py         — one greppable ev= line per event
     ├── quote.py       — the word-for-word quote check
     ├── geocode.py     — OpenStreetMap lookups, cached, one a second
+    ├── google_places.py — Google place search in a box, the name rule, links that carry a place id
     ├── places.py, pilot.py, purposes.py — the place list, pilot sets, purposes
     └── check_data.py  — the data repo's config and data fit together (its make check)
 ```
@@ -133,4 +139,6 @@ agents on the plan Claude Code is logged in with.
 - Claude Code, for the agents.
 - For read-frames: ffmpeg and tesseract; on a Mac, Apple Vision reads the frames as well.
 - For extract-stills: ffmpeg and img2webp (`brew install ffmpeg webp`).
+- For find-google-ids: a Google Maps Platform key with Places API (New), in `GOOGLE_MAPS_API_KEY`
+  (the data repo runs it through dotenvx, so the key stays encrypted on disk).
 - An Instagram data export, HTML or JSON.

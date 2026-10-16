@@ -12,8 +12,11 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   - the thumbnail;
   - @creator;
   - the caption's first 140 characters or so;
-  - links to the post's page, to Instagram, and to the pin's place in Google Maps (a Google search
-    for its name and area, not an exact Google place yet).
+  - links to the post's page, to Instagram, and to the pin's place in Google Maps: Google's own
+    page for that place when **find-google-ids** kept its id (`data/google.yaml`), otherwise a
+    Google search for its name and area. A place page says who chose the id when it was not a
+    person: "matched by its name: check it" (`by: auto`) or "picked by Claude from Google's list:
+    check it" (`by: claude`).
 
   Above the map is a row of menus: **State**, **National attraction**, **Purpose** and **Topic**.
   Each option shows how many posts it holds once the other menus and the search are applied, most
@@ -145,4 +148,4 @@ State, and a spot from `data/pins.yaml`, Example Falls, near Example Bay. The bu
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/build_hub.py` | Writes the site to `.cache/hub/`: the map, one page per place, one page per post, and the thumbnails | After tagging, finding spots or fetching thumbnails, to see the result | `python3 scripts/build_hub.py --pilot <name>` (or `--all`; `--out DIR` for another folder) |
-| `scripts/test_build_hub.py` | Offline tests on an invented data repo: which saves go in, where the pins go, spot pages, links up and down, thumbnails, and captions that try to break the page | After any change to the build script | `python3 scripts/test_build_hub.py` |
+| `scripts/test_build_hub.py` | Offline tests on an invented data repo: which saves go in, where the pins go, spot pages, links up and down, thumbnails, a kept Google id opening its exact place, and captions that try to break the page | After any change to the build script | `python3 scripts/test_build_hub.py` |

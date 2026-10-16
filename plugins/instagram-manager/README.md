@@ -11,7 +11,7 @@ that feeds your other projects.
 /instagram-manager:introduce                            # what it can do
 ```
 
-## Skills (10)
+## Skills (11)
 
 | Category | Skill | What it does |
 |---|---|---|
@@ -23,6 +23,7 @@ that feeds your other projects.
 | **Media** | `fetch-media` | A thumbnail per post, or a reel's video, slowly and logged out |
 | **Spots** | `read-frames` | Frames from a reel's video and the words on them, for places shown only on screen |
 | **Media** | `extract-stills` | A still and a 3 s clip per spot, cut where its name is on screen |
+| **Links** | `find-google-ids` | Google's place id per spot, so its Google Maps link opens that exact place; only the id is kept |
 | **Hub** | `build-hub` | A private local site: a map, a page per place, a page per post |
 | **Send** | `send-topics` | The files other repos read: one per state or country for travel, one per other topic |
 

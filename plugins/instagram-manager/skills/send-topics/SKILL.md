@@ -38,7 +38,8 @@ A travel item is a spot:
   lon: 21.1
   osm: node/101
   wikidata: Q101                 # when OpenStreetMap has one
-  map: https://www.google.com/maps/search/?api=1&query=Example+Falls%2C+Example+Park
+  map: https://www.google.com/maps/search/?api=1&query=Example+Falls%2C+Example+Park&query_place_id=ChIJexample
+  google_id: ChIJexample         # when find-google-ids kept one: the map link opens that exact place
   from: caption                  # or video, when read-frames found it
   exact: true                    # false: OpenStreetMap does not list it; no lat/lon
   still: EXAMPLE1/spots/still-example-falls.jpg
@@ -51,7 +52,8 @@ A travel item is a spot:
 `exact: false` spots are the venues OpenStreetMap is thin on (small restaurants, cafés), from
 `data/pins-review.yaml`. They are the same spots the hub shows with a dashed pin, and their map link
 searches the name in its town. `thumb`, `still` and `clip` are paths inside `$INSTAGRAM_MEDIA_DIR`,
-outside git; an intake copies the files it uses.
+outside git; an intake copies the files it uses. `google_id` is Google's place id and nothing else
+of Google's (**find-google-ids**); an intake can keep it and never search for the place again.
 
 No caption and no collection names go in, only the short quotes the data repo already keeps.
 
@@ -84,7 +86,7 @@ No caption and no collection names go in, only the short quotes the data repo al
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/send_topics.py` | Writes `out/travel/<area>.yaml` and `out/<topic>.yaml` from the data files | After tagging, spots or stills change, before another repo's intake runs | `python3 scripts/send_topics.py --pilot <name>` (or `--all`; `--out DIR` for another folder) |
-| `scripts/test_send_topics.py` | Offline tests on an invented data repo: a file per state, a road trip split across two, a spot OpenStreetMap lacks, an area still, `also_in`, a non-travel save left out and logged, empty topic files, the pilot's scope, the same bytes on a rerun, stale files removed | After any change to the script | `python3 scripts/test_send_topics.py` |
+| `scripts/test_send_topics.py` | Offline tests on an invented data repo: a file per state, a road trip split across two, a spot OpenStreetMap lacks, a kept Google id (and one whose search text changed), an area still, `also_in`, a non-travel save left out and logged, empty topic files, the pilot's scope, the same bytes on a rerun, stale files removed | After any change to the script | `python3 scripts/test_send_topics.py` |
 
 ## What it can't do yet
 

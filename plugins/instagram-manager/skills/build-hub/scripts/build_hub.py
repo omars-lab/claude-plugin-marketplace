@@ -78,6 +78,7 @@ from urllib.parse import quote_plus
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared", "scripts"))
 
+import google_places  # noqa: E402
 from home import cache  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
@@ -175,7 +176,8 @@ def placed_spots(review):
             if name:
                 spot = {"name": name, "said": said, "near": e["near"], "placed": True}
                 if isinstance(e.get("address"), str) and e["address"].strip():
-                    spot["map"] = maps_link(name, e["address"].strip())   # the caption's address
+                    spot["address"] = e["address"].strip()
+                    spot["map"] = maps_link(name, spot["address"])   # the caption's address
                 out.setdefault(code, []).append(spot)
     return out
 
@@ -263,7 +265,9 @@ class Hub:
                                 "map": e.get("map") or maps_link(name, near or ""), "parent": near, "spot": True,
                                 "posts": [], "said": {}, "osm": e.get("osm"), "wikidata": e.get("wikidata"),
                                 "notes": e.get("notes"), "found": e.get("found") if isinstance(e.get("found"), str) else "",
-                                "placed": bool(e.get("placed"))}
+                                "placed": bool(e.get("placed")), "google_by": e.get("google_by")}
+        elif e.get("google_by") and not self.places[key].get("google_by"):   # another post's copy has the id
+            self.places[key].update(map=e["map"], google_by=e["google_by"])
         return self.places[key]
 
     def _name_post(self, place, code, said=None):
@@ -554,7 +558,10 @@ def place_page(hub, place):
         rows.append((f"Places inside it ({len(place['inside'])})", '<ul class="inline">' + "".join(
             f'<li><a href="{place_href(hub.places[k])}">{esc(hub.places[k]["name"])}</a> '
             f'<span class="muted">{len(hub.places[k]["posts"])}</span></li>' for k in place["inside"]) + "</ul>"))
-    where = [f'<a href="{esc(place["map"])}" target="_blank" rel="noopener">Google Maps</a>']
+    where = [f'<a href="{esc(place["map"])}" target="_blank" rel="noopener">Google Maps</a>'
+             + {"auto": ' <span class="muted">(this place, matched by its name: check it)</span>',
+                "claude": ' <span class="muted">(this place, picked by Claude from Google\'s list: check it)</span>',
+                "hand": ' <span class="muted">(this place)</span>'}.get(place.get("google_by"), "")]
     if isinstance(place.get("osm"), str) and re.match(r"^(node|way|relation)/\d+$", place["osm"]):
         where.append(f'<a href="https://www.openstreetmap.org/{esc(place["osm"])}" target="_blank" '
                      f'rel="noopener">OpenStreetMap</a>')
@@ -1127,6 +1134,7 @@ def main(argv=None):
     placed = placed_spots(load_yaml(os.path.join("data", "pins-review.yaml")))
     pins = {c: (pins.get(c) if isinstance(pins.get(c), list) else []) + placed.get(c, [])
             for c in set(pins) | set(placed)}
+    google_places.apply(pins, load_yaml(os.path.join("data", "google.yaml")))   # exact Google links
     media = load_yaml(os.path.join("data", "media.yaml"))
     stills = load_yaml(os.path.join("data", "stills.yaml"))
     topics = load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {}

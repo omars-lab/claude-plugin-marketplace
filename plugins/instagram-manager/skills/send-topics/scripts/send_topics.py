@@ -49,6 +49,7 @@ SKILLS = os.path.join(HERE, os.pardir, os.pardir)
 sys.path.insert(0, os.path.join(SKILLS, os.pardir, "shared", "scripts"))
 sys.path.insert(0, os.path.join(SKILLS, "build-hub", "scripts"))
 import build_hub as bh  # noqa: E402
+import google_places as gp  # noqa: E402
 from home import cache, home  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
@@ -77,6 +78,7 @@ def item(e, still):
            "lon": bh.number(e.get("lon")) if exact else None, "osm": text(e.get("osm")),
            "wikidata": text(e.get("wikidata")),
            "map": text(e.get("map")) or bh.maps_link(e["name"].strip(), e.get("near") or ""),
+           "google_id": text(e.get("google_id")),
            "from": "video" if e.get("from") == "video" else "caption", "exact": exact}
     if still:
         out.update({"still": still["still"], "clip": text(still.get("clip")), "t": bh.number(still.get("t")),
@@ -217,8 +219,12 @@ def main(argv=None):
             sys.exit(f"send_topics: no pilot {args.pilot!r} in config/collections.yaml")
     saves = [s for s in bh.load_saves(saves_path) if in_pilot(s, tags.get(s["code"]), pilot)]
     stills = load_yaml(os.path.join("data", "stills.yaml"))
-    sender = Sender(saves, tags, places, load_yaml(os.path.join("data", "pins.yaml")),
-                    bh.placed_spots(load_yaml(os.path.join("data", "pins-review.yaml"))),
+    pins = load_yaml(os.path.join("data", "pins.yaml"))
+    placed = bh.placed_spots(load_yaml(os.path.join("data", "pins-review.yaml")))
+    google = load_yaml(os.path.join("data", "google.yaml"))
+    gp.apply(pins, google)     # a kept Google place id: the map link opens that exact place
+    gp.apply(placed, google)
+    sender = Sender(saves, tags, places, pins, placed,
                     load_yaml(os.path.join("data", "media.yaml")), stills,
                     load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {})
 
