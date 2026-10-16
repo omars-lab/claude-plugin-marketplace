@@ -46,7 +46,9 @@ done as it finishes.
    Then batch files of 6 reels in `.cache/batches/frames/` (each reel brings about 2 sheets, so an
    agent looks at about 12 images). A reel tagged with only a state gets every town and park listed
    in that state as its areas, marked `state_only`. A reel whose answers were merged before is
-   skipped unless `--redo`, and new batches are numbered after the merged ones.
+   skipped unless `--redo`, and new batches are numbered after the merged ones. Change the size
+   with `--batch-saves N`; tag-saves' `batch_review.py --kind frames` shows how much context each
+   frame agent reached (about 80,000–92,000 tokens at 6 reels so far).
 4. **Run the agents.** One `frame-reader` agent per batch, at most 4 at a time:
    `Follow <plugin>/agents/frame-reader.md exactly. Batch: <path>`.
 5. **Merge.** `resolve_post_location.py --merge --frames`. Each spot goes through the caption

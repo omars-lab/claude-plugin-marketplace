@@ -158,10 +158,30 @@ no changes leaves git clean. A new `--prepare` removes the last round's batch fi
 
 ## Batch review
 
-After a few rounds, look at whether the batch size is right: per batch, how many tokens the
-agent used, how long it took and how many saves it missed, from `merged.jsonl` and the agents'
-session transcripts. Many missed saves in big batches means smaller batches; quick, complete
-batches well under the limit mean bigger ones.
+After each round (and before the first round of `--all`), check the batch size:
+
+```bash
+python3 <plugin>/skills/tag-saves/scripts/batch_review.py          # --kind tag|locate|frames, --budget N
+```
+
+It finds every batch agent in the data repo's Claude Code transcripts and prints one row per run:
+saves, characters, the most context it reached, output tokens, minutes, saves it missed (from
+`merged.jsonl`) and any error (a rate limit, say). It reads numbers only; no caption or answer is
+printed. A `~` before the characters means the size of what the agent read, a little over the
+batch's own count (older locate and frames merges did not log it).
+
+Then one line per kind. It fits the most context an agent reached against its batch's size and
+says how big a batch can be and stay under the budget (default 120,000 tokens), in `--batch-chars`
+and in saves. Every agent starts at about 40,000–50,000 tokens before it reads its batch, so fewer,
+bigger batches use less of the plan, as long as no saves go missing.
+
+- **Saves missed, or a run over the budget:** make batches smaller.
+- **No saves missed and the runs well under the budget:** try the suggested size on the next round
+  (both `--batch-saves` and `--batch-chars`), then run the review again.
+- **Runs hit a rate or usage limit:** that is pacing, not size: smaller waves, or wait.
+
+A batch is cut at whichever comes first, 40 saves or 60,000 characters; most tagging batches stop at
+40 saves, so raising `--batch-chars` alone changes little.
 
 ## Example
 
@@ -192,7 +212,9 @@ hand instead.
 | `scripts/tag_saves.py --moves` | The saves filed in the wrong collection, with where to move them | After a merge that found moves | `python3 scripts/tag_saves.py --moves` |
 | `scripts/moves_page.py` | The moves list as a page: per save the collection it is in, where to move it, the caption with the quote marked, a link to the post and a "Moved" tick kept in the browser | When there are saves to move and you want to work through them in the app | `python3 scripts/moves_page.py` (writes `.cache/hub/moves.html`; `--out PATH` for elsewhere) |
 | `scripts/add_places.py` | Looks up unlisted places on OpenStreetMap and adds them, with map links and the place each sits in | After a round leaves places in review, then `--merge` | `python3 scripts/add_places.py --dry-run` first, then without |
+| `scripts/batch_review.py` | One row per batch agent run (tag, locate, frames) from the transcripts and merge logs, then the batch size that fits under a context budget | After a round, and before the first `--all` round | `python3 scripts/batch_review.py` (`--kind tag`, `--budget 100000`, `--transcripts DIR`) |
 | `scripts/test_tag_saves.py` | Offline tests, with a fake agent writing canned answers | After any change to the tagger | `python3 scripts/test_tag_saves.py` |
+| `scripts/test_batch_review.py` | Offline tests on invented transcripts and merge logs | After any change to the batch review | `python3 scripts/test_batch_review.py` |
 
 Other options: `--retag`, `--limit N` (saves per round), `--batch-saves N` (default 40),
 `--batch-chars N` (default 60000).

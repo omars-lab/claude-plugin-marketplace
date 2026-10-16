@@ -775,7 +775,8 @@ def merge(saves, tags, places, fetcher=None, frames=False):
             **got)
         with open(os.path.join(out, "merged.jsonl"), "a", encoding="utf-8") as fh:
             fh.write(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "batch": batch["batch"],
-                                 "saves": len(batch["saves"]), **got, **({"error": bad} if bad else {})}) + "\n")
+                                 "saves": len(batch["saves"]), "chars": sum(size(r) for r in batch["saves"]),
+                                 **got, **({"error": bad} if bad else {})}) + "\n")
         os.replace(ans_path, merged_path)
     write_yaml(PINS, pins)
     write_yaml(REVIEW, review)

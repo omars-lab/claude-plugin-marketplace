@@ -147,6 +147,9 @@ The same as tag-saves:
   start no more agents. Merge what finished, tell the user what is left, and pick up later.
 - The merge's OpenStreetMap lookups run at one a second. A batch of 40 saves with 3 spots each
   takes about two minutes the first time; after that the answers come from the cache.
+- **Check the batch size after a round** with tag-saves' `batch_review.py --kind locate`. A
+  locate agent uses more context per character than a tagger (it writes more), and its biggest
+  batches have come close to a 120,000-token budget; keep `--batch-chars` where the review says.
 
 ## Steps
 
@@ -195,7 +198,7 @@ The same as tag-saves:
 .cache/batches/locate/batch-001.json            {batch, answers: <path>, saves: [{code, creator, areas: [{name, kind, lat, lon}], caption}]}
 .cache/batches/locate/batch-001.answers.json    written by the agent: {"answers": {<code>: [{said, near, name?, address?, lat?, lon?, really_in?}], <code>: []}}
 .cache/batches/locate/batch-001.answers.merged.json   the same, renamed once merged
-.cache/batches/locate/merged.jsonl              one line per merged batch: saves, pins, review, no_spot, unanswered
+.cache/batches/locate/merged.jsonl              one line per merged batch: saves, chars, pins, review, no_spot, unanswered (for the batch review)
 data/pins.yaml                                  <code>: [{name, said, near, kind, lat, lon, km, osm?, wikidata?, found, map, asked?, address?, from?, lookup?, by?}]
 data/pins-review.yaml                           <code>: [{said, near, why, asked?, address?, really_in?, and what was found if anything; lookup?, drop?}]
 data/no-spot.yaml                               <code>: {areas: [Example Town]}
