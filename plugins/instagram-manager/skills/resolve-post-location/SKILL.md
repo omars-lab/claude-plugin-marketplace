@@ -104,6 +104,15 @@ The same as tag-saves:
    against their quotes: is the green pin on the beach the caption names? Show the user before
    going wider.
 6. **Fix the review list** (above), then `--merge` again.
+   - **After any change to the agent or the merge, run the check set first.** The data repo's
+     `data/locate-checks.yaml` lists real posts and the spots each one should give, restaurants
+     first, since OpenStreetMap misses them most. `check_locator.py --prepare` writes one batch
+     of those posts; run one post-locator agent on it; then `check_locator.py` scores every listed
+     spot before (the pins now) and after (the agent's answers): **pinned**, **at its town** (a
+     dashed pin that Google Maps searches by name) or **lost**. It also names any spot the list
+     says must not be pinned, and spots the agent named that the list lacks. A change that loses
+     a spot the pins had is a step back. Only after the score improves, re-run the pilot with
+     `--redo`.
 7. **Go wider** once the user has seen the pilot: `--prepare --all`. That is a change of scope,
    so ask with `AskUserQuestion`.
 
@@ -149,6 +158,8 @@ review entry carries over when the agent names the same spot again.
 | `scripts/resolve_post_location.py --prepare` | Batch files for the post-locator agents: the saves with an area more exact than a state, not answered yet; prints their paths | The start of every round | `python3 scripts/resolve_post_location.py --prepare --pilot <name>` (or `--all`); data repo: `make locate-prepare` |
 | `scripts/resolve_post_location.py --merge` | Checks the answers, looks each spot up near its area, writes pins, review and no-spot; searches review entries that have a `lookup:` | After every wave of agents, and after editing the review list | `python3 scripts/resolve_post_location.py --merge`; data repo: `make locate-merge` |
 | `scripts/pins_page.py` | The pins on a Leaflet map beside a list: creator, quote, what OpenStreetMap found, distance from the area, post link; review entries after with their reason | After a merge, before trusting the pins | `python3 scripts/pins_page.py` (writes `.cache/hub/pins.html`; `--out PATH` for elsewhere); data repo: `make pins-page` |
+| `scripts/check_locator.py` | Scores the agent on the hand-made check set: each listed spot pinned, at its town or lost, before and after; wrong and extra spots | Before trusting a change to `post-locator.md` or the merge | `python3 scripts/check_locator.py --prepare`, one agent, then `python3 scripts/check_locator.py`; data repo: `make locate-check-prepare`, `make locate-check` |
+| `scripts/test_check_locator.py` | Offline tests of the scoring, on invented spots | After any change to `check_locator.py` | `python3 scripts/test_check_locator.py` |
 | `scripts/test_resolve_post_location.py` | Offline tests with a fake agent and a fake OpenStreetMap | After any change to these scripts or to `geocode.py` | `python3 scripts/test_resolve_post_location.py` |
 
 Other options: `--redo` (read saves that already have an answer), `--limit N` (saves per round),
