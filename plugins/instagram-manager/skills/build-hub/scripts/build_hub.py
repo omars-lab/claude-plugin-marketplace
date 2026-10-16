@@ -8,6 +8,8 @@ names, a page per place listing every saved post that names it, and a page per p
 
 Reads   $INSTAGRAM_HOME/.cache/saves.json          caption, creator, link, saved date, collections
         $INSTAGRAM_HOME/config/topics.yaml         topic labels
+        $INSTAGRAM_HOME/config/purposes.yaml       what a post is for, by the kinds of place it names
+                                                   (optional: the PURPOSES list below otherwise)
         $INSTAGRAM_HOME/config/collections.yaml    the pilots
         $INSTAGRAM_HOME/data/tags.yaml             code → topics, cities (from tag-saves)
         $INSTAGRAM_HOME/data/places.yaml           each place's kind, pin, the place it sits in
@@ -28,6 +30,13 @@ Which pin a post gets
   from pins.yaml (a beach, a café) takes the place of the area it sits in. A post that names only
   a state gets its pin at the state's middle. Every place it names still gets the post on its page,
   so a state's page lists every post in it.
+
+The menus over the map
+  State, national attraction, purpose and topic. Each option says how many posts it holds once the
+  other menus and the search are applied. A national attraction is a park or spot whose name, or
+  the name OpenStreetMap found for it, says National Park, Seashore, Monument and so on. A post's
+  purpose comes from the kinds of place it names (a café is "Eat & drink", a park "Adventure &
+  outdoors"), plus any `purposes` the tagger gave it; a post that names only towns has none yet.
 
 Spots are grouped across posts by their OpenStreetMap id, else by name and area. A spot with the
 same name as its area (a park and its waterfall) is shown on the area's page.
@@ -65,6 +74,30 @@ POPUP_CHARS = 140    # caption shown in a map popup
 AROUND = 160         # caption characters shown around the words that name a place
 OPENING = 260        # caption shown on a card when no words name the place
 WIDE = {"state", "country"}   # kinds that are too big to be a useful pin when a town is there
+
+# A national park, seashore, monument and so on: by its name, or the name OpenStreetMap found for it
+# (a place tagged "Example Canyon" can come back as "Example Canyon National Park").
+NATIONAL = re.compile(r"\bNational (Park|Seashore|Lakeshore|Monument|Historic|Historical|Forest|Recreation|Preserve|"
+                      r"Memorial|Wildlife|Scenic)", re.I)
+
+# What a post is for, worked out from the kinds of place it names. config/purposes.yaml, when there,
+# takes the place of this list (same shape). A tagger's `purposes` for a save are added to these.
+PURPOSES = {
+    "eat": {"label": "Eat & drink", "kinds": ["restaurant", "cafe", "coffee", "bakery", "fast_food", "bar", "pub",
+                                              "ice_cream", "food_court", "winery", "brewery", "marketplace"]},
+    "stay": {"label": "Stay", "kinds": ["hotel", "motel", "guest_house", "hostel", "resort", "camp_site",
+                                        "caravan_site", "chalet", "apartment"]},
+    "adventure": {"label": "Adventure & outdoors", "kinds": [
+        "park", "beach", "waterfall", "viewpoint", "peak", "cliff", "lake", "footway", "path", "track", "cycleway",
+        "nature_reserve", "protected_area", "national_park", "meadow", "wood", "forest", "stream", "river", "islet",
+        "island", "tree", "cave_entrance", "hot_spring", "spring", "glacier", "volcano", "valley", "bay", "cape",
+        "arch", "rock", "dune", "picnic_site", "trailhead"]},
+    "see-do": {"label": "See & do", "kinds": [
+        "museum", "aquarium", "zoo", "theme_park", "attraction", "artwork", "gallery", "pier", "lighthouse", "bridge",
+        "tower", "garden", "castle", "monument", "memorial", "ruins", "place_of_worship", "playground", "water_park",
+        "theatre", "marina"]},
+}
+NO_PURPOSE = ("none", "Not worked out yet")
 
 TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -133,12 +166,14 @@ def saved_on(save):
 class Hub:
     """Everything the pages show, worked out once from the data files."""
 
-    def __init__(self, saves, tags, places, pins, media, topics, media_dir):
+    def __init__(self, saves, tags, places, pins, media, topics, media_dir, purposes=None):
         self.places = {}      # key → place: name, kind, lat, lon, map, parent, spot, posts[], said{}
         self.posts = []       # in-scope saves, newest first, with their places and pins
         self.no_pin = set()   # places with no lat/lon
         self.p = places
         self.topic_label = {k: (v or {}).get("label") or k for k, v in (topics or {}).items()}
+        self.purposes = {k: v for k, v in (purposes or PURPOSES).items() if isinstance(v, dict)}
+        self.purpose_of = {kind: k for k, v in self.purposes.items() for kind in v.get("kinds") or []}
         aliases = {}
         for said, name in places.aliases.items():
             aliases.setdefault(name, []).append(said)
@@ -179,7 +214,8 @@ class Hub:
             self.places[name] = {"key": name, "name": name, "kind": d.get("kind") or "place", "lat": lat,
                                  "lon": lon, "map": d.get("map") or maps_link(name, chain[0] if chain else ""),
                                  "parent": chain[0] if chain else None, "spot": False, "posts": [], "said": {},
-                                 "osm": d.get("osm"), "wikidata": d.get("wikidata"), "notes": d.get("notes")}
+                                 "osm": d.get("osm"), "wikidata": d.get("wikidata"), "notes": d.get("notes"),
+                                 "found": d.get("found") if isinstance(d.get("found"), str) else ""}
             for up in chain:
                 self._area(up)
         return self.places[name]
@@ -196,7 +232,7 @@ class Hub:
             self.places[key] = {"key": key, "name": name, "kind": e.get("kind") or "spot", "lat": lat, "lon": lon,
                                 "map": e.get("map") or maps_link(name, near or ""), "parent": near, "spot": True,
                                 "posts": [], "said": {}, "osm": e.get("osm"), "wikidata": e.get("wikidata"),
-                                "notes": e.get("notes")}
+                                "notes": e.get("notes"), "found": e.get("found") if isinstance(e.get("found"), str) else ""}
         return self.places[key]
 
     def _name_post(self, place, code, said=None):
@@ -276,7 +312,8 @@ class Hub:
             "caption": s["caption"], "saved": saved_on(s), "collections": s["collections"],
             "topics": [t for t in tag.get("topics") or [] if isinstance(t, str)],
             "exact": spot_keys + [a for a in leaves if a not in {self.places[k]["parent"] for k in spot_keys}],
-            "areas": areas, "pins": pins, "thumb_src": thumb_src, "thumb": None})
+            "areas": areas, "pins": pins, "thumb_src": thumb_src, "thumb": None,
+            "tagged_purposes": [t for t in tag.get("purposes") or [] if isinstance(t, str)]})
 
     def _slugs(self):
         used = set()
@@ -291,6 +328,27 @@ class Hub:
 
     def post(self, code):
         return self.by_code[code]
+
+    def named(self, post):
+        """Every place a post names, exact ones first, each once."""
+        return list(dict.fromkeys(post["exact"] + post["areas"]))
+
+    def national(self, place):
+        return (place["spot"] or place["kind"] == "park") and bool(
+            NATIONAL.search(place["name"]) or NATIONAL.search(place.get("found") or ""))
+
+    def facets(self, post):
+        """The menu values a post falls under: its states, national parks, purposes and topics."""
+        named = [self.places[k] for k in self.named(post)]
+        purposes = [t for t in post["tagged_purposes"] if t in self.purposes]
+        for p in named:
+            k = self.purpose_of.get(p["kind"])
+            if k and k not in purposes:
+                purposes.append(k)
+        return {"st": [p["key"] for p in named if p["kind"] == "state"],
+                "np": [p["key"] for p in named if self.national(p)],
+                "pu": purposes or [NO_PURPOSE[0]],
+                "tp": list(post["topics"])}
 
     def within(self, key, cities):
         """True when the place is one of `cities` or sits inside one."""
@@ -474,7 +532,9 @@ def post_page(hub, post):
         rows.append(("Collections", esc(", ".join(post["collections"]))))
     if exact:
         rows.append((f"Places it names ({len(exact)})", '<ul class="inline">' + "".join(
-            f'<li><a href="{place_href(p)}">{esc(p["name"])}</a></li>' for p in exact) + "</ul>"))
+            f'<li><a href="{place_href(p)}">{esc(p["name"])}</a> <a class="gmap" href="{esc(p["map"])}" '
+            f'target="_blank" rel="noopener" aria-label="{esc(p["name"])} in Google Maps">Google Maps</a></li>'
+            for p in exact) + "</ul>"))
     if wider:
         rows.append(("Inside", '<ul class="inline">' + "".join(
             f'<li><a href="{place_href(p)}">{esc(p["name"])}</a></li>' for p in wider) + "</ul>"))
@@ -490,7 +550,9 @@ def post_page(hub, post):
                + (f'<div class="post">{thumb_html(post, cls="big")}' if post["thumb"] else '<div class="post solo">')
                + '<div class="pbody">'
                f'<p class="cta"><a class="button" href="{esc(post["url"])}" target="_blank" rel="noopener">'
-               f'Open on Instagram</a></p>'
+               f'Open on Instagram</a>'
+               + (f'<a class="button alt" href="{esc(exact[0]["map"])}" target="_blank" rel="noopener">'
+                  f'Open in Google Maps</a>' if len(exact) == 1 else "") + '</p>'
                f'<dl>' + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows) + '</dl></div></div>'
                f'{box}<section><h2>Caption</h2><p class="caption">{caption}</p></section></main>')
     return shell(f"{who} · saved post", content, LEAFLET if box else "", js)
@@ -511,6 +573,7 @@ function popup(pin){
   var where=el('p','pwhere');where.appendChild(link(pl.s,pl.n));box.appendChild(where);
   if(p.t)box.appendChild(el('p','ptext',p.t));
   var ln=el('p','plinks');ln.appendChild(link(p.f,'Post page'));ln.appendChild(link(p.i,'Open on Instagram',true));
+  ln.appendChild(link(pl.m,'Open in Google Maps',true));
   box.appendChild(ln);return box;
 }
 
@@ -546,22 +609,58 @@ function postsList(rows){
   return ol;
 }
 
-function search(q){
-  var out=$('#out');out.textContent='';q=tidy(q.trim());
-  try{history.replaceState(null,'',q?'#q='+encodeURIComponent(q):location.pathname)}catch(e){}
-  if(!q){
+// The menus: sel[k] is the chosen option of menu k, or -1 for any. A post shows when it falls under
+// every chosen option and holds every search word. Each menu counts the posts the other menus and
+// the search leave, so a count is what picking that option would show.
+var F=D.facets, sel={};
+F.forEach(function(f){sel[f.k]=-1});
+function fits(p,skip){return F.every(function(f){return f.k===skip||sel[f.k]<0||p.g[f.k].indexOf(sel[f.k])>=0})}
+// A place is in a picked state or park when it is that place or sits inside it. A road-trip post
+// that names a park also names places far from it; those stay off the map while the park is picked.
+function within(pl){return ['st','np'].every(function(k){return sel[k]<0||pl.g[k].indexOf(sel[k])>=0})}
+
+function fill(f,n){
+  var s=$('#f-'+f.k);s.textContent='';s.classList.toggle('on',sel[f.k]>=0);
+  var any=el('option',null,f.all);any.value='-1';s.appendChild(any);
+  var order=f.o.map(function(o,j){return j}).filter(function(j){return j!==f.none&&(n[j]||j===sel[f.k])});
+  order.sort(function(a,b){return n[b]-n[a]||a-b});
+  if(f.none!=null&&(n[f.none]||f.none===sel[f.k]))order.push(f.none);
+  order.forEach(function(j){var o=el('option',null,f.o[j][1]+' ('+n[j]+')');o.value=String(j);s.appendChild(o)});
+  s.value=String(sel[f.k]);
+}
+
+function remember(q){
+  var h=[];if(q)h.push('q='+encodeURIComponent(q));
+  F.forEach(function(f){if(sel[f.k]>=0)h.push(f.k+'='+encodeURIComponent(f.o[sel[f.k]][0]))});
+  try{history.replaceState(null,'',h.length?'#'+h.join('&'):location.pathname)}catch(e){}
+}
+
+function search(){
+  var out=$('#out');out.textContent='';var q=tidy($('#q').value.trim());
+  var words=q.split(/\s+/).filter(Boolean);
+  function hit(text){var t=tidy(text);return words.every(function(w){return t.indexOf(w)>=0})}
+  var said=D.posts.map(function(p){return hit(p.q)});
+  F.forEach(function(f){
+    var n=f.o.map(function(){return 0});
+    D.posts.forEach(function(p,i){if(said[i]&&fits(p,f.k))p.g[f.k].forEach(function(j){n[j]++})});
+    fill(f,n);
+  });
+  var chosen=F.some(function(f){return sel[f.k]>=0});
+  $('#clear').hidden=!chosen&&!q;
+  remember(q);
+  if(!q&&!chosen){
     showPins(null);
     out.appendChild(el('h2',null,'Places, most saved first'));
     out.appendChild(placesList(D.places.filter(function(pl){return pl.c})));
     return;
   }
-  var words=q.split(/\s+/).filter(Boolean);
-  function hit(text){var t=tidy(text);return words.every(function(w){return t.indexOf(w)>=0})}
-  var pls=[], plset={}, ps=[], pset={};
-  D.places.forEach(function(pl,i){if(hit(pl.n)){pls.push(pl);plset[i]=1}});
-  D.posts.forEach(function(p,i){if(hit(p.q)){ps.push(p);pset[i]=1}});
-  var n=showPins(function(pin){return pset[pin[2]]||plset[pin[3]]});
-  out.appendChild(el('p','said',pls.length+' place'+(pls.length===1?'':'s')+' and '+ps.length+' post'+(ps.length===1?'':'s')+
+  var ok={}, ps=[], cnt=D.places.map(function(){return 0});
+  D.posts.forEach(function(p,i){if(said[i]&&fits(p)){ok[i]=1;ps.push(p);p.pl.forEach(function(j){cnt[j]++})}});
+  var pls=[];
+  D.places.forEach(function(pl,i){if(cnt[i]&&within(pl)&&(!q||hit(pl.n)))pls.push({n:pl.n,s:pl.s,k:pl.k,c:cnt[i]})});
+  pls.sort(function(a,b){return b.c-a.c});
+  var n=showPins(function(pin){return ok[pin[2]]&&within(D.places[pin[3]])});
+  out.appendChild(el('p','said',ps.length+' post'+(ps.length===1?'':'s')+' at '+pls.length+' place'+(pls.length===1?'':'s')+
     ' match. '+n+' pin'+(n===1?' is':'s are')+' on the map.'));
   if(pls.length){out.appendChild(el('h2',null,'Places'));out.appendChild(placesList(pls))}
   if(ps.length){out.appendChild(el('h2',null,'Posts'));out.appendChild(postsList(ps.slice(0,100)));
@@ -579,12 +678,55 @@ D.pins.forEach(function(pin){
   marks.push(m);
 });
 map.addLayer(layer);
-var q0=decodeURIComponent((location.hash.match(/^#q=(.*)$/)||[])[1]||'');
-$('#q').value=q0;search(q0);
-var t;$('#q').addEventListener('input',function(){clearTimeout(t);t=setTimeout(function(){search($('#q').value)},180)});
-$('form').addEventListener('submit',function(e){e.preventDefault();search($('#q').value)});
+location.hash.slice(1).split('&').forEach(function(kv){
+  var i=kv.indexOf('='),k=kv.slice(0,i),v=decodeURIComponent(kv.slice(i+1));if(i<0)return;
+  if(k==='q')$('#q').value=v;
+  F.forEach(function(f){if(f.k===k)f.o.forEach(function(o,j){if(o[0]===v)sel[k]=j})});
+});
+F.forEach(function(f){$('#f-'+f.k).addEventListener('change',function(e){sel[f.k]=+e.target.value;search()})});
+$('#clear').addEventListener('click',function(){F.forEach(function(f){sel[f.k]=-1});$('#q').value='';search()});
+search();
+var t;$('#q').addEventListener('input',function(){clearTimeout(t);t=setTimeout(search,180)});
+$('form').addEventListener('submit',function(e){e.preventDefault();search()});
 })();
 """
+
+
+MENUS = (("st", "State", "All states"), ("np", "National attraction", "All national parks and sites"),
+         ("pu", "Purpose", "All purposes"), ("tp", "Topic", "All topics"))
+
+
+def menus(hub, places):
+    """The menus over the map, each post's options in them, and each place's state and national
+    attraction (itself or what it sits in). An option is [id for the link, label, posts under it];
+    options run most posts first, and "not worked out yet" last."""
+    per = [hub.facets(p) for p in hub.posts]
+    label = {"st": lambda v: hub.places[v]["name"], "np": lambda v: hub.places[v]["name"],
+             "pu": lambda v: hub.purposes[v]["label"] if v in hub.purposes else NO_PURPOSE[1],
+             "tp": lambda v: hub.topic_label.get(v, v)}
+    out, picks, ats = [], [{} for _ in per], {}
+    for key, name, every in MENUS:
+        n = {}
+        for f in per:
+            for v in f[key]:
+                n[v] = n.get(v, 0) + 1
+        values = sorted(n, key=lambda v: (v == NO_PURPOSE[0], -n[v], label[key](v)))
+        at = {v: i for i, v in enumerate(values)}
+        menu = {"k": key, "n": name, "all": every, "o": [[slugify(label[key](v)), label[key](v), n[v]] for v in values]}
+        if NO_PURPOSE[0] in at:
+            menu["none"] = at[NO_PURPOSE[0]]
+        out.append(menu)
+        for i, f in enumerate(per):
+            picks[i][key] = [at[v] for v in f[key]]
+        ats[key] = at
+    inside = []
+    for p in places:
+        up, chain = p["key"], []
+        while up in hub.places and up not in chain:
+            chain.append(up)
+            up = hub.places[up]["parent"]
+        inside.append({k: [ats[k][u] for u in chain if u in ats[k]] for k in ("st", "np")})
+    return out, picks, inside
 
 
 def index_page(hub, title, extra_links, home=()):
@@ -592,13 +734,15 @@ def index_page(hub, title, extra_links, home=()):
     places = sorted((p for p in hub.places.values()), key=lambda p: (-len(p["posts"]), p["name"]))
     pidx = {p["key"]: i for i, p in enumerate(places)}
     posts = hub.posts
+    facets, picks, inside = menus(hub, places)
     data = {
-        "places": [{"n": p["name"], "s": place_href(p, up=False), "c": len(p["posts"]),
-                    "k": ("spot" if p["spot"] else kind_word(p).lower())} for p in places],
+        "places": [{"n": p["name"], "s": place_href(p, up=False), "c": len(p["posts"]), "m": p["map"],
+                    "k": ("spot" if p["spot"] else kind_word(p).lower()), "g": inside[i]} for i, p in enumerate(places)],
         "posts": [{"c": p["code"], "u": p["user"], "f": post_href(p, up=False), "i": p["url"], "th": p["thumb"],
-                   "t": short(p["caption"], POPUP_CHARS),
-                   "q": " ".join([p["user"], p["name"], p["caption"]] + [hub.places[k]["name"] for k in p["areas"]])}
-                   for p in posts],
+                   "t": short(p["caption"], POPUP_CHARS), "g": picks[i], "pl": [pidx[k] for k in hub.named(p)],
+                   "q": " ".join([p["user"], p["name"], p["caption"]] + [hub.places[k]["name"] for k in hub.named(p)])}
+                   for i, p in enumerate(posts)],
+        "facets": facets,
         "pins": [[lat, lon, i, pidx[k], style, 1 if hub.within(k, set(home)) else 0]
                  for i, p in enumerate(posts) for k, lat, lon, style in p["pins"]],
     }
@@ -607,7 +751,10 @@ def index_page(hub, title, extra_links, home=()):
     links = "".join(f'<a href="{esc(h)}">{esc(t)}</a>' for h, t in extra_links)
     content = (f'<header class="bar"><div><h1>{esc(title)}</h1>'
                f'<p class="sub">{pinned} of {len(posts)} saved posts on the map, at {n_places} places</p></div>'
-               f'<nav class="links">{links}</nav></header>'
+               f'<nav class="links">{links}</nav>'
+               '<nav class="facets" aria-label="Narrow the map">'
+               + "".join(f'<label><span>{esc(name)}</span><select id="f-{key}"></select></label>' for key, name, _ in MENUS)
+               + '<button id="clear" type="button" hidden>Clear</button></nav></header>'
                '<div class="panes"><aside><form role="search"><input id="q" type="search" autocomplete="off" '
                'placeholder="Search captions, creators and places" aria-label="Search captions, creators and places">'
                '</form><div class="legend"><span><i class="pin pin-spot"></i>a spot the post names</span>'
@@ -636,7 +783,7 @@ CSS = """
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 var(--body)}
 a{color:var(--accent)}
-a:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a:focus-visible,input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 h1{font:600 clamp(1.5rem,4vw,2.3rem)/1.1 var(--display);margin:0;text-wrap:balance}
 h2{font:600 1.15rem/1.2 var(--display);margin:0 0 .6rem}
 .sub{margin:.3rem 0 0;color:var(--muted)}
@@ -668,6 +815,14 @@ body.hub{height:100dvh;display:grid;grid-template-rows:auto 1fr}
 .bar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:8px 16px;padding:14px 16px;
   background:var(--card);border-bottom:1px solid var(--line)}
 .bar .links{display:flex;gap:16px;font-weight:700;font-size:.95rem}
+.facets{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:end;gap:8px 12px}
+.facets label{flex:0 1 13rem;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:2px;font-size:.72rem;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted)}
+.facets select{width:100%;min-width:0;font:inherit;font-size:.92rem;letter-spacing:normal;text-transform:none;color:var(--fg);
+  padding:7px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.facets select.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:700}
+#clear{font:700 .92rem var(--body);padding:7px 14px;border-radius:10px;border:1px solid var(--line);
+  background:transparent;color:var(--accent);cursor:pointer}
 .panes{display:grid;grid-template-columns:minmax(17rem,24rem) 1fr;min-height:0}
 aside{overflow:auto;padding:14px 16px;border-right:1px solid var(--line);display:grid;gap:12px;align-content:start;
   background:var(--bg)}
@@ -724,7 +879,9 @@ ul.inline{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px
 .post.solo{grid-template-columns:minmax(0,1fr)}
 .big{width:100%;aspect-ratio:4/5;border-radius:12px;object-fit:cover;display:block}
 .pbody{display:grid;gap:12px;min-width:0}
-.cta{margin:0}
+.cta{margin:0;display:flex;flex-wrap:wrap;gap:8px}
+.button.alt{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.gmap{font-size:.82rem;font-weight:400;color:var(--muted)}
 .button{display:inline-block;padding:9px 18px;border-radius:999px;background:var(--accent);color:var(--card);
   font-weight:700;text-decoration:none}
 .caption{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;max-width:70ch;background:var(--card);
@@ -738,6 +895,7 @@ ul.inline{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px
   .facts,.post{grid-template-columns:minmax(0,1fr)}
   .post .big{max-width:16rem}
   .card{grid-template-columns:72px minmax(0,1fr);gap:12px}
+  .facets label{flex:1 1 9rem}
   .thumb{width:72px;height:90px}
   dl{grid-template-columns:1fr;gap:2px}
   dd{margin-bottom:8px}
@@ -813,10 +971,11 @@ def main(argv=None):
     pins = load_yaml(os.path.join("data", "pins.yaml"))
     media = load_yaml(os.path.join("data", "media.yaml"))
     topics = load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {}
+    purposes = load_yaml(os.path.join("config", "purposes.yaml")).get("purposes") or None
     media_dir = os.path.expanduser(os.environ.get("INSTAGRAM_MEDIA_DIR") or MEDIA_DEFAULT)
     scoped = [s for s in saves if in_pilot(s, tags.get(s["code"]), pilot)]
 
-    hub = Hub(scoped, tags, Places.load(), pins, media, topics, media_dir)
+    hub = Hub(scoped, tags, Places.load(), pins, media, topics, media_dir, purposes)
     out = os.path.abspath(args.out or cache("hub"))
     title = f"Saved places: {args.pilot.replace('-', ' ').title()}" if args.pilot else "Saved places"
     thumbs = build(hub, out, title, (pilot or {}).get("cities") or ())

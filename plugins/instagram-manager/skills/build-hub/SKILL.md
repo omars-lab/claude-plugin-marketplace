@@ -12,7 +12,20 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   - the thumbnail;
   - @creator;
   - the caption's first 140 characters or so;
-  - a link to the post's page and a link to Instagram.
+  - links to the post's page, to Instagram, and to the pin's place in Google Maps (a Google search
+    for its name and area, not an exact Google place yet).
+
+  Above the map is a row of menus: **State**, **National attraction**, **Purpose** and **Topic**.
+  Each option shows how many posts it holds once the other menus and the search are applied, most
+  posts first.
+  - A national attraction is a park or spot whose name, or the name OpenStreetMap found for it, says
+    National Park, Seashore, Monument and so on. Picking one (or a state) keeps only the pins and
+    places inside it, so a road-trip post that names a park shows just its park pins.
+  - A post's purpose (Eat & drink, Stay, Adventure & outdoors, See & do) comes from the kinds of
+    place it names: a café, a hotel, a waterfall, a museum. A post that names only towns shows as
+    "Not worked out yet" until the tagger gives it `purposes`. `config/purposes.yaml` in the data
+    repo, when there, replaces the built-in list (the same shape as `PURPOSES` in the script).
+  - The picks go into the page's link (`index.html#np=...&pu=...`), so a view can be bookmarked.
 
   Beside the map is the list of places with how many posts name each, and a search box. The search
   looks through captions, creators and place names. On a phone, the map sits above the list.
@@ -24,8 +37,9 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   A card shows the thumbnail (or a grey box), @creator, the caption's own words for the place
   (highlighted), the post's topics, and links to the post's page and to Instagram.
 - **`posts/<code>.html`: one page per post.** The thumbnail, the full caption, the creator, the
-  date it was saved, its topics and collections, a link to every place it names, and the
-  Instagram link.
+  date it was saved, its topics and collections, a link to every place it names (each with a
+  Google Maps link), and the Instagram link; a post that names one place also gets an "Open in
+  Google Maps" button.
 
 Nothing on these pages is typed by hand: every build writes them fresh from the data. The pages
 hold captions, so they stay in `.cache/` and never go into git. The script makes no Instagram

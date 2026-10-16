@@ -213,6 +213,43 @@ class Hub(unittest.TestCase):
         self.assertIn("CaseA.html", posts)
         self.assertIn("casea-2.html", posts)
 
+    def test_menus_sort_by_posts_and_tell_each_post_its_options(self):
+        places = {"places": {**PLACES["places"],
+                             # the name OpenStreetMap found says National Park; the tagged name does not
+                             "Fixture Park": {**PLACES["places"]["Fixture Park"],
+                                              "found": "Fixture National Park, Fixture State"},
+                             "Other National Park": {"kind": "park", "in": "Fixture State", "lat": 12.0, "lon": 22.0},
+                             "Other State Park": {"kind": "park", "in": "Fixture State", "lat": 12.5, "lon": 22.5}},
+                  "aliases": PLACES["aliases"]}
+        tags = {**TAGS, "STATE1": {"topics": ["travel"], "cities": ["Other National Park", "Other State Park"]},
+                "TOWN1": {**TAGS["TOWN1"], "purposes": ["eat", "not-a-purpose"]}}
+        self.write("data/places.yaml", places)
+        self.write("data/tags.yaml", tags)
+        self.build("--pilot", "fixture")
+        d = self.data()
+        menus = {m["k"]: m for m in d["facets"]}
+        self.assertEqual([o[1:] for o in menus["np"]["o"]],
+                         [["Fixture Park", 2], ["Other National Park", 1]])   # most posts first; no state park
+        self.assertEqual(menus["st"]["o"][0][:2], ["fixture-state", "Fixture State"])
+        pu = menus["pu"]
+        self.assertEqual(pu["o"][pu["none"]][1], "Not worked out yet")
+        self.assertEqual(pu["none"], len(pu["o"]) - 1)                         # always last
+        posts = {p["c"]: p for p in d["posts"]}
+
+        def opts(code, key):
+            return sorted(menus[key]["o"][j][1] for j in posts[code]["g"][key])
+        self.assertEqual(opts("PARK1", "np"), ["Fixture Park"])
+        self.assertEqual(opts("PARK1", "pu"), ["Adventure & outdoors"])         # a waterfall in a park
+        self.assertEqual(opts("TOWN1", "pu"), ["Eat & drink"])                  # from the tagger; unknown dropped
+        self.assertEqual(opts("VILL1", "pu"), ["Not worked out yet"])           # only a village
+        self.assertEqual(opts("PARK1", "tp"), ["Kids", "Travel"])
+        self.assertEqual(opts("NOTAG", "st"), [])
+        inside = {pl["n"]: [menus["np"]["o"][j][1] for j in pl["g"]["np"]] for pl in d["places"]}
+        self.assertEqual(inside["Example Falls"], ["Fixture Park"])             # a spot sits in its park
+        self.assertEqual(inside["Fixture Town"], [])
+        self.assertTrue(all(p["m"] for p in d["places"]))                      # every pin's Google Maps link
+        self.assertIn("Open in Google Maps", self.page("posts/TOWN1.html"))    # names one place: a button
+
     def test_unknown_pilot_stops(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             build_hub.main(["--pilot", "nowhere"])
