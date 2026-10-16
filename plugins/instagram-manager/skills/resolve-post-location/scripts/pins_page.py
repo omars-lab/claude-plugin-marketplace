@@ -60,7 +60,9 @@ def spot_row(i, e, review):
         where = f'<div class="addr">{esc(e["found"])}</div>' if e.get("found") else ""
         found = f'<div class="found"><b>{esc(str(e.get("name") or ""))}</b>{kind}{where}</div>'
     elif review:
-        found = '<div class="found none">OpenStreetMap found nothing</div>'
+        what = "only the street" if str(e.get("why") or "").startswith("only the street") else "nothing"
+        at = f' at {esc(str(e["address"]))}' if isinstance(e.get("address"), str) else ""
+        found = f'<div class="found none">OpenStreetMap found {what}{at}</div>'
     dist = (f'<span class="km">{e["km"]:g} km from {esc(str(e.get("near") or ""))}</span>'
             if isinstance(e.get("km"), (int, float)) else f'<span class="km">near {esc(str(e.get("near") or ""))}</span>')
     links = []

@@ -654,7 +654,7 @@ def move_street_pins(pins, review):
         if not gone:
             continue
         review[code] = (review.get(code) or []) + [
-            {**{k: e[k] for k in ("said", "near", "name", "address", "from") if k in e},
+            {**{k: e[k] for k in ("said", "near", "name", "address", "map", "from") if k in e},
              "why": f"only the street was found near {e.get('near')}, not the house", "street_tried": True}
             for e in gone]
         keep = [e for e in entries if e not in gone]

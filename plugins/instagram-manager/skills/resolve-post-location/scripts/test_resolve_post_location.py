@@ -374,6 +374,8 @@ class Merge(Home):
         self.assertEqual([p["said"] for p in self.read("data/pins.yaml")["VENUA"]], ["Example Nook"])
         moved = self.spot("data/pins-review.yaml", "VENUA", "Example Grill")
         self.assertEqual((moved["street_tried"], "lat" in moved), (True, False))
+        self.assertIn("OpenStreetMap found only the street at 12 Example St, Fixture Town",
+                      pins_page.spot_row(0, moved, True))
         self.assertTrue(rpl.at_the_house("12, Example Street, Fixture Town", "12 Example St"))
         self.assertFalse(rpl.at_the_house("Example Street, 12345, Fixture Town", "12 Example St"))   # a postcode
         self.assertTrue(rpl.at_the_house("Example Street", "Example St"))   # no house number to match
