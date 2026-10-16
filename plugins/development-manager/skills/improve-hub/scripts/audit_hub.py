@@ -30,6 +30,7 @@ WRITE_ROUTES = (
     r"|def do_(POST|PUT|PATCH|DELETE)"
     r"|methods *= *\[[^]]*(POST|PUT|PATCH|DELETE)"
 )
+COMMENT_LINE = re.compile(r"\s*(//|#|\*|/\*|<!--)")
 SITEMAP_STALE_DAYS = 14
 COMMENT_PORTS = range(8766, 8800)  # where page-comments looks for a free port
 EPHEMERAL = 49152  # ports the system hands out for a moment
@@ -120,6 +121,10 @@ def audit(repo: Path, hub_id: str | None, hubs_repo: Path | None):
     for rid, r in runners.items():
         port = r.get("port")
         hits = git_grep(repo, str(port), word=True, exclude=("hub.yaml", "*.md", "*.tsv", "*.json.lock", "yarn.lock"))
+        # A comment that names the port doesn't set it.
+        hits = [h for h in hits if not COMMENT_LINE.match(h.split(":", 2)[-1])]
+        # Show a line that sets the port, such as `port = 7104` or `default=7104`, before a usage line.
+        hits.sort(key=lambda h: not re.search(r"(port\w*|default)\s*[=:]", h.split(":", 2)[-1], re.I))
         if hits:
             out.append(row("P1", f"port {port} pinned ({rid})", "PASS", hits[0][:160]))
         else:
