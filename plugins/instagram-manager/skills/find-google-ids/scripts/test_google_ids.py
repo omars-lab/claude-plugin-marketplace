@@ -281,12 +281,17 @@ class Ids(unittest.TestCase):
         self.assertIn("1 kept ids no spot uses any more (its spot moved or was dropped); --prune drops them: "
                       "osm:node/2", out)
         self.assertIn("osm:node/2", self.kept()[1])          # a dry run drops nothing
+        waiting = os.path.join(self.root, ".cache", google_ids.TO_PICK)
+        with open(waiting, "w", encoding="utf-8") as fh:     # one still waiting, one under the moved key
+            json.dump({k: {"query": "q", "ids": ["ID_X"]} for k in ("osm:node/1", "osm:node/2")}, fh)
         out, _ = self.run_ids("--pilot", "fixture", "--prune")
         self.assertIn("dropping osm:node/2, picked by hand", out)   # a person's pick is printed first
         self.assertIn("dropped 1 kept ids", out)
         kept = self.kept()[1]
         self.assertNotIn("osm:node/2", kept)
         self.assertIn("osm:node/1", kept)
+        with open(waiting, encoding="utf-8") as fh:
+            self.assertNotIn("osm:node/2", json.load(fh))   # the moved key leaves the waiting list too
 
     def test_another_pilots_ids_are_not_stale(self):
         kept = {"osm:node/9": {"query": "Far Cafe, Far Town", "verdict": "match", "id": "ID_FAR"}}

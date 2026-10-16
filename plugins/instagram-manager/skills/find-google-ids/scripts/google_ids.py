@@ -271,7 +271,12 @@ def main(argv=None):
             del kept[k]
         if stale:
             write_kept(kept)
-        log("google_prune", dropped=len(stale))
+        gone = stale_keys(to_pick, bh.load_saves(saves_path), tags, pins, placed)
+        for k in gone:   # waiting for a person under a key no spot uses any more
+            del to_pick[k]
+        if gone:
+            write_to_pick(to_pick)
+        log("google_prune", dropped=len(stale), waiting_dropped=len(gone))
         print(f"dropped {len(stale)} kept ids that no spot uses any more")
         stale = []
 

@@ -51,7 +51,8 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
      really in another town (`really_in`). A box round the wrong town would waste the search. Fix
      their area first (**resolve-post-location**, "A spot in the wrong area"), then run this again.
    - **"kept ids no spot uses any more"**: the spot moved to a new pin or town, which gives it a
-     new key, or it was dropped. `--prune` (`GOOGLE_PRUNE=1`) drops them. It first prints any that
+     new key, or it was dropped. `--prune` (`GOOGLE_PRUNE=1`) drops them, and any spot still
+     waiting for a person under such a key. It first prints any that
      a person or Claude picked, so a moved spot's pick can be made again. Stale ids are worked
      out over every save, not only the pilot, so another area's ids are never dropped.
 2. **Search.** `make google-ids` (`GOOGLE_LIMIT=` for a trial). One search per spot, even when several
