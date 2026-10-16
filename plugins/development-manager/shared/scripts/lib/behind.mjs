@@ -64,15 +64,29 @@ export async function startBehind(command, { cwd, port, timeoutMs = 30000, stdio
       resolve(code);
     });
   });
+  // A stop while it is still starting: a signal ends this process without an
+  // "exit" event, so stop the page server here, then let the signal end us.
+  const onSignal = (signal) => {
+    kill("SIGTERM");
+    process.removeListener("exit", onExit);
+    process.kill(process.pid, signal);
+  };
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
   const until = Date.now() + timeoutMs;
-  for (;;) {
-    if (code !== null) throw Object.assign(new Error(`the page server stopped before it was ready (exit ${code}): ${line}`), { exitCode: code });
-    if (await accepts(port)) return { child, port, exited, line, kill };
-    if (Date.now() > until) {
-      kill("SIGTERM");
-      throw Object.assign(new Error(`the page server did not open port ${port} within ${Math.round(timeoutMs / 1000)} s: ${line}`), { exitCode: 1 });
+  try {
+    for (;;) {
+      if (code !== null) throw Object.assign(new Error(`the page server stopped before it was ready (exit ${code}): ${line}`), { exitCode: code });
+      if (await accepts(port)) return { child, port, exited, line, kill };
+      if (Date.now() > until) {
+        kill("SIGTERM");
+        throw Object.assign(new Error(`the page server did not open port ${port} within ${Math.round(timeoutMs / 1000)} s: ${line}`), { exitCode: 1 });
+      }
+      await new Promise((r) => setTimeout(r, 150));
     }
-    await new Promise((r) => setTimeout(r, 150));
+  } finally {
+    process.removeListener("SIGINT", onSignal);
+    process.removeListener("SIGTERM", onSignal);
   }
 }
 

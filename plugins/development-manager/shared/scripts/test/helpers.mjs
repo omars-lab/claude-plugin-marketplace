@@ -59,7 +59,8 @@ export function startChild(script, args, { cwd } = {}) {
     err: () => stderr,
     stop: () =>
       new Promise((res) => {
-        if (child.exitCode !== null) return res(child.exitCode);
+        // Gone already, by an exit or by a signal (which leaves exitCode null).
+        if (child.exitCode !== null || child.signalCode !== null) return res(child.exitCode ?? child.signalCode);
         child.once("exit", (code) => res(code));
         child.kill("SIGTERM");
       }),

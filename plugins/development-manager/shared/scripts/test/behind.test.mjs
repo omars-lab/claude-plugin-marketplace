@@ -110,6 +110,30 @@ test("when the page server stops, the comment server stops with its code", async
   }
 });
 
+test("a stop while the page server is still starting stops the page server too", async () => {
+  const { repo, cleanup } = tempRepo();
+  // Writes its pid, then waits before it opens a port, so the stop lands mid-start.
+  writeFileSync(join(repo, "slow.js"), `require("fs").writeFileSync("slow.pid", String(process.pid)); setTimeout(() => require("http").createServer(() => {}).listen(+process.env.PORT, "127.0.0.1"), 20000);`);
+  const port = await freePort();
+  const s = startChild(CLI, ["serve", "--behind", `${JSON.stringify(process.execPath)} slow.js`, "--port", String(port), "--repo", repo, "--throwaway"]);
+  try {
+    const pid = Number(await until(() => {
+      try {
+        return require_(join(repo, "slow.pid"));
+      } catch {
+        return null;
+      }
+    }, 15000));
+    assert.ok(alive(pid));
+    s.child.kill("SIGTERM");
+    await until(() => !alive(pid), 8000);
+    assert.ok(!/Comment server on/.test(s.out()), "it never got as far as serving");
+  } finally {
+    await s.stop();
+    cleanup();
+  }
+});
+
 test("a busy port fails before the page server starts", async () => {
   const { repo, cleanup } = tempRepo();
   seed(repo);

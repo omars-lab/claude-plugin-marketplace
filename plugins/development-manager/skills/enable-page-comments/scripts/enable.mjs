@@ -1056,7 +1056,8 @@ export async function check(repo, { quiet = false } = {}) {
       // A page server started --behind may take a while to come up.
       const t = setTimeout(() => reject(new Error(`the server did not start: ${started.trim()}`)), config.serve.behind ? 40000 : 10000);
       const look = () => {
-        const m = /127\.0\.0\.1:(\d+)/.exec(started);
+        // The comment server's own line: a page server started --behind prints its address too.
+        const m = /Comment server on http:\/\/127\.0\.0\.1:(\d+)/.exec(started);
         if (m) {
           clearTimeout(t);
           resolvePort(Number(m[1]));

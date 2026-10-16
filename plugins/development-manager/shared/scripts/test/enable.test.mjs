@@ -225,7 +225,9 @@ test("check proves the loop with --behind, starting the page server and stopping
   try {
     seed(repo);
     const port = await firstFreePort(20750);
-    const cmd = `${JSON.stringify(process.execPath)} -e "require('http').createServer((q,s)=>{s.writeHead(200,{'content-type':'text/html'});s.end('<html><body>Hi</body></html>')}).listen(+process.env.PORT,'127.0.0.1')"`;
+    // Like a real dev server, it prints its own address first and opens its port a moment later,
+    // so the check must read the comment server's address, not this one.
+    const cmd = `${JSON.stringify(process.execPath)} -e "console.log('open http://127.0.0.1:'+process.env.PORT+'/');setTimeout(()=>require('http').createServer((q,s)=>{s.writeHead(200,{'content-type':'text/html'});s.end('<html><body>Hi</body></html>')}).listen(+process.env.PORT,'127.0.0.1'),500)"`;
     assert.equal(enable(["--behind", cmd, "--port", String(port)], repo).code, 0);
     const r = enable(["--check"], repo);
     assert.equal(r.code, 0, r.stdout + r.stderr);

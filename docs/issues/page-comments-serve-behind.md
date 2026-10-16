@@ -39,3 +39,20 @@ the problem, not any one bug.
 A site server that listens on the network for a phone (for example a `--lan` flag) cannot go
 behind the comment server, which only listens on `127.0.0.1`. Such a repo keeps the plain
 command for that case; the phone reaches comments through `--phone` instead.
+
+## Two bugs found on the first real repo (1.6.3)
+
+Running `enable --check` in a repo whose site server prints its own address turned up two bugs.
+
+- **The check tested the wrong server.** It took the first `127.0.0.1:<port>` in the output as
+  the comment server's address. The site's server printed its address first ("open
+  http://127.0.0.1:61181/"), so the check loaded the site directly and reported "no script tag".
+  It now reads only the comment server's own line, `Comment server on http://127.0.0.1:<port>`.
+- **A stop during start-up left the site's server running.** The check stops its comment server
+  when it is done; if that stop came while the site's server was still starting, the CLI died
+  from the signal without its exit handler, and the site's server kept running with no parent.
+  The check then waited on it. `startBehind` now catches SIGINT and SIGTERM while it waits,
+  stops the site's server's process group, and then stops itself with the same signal.
+
+Both have a test that fails on 1.6.2: the check's fake site now prints its own address first,
+and a new test stops the CLI while a slow site is still starting.
