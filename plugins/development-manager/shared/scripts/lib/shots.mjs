@@ -113,7 +113,25 @@ export function shotTarget(store, env = process.env) {
   const local = { kind: "local", base: join(store.dir, "shots"), dir, from: setting.from };
   if (!isDir(root)) return { ...local, reason: "iCloud Drive is not on this Mac" };
   if (!inside(dir, root)) return { ...local, reason: "the shot folder is not inside iCloud Drive" };
-  return { kind: "icloud", base: join(dir, "page-comments", basename(store.repo)), dir, from: setting.from };
+  return { kind: "icloud", base: join(dir, "page-comments", repoName(store.repo)), dir, from: setting.from };
+}
+
+/**
+ * The repo's name for its picture folder. A git worktree is named after the
+ * main checkout it belongs to, so pictures from every worktree of one repo land
+ * in one folder. Its `.git` is a file reading `gitdir: <main>/.git/worktrees/<name>`.
+ */
+export function repoName(repo) {
+  try {
+    const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(join(repo, ".git"), "utf8"));
+    const gitdir = m && resolve(repo, m[1].trim());
+    if (gitdir && basename(dirname(gitdir)) === "worktrees" && basename(dirname(dirname(gitdir))) === ".git") {
+      return basename(dirname(dirname(dirname(gitdir))));
+    }
+  } catch {
+    // `.git` is a folder (the main checkout) or is missing
+  }
+  return basename(repo);
 }
 
 /** The file name a shot is saved under. The server and command line pick it, never the page. */

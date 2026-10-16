@@ -22,6 +22,7 @@ import {
   icloudRoot,
   isShotName,
   recordShotError,
+  repoName,
   saveShot,
   shotName,
   shotPath,
@@ -202,6 +203,25 @@ test("the shot folder: repo config, then the global config, then iCloud Drive's 
   } finally {
     rmSync(root, { recursive: true, force: true });
     cleanup();
+  }
+});
+
+test("a git worktree's pictures go in the main checkout's folder", () => {
+  const root = mkdtempSync(join(tmpdir(), "pc-wt-"));
+  // Outside any commit hook's settings, so git works on the temp repos only.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+  const git = (...args) => assert.equal(spawnSync("git", args, { env, encoding: "utf8" }).status, 0, args.join(" "));
+  try {
+    const main = join(root, "sample-site");
+    git("init", "-q", main);
+    git("-C", main, "-c", "user.name=Sam", "-c", "user.email=sam@example.com", "commit", "-q", "--allow-empty", "-m", "start");
+    const wt = join(root, "sample-site-feature");
+    git("-C", main, "worktree", "add", "-q", wt);
+    assert.equal(repoName(main), "sample-site");
+    assert.equal(repoName(wt), "sample-site");
+    assert.equal(repoName(join(root, "no-repo-here")), "no-repo-here");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

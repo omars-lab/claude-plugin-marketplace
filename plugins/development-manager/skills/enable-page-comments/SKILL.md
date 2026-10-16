@@ -29,7 +29,7 @@ The list of changes is kept in `.page-comments/install.json`.
 
 When Omar saves a comment, the page takes a picture of the element and saves it as a PNG.
 Pictures are not kept in the repo, so they never reach git.
-They go to one folder per repo and thread: `<shotsDir>/page-comments/<repo>/<thread>/`.
+They go to one folder per repo and thread: `<shotsDir>/page-comments/<repo>/<thread>/`. A git worktree uses its main checkout's name, so all of a repo's pictures stay in one folder.
 
 `shotsDir` is chosen in this order:
 1. `--shots-dir <path>`, when given;
