@@ -1,6 +1,6 @@
 ---
 name: manage-development
-description: Entry point for development-manager. Sends a request about local web pages to the right skill - turning page comments on, checking or removing them, or answering the comments left on a page. Does no work itself.
+description: Entry point for development-manager. Sends a request about local web pages to the right skill - turning page comments on, checking or removing them, answering the comments left on a page, or reviewing and improving a hub. Does no work itself.
 ---
 
 # Manage development
@@ -13,6 +13,7 @@ It reads the request, picks the skill below, and follows that skill's SKILL.md.
 | "turn on comments", "let me comment on the page", "set up page comments", "check comments work", "remove page comments", "undo" | `enable-page-comments` (with `--check` or `--undo` as asked) |
 | "comment from my phone", "use it on the phone", "Tailscale", "turn the phone off" | `enable-page-comments` with `--phone` (or `--phone --undo`) |
 | A watcher line such as `ev=thread_new`; "answer the comments", "go through the page comments", "fix what I marked" | `answer-page-comments` |
+| "improve this hub", "review the hub", "what's wrong with this hub", "polish the dashboard", "check it before I share it" | `improve-hub` |
 | "what is this plugin", "what can you do" | `introduce` |
 
 ## Task management
