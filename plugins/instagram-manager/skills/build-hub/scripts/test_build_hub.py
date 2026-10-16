@@ -199,6 +199,23 @@ class Hub(unittest.TestCase):
         self.assertNotIn("Example Baguette", self.page("posts/TOWN1.html"))
         self.assertIn("eat or stay posts: 0 open a spot OpenStreetMap placed, 1 one it doesn't list", out)
 
+    def test_a_spot_openstreetmap_does_not_list_gets_no_pin_at_a_parks_middle(self):
+        # A park's or region's middle can be a lake or a bay: a spot drawn there sits in the water.
+        self.write("data/tags.yaml", {**TAGS, "PARK2": {**TAGS["PARK2"], "purposes": ["eat", "see-do"]}})
+        self.write("data/pins-review.yaml", {
+            "PARK2": [{"said": "Example Rock", "asked": "Example Rock", "near": "Fixture Park",
+                       "why": "not found near Fixture Park"},
+                      {"said": "Sample Kitchen", "asked": "Sample Kitchen", "near": "Fixture Park",
+                       "why": "not found near Fixture Park"}]})
+        self.build("--pilot", "fixture")
+        d = self.data()
+        names = [p["n"] for p in d["places"]]
+        park2 = [(names[pl], style) for _, _, post, pl, style, _ in d["pins"] if d["posts"][post]["c"] == "PARK2"]
+        self.assertEqual(park2, [("Example Falls", "spot"), ("Fixture Park", "area")])   # the park's own pin, no spot there
+        icon = {p["n"]: p["ic"] for p in d["places"]}
+        self.assertEqual(icon["Example Rock"], "peak")            # a rock, not food, though the post is tagged eat
+        self.assertIn("Example Rock", self.page("places/fixture-park.html"))   # still listed on its area's page
+
     def test_a_spot_found_only_as_its_street_is_shown_at_its_town(self):
         self.write("data/pins-review.yaml", {
             "TOWN1": [{"said": "@examplegrill", "name": "Example Grill", "near": "Fixture Town",

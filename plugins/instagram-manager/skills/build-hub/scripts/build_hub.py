@@ -373,7 +373,11 @@ class Hub:
             if e.get("placed"):   # not found on OpenStreetMap: shown at its town
                 if not near or near not in self.places:
                     continue
-                e = {**e, "lat": self.places[near]["lat"], "lon": self.places[near]["lon"]}
+                # Only a town's middle is a fair stand-in. A region's or park's middle is often a lake or a
+                # bay, so a spot there gets no pin of its own and the post's pin falls back to the area.
+                town = ICON_OF_KIND.get(self.places[near]["kind"]) == "town"
+                e = {**e, "lat": self.places[near]["lat"] if town else None,
+                     "lon": self.places[near]["lon"] if town else None}
             if near and e["name"].strip().lower() == near.lower():   # the spot is the area itself
                 self._name_post(self.places[near], code, said)
                 shot(near, e["name"])
@@ -646,7 +650,7 @@ ICON_WORDS = [(g, re.compile(r"\b(" + words + r")\b", re.I)) for g, words in (
     ("beach", r"beach|cove|pier"),
     ("view", r"overlook|vista|viewpoint|lookout"),
     ("trail", r"trail|trailhead"),
-    ("peak", r"peak|summit|mount|mt"),
+    ("peak", r"peak|summit|mount|mt|rocks?"),
     ("nature", r"park|gardens?|preserve|reserve|forest"),
     ("culture", r"museum|gallery"),
     ("shop", r"market|shop|store|mall|boutique"))]
@@ -654,7 +658,8 @@ ICON_WORDS = [(g, re.compile(r"\b(" + words + r")\b", re.I)) for g, words in (
 
 def icon_of(hub, p):
     """Which icon a place's pin carries: by its kind, else (a spot) the words in its name, else what
-    every post naming it is for (eat or stay), else a plain spot."""
+    every post naming it is only for (eat or stay), else a plain spot. A post that is for several
+    things (a trip roundup tagged eat and see) says nothing about any one of its spots."""
     g = None if p["kind"] in NOT_A_KIND else ICON_OF_KIND.get(p["kind"])
     if g or not p["spot"]:
         return g or "spot"
@@ -663,7 +668,7 @@ def icon_of(hub, p):
         return g
     tagged = [set(hub.post(c)["tagged_purposes"]) for c in p["posts"]]
     for purpose in ("stay", "eat"):
-        if tagged and all(purpose in t for t in tagged):
+        if tagged and all(t == {purpose} for t in tagged):
             return purpose
     return "spot"
 
