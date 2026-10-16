@@ -165,8 +165,7 @@ class Ids(unittest.TestCase):
         self.run_ids("--pilot", "fixture")
         self.calls.clear()
         self.run_ids("--pilot", "fixture")
-        self.assertEqual(sorted(q for q, _, _ in self.calls), ["Example Grill, Fixture Town", "Pho, Fixture Town"])
-        self.calls.clear()
+        self.assertEqual(self.calls, [])                     # kept, or waiting for a person: no second search
         self.run_ids("--pilot", "fixture", "--refresh", "--only", "osm:node/1")
         self.assertEqual([q for q, _, _ in self.calls], ["Example Tacos, Fixture Town"])
 
@@ -193,6 +192,10 @@ class Ids(unittest.TestCase):
         self.assertEqual(left["osm:node/2"]["query"], "Example Grill, Fixture Town")
         for google_words in ("Example Grill & Bar", "1 Google Way", "restaurant", "OPERATIONAL", "name", "address"):
             self.assertNotIn(google_words, text)             # ids only, nothing else of Google's
+        searched = len(self.calls)
+        out, _ = self.run_ids("--pilot", "fixture")
+        self.assertEqual(len(self.calls), searched)          # waiting for a person: not searched again
+        self.assertIn("2 waiting for a person to pick", out)
         self.run_ids("--pilot", "fixture", "--pick", "osm:node/2=ID_GRILL_A", "--none", "osm:node/3")
         with open(path) as fh:
             self.assertEqual(json.load(fh), {})              # picked or marked none: off the list

@@ -25,7 +25,8 @@ kept by name.
 
 data/google.yaml is rewritten after every spot, so a run stopped by the day's cap (HTTP 429 "per
 day") keeps what it found; the same command tomorrow carries on. A spot already there with the same
-search text is skipped (--refresh searches it again).
+search text is skipped, and so is one whose candidates already wait for a person with the same
+search text (--refresh searches either again).
 
 A spot with no pin that the locator says is really in another town (`really_in`) is not searched:
 the box would sit round the wrong town. It is listed to fix its area first. A kept id whose spot
@@ -229,13 +230,16 @@ def main(argv=None):
         stale = []
 
     only = {k.strip() for k in (args.only or "").split(",") if k.strip()}
-    todo, no_box, wrong = [], [], []
+    todo, no_box, wrong, waiting = [], [], [], []
     for k in sorted(spots):
         e, codes = spots[k]
         if only and k not in only:
             continue
         q = gp.query_for(e)
         if not args.refresh and isinstance(kept.get(k), dict) and kept[k].get("query") == q:
+            continue
+        if not args.refresh and isinstance(to_pick.get(k), dict) and to_pick[k].get("query") == q:
+            waiting.append(k)   # searched already: its candidates wait for a person, so no second call
             continue
         if e.get("placed") and e.get("really_in"):
             wrong.append((k, e))   # searching round the wrong town would waste a call
@@ -248,7 +252,8 @@ def main(argv=None):
         todo.append((k, e, q, box))
     if args.limit is not None:
         todo = todo[:args.limit]
-    print(f"{len(spots)} spots in scope; {len(todo)} to search, {len(no_box)} with no box to search in")
+    print(f"{len(spots)} spots in scope; {len(todo)} to search, {len(no_box)} with no box to search in"
+          + (f", {len(waiting)} waiting for a person to pick (the hub's decisions page)" if waiting else ""))
     if wrong:
         print(f"{len(wrong)} not searched: filed under the wrong area, fix its area first "
               "(resolve-post-location, \"A spot in the wrong area\"):")
