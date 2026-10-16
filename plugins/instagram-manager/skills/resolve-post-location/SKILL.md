@@ -68,6 +68,8 @@ Each entry in `data/pins-review.yaml` says why it is there. Edit it by hand:
 - **`lookup: "Other Name"`**: the next `--merge` searches that text instead of the caption's
   words. A person wrote it, so there is no quote check. If it is found within reach, it moves to
   `pins.yaml`, with `asked:` showing what was searched, and keeps its `lookup:`.
+- **`ok: true`**: the find is right after all (a different name for the same place, or a spot
+  really that far out). The next `--merge` moves it to `pins.yaml` as found, marked `by: hand`.
 - **`near:`** can be changed to another area in `data/places.yaml`.
 - **`drop: true`** leaves the entry out for good. On a pin in `pins.yaml` it does the same: the
   next `--merge` moves the pin to review, and the hub leaves it out.
@@ -76,7 +78,7 @@ Each entry in `data/pins-review.yaml` says why it is there. Edit it by hand:
 - Deleting all of a save's entries sends the save back to the agent on the next round.
 
 **These fixes survive a re-read.** A `--redo` round or the video's spots merged again never
-replaces an entry with `lookup:`, `drop: true` or `by: hand`, and the agent's spots with the same
+replaces an entry with `lookup:`, `ok: true`, `drop: true` or `by: hand`, and the agent's spots with the same
 `said` are left out for that save, whatever area it files them under this time. Deleting a wrong
 pin is not a fix, because the next re-read finds it again; mark it `drop: true` instead.
 

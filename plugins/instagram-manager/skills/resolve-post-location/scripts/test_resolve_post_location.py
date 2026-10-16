@@ -353,6 +353,25 @@ class Merge(Home):
         self.assertEqual((p["name"], p["asked"]), ("Near Tower", "Far Away Tower, Fixture Town"))
         self.assertNotIn("Far Away Tower", [e["said"] for e in self.read("data/pins-review.yaml")["TOWNA"]])
 
+    def test_a_review_entry_marked_ok_is_pinned_as_found_and_kept(self):
+        with mock.patch.dict(OSM, {"Example Museum": [hit("Example Baguette", 39.99, -120.004, "bakery", 21)]}):
+            self.locate()
+            review = self.read("data/pins-review.yaml")
+            for e in review["LISTA"]:
+                if e["said"] == "Example Museum":
+                    e["ok"] = True                                     # a person says the find is right
+            self.write("data/pins-review.yaml", review)
+            self.assertIn("1 review entries found", self.run_script("--merge"))
+            p = self.spot("data/pins.yaml", "LISTA", "Example Museum")
+            self.assertEqual((p["name"], p["osm"], p["by"]), ("Example Baguette", "node/21", "hand"))
+            self.assertNotIn("why", p)
+            self.assertNotIn("ok", p)
+            self.agent(self.run_script("--prepare", "--pilot", "fixture", "--redo").split())
+            self.run_script("--merge")                                 # the agent reads every save again
+        self.assertEqual([p.get("by") for p in self.read("data/pins.yaml")["LISTA"] if p["said"] == "Example Museum"],
+                         ["hand"])
+        self.assertNotIn("Example Museum", [e["said"] for e in self.read("data/pins-review.yaml").get("LISTA") or []])
+
     def test_hand_fixes_survive_a_re_read(self):
         self.locate()
         review = self.read("data/pins-review.yaml")

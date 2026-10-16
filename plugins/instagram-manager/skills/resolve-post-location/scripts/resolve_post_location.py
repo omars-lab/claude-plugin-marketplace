@@ -80,6 +80,9 @@ Fixing by hand
     to another area in data/places.yaml. A found spot moves to pins.yaml and keeps its `lookup:`.
   - A wrong spot: add `drop: true`, to a review entry or to a pin. The next --merge moves a dropped
     pin to review, and the hub leaves it out.
+  - A review entry whose find is right ("found Example Mall, a different name", "31 km from
+    Example Town" when the spot really is there): add `ok: true`, and the next --merge moves it to
+    pins.yaml as found, marked `by: hand`.
   - A pin a person placed or okayed: write it in pins.yaml with `by: hand`.
   Each of these survives a re-read (--redo, or the video's spots merged again): it is never
   replaced, and the agent's spots with the same `said` are left out for that save, whatever area
@@ -563,10 +566,27 @@ def prepare(args, saves, tags, places, pilot, done):
 
 # --- merge ---------------------------------------------------------------------------------------
 
+PIN_KEYS = ("name", "said", "near", "kind", "lat", "lon", "km", "osm", "wikidata", "found", "map", "asked",
+            "address", "from")
+
+
+def okayed(e):
+    """A review entry a person marked `ok: true` that holds a find to pin, else None."""
+    if not (isinstance(e, dict) and e.get("ok") is True and not e.get("drop") and isinstance(e.get("said"), str)
+            and isinstance(e.get("near"), str) and isinstance(e.get("name"), str)):
+        return None
+    try:
+        float(e["lat"]), float(e["lon"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return {**{k: e[k] for k in PIN_KEYS if k in e}, "by": "hand"}
+
+
 def by_hand(entry):
-    """A pin or review entry a person made or fixed: `by: hand`, a `lookup:` or `drop: true`.
+    """A pin or review entry a person made or fixed: `by: hand`, `ok: true`, a `lookup:` or `drop: true`.
     A re-read never replaces it, and the agent's spots of the same name are left out for that save."""
     return isinstance(entry, dict) and (entry.get("by") == "hand" or entry.get("drop") is True
+                                        or entry.get("ok") is True
                                         or (isinstance(entry.get("lookup"), str) and bool(entry["lookup"].strip())))
 
 
@@ -596,13 +616,22 @@ def move_dropped(pins, review):
 
 
 def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
-    """Review entries a person gave a `lookup:` are searched again; found ones move to pins."""
+    """Review entries a person marked `ok: true` move to pins as found. Ones a person gave a `lookup:`
+    are searched again; found ones move to pins."""
     moved = 0
     for code, entries in list(review.items()):
         if not isinstance(entries, list):
             continue
         keep = []
         for e in entries:
+            pin = okayed(e)
+            if pin:
+                pins.setdefault(code, [])
+                if not any(p["said"] == pin["said"] and p["near"] == pin["near"] for p in pins[code]):
+                    pins[code].append(pin)
+                moved += 1
+                log("locate_review_ok", code=code, said=pin["said"])
+                continue
             if not (isinstance(e, dict) and isinstance(e.get("lookup"), str) and e["lookup"].strip()
                     and not e.get("drop") and isinstance(e.get("said"), str) and isinstance(e.get("near"), str)):
                 keep.append(e)
