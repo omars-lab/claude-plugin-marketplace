@@ -54,10 +54,14 @@ reload back (`ev=icloud_placeholder`). A code edit in the plugin restarts the se
    address (`http://127.0.0.1:8780/docs`; `API_PORT=` for another port). `make api-logs` shows its last 50 lines.
 2. **Look.** Open `/docs` and check `/health`: its save and spot counts should match the hub's.
    Try `/v1/areas/<one area>` against `out/travel/<that area>.yaml`.
-3. **After changing the code:** `make api-test` (the tests run in the container, since this Mac's
+3. **Before changing the API, read what its users ran into:** the data repo's `docs/api-feedback/`
+   (`seen.yaml` counts each kind of call and trouble; each `<date>-<words>.md` is a note with
+   `status: open`). When a change answers a note, set its `status: done` and `done_in:` the commit,
+   or `status: no` with why. Callers' skills write there; the data repo's sessions commit it.
+4. **After changing the code:** `make api-test` (the tests run in the container, since this Mac's
    python has no FastAPI), then `make api-schema` when a model in `contract.py` changed, and commit
    the schema files with the change.
-4. **Stop.** `make api-stop`.
+5. **Stop.** `make api-stop`.
 
 ## Scripts — when to use each
 
