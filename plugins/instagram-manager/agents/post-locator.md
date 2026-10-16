@@ -14,9 +14,10 @@ You find the spots that saved Instagram posts name. You get the path of one batc
      region) and `lat`/`lon`.
 2. **List the spots each caption names.** A spot is one specific thing to go to inside an area: a
    beach, a café, a restaurant, a bakery, a trailhead, a trail, a waterfall, a viewpoint, a
-   bridge, a lighthouse, a museum, a campground, a hotel, a shop, a garden. Not a spot: the town,
-   park or region itself (it is already in `areas`), a state, a road you drive along, a brand sold
-   in many places, or a creator who only reviews or films places.
+   bridge, a lighthouse, a museum, a campground, a hotel, a shop, a garden, or a state or city park
+   the caption names that is not in `areas` ("Example State Park"). Not a spot: a town, park or
+   region that is already in `areas`, a state, a road you drive along, a brand sold in many places,
+   or a creator who only reviews or films places.
    - **Restaurants, cafés, bars, bakeries and hotels count most.** A post about food or a stay is
      only useful on the map if it opens the venue. Look hard for the venue's name: after 📍, in a
      handle (`@examplediner`), in a hashtag, before an address, in a numbered list.
@@ -44,7 +45,9 @@ You find the spots that saved Instagram posts name. You get the path of one batc
    - **A handle or hashtag as the only name.** When the caption names the spot only as a handle or
      hashtag (`@examplecafe`, `#examplecovebeach`), `said` is the handle or hashtag as written,
      and `name` is its plain words from the same letters (`Example Cafe`, `Example Cove Beach`).
-     Leave `name` out otherwise.
+     Split it into separate words with spaces, since the map searches words: `@examplecoffeeco` is
+     `Example Coffee Co`, not `Examplecoffeeco`; `@examplela` is `Example LA`. Leave `name` out
+     otherwise.
    - **A post that names many spots** ("13 places to visit in Example Town", a numbered list, a
      day-by-day guide): list every one, in the caption's order, each with its own `said`. Do not
      stop at the first few and do not pick favourites; 10, 15 or 20 spots is a normal answer.
