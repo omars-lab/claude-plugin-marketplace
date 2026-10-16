@@ -1,7 +1,7 @@
 {
   "name": "technique-manager",
   "description": "Turn screenshots of Claude techniques into Claude-style HTML pages built from one shared React component library, then package them into a gallery and an offline zip and sync the shareable content to another Mac",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "Omar Eid",
     "email": "omar_eid21@yahoo.com"
