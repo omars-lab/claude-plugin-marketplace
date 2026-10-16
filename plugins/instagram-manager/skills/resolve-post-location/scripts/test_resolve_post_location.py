@@ -353,6 +353,31 @@ class Merge(Home):
         self.assertEqual(rpl.street_only("1 Example Blvd, Ste 11"), "1 Example Blvd")
         self.assertEqual(rpl.street_only("4 1/2 Example St"), "4 1/2 Example St")   # no unit to drop
 
+    def test_an_address_found_only_as_its_street_is_not_pinned(self):
+        """OpenStreetMap may know the road but not the house: its point can be kilometres from the venue."""
+        self.write(".cache/saves.json", {"saves": [save("VENUA", "Example Grill 📍12 Example St, Fixture Town")]})
+        with mock.patch.dict(OSM, {"12 Example St, Fixture Town": [hit("Example Street", 40.03, -120.0, "primary", 23)]}):
+            paths = self.run_script("--prepare", "--all").split()
+            self.agent(paths, {"VENUA": [{"said": "Example Grill", "near": "Fixture Town",
+                                          "address": "12 Example St, Fixture Town"}]})
+            self.run_script("--merge")
+        self.assertEqual(self.spot("data/pins-review.yaml", "VENUA", "Example Grill")["why"], "not found near Fixture Town")
+        # one pinned that way before the check moves to review; a person's pin stays
+        self.write("data/pins-review.yaml", {})
+        self.write("data/pins.yaml", {"VENUA": [
+            {"name": "Example Grill", "said": "Example Grill", "near": "Fixture Town", "kind": "address",
+             "lat": 40.03, "lon": -120.0, "address": "12 Example St, Fixture Town", "found": "Example Street, Fixture Town"},
+            {"name": "Example Nook", "said": "Example Nook", "near": "Fixture Town", "kind": "address", "by": "hand",
+             "lat": 40.03, "lon": -120.0, "address": "14 Example St, Fixture Town", "found": "Example Street, Fixture Town"}]})
+        out = self.run_script("--merge")
+        self.assertIn("1 address pins moved to review", out)
+        self.assertEqual([p["said"] for p in self.read("data/pins.yaml")["VENUA"]], ["Example Nook"])
+        moved = self.spot("data/pins-review.yaml", "VENUA", "Example Grill")
+        self.assertEqual((moved["street_tried"], "lat" in moved), (True, False))
+        self.assertTrue(rpl.at_the_house("12, Example Street, Fixture Town", "12 Example St"))
+        self.assertFalse(rpl.at_the_house("Example Street, 12345, Fixture Town", "12 Example St"))   # a postcode
+        self.assertTrue(rpl.at_the_house("Example Street", "Example St"))   # no house number to match
+
     def test_a_spot_outside_the_saves_areas_goes_to_review(self):
         self.locate()
         e = self.spot("data/pins-review.yaml", "TOWNA", "Made Up Spot")

@@ -56,6 +56,10 @@ answers. **No script calls a model**, and there is no API key: this session star
      letter after the street type), so the lookup drops them; the pin keeps the full address.
      A review entry from before this rule is retried once without its unit at the next merge,
      and marked `street_tried: true` if it is still not found.
+     A hit must carry the address's house number: OpenStreetMap sometimes knows only the road,
+     and a long road's point can be kilometres from the venue. An address pin made before this
+     check whose find has no house number moves to review at the next merge ("only the street
+     was found"); a person's pin stays.
    - Kept spots go to `data/pins.yaml`. The rest go to `data/pins-review.yaml` with `why`:
      "not found near Example Town", "38 km from Example Town", "quote not in caption". The hub
      still shows the lookup misses, as dashed pins at their town that search the venue by name.

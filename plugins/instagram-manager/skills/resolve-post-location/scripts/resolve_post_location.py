@@ -388,6 +388,16 @@ def street_only(address):
     return " ".join(UNIT_LETTER.sub(r"\1", UNIT.sub("", address)).split()).strip(", ")
 
 
+def at_the_house(found, address):
+    """True when what OpenStreetMap found carries the address's house number ("12, Example Road, …"
+    for "12 Example Rd"). A hit without it is the whole street, and its point can be kilometres off.
+    An address with no house number passes."""
+    m = re.match(r"\s*(\d+)\b", address or "")
+    if not m:
+        return True
+    return m.group(1) in [t.strip() for t in str(found or "").split(",")]
+
+
 def on_screen(said, seen):
     """True when tesseract read these words on the video, letters and digits in order ("EXAMPLE
     CAFE" read as "EXAMPLECAFE" or "Example  Cafe")."""
@@ -473,7 +483,7 @@ def resolve_near(spot, caption, areas, places, reaches, fetcher=None, creator=""
     if where == "pin" or not address:
         return where, entry
     hits = geocode.lookup_near(street_only(address), reach.search, fetcher)
-    hit = next((h for h in hits if reach.ok(h["lat"], h["lon"])), None)
+    hit = next((h for h in hits if reach.ok(h["lat"], h["lon"]) and at_the_house(h.get("found"), address)), None)
     if hit is None:
         return where, entry
     name = venue_name(spot)
@@ -632,6 +642,32 @@ def move_dropped(pins, review):
     return moved
 
 
+def move_street_pins(pins, review):
+    """Address pins whose find is only the street, not the house (made before at_the_house()), move
+    to review. A person's pin stays."""
+    moved = 0
+    for code, entries in list(pins.items()):
+        if not isinstance(entries, list):
+            continue
+        gone = [e for e in entries if isinstance(e, dict) and e.get("kind") == "address" and not by_hand(e)
+                and not at_the_house(e.get("found"), e.get("address"))]
+        if not gone:
+            continue
+        review[code] = (review.get(code) or []) + [
+            {**{k: e[k] for k in ("said", "near", "name", "address", "from") if k in e},
+             "why": f"only the street was found near {e.get('near')}, not the house", "street_tried": True}
+            for e in gone]
+        keep = [e for e in entries if e not in gone]
+        if keep:
+            pins[code] = keep
+        else:
+            del pins[code]
+        moved += len(gone)
+        for e in gone:
+            log("locate_street_pin_moved", code=code, said=e.get("said"))
+    return moved
+
+
 def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
     """Review entries a person marked `ok: true` move to pins as found. Ones a person gave a `lookup:`
     are searched again; found ones move to pins. So is, once, one whose address has a suite or unit,
@@ -722,6 +758,7 @@ def merge(saves, tags, places, fetcher=None, frames=False):
     pins, review, no_spot = load_yaml(PINS), load_yaml(REVIEW), load_yaml(NO_SPOT)
     reaches = {}
     dropped = move_dropped(pins, review)
+    streets = move_street_pins(pins, review)
     fixed = recheck_review(by_code, tags, places, pins, review, reaches, fetcher)
     out = batch_dir(frames)
     counts = {"pins": 0, "review": 0, "no_spot": 0, "unanswered": 0}
@@ -799,7 +836,8 @@ def merge(saves, tags, places, fetcher=None, frames=False):
     write_yaml(PINS, pins)
     write_yaml(REVIEW, review)
     write_yaml(NO_SPOT, no_spot)
-    log("locate_merge", **counts, review_fixed=fixed, pins_dropped=dropped, batches_waiting=pending,
+    log("locate_merge", **counts, review_fixed=fixed, pins_dropped=dropped, street_pins_moved=streets,
+        batches_waiting=pending,
         batches_merged_before=before,
         saves_with_pins=len(pins), saves_in_review=len(review), saves_no_spot=len(no_spot))
     print(f"{counts['pins']} spots pinned, {counts['review']} for review, {counts['no_spot']} saves "
@@ -809,6 +847,8 @@ def merge(saves, tags, places, fetcher=None, frames=False):
         print(f"{fixed} review entries moved to the pins (a person fixed them with ok: true or a lookup, or the address was found once its suite or unit was dropped)")
     if dropped:
         print(f"{dropped} pins marked drop: true moved to review, and stay out of the pins")
+    if streets:
+        print(f"{streets} address pins moved to review: OpenStreetMap found only the street, not the house")
     wrong = wrong_area(review)
     log("locate_wrong_area", spots=len(wrong))
     if wrong:
