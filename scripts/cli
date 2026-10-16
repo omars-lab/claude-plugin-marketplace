@@ -72,6 +72,31 @@ get_plugins() {
   parse_json "import json,sys; d=json.load(open('$mp_json')); print('\n'.join([p['name'] for p in d['plugins']]))"
 }
 
+# A folder without .claude-plugin/plugin.json is not a Claude Code plugin (the NotePlan
+# quicknote plugin is listed in marketplace.json but installs into NotePlan), so the
+# claude CLI refuses it. install, update and uninstall skip it.
+is_claude_plugin() {
+  [[ -f "$1/plugins/$2/.claude-plugin/plugin.json" ]]
+}
+
+# True when a plugin.json says the same thing at <commit> and at HEAD, apart from its version.
+manifest_same_but_version() {
+  local mp_root="$1" commit="$2" rel="$3"
+  python3 - "$mp_root" "$commit" "$rel" <<'PYEOF'
+import json, subprocess, sys
+root, commit, rel = sys.argv[1:4]
+def load(rev):
+    out = subprocess.run(["git", "-C", root, "show", f"{rev}:{rel}"], capture_output=True, text=True)
+    if out.returncode:
+        return None
+    d = json.loads(out.stdout)
+    d.pop("version", None)
+    return d
+old, new = load(commit), load("HEAD")
+sys.exit(0 if old is not None and old == new else 1)
+PYEOF
+}
+
 # ── Subcommands ────────────────────────────────────────────────────────────────
 
 cmd_validate() {
@@ -118,9 +143,7 @@ cmd_install() {
   echo "Installing all plugins from $mp_name ..."
   local failed=0
   while IFS= read -r plugin; do
-    # A folder without .claude-plugin/plugin.json is not a Claude Code plugin (the NotePlan
-    # quicknote plugin is listed here but installs into NotePlan), so the CLI would refuse it.
-    if [[ ! -f "$mp_root/plugins/$plugin/.claude-plugin/plugin.json" ]]; then
+    if ! is_claude_plugin "$mp_root" "$plugin"; then
       echo "  –  $plugin: not a Claude Code plugin, skipping"
       continue
     fi
@@ -146,6 +169,10 @@ cmd_uninstall() {
   mp_name=$(get_marketplace_name "$mp_root")
   echo "Uninstalling all plugins from $mp_name ..."
   while IFS= read -r plugin; do
+    if ! is_claude_plugin "$mp_root" "$plugin"; then
+      echo "  –  $plugin: not a Claude Code plugin, skipping"
+      continue
+    fi
     echo "  Uninstalling $plugin@$mp_name ..."
     env -u CLAUDECODE claude plugin uninstall "$plugin@$mp_name" --scope user || true
     echo "  ✓ $plugin uninstalled"
@@ -160,6 +187,10 @@ cmd_update() {
   echo "Updating all plugins from $mp_name ..."
   local failed=0
   while IFS= read -r plugin; do
+    if ! is_claude_plugin "$mp_root" "$plugin"; then
+      echo "  –  $plugin: not a Claude Code plugin, skipping"
+      continue
+    fi
     echo "  Updating $plugin@$mp_name ..."
     if env -u CLAUDECODE claude plugin update "$plugin@$mp_name" --scope user; then
       echo "  ✓ $plugin updated"
@@ -211,8 +242,8 @@ cmd_version_check() {
     local tracking_file="$plugin_dir/.claude-plugin/version-tracking.json"
     local plugin_json="$plugin_dir/.claude-plugin/plugin.json"
 
-    if [[ ! -f "$plugin_json" ]]; then
-      echo "  ⚠  $plugin: plugin.json missing, skipping"
+    if ! is_claude_plugin "$mp_root" "$plugin"; then
+      echo "  –  $plugin: not a Claude Code plugin, skipping"
       continue
     fi
 
@@ -237,10 +268,17 @@ cmd_version_check() {
       continue
     fi
 
-    # Diff since last version commit, excluding version-tracking.json itself
+    # Diff since last version commit, excluding version-tracking.json itself. versionCommit is
+    # the commit *before* the bump, so the bump's own plugin.json change shows up too: drop
+    # plugin.json when its contents, version aside, are the same (older bumps also reformatted it).
     local changed_files
     changed_files=$(git -C "$mp_root" diff --name-only "$version_commit" HEAD -- "plugins/$plugin/" \
       | { grep -v "version-tracking\.json$" || true; })
+    local manifest_rel="plugins/$plugin/.claude-plugin/plugin.json"
+    if [[ $'\n'"$changed_files"$'\n' == *$'\n'"$manifest_rel"$'\n'* ]] \
+        && manifest_same_but_version "$mp_root" "$version_commit" "$manifest_rel"; then
+      changed_files=$(echo "$changed_files" | { grep -vx "$manifest_rel" || true; })
+    fi
 
     if [[ -z "$changed_files" ]]; then
       echo "  ✓  $plugin v$current_version: up to date"
@@ -257,10 +295,11 @@ cmd_version_check() {
         skill_name=$(echo "$f" | sed "s|plugins/$plugin/skills/||" | cut -d'/' -f1)
         local status
         status=$(git -C "$mp_root" diff --name-status "$version_commit" HEAD -- "$f" | { grep -v "^$" || true; } | cut -f1 | head -1)
+        # One line per changed file, so name each skill once
         case "${status:-M}" in
-          A) new_skills="$new_skills $skill_name" ; bump_type="MINOR" ;;
-          D) removed_skills="$removed_skills $skill_name" ; bump_type="MAJOR" ;;
-          *) modified_skills="$modified_skills $skill_name" ;;
+          A) [[ " $new_skills " == *" $skill_name "* ]] || new_skills="$new_skills $skill_name" ;;
+          D) [[ " $removed_skills " == *" $skill_name "* ]] || removed_skills="$removed_skills $skill_name" ;;
+          *) [[ " $modified_skills " == *" $skill_name "* ]] || modified_skills="$modified_skills $skill_name" ;;
         esac
       fi
     done <<< "$changed_files"
@@ -327,16 +366,18 @@ cmd_version_bump() {
 
   echo "Bumping $plugin: $current_version → $new_version ($bump_type)"
 
-  # Update plugin.json version
-  python3 -c "
-import json
-path = '$plugin_json'
-d = json.load(open(path))
-d['version'] = '$new_version'
-import sys
-json.dump(d, open(path, 'w'), indent=2)
-print()
-"
+  # Update plugin.json version. Only the version line changes: re-dumping the whole file
+  # escaped non-ASCII text and dropped the final newline, and version-check then saw the
+  # bump as a change of its own.
+  python3 - "$plugin_json" "$new_version" <<'PYEOF'
+import json, re, sys
+path, version = sys.argv[1:3]
+text = open(path).read()
+text, n = re.subn(r'("version":\s*)"[^"]*"', lambda m: m.group(1) + json.dumps(version), text, count=1)
+if not n:
+    sys.exit(f"ERROR: no version line in {path}")
+open(path, "w").write(text)
+PYEOF
 
   # Update the plugin's entry in marketplace.json too, so validate-plugin's
   # "marketplace.json version matches plugin.json" holds. Only the version line
