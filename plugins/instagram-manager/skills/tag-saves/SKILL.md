@@ -25,6 +25,9 @@ two places. The tags feed the split, media and hub steps.
    match is only a hint: it brings the save into a pilot, and the agent is told about it. A
    sourdough post tagged with a beach town's hashtag stays a recipe. A tagged save that gains a
    hint it was not read with (the place was added since) is read once more, keeping its tags.
+   Two towns can share a name: a listed Example Town is only the one in the place it sits in.
+   The agent names the other one `"Example Town, Other State"`, that name does not count as the
+   listed town, and `make places` adds it under that name, in Other State.
 3. **The `save-tagger` agent** (Haiku, `agents/save-tagger.md`) reads a batch of saves — caption,
    hashtags, creator, collections and the two above — and picks topics, places and purposes from
    the lists. The purposes come from `shared/scripts/purposes.py`, or `config/purposes.yaml` when

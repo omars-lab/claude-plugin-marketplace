@@ -432,6 +432,9 @@ class AddPlaces(Home):
         "Fixture City, Fixture State": hit("Fixture City", "city", state="Fixture State",
                                            country_code="us", country="Exampleland"),
         "Fixture Road": hit("Fixture Road", "road", state="Fixture State", country_code="us"),
+        "Fixture Village, Other State": hit("Fixture Village", "town", state="Other State", country_code="us",
+                                            country="Exampleland"),
+        "Other State": hit("Other State", "state", country="Exampleland", country_code="us"),
     }
 
     def fetch(self, query):
@@ -448,6 +451,19 @@ class AddPlaces(Home):
         finally:
             add_places.geocode.fetch = real
         return out.getvalue()
+
+    def test_a_town_named_like_a_listed_town_in_another_state_is_its_own_place(self):
+        self.write("data/places.yaml", {"places": {
+            "Fixture State": {"kind": "state"},
+            "Fixture Village": {"kind": "city", "in": "Fixture State"}}})
+        self.assertIsNone(Places.load().resolve("Fixture Village, Other State"))
+        self.assertEqual(Places.load().resolve("Fixture Village, Fixture State"), "Fixture Village")
+        self.write("data/tags-review.yaml", {"A": {"other_places": ["Fixture Village, Other State"]}})
+        self.run_add()
+        data = self.read("data/places.yaml")
+        self.assertEqual(data["places"]["Fixture Village"]["in"], "Fixture State")        # kept as it was
+        self.assertEqual(data["places"]["Fixture Village, Other State"]["in"], "Other State")
+        self.assertIn("query=Fixture+Village%2C+Other+State", data["places"]["Fixture Village, Other State"]["map"])
 
     def test_places_from_review_are_added_with_the_place_they_sit_in(self):
         self.write("data/tags-review.yaml", {

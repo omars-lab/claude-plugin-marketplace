@@ -64,7 +64,15 @@ class Places:
             return self.aliases[name]
         found = self._lower.get(name.strip().lower())
         if not found and "," in name:  # "Example Town, Example State": the town, if it is listed
-            found = self.resolve(name.split(",")[0])
+            town, _, rest = name.partition(",")
+            found = self.resolve(town)
+            # ...and sits there: a listed Example Town in another state is a different town. When
+            # the rest is not listed either ("Example Town, OS"), it is left to a lookup to decide.
+            rest = rest.strip()
+            where = self.resolve(rest) or rest
+            up = self.chain(found) if found else []
+            if found and where != found and up and where.lower() not in {u.lower() for u in up}:
+                found = None
         return found
 
     def chain(self, place):

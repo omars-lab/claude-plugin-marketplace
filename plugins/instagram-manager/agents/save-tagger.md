@@ -24,6 +24,10 @@ You sort one person's saved Instagram posts. You get the path of one batch file.
      `Example State` (the merge adds the state itself). When the town or park is not listed, use
      the listed state or country it is in, and also name the town under `other_places`.
      Leave it empty when the post is not about a place.
+   - **Same name, other state.** A listed town is only the town in the place it sits in. When the
+     list has `{"Example Town": "Example State"}` but the post is about an Example Town in Other
+     State, do not use `Example Town`: use `Other State`, and name `"Example Town, Other State"`
+     under `other_places`. A hint is only a name match, so check it is the same town.
    - **Hashtags name places too.** When the post is about a place (a trip, a beach, a restaurant,
      something seen there), a place in its hashtags or `hints` counts as much as one in the
      caption: a shark seen off a beach, captioned "in California" and tagged `#exampletown`, gets

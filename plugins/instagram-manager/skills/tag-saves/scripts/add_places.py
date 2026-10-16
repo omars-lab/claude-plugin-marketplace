@@ -66,13 +66,25 @@ class Adder:
     def known(self, name):
         return name in self.p.known or name in self.places
 
+    def sits_in(self, name):
+        """The places a listed place sits in, counting places added in this run."""
+        out, seen = [], {name}
+        while True:
+            e = self.places.get(name) or {}
+            name = e.get("in") or self.p.parent.get(name)
+            if not name or name in seen:
+                return out
+            seen.add(name)
+            out.append(name)
+
     def add(self, key, hit, parent=None):
         """Write one place, and the place it sits in if that is new."""
         parent = parent if parent is not None else parent_of(hit)
         if parent == key:
             parent = None
         e = {"kind": hit["kind"], "lat": hit["lat"], "lon": hit["lon"], "found": hit["found"],
-             "map": geocode.maps_link(key, parent)}
+             "map": geocode.maps_link(key.rsplit(", ", 1)[0] if parent and key.endswith(f", {parent}") else key,
+                                      parent)}
         if parent:
             e["in"] = parent
             if not self.known(parent):
@@ -120,6 +132,12 @@ class Adder:
             return
         else:
             have = self.p.resolve(key) or (key if key in self.places else None)
+            where = parent_of(hit)
+            if have and where and where != have and where not in self.sits_in(have):
+                # a listed place of the same name sits elsewhere (Example Town in another state):
+                # this one is listed as "Example Town, Other State"
+                key, have = f"{key}, {where}", self.p.resolve(f"{key}, {where}")
+                have = have or (key if key in self.places else None)
             if not have:
                 self.add(key, hit)
             key = have or key
