@@ -160,7 +160,8 @@ def audit(repo: Path, hub_id: str | None, hubs_repo: Path | None):
         up = sorted(ports & {m[0] for m in mine})
         if odd:
             out.append(row("P4", "runs on the hub.yaml port", "FAIL",
-                           f"listening on {odd}, hub.yaml lists {sorted(ports)}; the launcher and router can't see it"))
+                           f"listening on {odd}, hub.yaml lists {sorted(ports)}; the launcher and router can't see it"
+                           + (f" (also up on {up})" if up else "")))
         elif up:
             out.append(row("P4", "runs on the hub.yaml port", "PASS", f"up on {up}"))
         else:

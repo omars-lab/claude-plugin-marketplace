@@ -42,6 +42,7 @@ The details are in the `enable-page-comments` skill.
 | `manage-development` | Sends a request to the right skill |
 | `enable-page-comments` | Turns comments on in a repo, checks the loop, or undoes it |
 | `answer-page-comments` | The routine Claude follows for each comment |
+| `improve-hub` | Reviews one hub against a rubric, fixes the changes worth the most on a branch, and logs the rest |
 
 Needs Node 18 or later, and Claude Code with plugin monitors. Tests: `make test-development-manager`.
 Pictures are taken by [modern-screenshot](https://github.com/qq15725/modern-screenshot) 4.7.0 (MIT),
