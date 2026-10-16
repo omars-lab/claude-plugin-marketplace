@@ -81,8 +81,17 @@ answers. **No script calls a model**, and there is no API key: this session star
 Each entry in `data/pins-review.yaml` says why it is there. Edit it by hand:
 
 - **`lookup: "Other Name"`**: the next `--merge` searches that text instead of the caption's
-  words. A person wrote it, so there is no quote check. If it is found within reach, it moves to
-  `pins.yaml`, with `asked:` showing what was searched, and keeps its `lookup:`.
+  words. A person wrote it, so there is no quote check, and no name check either: whatever is
+  found within reach moves to `pins.yaml`, named for the find, with `asked:` showing what was
+  searched, and keeps its `lookup:`. So read the merged pin's `found:` line before trusting it,
+  and never give a lookup the same words that already found the wrong place ("Example HTX" that
+  found a bar of another name). Give the place's own full name ("Example Market Hall") instead.
+  The `said:` must still be the caption's words: an agent that wrote "Example Hall" for the
+  caption's `@examplehall` gets `said: '@examplehall'`.
+- **A venue inside a bigger place OpenStreetMap lists** (a shop in a mall, a stall in a food
+  hall), when OpenStreetMap lacks the venue or has only another branch: a `lookup:` would rename
+  the pin after the mall, and the Google search would then find the mall. Write the pin in
+  `pins.yaml` by hand at the mall's position instead, with the venue's own `name:` and `by: hand`.
 - **`ok: true`**: the find is right after all (a different name for the same place, or a spot
   really that far out). The next `--merge` moves it to `pins.yaml` as found, marked `by: hand`.
 - **`near:`** can be changed to another area in `data/places.yaml`, always together with a
