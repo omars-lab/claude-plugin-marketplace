@@ -786,8 +786,8 @@ def place_page(hub, place):
     content = (f'<main class="page"><nav class="top">{back_link(hub, [place["key"]])}</nav>'
                f'<header><h1>{esc(place["name"])}</h1><p class="sub">{sub} · '
                f'{n} saved post{"" if n == 1 else "s"}</p>{notes}</header>'
-               f'<div class="facts{"" if box else " solo"}">{box}<dl>'
-               + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows) + '</dl></div>'
+               f'<div class="facts{"" if box else " solo"}"><dl>'
+               + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows) + f'</dl>{box}</div>'
                f'<section><h2>Saved posts that name it</h2><div class="cards">'
                + "".join(card(hub, place, p) for p in posts) + '</div></section></main>')
     clips = CLIP_JS if any(hub.shot(p, place["key"]) for p in posts) else ""
@@ -1253,7 +1253,8 @@ ol{list-style:none;margin:0;padding:0}
 .page{max-width:56rem;margin:0 auto;padding-inline:16px;padding-block:18px 56px;display:grid;gap:22px}
 .top{font-weight:700}
 .notes{margin:.6rem 0 0;max-width:65ch}
-.facts{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px;align-items:start}
+/* The map on the right, as on the hub's main map; on a phone it goes on top. */
+.facts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:16px;align-items:start}
 .facts.solo{grid-template-columns:1fr}
 #mini{height:280px;border-radius:12px;border:1px solid var(--line)}
 dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:8px 16px;background:var(--card);
@@ -1312,6 +1313,7 @@ ul.inline{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px
   .lrow>*{flex:none}
   aside{border-right:0;overflow:visible}
   .facts,.post{grid-template-columns:minmax(0,1fr)}
+  .facts #mini{order:-1}
   .post .big{max-width:16rem}
   .card{grid-template-columns:72px minmax(0,1fr);gap:12px}
   .facets label{flex:1 1 9rem}

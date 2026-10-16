@@ -37,6 +37,8 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   A single row right above the map says what each kind of pin means. Beside the map is the list of
   places with how many posts name each, and a search box. The search
   looks through captions, creators and place names. On a phone, the map sits above the list.
+  Every page with a map keeps it on the right (the main map, place pages, the pins page) and on top
+  on a phone, so the pages read the same way.
 - **`<state or country>/index.html`: one map per state or country** (`california/`, `example-land/`)
   that has a pin. It is the same page, cut down to the posts with a pin there, and to the places and
   pins inside it, so a road trip that also pins somewhere far away shows only its pins in this

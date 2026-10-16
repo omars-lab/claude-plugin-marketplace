@@ -642,6 +642,8 @@ class Page(Home):
         self.assertIn("https://www.instagram.com/p/TOWNA/", page)
         self.assertIn("40 km from Fixture Town", page)                         # a review reason
         self.assertIn("quote not in caption", page)
+        # The list comes first and the map second, as on the hub's own pages.
+        self.assertLess(page.index('<div class="list">'), page.index('<div id="map"'))
 
     def test_a_save_with_a_preview_shows_its_picture_and_names_its_flipbook(self):
         self.locate()

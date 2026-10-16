@@ -351,6 +351,8 @@ class Hub(unittest.TestCase):
         self.assertIn('href="../places/fixture-state.html"', town)
         self.assertIn("<mark>Fixture Town</mark>", town)
         self.assertIn("google.com/maps/search/?api=1&amp;query=Fixture+Town%2C+Fixture+State", town)
+        # The facts first and the map second, so the map is on the right as on the main map.
+        self.assertLess(town.index("<dl>"), town.index('<div id="mini"'))
 
     def test_post_page_names_every_place(self):
         self.build("--pilot", "fixture")

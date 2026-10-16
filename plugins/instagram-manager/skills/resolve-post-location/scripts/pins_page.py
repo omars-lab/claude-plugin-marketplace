@@ -173,7 +173,8 @@ body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--
 .top { padding: 1.2rem 16px .6rem; max-width: 90rem; margin: 0 auto }
 h1 { margin: 0; font-size: clamp(1.6rem, 4vw, 2.2rem); line-height: 1.1 }
 .lede { margin: .3rem 0 0; color: var(--muted); max-width: 70ch }
-.desk { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 1rem;
+/* The list on the left and the map on the right, as on the hub's own pages; on a phone the map goes on top. */
+.desk { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 1rem;
         padding: 0 16px 3rem; max-width: 90rem; margin: 0 auto }
 #map { position: sticky; top: 1rem; height: calc(100vh - 2rem); border-radius: 10px; border: 1px solid var(--line) }
 #map.off { display: grid; place-items: center; color: var(--muted); background: var(--card) }
@@ -207,7 +208,7 @@ q { display: inline-block; background: var(--quote-bg); padding: .05rem .4rem; b
 .leaflet-container { font: 13px/1.4 var(--body) }
 @media (max-width: 800px) {
   .desk { grid-template-columns: minmax(0, 1fr) }
-  #map { position: relative; top: 0; height: 55vh }
+  #map { position: relative; top: 0; height: 55vh; order: -1 }
 }
 </style>
 </head>
@@ -217,7 +218,6 @@ q { display: inline-block; background: var(--quote-bg); padding: .05rem .4rem; b
   <p class="lede">{{LEDE}} Green pins checked out; orange ones were found, but too far from the save's area or under a different name.</p>
 </header>
 <div class="desk">
-  <div id="map" role="region" aria-label="Map of the spot pins"></div>
   <div class="list">
     <h2>Pinned</h2>
     {{PINS}}
@@ -228,6 +228,7 @@ q { display: inline-block; background: var(--quote-bg); padding: .05rem .4rem; b
     These fixes survive a re-read; deleting an entry does not.</p>
     {{REVIEW}}
   </div>
+  <div id="map" role="region" aria-label="Map of the spot pins"></div>
 </div>
 <script>
 (function () {
