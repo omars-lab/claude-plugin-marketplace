@@ -83,9 +83,9 @@ ANSWERS = {
 }
 
 
-def hit(name, lat, lon, typ, osm_id, box=None, wikidata=None):
+def hit(name, lat, lon, typ, osm_id, box=None, wikidata=None, osm_type="node"):
     h = {"name": name, "display_name": f"{name}, Fixture County, Fixture State", "lat": str(lat), "lon": str(lon),
-         "type": typ, "category": "tourism", "osm_type": "node", "osm_id": osm_id, "importance": 0.3,
+         "type": typ, "category": "tourism", "osm_type": osm_type, "osm_id": osm_id, "importance": 0.3,
          "boundingbox": [str(x) for x in (box or (lat - 0.001, lat + 0.001, lon - 0.001, lon + 0.001))]}
     if wikidata:
         h["extratags"] = {"wikidata": wikidata}
@@ -97,7 +97,8 @@ OSM = {
     "Example Cove Beach": [hit("Example Cove Beach", 40.045, -120.0, "beach", 11, wikidata="Q100001")],  # 5 km
     "Example Cafe": [hit("Example Cafe", 40.01, -120.01, "cafe", 12)],
     "Far Away Tower": [hit("Far Away Tower", 40.36, -120.0, "tower", 13)],                              # 40 km
-    "Fixture Park": [hit("Fixture Park", 41.0, -121.0, "national_park", 14, box=(40.7, 41.3, -121.4, -120.6))],
+    "Fixture Park": [hit("Fixture Park", 41.0, -121.0, "national_park", 14, box=(40.7, 41.3, -121.4, -120.6),
+                         osm_type="relation")],
     "Example Falls Trail": [hit("Example Falls Trail", 41.28, -121.0, "path", 15)],    # 31 km, inside the box
     "Distant Ridge Loop": [hit("Distant Ridge Loop", 41.5, -121.0, "path", 16)],      # 56 km, outside it
     "Example Pier": [hit("Example Pier", 40.002, -120.002, "pier", 17)],
@@ -226,6 +227,41 @@ class Merge(Home):
         self.assertAlmostEqual((n - s) * 111 / 2, 50, delta=0.5)                # a town's 25 km, plus 25 km
         ridge = self.spot("data/pins-review.yaml", "PARKA", "Distant Ridge Loop")
         self.assertEqual(ridge["why"], "56 km from Fixture Park")
+
+    def test_a_region_stored_as_a_point_reaches_50_km_not_its_made_up_box(self):
+        """OpenStreetMap gives a region it keeps as one point a box a degree either side. That box
+        is not the region's edge: a lodge 62 km off, inside it, goes to review."""
+        places = {"places": {**PLACES["places"], "Fixture Coast": {
+            "kind": "region", "in": "Fixture State", "lat": 42.0, "lon": -122.0, "found": "Fixture Coast"}}}
+        self.write("data/places.yaml", places)
+        self.write("data/tags.yaml", {"COASTA": {"topics": ["travel"], "cities": ["Fixture Coast"], "source": "model"}})
+        self.write(".cache/saves.json", {"saves": [save("COASTA", "Slept at Example Coast Inn, then Example Lodge")]})
+        osm = {"Fixture Coast": [hit("Fixture Coast", 42.0, -122.0, "region", 30, box=(41.0, 43.0, -123.0, -121.0))],
+               "Example Coast Inn": [hit("Example Coast Inn", 42.27, -122.0, "hotel", 31)],     # 30 km
+               "Example Lodge": [hit("Example Lodge", 42.56, -122.0, "motel", 32)]}              # 62 km
+        with mock.patch.dict(OSM, osm):
+            paths = self.run_script("--prepare", "--all").split()
+            self.agent(paths, {"COASTA": [{"said": "Example Coast Inn", "near": "Fixture Coast"},
+                                          {"said": "Example Lodge", "near": "Fixture Coast"}]})
+            self.run_script("--merge")
+        self.assertGreater(self.spot("data/pins.yaml", "COASTA", "Example Coast Inn")["km"], 25)
+        self.assertEqual(self.spot("data/pins-review.yaml", "COASTA", "Example Lodge")["why"],
+                         "62 km from Fixture Coast")
+
+    def test_a_spot_out_of_its_areas_reach_is_pinned_for_another_of_the_saves_areas(self):
+        places = {"places": {**PLACES["places"], "Fixture Village": {
+            "kind": "city", "in": "Fixture State", "lat": 40.3, "lon": -120.0, "found": "Fixture Village"}}}
+        self.write("data/places.yaml", places)
+        self.write("data/tags.yaml", {"TWOA": {"topics": ["travel"], "cities": ["Fixture Town", "Fixture Village"],
+                                               "source": "model"}})
+        self.write(".cache/saves.json", {"saves": [save("TWOA", "A night at Village Inn")]})
+        with mock.patch.dict(OSM, {"Village Inn": [hit("Village Inn", 40.32, -120.0, "hotel", 33)]}):  # 36 km
+            paths = self.run_script("--prepare", "--all").split()
+            self.agent(paths, {"TWOA": [{"said": "Village Inn", "near": "Fixture Town"}]})
+            self.run_script("--merge")
+        p = self.spot("data/pins.yaml", "TWOA", "Village Inn")
+        self.assertEqual((p["near"], p["osm"]), ("Fixture Village", "node/33"))
+        self.assertLess(p["km"], 3)
 
     def test_the_name_check(self):
         with mock.patch.dict(OSM, {"Example Museum": [hit("Example Baguette", 39.99, -120.004, "bakery", 21)],

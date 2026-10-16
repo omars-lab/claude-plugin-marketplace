@@ -52,7 +52,12 @@ What the merge checks, per spot
      does, with its distance, for a person to judge.
   4. The first answer within the area's reach is kept: 25 km of the area's pin, or, for a park
      or region, inside its own OpenStreetMap box grown by 10 km. (A park's or region's box is looked
-     up once, inside 60 km of its pin; when none is found, 25 km of its pin is the reach.)
+     up once, inside 60 km of its pin, and only an outline counts: a way or relation. OpenStreetMap
+     gives a place it stores as a single point a made-up box, a whole degree either side for a
+     region, so a point's box is ignored. With no outline the reach is 50 km of its pin for a park
+     or region, which a stretch of coast like Example Coast needs.) A spot found out of reach, or
+     under a different name (step 5), is tried again for each other area of the save within 60 km
+     of what was found, and pinned for the first area where it passes every check, named for it.
      Nothing found, or found only out of reach: review, with why ("not found near Example Town",
      "38 km from Example Town").
   5. The name found matches the name asked: they share a word of their own and differ only by
@@ -109,6 +114,7 @@ DEFAULT_MEDIA_DIR = os.path.join("~", "Library", "Mobile Documents", "com~apple~
 EXACT = {"city", "area", "park", "region"}  # more exact than a state or country
 BOXED = {"park", "region"}                   # reach is the area's own box, grown
 TOWN_KM = 25.0
+POINT_AREA_KM = 50.0                         # a park or region OpenStreetMap stores only as a point
 BOX_KM = 10.0
 AREA_SEARCH_KM = 60.0
 MARGIN_KM = 25.0                             # searched past the reach, so a near miss shows its distance
@@ -212,27 +218,33 @@ class Reach:
 
     def __init__(self, area, places, fetcher=None):
         self.area = area
-        self.town = box_around(area["lat"], area["lon"], TOWN_KM)
         self.box = None
+        self.radius = TOWN_KM
         if area["kind"] in BOXED:
             own = self.area_box(places.get(area["name"]) or {}, fetcher)
             if own:
                 self.box = grow(own, BOX_KM)
+            else:
+                self.radius = POINT_AREA_KM
+        self.town = box_around(area["lat"], area["lon"], self.radius)
         self.search = grow(union(self.town, self.box) if self.box else self.town, MARGIN_KM)
 
     def area_box(self, place, fetcher):
-        """The park's or region's own box on OpenStreetMap: its name searched near its pin."""
+        """The park's or region's own outline on OpenStreetMap: its name searched near its pin. A
+        point's box is made up by OpenStreetMap (a degree either side for a region), so only a way's
+        or relation's box counts."""
         name = (place.get("found") or self.area["name"]).split(",")[0].strip()
         hits = geocode.lookup_near(name, box_around(self.area["lat"], self.area["lon"], AREA_SEARCH_KM), fetcher)
-        same = [h for h in hits if (h.get("name") or "").lower() == name.lower() and h.get("box")]
-        hit = (same or [h for h in hits if h.get("box")] or [None])[0]
+        outlines = [h for h in hits if h.get("box") and not str(h.get("osm") or "").startswith("node/")]
+        same = [h for h in outlines if (h.get("name") or "").lower() == name.lower()]
+        hit = (same or outlines or [None])[0]
         return tuple(hit["box"]) if hit else None
 
     def km(self, lat, lon):
         return km_between(self.area["lat"], self.area["lon"], lat, lon)
 
     def ok(self, lat, lon):
-        return self.km(lat, lon) <= TOWN_KM or bool(self.box and inside(self.box, lat, lon))
+        return self.km(lat, lon) <= self.radius or bool(self.box and inside(self.box, lat, lon))
 
 
 # --- one spot ------------------------------------------------------------------------------------
@@ -338,10 +350,36 @@ def venue_name(spot):
     return spot.get("name") or spot["said"].lstrip("@#").strip()
 
 
+RETRY = re.compile(r"\d+ km from |found .*, a different name$")   # found something, near another area
+OTHER_AREA_KM = 60.0   # how far another of the save's areas may be from a spot to be tried for it
+
+
 def resolve(spot, caption, areas, places, reaches, fetcher=None, creator="", seen=None):
     """("pin" or "review", entry) for one spot. areas: the names the spot's `near` may be. seen: the
     text read on the post's video (None for a caption answer), which the quote and address checks
     also accept.
+
+    A spot found out of its `near`'s reach, or found under a different name, is tried again for
+    each other area of the save close enough to what was found: the agent picks one area, and a
+    trip tagged with a town and its stretch of coast, or a chain in two cities, may have it in the
+    wrong one. The pin then names the area it is in."""
+    where, entry = resolve_near(spot, caption, areas, places, reaches, fetcher, creator, seen)
+    if where != "review" or not RETRY.match(entry.get("why", "")) or "lat" not in entry:
+        return where, entry
+    for other in areas:
+        area = exact_area(other, places)
+        if other == spot["near"] or area is None:
+            continue
+        if km_between(area["lat"], area["lon"], entry["lat"], entry["lon"]) > OTHER_AREA_KM:
+            continue
+        again = resolve_near({**spot, "near": other}, caption, areas, places, reaches, fetcher, creator, seen)
+        if again[0] == "pin":
+            return again
+    return where, entry
+
+
+def resolve_near(spot, caption, areas, places, reaches, fetcher=None, creator="", seen=None):
+    """resolve() for the spot's own `near` only.
 
     The spot's name is looked up first. When the caption gives the spot's coordinates, they are the
     pin, if they fall within the area's reach. When the name is not found (most small restaurants
@@ -351,6 +389,8 @@ def resolve(spot, caption, areas, places, reaches, fetcher=None, creator="", see
     by_person = isinstance(spot.get("lookup"), str) and bool(spot["lookup"].strip())
     base = {"said": said, "near": near}
     keep = {k: spot[k] for k in ("lookup", "name", "address") if spot.get(k)}
+    if isinstance(keep.get("address"), str):
+        keep["address"] = " ".join(keep["address"].split())   # one line, as copied across line breaks
     if "address" in keep and not (by_person or address_in(keep["address"], caption)
                                   or (seen and address_in(keep["address"], seen))):
         del keep["address"]   # an address the caption doesn't give is a guess

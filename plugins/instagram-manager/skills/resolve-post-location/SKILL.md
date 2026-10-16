@@ -34,7 +34,14 @@ answers. **No script calls a model**, and there is no API key: this session star
      request a second). The box is the area's reach plus 25 km. A same-name place far away never
      comes back, and a near miss comes back with its distance.
    - The first answer within the area's **reach** is kept. The reach is 25 km of the area's pin.
-     A park or region also counts its own OpenStreetMap box grown by 10 km.
+     A park or region also counts its own OpenStreetMap outline box, grown by 10 km. A place
+     OpenStreetMap stores as a single point comes back with a made-up box (a whole degree either
+     way for a region), so that box is ignored; a park or region with no outline reaches 50 km
+     from its pin instead.
+   - **Another of the save's areas.** When the spot is found but out of reach, or found under a
+     different name, it is tried again near each other area of the save within 60 km of what was
+     found, and pinned for the first area where it passes every check. The agent may pick the
+     wrong one of two nearby towns; the post is still right about the spot.
    - **Coordinates in the caption** are the pin, with no lookup, if they fall within reach.
    - **An address, when the name isn't found.** OpenStreetMap is thin on small restaurants and
      cafés. When the name is not found and the caption gives the spot's address, the address is
