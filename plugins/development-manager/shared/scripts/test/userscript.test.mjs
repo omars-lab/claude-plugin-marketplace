@@ -236,7 +236,7 @@ test("enable --userscript lists the origin, writes the script with the token, an
     mkdirSync(join(repo, "site"));
     writeFileSync(join(repo, "site", "index.html"), "<body>x</body>");
     assert.equal(enable(["--userscript", "--origin", PAGE], repo).code, 3, "comments must be on first");
-    assert.equal(enable(["--root", "site"], repo).code, 0);
+    assert.equal(enable(["--root", "site", "--port", "8766"], repo).code, 0);
     const dir = join(repo, ".page-comments");
 
     assert.equal(enable(["--userscript"], repo).code, 2, "no origin");

@@ -412,7 +412,25 @@ async function cmdServe(flags) {
     }
   }
   const { startServer } = await import("./lib/server.mjs");
-  const srv = await startServer(store, { target: flags.target, root: flags.root, port, record: !flags.throwaway });
+  let srv;
+  try {
+    srv = await startServer(store, { target: flags.target, root: flags.root, port, record: !flags.throwaway });
+  } catch (err) {
+    if (!err || err.code !== "EADDRINUSE") throw err;
+    // Another server (often another repo's comment server) has the port.
+    const { firstFreePort, isCommentServer, ownerText, portOwner, whose } = await import("./lib/ports.mjs");
+    const owner = portOwner(port);
+    const w = owner.busy ? whose(owner, store.repo) : null;
+    const free = await firstFreePort(port + 1);
+    const who = owner.busy
+      ? `${isCommentServer(owner) ? (w.rel === "same" ? "this repo's comment server, already running" : "a comment server") : "another server"}: ${ownerText(owner)}`
+      : "another server";
+    const lines = [`port ${port} is already in use by ${who}.`];
+    if (!(owner.busy && isCommentServer(owner) && w.rel === "same")) {
+      lines.push(`Stop that server, or use a free port${free ? `, like ${free}` : ""}: pass --port ${free || "<n>"} here, or run enable-page-comments again with --port ${free || "<n>"} to change the make target.`);
+    }
+    throw new CliError(1, lines.join("\n  "));
+  }
   out(`Comment server on ${srv.url}  (${flags.target ? `in front of ${flags.target}` : flags.root ? `serving ${flags.root}` : "the comment API only, for the userscript"})`);
   out(`Press C on a page${flags["api-only"] ? " the userscript runs on" : ""} to comment. Stop with Ctrl-C.`);
   return new Promise((resolveDone) => {

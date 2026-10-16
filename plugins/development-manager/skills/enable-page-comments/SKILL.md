@@ -86,6 +86,11 @@ TaskCreate({ subject: "Start listening in this session", description: "Start the
 
 2. **Find how pages are served.** Run `--detect`.
    It reads the Makefile, `package.json` and the usual page folders, and says which mode fits and why.
+   It reads the port from the serve command, including `PORT ?= 8765` set above it, and then looks at what is really listening there.
+   Several repos on one Mac often share the same default port, so the port may belong to another repo's server.
+   When this repo's own server is running on a different port, detect points at that one instead.
+   When it is not, detect's output says `Careful:`, because pointing the comment server at another repo's site would put comments on the wrong pages.
+   Start this repo's server on a free port, then run `--detect` again or pass `--target` yourself.
    If it finds nothing, or the result looks wrong, use `AskUserQuestion`:
 
    ```javascript
@@ -103,7 +108,9 @@ TaskCreate({ subject: "Start listening in this session", description: "Start the
    ```
 
 3. **Enable.** Run enable with `--target <url>` or `--root <dir>`.
-   The comment server listens on port 8766 unless `--port` says otherwise.
+   The comment server takes the first free port from 8766 up, unless `--port` says otherwise; a re-run keeps the port it saved.
+   When a port it was given is already in use, or the target is another repo's server, the report has a `careful:` line saying which process holds it and what to run instead.
+   If `make comments` later finds its port taken, it says who holds it and names a free port, with no stack trace.
    The author name for page comments defaults to the first word of the git user name; pass `--author` to change it.
 
 4. **Check.** Run `--check`.
@@ -111,6 +118,8 @@ TaskCreate({ subject: "Start listening in this session", description: "Start the
    It asks Claude Code, from the repo's folder, whether the plugin is installed and on.
    If the plugin is not installed on this machine, that line is a note, not a failure: the repo setting takes effect once it is installed.
    Then it starts a short-lived comment server on a spare port, loads a page, posts a test comment, confirms the watcher prints it, and removes the test thread.
+   It also checks the ports: that the comment server's port is free (or held by this repo's own comment server), and, for a local `--target`, that the server answering there is this repo's.
+   A port held by another repo's server is a `FAIL` that names the process and the fix.
    With `--target`, the repo's own server must be running for the page to load.
    Every line must read `ok` or `note`. Fix any `FAIL` before reporting.
 

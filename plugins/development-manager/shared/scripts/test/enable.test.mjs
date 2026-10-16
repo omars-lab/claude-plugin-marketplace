@@ -8,11 +8,16 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { firstFreePort } from "../lib/ports.mjs";
 import { ENABLE, tempRepo } from "./helpers.mjs";
 
 const ID = "development-manager@oeid-claude-plugins";
 
 function enable(args, repo, env = {}) {
+  // Enable takes the first free port from 8766, which depends on what this machine
+  // runs. These tests are about other things, so they name the port; ports.test.mjs
+  // covers the free-port choice.
+  if ((args.includes("--target") || args.includes("--root")) && !args.includes("--port")) args = [...args, "--port", "8766"];
   const r = spawnSync(process.execPath, [ENABLE, ...args, "--repo", repo], {
     encoding: "utf8",
     timeout: 60000,
@@ -149,11 +154,13 @@ test("undo keeps comment threads unless asked to purge", () => {
   }
 });
 
-test("check proves the loop and leaves no test thread behind", () => {
+test("check proves the loop and leaves no test thread behind", async () => {
   const { repo, cleanup } = tempRepo({ comments: false });
   try {
     seed(repo);
-    assert.equal(enable(["--root", "site"], repo).code, 0);
+    // The check also asks whether the comment port is free, so take one that is.
+    const port = await firstFreePort(20700);
+    assert.equal(enable(["--root", "site", "--port", String(port)], repo).code, 0);
     const r = enable(["--check"], repo);
     assert.equal(r.code, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /ok\s+the plugin is on in \.claude\/settings\.json/);

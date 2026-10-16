@@ -3,7 +3,7 @@
 // works, or take it all out again. Node 18, no dependencies.
 //
 //   enable.mjs --detect [--repo .] [--json]
-//   enable.mjs --repo . (--target <url> | --root <dir>) [--port 8766] [--shots-dir <path>]
+//   enable.mjs --repo . (--target <url> | --root <dir>) [--port <first free from 8766>] [--shots-dir <path>]
 //   enable.mjs --check [--repo .]
 //   enable.mjs --undo [--repo .] [--purge [--force]]
 //   enable.mjs --phone [--repo .] [--target <url> | --root <dir>] [--port 8766]
@@ -46,6 +46,12 @@
 // Undo never deletes a screenshot: not in the iCloud folder, and not in
 // `.page-comments/shots/`, which stays with the .gitignore that keeps it out of git.
 //
+// Ports: several repos on one Mac each run a site and a comment server, so a
+// fixed port can be another repo's. Detect reads the port from the serve
+// command (`PORT ?= n` included) and, through lsof, who listens there; enable
+// takes the first free comment port from 8766 when none is given or saved, and
+// warns about a busy one; check fails on a port held by another repo's server.
+//
 // Exit codes: 0 ok, 1 a check failed, 2 bad usage, 3 not found.
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
@@ -55,6 +61,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { fileURLToPath } from "node:url";
 import { contractHome, expandHome, shotsSetting, shotTarget } from "../../../shared/scripts/lib/shots.mjs";
 import { cleanOrigin, tokenPath, userscriptOrigins, userscriptPath, writeUserscript } from "../../../shared/scripts/lib/userscript.mjs";
+import { firstFreePort, isCommentServer, listeners, ownerText, portFree, portOwner, whose } from "../../../shared/scripts/lib/ports.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const PLUGIN_ROOT = resolve(HERE, "..", "..", "..");
@@ -225,18 +232,75 @@ function defaultAuthor(repo) {
 // ---- Detect -------------------------------------------------------------------------------
 
 /** How the repo serves its pages, and which mode fits. */
+/** The port a Makefile recipe serves on: a number, `$(or $(VAR),N)`, or `$(VAR)` with `VAR ?= N`. */
+export function makePort(make, recipe) {
+  const or = /\$\(or \$\((\w+)\),(\d+)\)/.exec(recipe);
+  if (or) return or[2];
+  const plain = /--port[ =](\d{2,5})\b/.exec(recipe) || /:(\d{4,5})\b/.exec(recipe);
+  if (plain) return plain[1];
+  // A make variable: --port $(PORT), :$(PORT), or a bare $(PORT) after a server.
+  const v = /(?:--port[ =]|:)\$[({](\w+)[)}]/.exec(recipe) || /\$[({](\w*PORT\w*)[)}]/.exec(recipe);
+  if (v) {
+    const def = new RegExp(`^(?:export\\s+|override\\s+)?${v[1]}\\s*(?:\\?|:|::)?=\\s*(\\d{2,5})\\s*$`, "m").exec(make);
+    if (def) return def[1];
+  }
+  return null;
+}
+
+// Words in a serve command that name the server: a script file, or a known tool.
+function serverWords(cmd) {
+  return [...new Set(cmd.match(/[\w.-]+\.(?:py|js|mjs|cjs|ts|rb)\b|\b(?:vite|next|astro|nuxt|hugo|jekyll|eleventy|http\.server|http-server|live-server|serve)\b/g) || [])];
+}
+
+/**
+ * Look at what is running before trusting the port read from the files. Several
+ * repos on one Mac often share a default port, so the port can belong to another
+ * repo's server, and this repo's server may be running on another port.
+ * Adds `running` to the result and says what it found in `why`.
+ */
+function withRunning(repo, d, cmd) {
+  const port = Number(new URL(d.target).port) || null;
+  const owner = port ? portOwner(port) : { known: false };
+  if (!owner.known) return d;
+  const words = serverWords(cmd || "");
+  // This repo's own server, running now on some port, found by its command.
+  const mine = words.length
+    ? listeners().filter((l) => !isCommentServer(l) && words.some((w) => (l.command || "").includes(w)) && ["same", "worktree"].includes(whose(l, repo).rel))
+    : [];
+  const w = owner.busy ? whose(owner, repo) : null;
+  d.running = { port, busy: !!owner.busy, owner: owner.busy ? ownerText(owner) : null, from: w ? w.rel : null, mine: mine.map((l) => l.port) };
+  const elsewhere = mine.filter((l) => l.port !== port);
+  if (owner.busy && w.rel === "other") {
+    if (elsewhere.length) {
+      const alt = elsewhere[0];
+      d.why += ` Right now port ${port} is held by another repo's server, ${ownerText(owner)}. This repo's server is running on port ${alt.port} (${ownerText(alt)}), so the target is that port. If it later runs on ${port} again, run enable again with --target.`;
+      d.target = `http://127.0.0.1:${alt.port}`;
+    } else {
+      d.why += ` Careful: right now port ${port} is held by another repo's server, ${ownerText(owner)}. Pages through the comment server would be that repo's. Start this repo's server on a free port and pass it with --target.`;
+      d.warning = `port ${port} belongs to another repo right now`;
+    }
+  } else if (owner.busy && (w.rel === "same" || w.rel === "worktree")) {
+    d.why += ` It is running now${w.rel === "worktree" ? `, from another checkout of this repo (${w.where})` : ""}.`;
+  } else if (!owner.busy && elsewhere.length) {
+    d.why += ` Right now this repo's server is running on port ${elsewhere[0].port} instead (${ownerText(elsewhere[0])}). Use --target http://127.0.0.1:${elsewhere[0].port} while it runs there.`;
+  }
+  return d;
+}
+
 export function detect(repo) {
   const make = readText(join(repo, "Makefile"));
   if (make) {
     const m = /^(serve|dev|start|preview)\s*:[^\n]*\n((?:\t[^\n]*\n?)+)/m.exec(make);
     if (m) {
-      const port = (/--port[ =]\$\(or \$\(PORT\),(\d+)\)/.exec(m[2]) || /--port[ =](\d{2,5})\b/.exec(m[2]) || /:(\d{4,5})\b/.exec(m[2]) || [])[1] || "8000";
-      return {
+      const port = makePort(make, m[2]);
+      return withRunning(repo, {
         mode: "target",
-        target: `http://127.0.0.1:${port}`,
+        target: `http://127.0.0.1:${port || "8000"}`,
         how: `make ${m[1]}`,
-        why: `The Makefile's \`${m[1]}\` target runs a server on port ${port}. The comment server sits in front of it, so the site's own API keeps working.`,
-      };
+        why: port
+          ? `The Makefile's \`${m[1]}\` target runs a server on port ${port}. The comment server sits in front of it, so the site's own API keeps working.`
+          : `The Makefile's \`${m[1]}\` target runs a server, but its port could not be read, so 8000 is a guess. Check the port it prints. The comment server sits in front of it.`,
+      }, m[2]);
     }
   }
   const pkg = readJson(join(repo, "package.json"));
@@ -245,12 +309,12 @@ export function detect(repo) {
     const s = scripts[name];
     if (!s) continue;
     const port = (/--port[ =](\d{2,5})/.exec(s) || [])[1] || (/\bvite\b/.test(s) ? (name === "preview" ? "4173" : "5173") : /next\b/.test(s) ? "3000" : /astro\b/.test(s) ? "4321" : "3000");
-    return {
+    return withRunning(repo, {
       mode: "target",
       target: `http://127.0.0.1:${port}`,
       how: `npm run ${name}`,
       why: `package.json's \`${name}\` script runs a dev server, most likely on port ${port}. Check the port it prints. The comment server sits in front of it.`,
-    };
+    }, s);
   }
   for (const dir of [".", "site", "public", "docs", "dist", "build", "_site"]) {
     if (existsSync(join(repo, dir, "index.html"))) {
@@ -888,6 +952,31 @@ export async function check(repo, { quiet = false } = {}) {
   if (place.skip) ok(null, "no post-commit hook", place.skip);
   else ok(ourHook(place.hook), "the post-commit hook notes which commit lands a comment's work", ourHook(place.hook) ? (existsSync(place.prev) ? "the earlier post-commit hook still runs first" : "") : "not in place; run enable again");
 
+  // The ports. The loop below runs on a spare port, so it would pass even when
+  // make comments cannot start, or when the target is another repo's site.
+  const cport = config.serve.port || 8766;
+  if (await portFree(cport)) ok(true, `port ${cport} is free for the comment server`);
+  else {
+    const o = portOwner(cport);
+    const w = o.busy ? whose(o, repo) : null;
+    if (o.busy && isCommentServer(o) && w.rel === "same") ok(true, `this repo's comment server is running on port ${cport}`);
+    else {
+      const free = await firstFreePort(cport + 1);
+      ok(false, `port ${cport} is free for the comment server`, `in use by ${o.busy ? ownerText(o) : "another server"}; run enable again with --port ${free || "<n>"}`);
+    }
+  }
+  const tport = config.serve.target && localPort(config.serve.target);
+  if (tport) {
+    const o = portOwner(tport);
+    const w = o.busy ? whose(o, repo) : null;
+    if (!o.known) ok(null, `could not tell which server is on port ${tport}`, "lsof did not answer");
+    else if (!o.busy) ok(false, `this repo's site is running on port ${tport}`, "nothing is listening there; start the site's server first");
+    else if (w.rel === "other") ok(false, `this repo's site is running on port ${tport}`, `port ${tport} is another repo's server: ${ownerText(o)}. Start this repo's server on a free port and run enable again with --target`);
+    else if (w.rel === "worktree") ok(null, `the site on port ${tport} runs from another checkout of this repo`, w.where);
+    else if (w.rel === "same") ok(true, `this repo's site is running on port ${tport}`, ownerText(o));
+    else ok(null, `something is running on port ${tport}`, `${ownerText(o)}; could not tell which repo it is from`);
+  }
+
   // The loop: start a server on a free port, post a comment, see the watcher print it.
   const args = config.serve.target ? ["serve", "--target", config.serve.target] : ["serve", "--root", config.serve.root];
   const child = spawn(process.execPath, [CLI, ...args, "--port", "0", "--throwaway", "--repo", repo], { stdio: ["ignore", "pipe", "pipe"] });
@@ -1139,6 +1228,7 @@ export async function main(argv) {
     else {
       out(d.mode ? `Mode: ${d.mode === "target" ? `in front of ${d.target}` : `serve the folder ${d.root}`}` : "Mode: not found");
       out(`Why: ${d.why}`);
+      if (d.warning) out(`Careful: ${d.warning}.`);
       if (d.mode) out(`Enable with: --${d.mode} ${d.mode === "target" ? d.target : d.root}`);
     }
     return d.mode ? 0 : 3;
@@ -1181,9 +1271,15 @@ export async function main(argv) {
     if (flags.phone) return phoneReport(repo, enablePhone(repo));
     return 0;
   }
+  // The comment port: what --port says, else what a previous run chose, else the
+  // first free port from 8766, so a second repo does not reuse the first one's.
+  const before = readJson(join(repo, FOLDER, "config.json"));
+  const kept = before && before.serve && before.serve.port;
+  if (!flags.port && !kept) flags.port = String((await firstFreePort(8766)) || 8766);
   const r = enable(repo, flags);
   out(`Page comments are on in ${basename(repo)}.`);
   for (const d of r.did) out(`  - ${d}`);
+  for (const w of await portWarnings(repo, r.serve)) out(`  - careful: ${w}`);
   if (r.privacy) {
     out("");
     out(r.privacy);
@@ -1208,6 +1304,41 @@ export async function main(argv) {
     return phoneReport(repo, enablePhone(repo));
   }
   return 0;
+}
+
+/**
+ * What would stop the loop working right now: the comment port held by
+ * something other than this repo's comment server, or the target port held by
+ * another repo's server. Each is one plain line; none means all clear.
+ */
+export async function portWarnings(repo, serve) {
+  const warn = [];
+  if (!(await portFree(serve.port))) {
+    const o = portOwner(serve.port);
+    const ours = o.busy && isCommentServer(o) && whose(o, repo).rel === "same";
+    if (!ours) {
+      const free = await firstFreePort(serve.port + 1);
+      warn.push(`port ${serve.port}, for the comment server, is in use by ${o.busy ? ownerText(o) : "another server"}, so make comments will fail until it stops. Run enable again with --port ${free || "<n>"} to move it.`);
+    }
+  }
+  const t = serve.target && localPort(serve.target);
+  if (t) {
+    const o = portOwner(t);
+    const w = o.busy ? whose(o, repo) : null;
+    if (w && w.rel === "other") warn.push(`the target, port ${t}, is served by another repo right now: ${ownerText(o)}. Pages through the comment server would be that repo's.`);
+  }
+  return warn;
+}
+
+/** The port of a target on this Mac, or null for any other host. */
+function localPort(target) {
+  try {
+    const u = new URL(target);
+    if (!/^(127\.0\.0\.1|localhost|\[::1\])$/.test(u.hostname)) return null;
+    return Number(u.port) || (u.protocol === "https:" ? 443 : 80);
+  } catch {
+    return null;
+  }
 }
 
 function viteReport(v) {
