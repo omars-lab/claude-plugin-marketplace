@@ -215,7 +215,7 @@
       "name": "screenshot-manager",
       "source": "./plugins/screenshot-manager",
       "description": "Organize screenshots: prefix directories with dates for chronological sorting, and group related content using macOS Vision OCR",
-      "version": "1.11.2",
+      "version": "1.12.0",
       "category": "productivity",
       "keywords": [
         "screenshots",
