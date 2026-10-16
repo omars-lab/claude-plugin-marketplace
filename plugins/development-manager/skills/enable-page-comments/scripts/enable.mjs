@@ -761,9 +761,13 @@ export function enableVite(repo, flags = {}) {
   const install = readJson(installPath);
   if (!install || !existsSync(join(dir, "config.json"))) throw new Exit(3, "page comments are not turned on here; run enable with --target or --root first, or add one of them to this --vite run");
   writeFileSync(join(dir, "vite.mjs"), readFileSync(join(HERE, "vite.template"), "utf8"));
+  writeFileSync(join(dir, "vite.d.mts"), readFileSync(join(HERE, "vite-types.template"), "utf8"));
   mkdirSync(join(dir, ".state"), { recursive: true });
   writeFileSync(join(dir, ".state", "plugin-root"), PLUGIN_ROOT + "\n");
-  const did = [`${FOLDER}/vite.mjs: loads the plugin's dev-only Vite plugin (commit it with the config)`];
+  const did = [
+    `${FOLDER}/vite.mjs: loads the plugin's dev-only Vite plugin (commit it with the config)`,
+    `${FOLDER}/vite.d.mts: its types, so a vite.config.ts type-checks (commit it too)`,
+  ];
 
   let file = flags["vite-config"] ? resolve(repo, flags["vite-config"]) : VITE_NAMES.map((n) => join(repo, n)).find((f) => existsSync(f));
   if (flags["vite-config"] && !existsSync(file)) throw new Exit(3, `no such file: ${flags["vite-config"]}`);
@@ -843,9 +847,10 @@ export function undoViteOnly(repo) {
     install.changes = install.changes.filter((x) => x.kind !== "vite-config");
     writeJson(installPath, install);
   }
-  if (existsSync(join(dir, "vite.mjs"))) {
-    rmSync(join(dir, "vite.mjs"));
-    did.push(`${FOLDER}/vite.mjs: removed`);
+  for (const f of ["vite.mjs", "vite.d.mts"]) {
+    if (!existsSync(join(dir, f))) continue;
+    rmSync(join(dir, f));
+    did.push(`${FOLDER}/${f}: removed`);
   }
   return did;
 }
@@ -1265,7 +1270,7 @@ export function undo(repo, flags) {
       }
       did.push(`${FOLDER}/: removed${threads.length ? `, with its ${threads.length} thread(s)` : " (it held no comments)"}${localShots ? `, except shots/ and its .gitignore` : ""}`);
     } else {
-      for (const f of ["install.json", "run", "vite.mjs", ".state"].concat(localShots ? [] : [".gitignore"])) rmSync(join(dir, f), { recursive: true, force: true });
+      for (const f of ["install.json", "run", "vite.mjs", "vite.d.mts", ".state"].concat(localShots ? [] : [".gitignore"])) rmSync(join(dir, f), { recursive: true, force: true });
       did.push(`${FOLDER}/: removed the launchers and machine state; kept ${threads.length} thread(s), config.json and .gitattributes${localShots ? ", and shots/ with its .gitignore" : ""}. Run with --purge to delete them too`);
     }
   }

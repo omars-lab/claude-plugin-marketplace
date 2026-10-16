@@ -16,6 +16,7 @@ import { readAll } from "../lib/store.mjs";
 import { ENABLE, PLUGIN, SAMPLE, tempRepo } from "./helpers.mjs";
 
 const TEMPLATE = join(PLUGIN, "skills", "enable-page-comments", "scripts", "vite.template");
+const TYPES = join(PLUGIN, "skills", "enable-page-comments", "scripts", "vite-types.template");
 
 function call(port, { method = "GET", path = "/", headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
@@ -171,6 +172,7 @@ test("enable --vite edits a vite.config in two marked places, and undo puts it b
     assert.ok(edited.startsWith('import pageComments from "./.page-comments/vite.mjs"; // page-comments\n'));
     assert.match(edited, /plugins: \[pageComments\(\), react\(\)\]/);
     assert.equal(readFileSync(join(repo, ".page-comments", "vite.mjs"), "utf8"), readFileSync(TEMPLATE, "utf8"));
+    assert.equal(readFileSync(join(repo, ".page-comments", "vite.d.mts"), "utf8"), readFileSync(TYPES, "utf8"), "a vite.config.ts that type-checks needs the loader's types");
     assert.equal(enable(["--vite"], repo).code, 0);
     assert.equal(readFileSync(join(repo, "vite.config.ts"), "utf8"), edited, "a second run changes nothing");
 
@@ -178,6 +180,7 @@ test("enable --vite edits a vite.config in two marked places, and undo puts it b
     assert.equal(off.code, 0, off.stderr);
     assert.equal(readFileSync(join(repo, "vite.config.ts"), "utf8"), CONFIG);
     assert.equal(existsSync(join(repo, ".page-comments", "vite.mjs")), false);
+    assert.equal(existsSync(join(repo, ".page-comments", "vite.d.mts")), false);
     assert.ok(existsSync(join(repo, ".page-comments", "install.json")), "the rest stays on");
 
     assert.equal(enable(["--vite"], repo).code, 0);
