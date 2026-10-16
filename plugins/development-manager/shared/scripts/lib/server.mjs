@@ -178,6 +178,15 @@ export function phoneSetting(config) {
 }
 
 /**
+ * `<name>.localhost`, on any port: the names a local router (the hubs launcher's
+ * Caddy, `http://instagram.localhost:7100/`) passes on unchanged. Browsers send
+ * every `*.localhost` name to this Mac's loopback and no DNS answer can move it,
+ * so the name is as safe as `localhost` itself; writes still need the token and
+ * an Origin matching this same name.
+ */
+const LOCALHOST_NAME = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+localhost(:\d{1,5})?$/;
+
+/**
  * Who is asking, and may they. `localHosts` are this server's own Host values;
  * `phone` is phoneSetting(config) or null; `author` the repo's author.
  * Returns { ok: true, via: "local"|"tailscale", origin, author } or
@@ -185,7 +194,7 @@ export function phoneSetting(config) {
  */
 export function whoIsAsking(headers, { localHosts, phone, author }) {
   const host = String(headers.host || "").toLowerCase();
-  const local = localHosts.has(host);
+  const local = localHosts.has(host) || LOCALHOST_NAME.test(host);
   const viaPhone = !!(phone && phone.hosts.includes(host));
   if (!local && !viaPhone) return { ok: false, status: 403, reason: "host", error: "wrong host" };
   const raw = headers["tailscale-user-login"];

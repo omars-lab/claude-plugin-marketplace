@@ -305,6 +305,12 @@ test("whoIsAsking: local requests unchanged; Tailscale ones need a login on the 
   const ask = (headers, p = phone) => whoIsAsking(headers, { localHosts, phone: p, author: "sam" });
   assert.deepEqual(ask({ host: "127.0.0.1:8766" }), { ok: true, via: "local", origin: "http://127.0.0.1:8766", author: "sam" });
   assert.equal(ask({ host: "evil.example:8766" }).reason, "host");
+  // A local router passes <name>.localhost through, on its own port or none.
+  assert.deepEqual(ask({ host: "instagram.localhost:7100" }), { ok: true, via: "local", origin: "http://instagram.localhost:7100", author: "sam" });
+  assert.equal(ask({ host: "instagram.localhost" }).origin, "http://instagram.localhost");
+  for (const host of ["localhost.evil.example", "evil.localhost.example", "x.localhost:7100/", ".localhost", "-x.localhost"]) {
+    assert.equal(ask({ host }).reason, "host", host);
+  }
   assert.equal(ask({ host: `${PHONE_HOST}:8766` }, null).reason, "host", "no phone block: the tailnet name is just another host");
   assert.equal(ask({ host: `${PHONE_HOST}:9999`, "tailscale-user-login": PHONE_LOGIN }).reason, "host", "another port on the tailnet name");
   assert.equal(ask({ host: `${PHONE_HOST}:8766` }).reason, "no_login", "a tagged device, or a forged Host with no login");
