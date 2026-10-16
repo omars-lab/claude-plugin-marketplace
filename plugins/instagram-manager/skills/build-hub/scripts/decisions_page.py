@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """decisions_page.py — everything waiting on a person, on one page of the hub.
 
-    decisions_page.py [--out PATH] [--links FILE]
+    decisions_page.py --pilot NAME | --all [--out PATH] [--links FILE]
 
 Writes $INSTAGRAM_HOME/.cache/hub/decisions.html (the hub's map page links it once it is there).
+Give it the scope the hub is built with: a post links to its hub page when that build has one,
+and to Instagram otherwise.
 It gathers:
 
   - **Google's place to pick**, for each spot find-google-ids left for a person
@@ -38,6 +40,7 @@ import build_hub as bh  # noqa: E402
 import google_places as gp  # noqa: E402
 from home import cache  # noqa: E402
 from log import log  # noqa: E402
+from pilot import in_pilot  # noqa: E402
 from places import load_yaml  # noqa: E402
 
 TO_PICK = "google-to-pick.json"   # written by find-google-ids' google_ids.py
@@ -127,20 +130,27 @@ def load_links(path):
     return out
 
 
-def post_links(code, saves, hub_dir):
+def hub_pages(saves_list, tags, pilot):
+    """The hub's page name per post code, for the saves a build with the same scope puts in the hub.
+    Worked out, not looked up on disk: this page is written before build_hub runs, and a post page
+    found on a Mac's disk could be another post whose code differs only by case."""
+    return bh.Hub._files([s["code"] for s in saves_list if in_pilot(s, tags.get(s["code"]), pilot)])
+
+
+def post_links(code, saves, pages):
     s = saves.get(code) or {}
     who = (s.get("owner") or {}).get("username")
     url = s.get("url") or f"https://www.instagram.com/p/{code}/"
     out = []
-    if os.path.exists(os.path.join(hub_dir, "posts", code + ".html")):
-        out.append(f'<a href="posts/{esc(code)}.html">{"@" + esc(who) if who else "Post page"}</a>')
+    if code in pages:
+        out.append(f'<a href="posts/{esc(pages[code])}.html">{"@" + esc(who) if who else "Post page"}</a>')
     elif who:
         out.append(f'<span>@{esc(who)}</span>')
     out.append(f'<a href="{esc(url)}" target="_blank" rel="noopener">Instagram</a>')
     return " · ".join(out)
 
 
-def google_card(n, row, saves, hub_dir):
+def google_card(n, row, saves, pages):
     e, k = row["spot"], row["key"]
     said = e.get("said") if isinstance(e.get("said"), str) and e["said"] != e["name"] else ""
     opts = "".join(
@@ -149,7 +159,7 @@ def google_card(n, row, saves, hub_dir):
         f'open in Google Maps</a></li>' for j, pid in enumerate(row["ids"], 1))
     opts += (f'<li><label><input type="radio" name="g{n}" value="none" data-key="{esc(k)}"> None of these</label></li>'
              f'<li><label><input type="radio" name="g{n}" value="" checked> Decide later</label></li>')
-    posts = "".join(f'<li>{post_links(c, saves, hub_dir)}</li>' for c in row["codes"])
+    posts = "".join(f'<li>{post_links(c, saves, pages)}</li>' for c in row["codes"])
     where = e.get("address") if isinstance(e.get("address"), str) and e["address"].strip() else e.get("near")
     return (f'<article class="item" id="g-{n}"><header><h3>{esc(e["name"])}</h3>'
             f'<span class="where">{esc(str(where or ""))}</span></header>'
@@ -157,26 +167,26 @@ def google_card(n, row, saves, hub_dir):
             + f'<ol class="opts">{opts}</ol><ul class="posts">{posts}</ul></article>')
 
 
-def review_card(code, e, saves, hub_dir):
+def review_card(code, e, saves, pages):
     found = (f'<p class="found">OpenStreetMap found <b>{esc(str(e["name"]))}</b>'
              + (f' <span class="muted">{esc(str(e["found"]))}</span>' if e.get("found") else "") + "</p>"
              if e.get("name") and e.get("lat") is not None else "")
     return (f'<article class="item"><header><h3><q>{esc(str(e.get("said") or ""))}</q></h3>'
             f'<span class="where">near {esc(str(e.get("near") or ""))}</span></header>'
             f'<p class="why">{esc(str(e.get("why") or ""))}</p>{found}'
-            f'<ul class="posts"><li>{post_links(code, saves, hub_dir)}</li></ul></article>')
+            f'<ul class="posts"><li>{post_links(code, saves, pages)}</li></ul></article>')
 
 
-def town_row(code, e, saves, hub_dir):
+def town_row(code, e, saves, pages):
     return (f'<li><q>{esc(str(e.get("said") or ""))}</q> <span class="muted">near {esc(str(e.get("near") or ""))}'
-            f' · {esc(str(e.get("why") or ""))}</span> · {post_links(code, saves, hub_dir)}</li>')
+            f' · {esc(str(e.get("why") or ""))}</span> · {post_links(code, saves, pages)}</li>')
 
 
 def many(n, one, more=None):
     return f"{n} {one}" if n == 1 else f"{n} {more or one + 's'}"
 
 
-def build(rows, check, town, moves, answers, videos, links, saves, hub_dir):
+def build(rows, check, town, moves, answers, videos, links, saves, pages):
     counts = {"google": len(rows), "check": len(check), "moves": len(moves),
               "merge": sum(answers.values()), "fetch": 1 if videos else 0, "links": len(links)}
     total = sum(counts.values())
@@ -186,14 +196,14 @@ def build(rows, check, town, moves, answers, videos, links, saves, hub_dir):
     nav = "".join(f'<li><a href="{h}">{esc(t)}</a> <span class="n{" zero" if not c else ""}">{c}</span></li>'
                   for h, t, c in toc)
 
-    g = ("".join(google_card(n, r, saves, hub_dir) for n, r in enumerate(rows, 1))
+    g = ("".join(google_card(n, r, saves, pages) for n, r in enumerate(rows, 1))
          or '<p class="empty">Nothing to pick: every spot has its place, or none of Google\'s fits.</p>')
-    c = ("".join(review_card(code, e, saves, hub_dir) for code, e in check)
+    c = ("".join(review_card(code, e, saves, pages) for code, e in check)
          or '<p class="empty">Nothing to check.</p>')
     t = (f'<details><summary>{many(len(town), "spot")} shown at their town only</summary>'
          '<p class="how">These work already: the map shows them at their town and Google Maps searches their '
          'name there. To pin one exactly, give it a better name with <code>lookup: "Other Name"</code>.</p>'
-         f'<ul class="towns">{"".join(town_row(code, e, saves, hub_dir) for code, e in town)}</ul></details>'
+         f'<ul class="towns">{"".join(town_row(code, e, saves, pages) for code, e in town)}</ul></details>'
          if town else "")
     m = (f'<p>{many(len(moves), "save")} {"is" if len(moves) == 1 else "are"} filed in a collection that does not fit. '
          '<a href="moves.html">See where each one goes</a>, then move them in Instagram.</p>'
@@ -376,14 +386,24 @@ code { font-family: var(--mono); font-size: .88em; background: var(--quote-bg); 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    scope = ap.add_mutually_exclusive_group(required=True)
+    scope.add_argument("--pilot", help="the pilot the hub is built for, so posts link to their hub page")
+    scope.add_argument("--all", action="store_true", help="the hub is built for every save")
     ap.add_argument("--out", default=None, help="where to write the page (default .cache/hub/decisions.html)")
     ap.add_argument("--links", default=None,
                     help="a YAML list of {label, url, note}: decisions made outside the hub")
     args = ap.parse_args(argv)
+    pilot = None
+    if args.pilot:
+        pilots = load_yaml(os.path.join("config", "collections.yaml")).get("pilots") or {}
+        if args.pilot not in pilots:
+            sys.exit(f"no pilot {args.pilot!r} in config/collections.yaml (have: {', '.join(pilots) or 'none'})")
+        pilot = pilots[args.pilot] or {}
     links = load_links(args.links)
     saves_path = cache("saves.json")
     saves_list = bh.load_saves(saves_path) if os.path.exists(saves_path) else []
     saves = {s["code"]: s for s in saves_list}
+    pages = hub_pages(saves_list, load_yaml(os.path.join("data", "tags.yaml")), pilot)
     pins = load_yaml(os.path.join("data", "pins.yaml"))
     review = load_yaml(os.path.join("data", "pins-review.yaml"))
     placed = bh.placed_spots(review)
@@ -395,7 +415,7 @@ def main(argv=None):
     answers = waiting_answers(cache("batches"))
     videos = videos_waiting(cache(os.path.join("frames", "stuck.txt")), load_yaml(os.path.join("data", "media.yaml")))
     out = args.out or cache(os.path.join("hub", "decisions.html"))
-    page, counts = build(rows, check, town, moves, answers, videos, links, saves, os.path.dirname(out))
+    page, counts = build(rows, check, town, moves, answers, videos, links, saves, pages)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(page)

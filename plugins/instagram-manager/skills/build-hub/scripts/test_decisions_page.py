@@ -103,10 +103,9 @@ class Page(unittest.TestCase):
         k = gp.spot_key(CAFE)
         rows = dp.google_rows({k: {"query": gp.query_for(CAFE), "ids": ["idA", "idB"]}}, {}, spots)
         check = [("H1", {"said": "Example <Hall>", "near": "Fixture Town", "why": "near Far City"})]
-        with tempfile.TemporaryDirectory() as d:
-            page, counts = dp.build(rows, check, [], {"M1": {}}, {"tag": 3, "locate": 0, "frames": 0}, 2,
-                                    [{"label": "Example link", "url": "https://example.com", "note": ""}],
-                                    {"CAFE1": save("CAFE1")}, d)
+        page, counts = dp.build(rows, check, [], {"M1": {}}, {"tag": 3, "locate": 0, "frames": 0}, 2,
+                                [{"label": "Example link", "url": "https://example.com", "note": ""}],
+                                {"CAFE1": save("CAFE1")}, {})
         self.assertEqual(counts, {"google": 1, "check": 1, "moves": 1, "merge": 3, "fetch": 1, "links": 1})
         self.assertIn("8 things wait on you.", page)
         self.assertIn('data-key="%s" data-id="idA"' % k, page)
@@ -117,11 +116,20 @@ class Page(unittest.TestCase):
         self.assertIn("2 reels still need their video", page)
         self.assertIn("https://www.instagram.com/p/CAFE1/", page)   # no post page in the hub: Instagram
 
+    def test_post_links_use_the_hub_page_names(self):
+        a, b, out = save("abcDEF", "first_creator"), save("ABCdef", "second_creator"), save("OUT1")
+        a["collections"] = b["collections"] = ["Example Trip"]
+        pages = dp.hub_pages([a, b, out], {}, {"collections": ["Example Trip"]})
+        self.assertEqual(pages, {"ABCdef": "ABCdef", "abcDEF": "abcDEF-2"})   # same as build_hub names them
+        saves = {s["code"]: s for s in (a, b, out)}
+        self.assertIn('href="posts/abcDEF-2.html">@first_creator</a>', dp.post_links("abcDEF", saves, pages))
+        self.assertNotIn('href="posts/', dp.post_links("OUT1", saves, pages))   # not in this hub: Instagram
+        self.assertEqual(len(dp.hub_pages([a, b, out], {}, None)), 3)          # --all
+
     def test_main_writes_the_page_from_a_data_folder(self):
         with tempfile.TemporaryDirectory() as d:
             os.makedirs(os.path.join(d, "data"))
-            os.makedirs(os.path.join(d, ".cache", "hub", "posts"))
-            open(os.path.join(d, ".cache", "hub", "posts", "CAFE1.html"), "w").close()
+            os.makedirs(os.path.join(d, ".cache"))   # no hub built yet: the post still gets its page link
             with open(os.path.join(d, ".cache", "saves.json"), "w") as fh:
                 json.dump({"saves": [save("CAFE1")]}, fh)
             with open(os.path.join(d, "data", "pins.yaml"), "w") as fh:
@@ -133,7 +141,7 @@ class Page(unittest.TestCase):
             os.chdir(d)
             try:
                 with contextlib.redirect_stdout(io.StringIO()) as out:
-                    self.assertEqual(dp.main([]), 0)
+                    self.assertEqual(dp.main(["--all"]), 0)
             finally:
                 os.chdir(old_cwd)
                 if old_home is None:
