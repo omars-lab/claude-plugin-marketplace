@@ -193,6 +193,16 @@ class Prepare(Home):
         self.assertEqual(town["creator"], "@example_creator (Example)")
         self.assertIn("Example Cove Beach", town["caption"])
 
+    def test_saves_with_only_a_state_are_named_with_what_to_do(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            rpl.main(["--prepare", "--pilot", "fixture"], fetcher=self.osm)
+        said = err.getvalue()
+        self.assertIn("no_exact_area=1", said)
+        self.assertIn("Skipped 1 saves tagged only with a state or country", said)
+        self.assertIn("WIDEA", said)
+        self.assertIn("data/tags.yaml", said)
+
     def test_batch_size_limits(self):
         paths = self.run_script("--prepare", "--all", "--batch-saves", "3").split()
         self.assertEqual(len(paths), 2)

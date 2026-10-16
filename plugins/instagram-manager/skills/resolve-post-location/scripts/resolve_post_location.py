@@ -593,20 +593,24 @@ def chunk(records, max_saves=BATCH_SAVES, max_chars=BATCH_CHARS):
     return batches
 
 
+NO_AREA_SHOWN = 10  # codes named when saves are skipped for having no town or park
+
+
 def prepare(args, saves, tags, places, pilot, done):
     out = batch_dir()
     waiting = sorted(glob.glob(os.path.join(out, "batch-[0-9][0-9][0-9].answers.json")))
     if waiting:
         sys.exit(f"{len(waiting)} answers files are not merged yet ({os.path.basename(waiting[0])}...): "
                  "run --merge first, so a new round does not delete them")
-    todo, skipped, no_area = [], 0, 0
+    todo, skipped, no_area = [], 0, []
     for s in saves:
         tag = tags.get(s["code"])
         if pilot and not in_pilot(s, tag, pilot):
             continue
         areas = areas_of(tag, places)
         if not areas:
-            no_area += 1
+            if (tag or {}).get("cities"):  # a place, but only a state or country; untagged saves are not counted
+                no_area.append(s["code"])
             continue
         if s["code"] in done and not args.redo:
             skipped += 1
@@ -626,7 +630,12 @@ def prepare(args, saves, tags, places, pilot, done):
         log("locate_batch", batch=name, saves=len(recs), chars=sum(size(r) for r in recs))
         print(path)
     log("locate_prepare", scope=args.pilot or "all", saves=len(todo), batches=len(batches),
-        answered_before=skipped, no_exact_area=no_area, dir=out)
+        answered_before=skipped, no_exact_area=len(no_area), dir=out)
+    if no_area:
+        shown = ", ".join(no_area[:NO_AREA_SHOWN]) + (f" and {len(no_area) - NO_AREA_SHOWN} more" if len(no_area) > NO_AREA_SHOWN else "")
+        print(f"Skipped {len(no_area)} saves tagged only with a state or country, so there is no town or park "
+              f"to search near: {shown}.\nTo place one, give it a town in data/tags.yaml (tag-saves, "
+              f"\"Fixing by hand\"); a reel whose place is only on screen can go to read-frames.", file=sys.stderr)
     return 0
 
 
