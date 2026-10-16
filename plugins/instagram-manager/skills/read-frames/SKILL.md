@@ -12,6 +12,9 @@ caption says "lunch was unreal", or the post is tagged only "California", so the
 Every step runs in batches, and none of it calls a model from a script: the reading is done by
 `frame-reader` agents, one per batch, at most 4 at a time.
 
+Track the run with `TaskCreate`: one task per step below, and one per wave of agents, each marked
+done as it finishes.
+
 ## Steps
 
 1. **List the stuck reels.** `read_frames.py --stuck --pilot <name>` writes
@@ -22,7 +25,8 @@ Every step runs in batches, and none of it calls a model from a script: the read
      caption named that OpenStreetMap just doesn't list).
 2. **Fetch their videos.** `fetch_media.py --video .cache/frames/stuck.txt` (see **fetch-media**).
    Each Instagram run needs the user's go-ahead, and the pacing caps hold: at most 100 posts a
-   run, 3 runs a day, 2 hours apart.
+   run, 3 runs a day, 2 hours apart. Ask with `AskUserQuestion` before each run: say how many
+   reels, how long the run takes at the pacing, and what waiting instead would mean.
 3. **Take the frames and batch them.** `read_frames.py --prepare`. For each listed reel with a
    video, in `$INSTAGRAM_MEDIA_DIR/<code>/frames/`:
    - `frame-NN.jpg`, 720 px wide: the first frame (where a title card usually is), then one at each
