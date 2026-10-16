@@ -40,7 +40,7 @@ sync: hub ## Send the post-safe content to the studio
 	$(PY) $(TM)/sync-studio/scripts/sync_studio.py --root .
 
 status: ## Each technique's status and focus
-	@$(PY) -c 'import json,glob;[print(f"{(s:=json.load(open(p))).get(\"status\",\"idea\"):9} {s[\"slug\"]}") for p in sorted(glob.glob("specs/[!_]*.json"))]'
+	@$(PY) -c 'import json,glob;[print("%-9s %s" % ((s:=json.load(open(p))).get("status","idea"), s["slug"])) for p in sorted(glob.glob("specs/[!_]*.json"))]'
 
 responder-on: ## Answer comments in the background while no session is open (macOS)
 	@$(PY) $(TM)/build-hub/scripts/responder.py on --root .
