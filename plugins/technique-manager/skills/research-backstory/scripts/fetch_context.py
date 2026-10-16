@@ -3,7 +3,8 @@
 record what Claude wrote from it.
 
 Fetch (default): reads the technique's linked session (the hub's archived copy first, then the
-original) around the screenshot's message, and the git history of the folder it ran in.
+original, then the copy another Mac backed up to hub.json "backup", fetched into a temporary
+folder) around the screenshot's message, and the git history of the folder it ran in.
 
     session-before  prompts and Claude's prose leading up to it (to the previous compaction, ≤ 40)
     session-after   what came of it, up to --after-minutes later
@@ -26,6 +27,7 @@ import datetime as dt
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve()
@@ -33,6 +35,8 @@ sys.path.insert(0, str(HERE.parents[2] / "recreate-technique" / "scripts"))
 import lib  # noqa: E402
 import scan_privacy  # noqa: E402
 from find_session import prompt_text, claude_text  # noqa: E402
+sys.path.insert(0, str(HERE.parents[2] / "sync-studio" / "scripts"))
+from sync_studio import remote_path  # noqa: E402
 
 DEFAULT_SOURCES = ("session-before", "session-after", "git", "files", "related")
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
@@ -53,7 +57,23 @@ def session_file(spec: dict, root: Path) -> Path | None:
     for p in ([root / s["archived"]] if s.get("archived") else []) + ([Path(s["path"])] if s.get("path") else []):
         if p.exists():
             return p
-    return None
+    return backed_up_copy(s, root)
+
+
+def backed_up_copy(s: dict, root: Path) -> Path | None:
+    """A session archived on another Mac: copy it from the hub's backup (make backup there) into a
+    temporary folder, never into the hub. A copy already in the temp folder is reused."""
+    backup = lib.hub_settings(root).get("backup") or {}
+    if not (s.get("archived") and s.get("session_id") and backup.get("host") and backup.get("dest")):
+        return None
+    local = Path(tempfile.gettempdir()) / "technique-sessions" / "backup" / f"{s['session_id']}.jsonl"
+    if local.exists():
+        return local
+    local.parent.mkdir(parents=True, exist_ok=True)
+    src = f"{backup['dest'].rstrip('/')}/archive/sessions/{s['session_id']}.jsonl"
+    r = subprocess.run(["rsync", "-a", "-e", "ssh -o BatchMode=yes -o ConnectTimeout=8",
+                        f"{backup['host']}:{remote_path(src)}", str(local)], capture_output=True, text=True)
+    return local if r.returncode == 0 and local.exists() else None
 
 
 def excerpt(rec: dict, n: int) -> dict | None:
@@ -210,7 +230,7 @@ def main() -> int:
     if not session:
         out["notes"].append("no linked session; run find_session.py first")
     elif not path:
-        out["notes"].append("the session file is gone and was never archived")
+        out["notes"].append("the session file is gone, and no archived copy was found here or in the backup")
     else:
         at = dt.datetime.fromisoformat(session["timestamp"].replace("Z", "+00:00")) if session.get("timestamp") else None
         sess = read_session(path, session.get("uuid"), at, args)
