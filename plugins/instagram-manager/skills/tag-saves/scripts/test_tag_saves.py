@@ -15,6 +15,8 @@ import os
 import sys
 import tempfile
 import unittest
+import urllib.error
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import add_places  # noqa: E402
@@ -495,6 +497,30 @@ class AddPlaces(Home):
         self.run_add("--dry-run")
         self.assertNotIn("Nowhere At All", self.asked)                         # cached, misses too
         self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "data", "places.yaml")))
+
+    def test_openstreetmap_refusing_stops_the_run_and_keeps_what_was_found(self):
+        self.write("data/tags-review.yaml", {
+            "A": {"other_places": ["Fixture Village"]},
+            "B": {"other_places": ["Fixture Road"]}})
+        tries = []
+
+        def fetch(query):
+            if query == "Fixture Road":
+                tries.append(query)
+                raise urllib.error.HTTPError("https://example.invalid", 429, "Too Many Requests", {}, None)
+            return self.fetch(query)
+
+        self.asked, real = [], add_places.geocode.fetch
+        add_places.geocode.fetch = fetch
+        try:
+            with mock.patch.object(add_places.geocode, "COOL", 0), contextlib.redirect_stderr(io.StringIO()), \
+                    contextlib.redirect_stdout(io.StringIO()) as out:
+                code = add_places.main([])
+        finally:
+            add_places.geocode.fetch = real
+        self.assertEqual((code, len(tries)), (3, 2))                            # asked once more, then stopped
+        self.assertIn("STOPPED: OpenStreetMap refused", out.getvalue())
+        self.assertIn("Fixture Village", self.read("data/places.yaml")["places"])  # found before it stopped
 
     def test_then_merge_moves_the_suggestions_into_the_tags(self):
         self.tag("--all")

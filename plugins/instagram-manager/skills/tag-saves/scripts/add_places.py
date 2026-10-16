@@ -162,19 +162,27 @@ def main(argv=None):
 
     data = load_yaml(DATA)
     adder = Adder(Places.load(), data)
-    adder.listed()
-    if not args.listed:
-        said = co.Counter(p for r in load_yaml(REVIEW).values() if isinstance(r, dict)
-                          for p in r.get("other_places") or [])
-        for name, n in said.most_common():
-            adder.suggestion(name, n)
+    stopped = None
+    try:  # OpenStreetMap refusing stops the run; what was found so far is still written
+        adder.listed()
+        if not args.listed:
+            said = co.Counter(p for r in load_yaml(REVIEW).values() if isinstance(r, dict)
+                              for p in r.get("other_places") or [])
+            for name, n in said.most_common():
+                adder.suggestion(name, n)
+    except geocode.Refused as e:
+        stopped = e
     adder.table()
     added = len(adder.places) - len(data.get("places") or {})
-    log("places_add", added=added, aliases=len(adder.aliases), asked=len(adder.rows), dry_run=args.dry_run)
+    log("places_add", added=added, aliases=len(adder.aliases), asked=len(adder.rows), dry_run=args.dry_run,
+        stopped=bool(stopped))
     if not args.dry_run:
         write_yaml(DATA, {"places": adder.places, "aliases": adder.aliases})
     print(f"\n{added} places added, {len(adder.aliases)} names mapped to a listed place"
           f"{' (dry run: nothing written)' if args.dry_run else ''}")
+    if stopped:
+        print(f"STOPPED: {stopped}")
+        return 3
     return 0
 
 

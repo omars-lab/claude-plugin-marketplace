@@ -182,6 +182,13 @@ The same as tag-saves:
   start no more agents. Merge what finished, tell the user what is left, and pick up later.
 - The merge's OpenStreetMap lookups run at one a second. A batch of 40 saves with 3 spots each
   takes about two minutes the first time; after that the answers come from the cache.
+- **OpenStreetMap can refuse** (HTTP 429 "too many requests", or 503), usually after an hour or
+  more of steady lookups. The merge waits a minute and asks once more; refused again, it stops
+  with "STOPPED: …" and exit code 3. The batches it finished are kept; the one it was on keeps its
+  `.answers.json` name, so the next merge takes it again; no spot is filed as "not found". Wait an
+  hour or so before merging again, and never rerun straight away: every refused request makes the
+  wait longer. Space out big rounds (one merge of about 320 saves, then a break) rather than
+  merging wave after wave. `grep ev=geocode_refused` in the run's output shows when it began.
 - **Check the batch size after a round** with tag-saves' `batch_review.py --kind locate`. A
   locate agent uses more context per character than a tagger (it writes more), and its biggest
   batches have come close to a 120,000-token budget; keep `--batch-chars` where the review says.

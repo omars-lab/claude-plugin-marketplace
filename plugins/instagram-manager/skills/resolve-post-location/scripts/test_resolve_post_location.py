@@ -15,6 +15,7 @@ import os
 import sys
 import tempfile
 import unittest
+import urllib.error
 import urllib.parse
 from unittest import mock
 
@@ -586,6 +587,36 @@ class Merge(Home):
         again = self.run_script("--prepare", "--pilot", "fixture").split()
         with open(again[0]) as fh:
             self.assertEqual([r["code"] for r in json.load(fh)["saves"]], ["LISTA"])
+
+    def test_openstreetmap_refusing_stops_the_merge_and_files_nothing_as_not_found(self):
+        paths = self.run_script("--prepare", "--pilot", "fixture", "--batch-saves", "3").split()
+        self.assertEqual(len(paths), 2)
+        self.agent(paths)
+        with open(paths[0]) as fh:
+            first = [r["code"] for r in json.load(fh)["saves"]]
+        refused = "Example Pier" if "LISTA" not in first else "Example Diner"   # a spot in the second batch
+
+        tries = []
+
+        def osm(params):
+            if params["q"] == refused:
+                tries.append(params["q"])
+                raise urllib.error.HTTPError("https://example.invalid", 429, "Too Many Requests", {}, None)
+            return self.osm(params)
+
+        with mock.patch.object(geocode, "COOL", 0), contextlib.redirect_stderr(io.StringIO()), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            code = rpl.main(["--merge"], fetcher=osm)
+        self.assertEqual(code, 3)
+        self.assertIn("STOPPED: OpenStreetMap refused", out.getvalue())
+        self.assertEqual(len(tries), 2)                                          # asked once more, then stopped
+        self.assertTrue(os.path.exists(paths[0].replace(".json", ".answers.merged.json")))   # the first is kept
+        self.assertTrue(os.path.exists(paths[1].replace(".json", ".answers.json")))          # the second waits
+        review = self.read("data/pins-review.yaml")
+        self.assertEqual([e for es in review.values() for e in es if e["said"] == refused], [])
+        self.assertNotIn(refused, json.loads(self.text(".cache/geocode.json")))  # a refusal is not cached
+        self.assertIn("0 batches still waiting", self.run_script("--merge"))    # accepted again: all merged
+        self.assertTrue(os.path.exists(paths[1].replace(".json", ".answers.merged.json")))
 
     def test_prepare_will_not_delete_answers_that_are_not_merged(self):
         self.agent(self.run_script("--prepare", "--pilot", "fixture").split())

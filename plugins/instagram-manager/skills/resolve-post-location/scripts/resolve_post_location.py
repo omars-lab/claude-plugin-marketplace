@@ -873,7 +873,14 @@ def merge(saves, tags, places, fetcher=None, frames=False):
     dropped = move_dropped(pins, review)
     streets = move_street_pins(pins, review)
     branches = move_branch_pins(pins, review)
-    fixed = recheck_review(by_code, tags, places, pins, review, reaches, fetcher)
+    # OpenStreetMap refusing (geocode.Refused) stops the run: the batches already done are kept and
+    # written, the one under way stays unmerged (its answers file is not renamed), and the next run
+    # takes it again. Its saves already redone keep their new answers; the rerun replaces them.
+    stopped = None
+    try:
+        fixed = recheck_review(by_code, tags, places, pins, review, reaches, fetcher)
+    except geocode.Refused as e:
+        fixed, stopped = 0, e
     out = batch_dir(frames)
     counts = {"pins": 0, "review": 0, "no_spot": 0, "unanswered": 0}
     pending = before = 0
@@ -888,7 +895,7 @@ def merge(saves, tags, places, fetcher=None, frames=False):
                 continue
             # its agent wrote the answers again after they were merged: the new file wins
             log("locate_merge_rewritten", batch=batch["batch"])
-        if not os.path.exists(ans_path):  # its agent has not run yet
+        if not os.path.exists(ans_path) or stopped:  # its agent has not run yet, or the run stopped
             pending += 1
             continue
         answers, bad = read_answers(ans_path)
@@ -915,11 +922,17 @@ def merge(saves, tags, places, fetcher=None, frames=False):
                 if said_key(spot) in settled:
                     continue
                 redone.add(key(spot))
-                where, entry = resolve(spot, caption, areas, places, reaches, fetcher, creator_of(by_code[code]),
-                                       seen)
+                try:
+                    where, entry = resolve(spot, caption, areas, places, reaches, fetcher, creator_of(by_code[code]),
+                                           seen)
+                except geocode.Refused as e:
+                    stopped = e
+                    break
                 if frames:
                     entry["from"] = "video"
                 (new_pins if where == "pin" else new_review).append(entry)
+            if stopped:  # this save keeps what it had; the batch is merged again next run
+                break
             got["pins"] += len(new_pins)
             got["review"] += len(new_review)
             if frames:  # spots read off the video add to what the caption gave
@@ -941,6 +954,10 @@ def merge(saves, tags, places, fetcher=None, frames=False):
             elif not frames:
                 no_spot[code] = {"areas": areas}
             got["no_spot"] += not spots
+        if stopped:  # not renamed, not counted: the next run merges this batch again
+            log("locate_merge_stopped", batch=batch["batch"], msg=str(stopped))
+            pending += 1
+            continue
         for k in counts:
             counts[k] += got[k]
         log("locate_merge_batch", batch=batch["batch"], saves=len(batch["saves"]), source="video" if frames else "caption",
@@ -959,7 +976,10 @@ def merge(saves, tags, places, fetcher=None, frames=False):
         saves_with_pins=len(pins), saves_in_review=len(review), saves_no_spot=len(no_spot))
     print(f"{counts['pins']} spots pinned, {counts['review']} for review, {counts['no_spot']} saves "
           f"{'show' if frames else 'name'} no spot, "
-          f"{counts['unanswered']} saves with no usable answer; {pending} batches still waiting for their agent")
+          f"{counts['unanswered']} saves with no usable answer; {pending} batches still waiting for their agent"
+          f"{' or for the next run' if stopped else ''}")
+    if stopped:
+        print(f"STOPPED: {stopped}")
     if fixed:
         print(f"{fixed} review entries moved to the pins (a person fixed them with ok: true or a lookup, or the "
               "address was found once its suite or unit was dropped, or once looked up on its own)")
@@ -980,7 +1000,7 @@ def merge(saves, tags, places, fetcher=None, frames=False):
             print(f"  {code}  {said!r} under {near}: {hint}")
         if len(wrong) > WRONG_SHOWN:
             print(f"  ... and {len(wrong) - WRONG_SHOWN} more (ev=locate_wrong_area)")
-    return 0
+    return 3 if stopped else 0
 
 
 def wrong_area(review):

@@ -23,6 +23,12 @@ asked once. Nominatim's usage policy allows at most one request a second and nee
 User-Agent that names the app; we wait after every request, misses included (a run of fast
 misses is what got the adventures repo an HTTP 429).
 
+A refusal (HTTP 429 "too many requests", or 503) is not a miss. We wait COOL seconds and ask once
+more; refused again, lookup() raises Refused and the caller stops its run, so no spot is filed as
+"not found" because OpenStreetMap would not answer. Nothing refused is cached. (A merge that kept
+going through twelve minutes of refusals filed 269 lookups that way: docs/issues in the data repo,
+"osm-refused-lookups".)
+
 Standard library only.
 """
 
@@ -39,6 +45,8 @@ from log import log
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
 UA = "instagram-manager/0.4 (personal saved-posts organizer; one request a second)"
 WAIT = 1.1
+REFUSED = (429, 503)
+COOL = 60  # seconds to wait after a refusal before asking once more
 CITY = {"city", "town", "village", "hamlet", "municipality"}
 AREA = {"suburb", "neighbourhood", "quarter", "city_district", "borough"}
 PARK = {"national_park", "nature_reserve", "protected_area"}
@@ -47,6 +55,26 @@ REGION = {"region", "county", "state_district", "island", "archipelago", "lake",
 RANK = {"city": 0, "park": 0, "state": 0, "country": 0, "region": 1, "area": 2}
 
 _cache, _cache_path = None, None
+
+
+class Refused(RuntimeError):
+    """OpenStreetMap refused twice in a row (HTTP 429 or 503): stop the run and try again later."""
+
+
+def _ask(fetcher, arg, query):
+    """fetcher(arg), asked once more after COOL seconds if OpenStreetMap refuses; refused again
+    raises Refused. Any other error goes to the caller as before."""
+    for attempt in (1, 2):
+        try:
+            return fetcher(arg)
+        except urllib.error.HTTPError as e:
+            if e.code not in REFUSED:
+                raise
+            log("geocode_refused", q=query, code=e.code, attempt=attempt)
+            if attempt == 2:
+                raise Refused(f"OpenStreetMap refused lookups (HTTP {e.code}). Stopped so no spot is filed as "
+                              "not found; wait an hour or so, then run it again.") from e
+            time.sleep(COOL)
 
 
 def _load():
@@ -125,7 +153,7 @@ def lookup(query, fetcher=None):
     if query in c:
         return c[query]
     try:
-        hits = (fetcher or fetch)(query)
+        hits = _ask(fetcher or fetch, query, query)
     except (urllib.error.URLError, TimeoutError, ValueError) as e:
         log("geocode_fail", q=query, msg=str(e)[:150])
         return None  # not cached: a failed call is asked again next run
@@ -183,7 +211,7 @@ def lookup_near(query, box, fetcher=None):
     if key in c:
         return c[key]
     try:
-        hits = (fetcher or fetch_params)(params)
+        hits = _ask(fetcher or fetch_params, params, params["q"])
     except (urllib.error.URLError, TimeoutError, ValueError) as e:
         log("geocode_fail", q=params["q"], msg=str(e)[:150])
         return []  # not cached: a failed call is asked again next run
