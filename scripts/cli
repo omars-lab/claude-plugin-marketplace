@@ -97,6 +97,24 @@ sys.exit(0 if old is not None and old == new else 1)
 PYEOF
 }
 
+# The commit to diff from when asking what a plugin changed since its last release: the newest
+# commit after <versionCommit> that changed plugin.json's version, or <versionCommit> if none did.
+# A commit that changes a skill and raises the version in one go can't name itself as
+# versionCommit, so diffing from versionCommit alone listed its own changes as unreleased.
+release_base() {
+  local mp_root="$1" version_commit="$2" rel="$3"
+  python3 - "$mp_root" "$version_commit" "$rel" <<'PYEOF'
+import json, subprocess, sys
+root, since, rel = sys.argv[1:4]
+def version(rev):
+    out = subprocess.run(["git", "-C", root, "show", f"{rev}:{rel}"], capture_output=True, text=True)
+    return None if out.returncode else json.loads(out.stdout).get("version")
+log = subprocess.run(["git", "-C", root, "log", "--format=%H", f"{since}..HEAD", "--", rel],
+                     capture_output=True, text=True, check=True).stdout.split()
+print(next((c for c in log if version(c) != version(f"{c}^")), since))
+PYEOF
+}
+
 # ── Subcommands ────────────────────────────────────────────────────────────────
 
 cmd_validate() {
@@ -268,15 +286,18 @@ cmd_version_check() {
       continue
     fi
 
-    # Diff since last version commit, excluding version-tracking.json itself. versionCommit is
-    # the commit *before* the bump, so the bump's own plugin.json change shows up too: drop
+    # Diff since the last release, excluding version-tracking.json itself. The last release is
+    # the newest commit that raised the version (see release_base), else versionCommit, the
+    # commit *before* the bump; from there the bump's own plugin.json change shows up too: drop
     # plugin.json when its contents, version aside, are the same (older bumps also reformatted it).
-    local changed_files
-    changed_files=$(git -C "$mp_root" diff --name-only "$version_commit" HEAD -- "plugins/$plugin/" \
-      | { grep -v "version-tracking\.json$" || true; })
     local manifest_rel="plugins/$plugin/.claude-plugin/plugin.json"
+    local base
+    base=$(release_base "$mp_root" "$version_commit" "$manifest_rel")
+    local changed_files
+    changed_files=$(git -C "$mp_root" diff --name-only "$base" HEAD -- "plugins/$plugin/" \
+      | { grep -v "version-tracking\.json$" || true; })
     if [[ $'\n'"$changed_files"$'\n' == *$'\n'"$manifest_rel"$'\n'* ]] \
-        && manifest_same_but_version "$mp_root" "$version_commit" "$manifest_rel"; then
+        && manifest_same_but_version "$mp_root" "$base" "$manifest_rel"; then
       changed_files=$(echo "$changed_files" | { grep -vx "$manifest_rel" || true; })
     fi
 
@@ -294,7 +315,7 @@ cmd_version_check() {
         local skill_name
         skill_name=$(echo "$f" | sed "s|plugins/$plugin/skills/||" | cut -d'/' -f1)
         local status
-        status=$(git -C "$mp_root" diff --name-status "$version_commit" HEAD -- "$f" | { grep -v "^$" || true; } | cut -f1 | head -1)
+        status=$(git -C "$mp_root" diff --name-status "$base" HEAD -- "$f" | { grep -v "^$" || true; } | cut -f1 | head -1)
         # One line per changed file, so name each skill once
         case "${status:-M}" in
           A) [[ " $new_skills " == *" $skill_name "* ]] || new_skills="$new_skills $skill_name" ;;
@@ -459,9 +480,18 @@ cmd_version_bump_all() {
       continue
     fi
 
+    # Same base as version-check, so a plugin just bumped (or raised in its change commit)
+    # isn't bumped again.
+    local manifest_rel="plugins/$plugin/.claude-plugin/plugin.json"
+    local base
+    base=$(release_base "$mp_root" "$version_commit" "$manifest_rel")
     local changed_files
-    changed_files=$(git -C "$mp_root" diff --name-only "$version_commit" HEAD -- "plugins/$plugin/" \
+    changed_files=$(git -C "$mp_root" diff --name-only "$base" HEAD -- "plugins/$plugin/" \
       | { grep -v "version-tracking\.json$" || true; })
+    if [[ $'\n'"$changed_files"$'\n' == *$'\n'"$manifest_rel"$'\n'* ]] \
+        && manifest_same_but_version "$mp_root" "$base" "$manifest_rel"; then
+      changed_files=$(echo "$changed_files" | { grep -vx "$manifest_rel" || true; })
+    fi
 
     if [[ -z "$changed_files" ]]; then
       echo "  ✓  $plugin v$current_version: up to date"
@@ -477,7 +507,7 @@ cmd_version_bump_all() {
         local skill_name
         skill_name=$(echo "$f" | sed "s|plugins/$plugin/skills/||" | cut -d'/' -f1)
         local status
-        status=$(git -C "$mp_root" diff --name-status "$version_commit" HEAD -- "$f" | { grep -v "^$" || true; } | cut -f1 | head -1)
+        status=$(git -C "$mp_root" diff --name-status "$base" HEAD -- "$f" | { grep -v "^$" || true; } | cut -f1 | head -1)
         case "${status:-M}" in
           A) new_skills="$new_skills $skill_name" ; bump_type="minor" ;;
           D) removed_skills="$removed_skills $skill_name" ; bump_type="major" ;;
