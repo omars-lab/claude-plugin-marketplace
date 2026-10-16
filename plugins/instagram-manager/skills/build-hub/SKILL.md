@@ -56,6 +56,12 @@ the town, not the state.
   **resolve-post-location**. When a post has spots, they replace the pin of the area they sit in.
   A spot is a place of its own with its own page, linked up to its area. Posts that name the same
   OpenStreetMap thing share one spot page.
+- **Spots OpenStreetMap doesn't list.** OpenStreetMap is thin on small restaurants and cafés, so
+  many land in `data/pins-review.yaml` as "not found near Example Town" (or a doubtful match).
+  Each still becomes a spot, with a dashed pin at its town and a Google Maps link that searches its
+  name in that town (`Example Cafe, Example Town`). The post then opens the café, not the town.
+  The doubtful match's own name and lat/lon are never used. Entries marked `drop: true`, or that
+  failed the quote or area check, are left out. The review file stays the list for a person to fix.
 - **Wide pins.** A post tagged only with a state or a country gets a grey pin at that state's or
   country's middle, so it still shows up on the map.
 - **No pin yet.** A place that has never been looked up (no latitude and longitude in
@@ -81,6 +87,7 @@ somewhere far away are still there when you zoom out.
 | `config/collections.yaml` | the pilots | `--pilot` stops; `--all` still works |
 | `config/topics.yaml` | the topics' display names | the topic's short name shows instead |
 | `data/pins.yaml` | spots, with the caption's words for them | fine: area pins only |
+| `data/pins-review.yaml` | spots OpenStreetMap did not place: dashed pins at their town | fine: no dashed pins |
 | `data/media.yaml` + `$INSTAGRAM_MEDIA_DIR` | thumbnails; copied into `.cache/hub/thumbs/` | fine: grey boxes |
 
 Each build clears and rewrites `places/` and `posts/`. Other pages in the folder, like the moves
@@ -93,7 +100,11 @@ page or the spot review page, are kept, and the map page links to them.
    make hub                    # the pilot; PILOT= for every save
    ```
    It prints one line of counts: saves, how many have a pin, how many sit at a town, park or spot
-   rather than a whole state, place pages, spots and thumbnails.
+   rather than a whole state, place pages, spots and thumbnails. A second line is the **venue
+   check**: of the posts tagged `eat` or `stay`, how many open a spot OpenStreetMap placed, a spot
+   pinned at its town, or only a town. The codes of the town-only ones are in the log
+   (`ev=hub_venues town_only_codes=...`). Read their captions: either the caption names no venue
+   (fine, the video may), or the locator missed one (fix **resolve-post-location**'s agent).
 2. **Look at it.** `make serve`, then open `http://localhost:8765/`. Check the map, one place
    page and one post page, on a wide window and a narrow one.
 3. **Fix the data, not the pages.** A pin in the wrong spot means its place in

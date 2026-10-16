@@ -15,6 +15,7 @@ Reads   $INSTAGRAM_HOME/.cache/saves.json          caption, creator, link, saved
         $INSTAGRAM_HOME/data/places.yaml           each place's kind, pin, the place it sits in
         $INSTAGRAM_HOME/data/pins.yaml             the spots each post names (optional: skipped
                                                    quietly until resolve-post-location has run)
+        $INSTAGRAM_HOME/data/pins-review.yaml      spots OpenStreetMap did not place (optional)
         $INSTAGRAM_HOME/data/media.yaml            each post's thumbnail (optional, the same way)
         $INSTAGRAM_MEDIA_DIR/<code>/thumb.jpg      the thumbnails themselves
 Writes  OUT/index.html                             the map, the list of places, a search box
@@ -30,6 +31,11 @@ Which pin a post gets
   from pins.yaml (a beach, a café) takes the place of the area it sits in. A post that names only
   a state gets its pin at the state's middle. Every place it names still gets the post on its page,
   so a state's page lists every post in it.
+  A spot OpenStreetMap does not list (most small restaurants), or matched only doubtfully, still
+  gets its own dashed pin, at its town, and a Google Maps link that searches its name in that town:
+  the post opens the venue, not the town. pins-review.yaml stays the list for a person to fix.
+  The build ends with a check: of the posts for eating or staying, how many open a spot, a spot
+  pinned at its town, or only a town. The codes of the last kind go to the log.
 
 The menus over the map
   State, national attraction, purpose and topic. Each option says how many posts it holds once the
@@ -134,6 +140,33 @@ def maps_link(name, where=""):
     return "https://www.google.com/maps/search/?api=1&query=" + quote_plus(f"{name}, {where}" if where else name)
 
 
+# Review entries whose quote and area checked out, and only the map lookup failed or looked doubtful.
+# OpenStreetMap is thin on small restaurants and cafés, so these are mostly real venues.
+LOOKUP_MISSES = (re.compile(r"^not found near "), re.compile(r"^found .*, a different name$"),
+                 re.compile(r"^\d+ km from "))
+
+
+def placed_spots(review):
+    """code → the spots a post names that OpenStreetMap did not place, from pins-review.yaml. Each is
+    shown at its town's pin, and its Google Maps link searches the caption's name in that town, so
+    the post opens the venue rather than the town. A doubtful match's own lat/lon is never used."""
+    out = {}
+    for code, entries in (review or {}).items():
+        for e in entries if isinstance(entries, list) else []:
+            if not isinstance(e, dict) or e.get("drop") or not isinstance(e.get("near"), str):
+                continue
+            if not any(r.match(str(e.get("why") or "")) for r in LOOKUP_MISSES):
+                continue
+            said = e.get("said") if isinstance(e.get("said"), str) else ""
+            # What was searched: a person's lookup, else what the merge asked. Not `name`, which on a
+            # doubtful match is the other place OpenStreetMap found.
+            name = next((e[k] for k in ("lookup", "asked") if isinstance(e.get(k), str) and e[k].strip()), "")
+            name = (name or said.lstrip("@#")).strip()
+            if name:
+                out.setdefault(code, []).append({"name": name, "said": said, "near": e["near"], "placed": True})
+    return out
+
+
 def saved_on(save):
     raw = save.get("saved_at")
     if isinstance(raw, str):
@@ -215,7 +248,8 @@ class Hub:
             self.places[key] = {"key": key, "name": name, "kind": e.get("kind") or "spot", "lat": lat, "lon": lon,
                                 "map": e.get("map") or maps_link(name, near or ""), "parent": near, "spot": True,
                                 "posts": [], "said": {}, "osm": e.get("osm"), "wikidata": e.get("wikidata"),
-                                "notes": e.get("notes"), "found": e.get("found") if isinstance(e.get("found"), str) else ""}
+                                "notes": e.get("notes"), "found": e.get("found") if isinstance(e.get("found"), str) else "",
+                                "placed": bool(e.get("placed"))}
         return self.places[key]
 
     def _name_post(self, place, code, said=None):
@@ -251,6 +285,10 @@ class Hub:
                     if up not in areas:
                         areas.append(up)
                 covered.add(near)
+            if e.get("placed"):   # not found on OpenStreetMap: shown at its town
+                if not near or near not in self.places:
+                    continue
+                e = {**e, "lat": self.places[near]["lat"], "lon": self.places[near]["lon"]}
             if near and e["name"].strip().lower() == near.lower():   # the spot is the area itself
                 self._name_post(self.places[near], code, said)
                 lat, lon = number(e.get("lat")), number(e.get("lon"))
@@ -270,7 +308,7 @@ class Hub:
         for key in spot_keys:
             sp = self.places[key]
             if sp["lat"] is not None:
-                pins.append((key, sp["lat"], sp["lon"], "spot"))
+                pins.append((key, sp["lat"], sp["lon"], "placed" if sp.get("placed") else "spot"))
             elif sp["parent"]:
                 covered.discard(sp["parent"])
         for a in leaves:
@@ -478,6 +516,9 @@ def place_page(hub, place):
     rows.append(("On a map", " · ".join(where)))
     if place["lat"] is None:
         rows.append(("Pin", '<span class="muted">not looked up yet, so it is not on the map</span>'))
+    elif place.get("placed"):
+        rows.append(("Pin", f'<span class="muted">at {esc(place["parent"])}: OpenStreetMap does not list it, '
+                            'so Google Maps searches for it by name</span>'))
     points = []
     if place["lat"] is not None:
         points.append([place["lat"], place["lon"], place["name"], "", "spot" if place["spot"] else "here"])
@@ -554,6 +595,7 @@ function popup(pin){
   if(p.th){var img=el('img');img.src=p.th;img.alt='';box.appendChild(img)}
   box.appendChild(el('p','pwho',p.u?'@'+p.u:'Unknown creator'));
   var where=el('p','pwhere');where.appendChild(link(pl.s,pl.n));box.appendChild(where);
+  if(pl.x)box.appendChild(el('p','pnote','Pinned at the town: OpenStreetMap does not list it. Google Maps searches for it by name.'));
   if(p.t)box.appendChild(el('p','ptext',p.t));
   var ln=el('p','plinks');ln.appendChild(link(p.f,'Post page'));ln.appendChild(link(p.i,'Open on Instagram',true));
   ln.appendChild(link(pl.m,'Open in Google Maps',true));
@@ -723,7 +765,8 @@ def index_page(hub, title, extra_links, home=()):
     facets, picks, inside = menus(hub, places)
     data = {
         "places": [{"n": p["name"], "s": place_href(p, up=False), "c": len(p["posts"]), "m": p["map"],
-                    "k": ("spot" if p["spot"] else kind_word(p).lower()), "g": inside[i]} for i, p in enumerate(places)],
+                    "k": ("spot" if p["spot"] else kind_word(p).lower()), "g": inside[i],
+                    **({"x": 1} if p.get("placed") else {})} for i, p in enumerate(places)],
         "posts": [{"c": p["code"], "u": p["user"], "f": post_href(p, up=False), "i": p["url"], "th": p["thumb"],
                    "t": short(p["caption"], POPUP_CHARS), "g": picks[i], "pl": [pidx[k] for k in hub.named(p)],
                    "q": " ".join([p["user"], p["name"], p["caption"]] + [hub.places[k]["name"] for k in hub.named(p)])}
@@ -744,6 +787,7 @@ def index_page(hub, title, extra_links, home=()):
                '<div class="panes"><aside><form role="search"><input id="q" type="search" autocomplete="off" '
                'placeholder="Search captions, creators and places" aria-label="Search captions, creators and places">'
                '</form><div class="legend"><span><i class="pin pin-spot"></i>a spot the post names</span>'
+               '<span><i class="pin pin-placed"></i>a spot not on OpenStreetMap, at its town</span>'
                '<span><i class="pin pin-area"></i>a town, park or region</span>'
                '<span><i class="pin pin-wide"></i>only the state or country</span></div>'
                '<div id="out" aria-live="polite"></div></aside><div id="map"></div></div>')
@@ -779,6 +823,7 @@ mark{background:var(--mark);color:inherit;padding:0 .15em;border-radius:3px}
   border:3px solid var(--ring);box-shadow:0 1px 4px rgba(0,0,0,.4)}
 .pin-spot{background:var(--spot)}
 .pin-wide{background:var(--wide)}
+.pin-placed{background:var(--card);border-color:var(--spot);border-style:dashed}
 .pin-here{background:var(--spot);width:20px;height:20px}
 .pin-inside{width:14px;height:14px;border-width:2px}
 .bubble{width:100%;height:100%;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;
@@ -794,6 +839,7 @@ mark{background:var(--mark);color:inherit;padding:0 .15em;border-radius:3px}
 .pwho{font-weight:700}
 .pwhere a{color:var(--muted);font-size:.85rem}
 .ptext{font-size:.9rem;overflow-wrap:anywhere}
+.pnote{font-size:.8rem;color:var(--muted);margin:.2rem 0}
 .plinks{display:flex;gap:12px;flex-wrap:wrap;font-weight:700;margin-top:6px!important}
 
 /* The map page: a bar on top, the list beside the map; the map on top on a phone. */
@@ -955,6 +1001,9 @@ def main(argv=None):
         print("note: data/tags.yaml is empty or missing, so no save has a place yet (run the tagger)",
               file=sys.stderr)
     pins = load_yaml(os.path.join("data", "pins.yaml"))
+    placed = placed_spots(load_yaml(os.path.join("data", "pins-review.yaml")))
+    pins = {c: (pins.get(c) if isinstance(pins.get(c), list) else []) + placed.get(c, [])
+            for c in set(pins) | set(placed)}
     media = load_yaml(os.path.join("data", "media.yaml"))
     topics = load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {}
     purposes = load_purposes()
@@ -979,8 +1028,25 @@ def main(argv=None):
     print(f"{len(hub.posts)} saves: {pinned} on the map ({exact} at a town, park or spot) "
           f"with {n_pins} pins, one per place a post names ({multi} posts have 2 or more); "
           f"{len(hub.places)} place pages ({spots} spots); {thumbs} thumbnails")
+    venues = venue_check(hub)
+    log("hub_venues", **{k: len(v) for k, v in venues.items()}, town_only_codes=",".join(venues["town"]))
+    print(f"eat or stay posts: {len(venues['spot'])} open a spot OpenStreetMap placed, {len(venues['placed'])} "
+          f"one it doesn't list (pinned at its town), {len(venues['town'])} only a town")
     print(os.path.join(out, "index.html"))
     return 0
+
+
+def venue_check(hub, purposes=("eat", "stay")):
+    """The posts for eating or staying, by what their Google Maps links open: a spot OpenStreetMap
+    placed, a spot it does not list (searched by name in its town), or only a town. A "town" post
+    either names no venue in its caption or lost it before the lookup: those are the ones to read."""
+    out = {"spot": [], "placed": [], "town": []}
+    for p in hub.posts:
+        if not set(p["tagged_purposes"]) & set(purposes):
+            continue
+        styles = {style for *_, style in p["pins"]}
+        out["spot" if "spot" in styles else "placed" if "placed" in styles else "town"].append(p["code"])
+    return out
 
 
 if __name__ == "__main__":

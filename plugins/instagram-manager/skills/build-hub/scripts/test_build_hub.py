@@ -140,6 +140,30 @@ class Hub(unittest.TestCase):
         self.assertEqual(pins["VILL1"], [("Fixture State", "wide", 1)])        # no pin for the village: go up
         self.assertNotIn("NOTAG", pins)
 
+    def test_a_cafe_openstreetmap_does_not_list_is_pinned_at_its_town_and_searched_by_name(self):
+        self.write("data/tags.yaml", {**TAGS, "TOWN1": {**TAGS["TOWN1"], "purposes": ["eat"]}})
+        self.write("data/pins-review.yaml", {
+            "TOWN1": [{"said": "@examplecafe", "name": "Example Cafe", "asked": "Example Cafe", "near": "Fixture Town",
+                       "why": "not found near Fixture Town"},
+                      # a doubtful match: its name and lat/lon are the other place's, so neither is used
+                      {"said": "Example Bakery", "asked": "Example Bakery", "near": "Fixture Town",
+                       "why": "found Example Baguette, a different name", "name": "Example Baguette",
+                       "lat": 50.0, "lon": 50.0},
+                      {"said": "Gone Diner", "near": "Fixture Town", "why": "not found near Fixture Town", "drop": True},
+                      {"said": "Made Up", "near": "Fixture Town", "why": "quote not in caption"}]})
+        out = self.build("--pilot", "fixture")
+        d = self.data()
+        names = [p["n"] for p in d["places"]]
+        town1 = [(names[pl], style, lat, lon) for lat, lon, post, pl, style, _ in d["pins"]
+                 if d["posts"][post]["c"] == "TOWN1"]
+        self.assertEqual(town1, [("Example Cafe", "placed", 10.5, 20.5),         # at the town, not the town itself
+                                 ("Example Bakery", "placed", 10.5, 20.5)])
+        cafe = self.page("places/example-cafe.html")
+        self.assertIn("google.com/maps/search/?api=1&amp;query=Example+Cafe%2C+Fixture+Town", cafe)
+        self.assertIn("OpenStreetMap does not list it", cafe)
+        self.assertNotIn("Example Baguette", self.page("posts/TOWN1.html"))
+        self.assertIn("eat or stay posts: 0 open a spot OpenStreetMap placed, 1 one it doesn't list", out)
+
     def test_spot_page_groups_posts_by_osm_id_and_marks_the_words(self):
         self.build("--pilot", "fixture")
         spot = self.page("places/example-falls.html")
