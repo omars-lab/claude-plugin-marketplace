@@ -12,6 +12,10 @@ Usage:
 applied, so the findings are exactly what is left to replace. render_page.py refuses to
 write a post page while this finds anything.
 
+It also flags passwords, keys and tokens (hide_secrets.py's rules). A secret is reported by
+its outline only (letters a/A, digits 9, symbols #), never its value, and is fixed by editing
+the spec's text, not by a redaction rule, which would copy the secret into the spec again.
+
 These patterns can't recognize names of people, companies, products or internal tools.
 Read the post view for those and add them to the redactions.
 
@@ -31,6 +35,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lib  # noqa: E402
+from hide_secrets import hide_counted  # noqa: E402
 
 PATTERNS = {
     "cost": r"\$\s?\d[\d,]*(?:\.\d+)?",
@@ -71,6 +76,14 @@ def scan(spec: dict, allow: tuple[str, ...] = ()) -> list[dict]:
                 if key not in seen:
                     seen.add(key)
                     hits.append({"where": where, "kind": kind, "match": m.group(0)})
+        found: list = []
+        hide_counted(text, found)
+        for what, outline in found:
+            key = (where, "secret", outline)
+            if key not in seen:
+                seen.add(key)
+                hits.append({"where": where, "kind": "secret",
+                             "match": f"{what} shaped {outline} (value not shown; edit the spec)"})
     return hits
 
 

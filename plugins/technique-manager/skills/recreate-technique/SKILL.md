@@ -129,6 +129,16 @@ It matches each spec's typed prompts against `~/.claude/projects/*/*.jsonl` near
 - It matches by word overlap, because specs fix the user's typos. A match is saved only with a score of at least 0.5 and within 30 minutes of the screenshot.
 - **Claude Code deletes sessions older than `cleanupPeriodDays` (30 by default).** For an older screenshot it says so and saves nothing. Run this step soon after taking screenshots.
 
+## Scripts: when to use each
+
+| Script | What it does | When to reach for it | Command |
+|---|---|---|---|
+| `find_session.py` | Matches each spec's typed prompts to a session on this Mac and saves it as `source.session` | Step 2b, soon after the screenshots are taken | `python3 "$RT/scripts/find_session.py" --all --write` |
+| `scan_privacy.py` | Lists what in a spec could identify someone, and any password or key (shown as an outline, never the value) | Step 3, until the post scan is empty | `python3 "$RT/scripts/scan_privacy.py" --all --post` |
+| `render_page.py` | Writes the internal and post pages; refuses the post while the scan finds anything | Step 4 | `python3 "$RT/scripts/render_page.py" --all` |
+| `hide_secrets.py` | Hides passwords, keys and tokens in transcript text. The other scripts call it before printing; its command line counts what it hides in transcripts and shows the outline of anything random-looking it let through | To check a session before quoting it, or after changing a rule (`--show-hidden` lists what it hid, by outline, to spot over-hiding) | `python3 "$RT/scripts/hide_secrets.py" <session.jsonl> [--since ISO] [--until ISO]` |
+| `test_hide_secrets.py` | Offline checks of what it hides and what it leaves alone | After any change to `hide_secrets.py` | `python3 "$RT/scripts/test_hide_secrets.py"` |
+
 ## Step 3: Redactions
 
 The post view must not identify anyone. Replacements are `{"find", "replace"}` rules, matched as whole tokens (so `EC` never touches `SECRET`):
@@ -144,6 +154,8 @@ python3 "$RT/scripts/scan_privacy.py" --all --post    # what the post view would
 2. Build the rules from the scanner hits **and** the identifiers the subagents listed. The scanner can't recognize names of people, companies, products or internal tools; that list is the only way to catch them.
 3. Choose stand-ins the scanner won't flag again: `$XX.XX`, `PR #N`, `feature/pack-trim`, `example-app`, `Alex`.
 4. Re-run the scan until it is empty. Then grep the post text for each name on the subagents' lists.
+
+**A `secret` hit** is a password, key or token in the spec. The scan shows its outline (letters `a`/`A`, digits `9`, symbols `#`) and never its value. Fix it by editing the spec's text to `[hidden]` or a stand-in, not with a redaction rule, which would copy the secret into the spec a second time.
 
 ## Step 4: Render
 

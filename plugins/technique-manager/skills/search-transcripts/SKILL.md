@@ -27,6 +27,8 @@ ST="<base directory of this skill>"
 
 In a hub, `make transcripts GREP="<words>"` runs `fetch` and then `snippets`.
 
+**Passwords and keys never print.** `snippets` passes each line through `recreate-technique/scripts/hide_secrets.py` before cutting the window. A password after a label (`password:`, `API_KEY=`), a known token format (AWS, GitHub, Slack, Anthropic, Google, Stripe, Shopify, JWT, bearer, a password in a URL) or a random-looking word becomes `[hidden <kind>]`, and the label stays. Searching for the word `password` is safe; the values around it come back hidden. The fetched copies are still whole transcripts, so delete them when the research is done.
+
 ## Where it searches
 
 Paths are relative to the home folder on the other Mac:

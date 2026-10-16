@@ -35,6 +35,7 @@ sys.path.insert(0, str(HERE.parents[2] / "recreate-technique" / "scripts"))
 import lib  # noqa: E402
 import scan_privacy  # noqa: E402
 from find_session import prompt_text, claude_text  # noqa: E402
+from hide_secrets import hide  # noqa: E402
 sys.path.insert(0, str(HERE.parents[2] / "sync-studio" / "scripts"))
 from sync_studio import remote_path  # noqa: E402
 
@@ -48,7 +49,8 @@ def ts(rec: dict) -> dt.datetime | None:
 
 
 def cut(text: str, n: int) -> str:
-    text = " ".join(text.split())
+    """The text with passwords and keys hidden, then cut to n characters."""
+    text = " ".join(hide(text).split())
     return text if len(text) <= n else text[: n - 1] + "…"
 
 

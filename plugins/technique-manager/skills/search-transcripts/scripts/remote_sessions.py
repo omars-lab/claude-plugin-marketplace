@@ -37,6 +37,7 @@ SKILLS = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SKILLS / "recreate-technique" / "scripts"))
 import lib  # noqa: E402
 from find_session import prompt_text, claude_text  # noqa: E402
+from hide_secrets import hide  # noqa: E402
 
 STUDIO = Path.home() / ".config" / "technique-manager" / "studio.json"
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8"]
@@ -149,6 +150,7 @@ def snippets(paths: list[Path], needles: list[str], chars: int, limit: int) -> t
                 role, text = record_text(rec)
                 if not text:
                     continue
+                text = hide(text)  # before the window is cut, so a secret at its edge is still whole
                 at = min((i for i in (text.lower().find(x) for x in low) if i >= 0), default=-1)
                 if at < 0:
                     continue  # the words were in metadata, not in what was said

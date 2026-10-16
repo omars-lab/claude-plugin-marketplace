@@ -34,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lib  # noqa: E402
+from hide_secrets import hide  # noqa: E402
 
 PROJECTS = Path.home() / ".claude" / "projects"
 GENERATED = ("This session is being continued", "Base directory for this skill", "Caveat:")
@@ -127,7 +128,7 @@ def scan(needles: list[set[str]], at: dt.datetime, hours: float, claude: list[se
                 if key not in best or (score, -minutes) > (best[key]["score"], -best[key]["minutes_off"]):
                     best[key] = {"path": str(f), "session_id": f.stem, "uuid": rec.get("uuid"),
                                  "timestamp": ts, "cwd": cwd, "title": title, "score": round(score, 2),
-                                 "minutes_off": round(minutes, 1), "prompt": text[:160]}
+                                 "minutes_off": round(minutes, 1), "prompt": hide(text)[:160]}
         for m in best.values():
             if m["path"] == str(f) and title:
                 m["title"] = title
