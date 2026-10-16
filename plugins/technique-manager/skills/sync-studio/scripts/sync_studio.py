@@ -206,7 +206,8 @@ def main() -> int:
         combined, kept = combine(rows, there)
         write_index(staged, combined, args.title)
 
-        cmd = ["rsync", "-a", "--itemize-changes", "--exclude", ".DS_Store"]
+        # --checksum: pages rebuilt on another Mac have new times but the same bytes; send only real changes.
+        cmd = ["rsync", "-a", "--checksum", "--itemize-changes", "--exclude", ".DS_Store"]
         if args.dry_run:
             cmd.append("--dry-run")
         if args.prune:

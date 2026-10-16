@@ -15,10 +15,13 @@ Usage:
     python3 render_page.py --all --root <dir>    # a techniques folder other than the default
 
 Output (JSON on stdout):
-    {"rendered": [{"slug", "internal", "post", "image"}], "errors": [{"spec", "problems": [...]}]}
+    {"rendered": [{"slug", "internal", "post", "image"}], "errors": [{"spec", "problems": [...]}],
+     "no_screenshot": [slug, ...]}   only when the screenshots folder isn't on this Mac
 
 Exit code 1 if any spec has problems (unknown block type, missing title, missing screenshot,
-or identifiers left in the post view).
+or identifiers left in the post view). A hub cloned onto a Mac that doesn't have the
+screenshots folder still renders: the internal view leaves the screenshot out, and the
+slugs are listed under "no_screenshot" instead of failing.
 """
 import argparse
 import json
@@ -90,13 +93,21 @@ def render(spec_path: Path, root: Path, known: set[str]) -> dict:
     # The copy made by an earlier render. A background job (launchd) can't read ~/Desktop, which
     # macOS protects, so it re-renders from this copy instead of failing.
     kept = next(iter(sorted((internal / "img").glob(f"{spec.get('slug')}.*"))), None) if (internal / "img").exists() else None
+    elsewhere = False
     if src_name:
         try:
-            src = find_file(lib.screenshots_dir(root), src_name)
+            shots = lib.screenshots_dir(root)
+        except SystemExit:  # the folder isn't on this Mac
+            shots = None
+        try:
+            src = find_file(shots, src_name) if shots else None
         except (OSError, SystemExit):
             src = None
         if src is None and kept is None:
-            problems.append(f"screenshot not found in the screenshots folder: {src_name}")
+            if shots and shots.is_dir():
+                problems.append(f"screenshot not found in the screenshots folder: {src_name}")
+            else:
+                elsewhere = True  # the screenshots live on another Mac; render without one
     if problems:
         return {"spec": str(spec_path), "problems": problems}
 
@@ -132,7 +143,8 @@ def render(spec_path: Path, root: Path, known: set[str]) -> dict:
                 "problems": [f"post view still shows {h['kind']} {h['match']!r} at {h['where']}; add a redaction" for h in left]}
     out_post.write_text(lib.fill(lib.PAGE_TEMPLATE, post["technique"]["title"], post,
                                  lib.prerender("Page", {"spec": post, "backHref": "index.html"})), encoding="utf-8")
-    return {"slug": spec["slug"], "internal": str(out_internal), "post": str(out_post), "image": image}
+    return {"slug": spec["slug"], "internal": str(out_internal), "post": str(out_post), "image": image,
+            **({"no_screenshot": True} if elsewhere else {})}
 
 
 def main() -> int:
@@ -154,6 +166,12 @@ def main() -> int:
     for p in paths:
         r = render(p, root, known)
         result["errors" if "problems" in r else "rendered"].append(r)
+    missing = [r["slug"] for r in result["rendered"] if r.pop("no_screenshot", False)]
+    if missing:
+        result["no_screenshot"] = missing
+        where = lib.hub_settings(root).get("screenshots") or "the screenshots folder"
+        result["note"] = (f"{where} isn't on this Mac, so "
+                          f"{len(missing)} internal pages show no screenshot. Pages and comments work as usual.")
     if not shutil.which("node"):
         result["warning"] = "Node isn't installed, so pages are JavaScript-only and show blank in Quick Look previews"
     print(json.dumps(result, ensure_ascii=False, indent=2))
