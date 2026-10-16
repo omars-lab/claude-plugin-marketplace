@@ -37,6 +37,7 @@ Only his own Tailscale login may comment, and nothing is ever put on the public 
 | `enable-page-comments` | Turns comments on in a repo in one run: the Comment button, the repo setting that lets every session hear comments, a note in `CLAUDE.md`, and where screenshots go. Proves the loop with a test comment. `--phone` adds commenting from the phone through Tailscale. `--undo` takes it all out, but never deletes a screenshot | Once per repo, or to check or remove it; `--phone` when Omar wants the phone too |
 | `answer-page-comments` | The routine Claude follows for each comment: read the comment's picture, find the source, fix or answer, check, commit, attach an after picture, reply, close when fixed | Whenever the watcher prints a comment, or to go through open comments |
 | `improve-hub` | One pass over a hub (a local page listed in the hubs catalog): audit it, score it against a rubric, fix the changes worth the most, look again, log the rest | To make a hub better, or to check one before it is shared or published |
+| `design-engaging-ui` | Designs or reworks a page: a short brief, two or three rendered directions to pick from, a small written design system, then build and check in the browser at desktop and phone width | When a page works but looks plain or templated, or improve-hub hands over its look rows |
 
 ## How they fit together
 
@@ -49,6 +50,7 @@ answer-page-comments   fix, commit, reply on the page, close when fixed
 
 `improve-hub` stands on its own: it reads a hub's repo and pages, checks them against `RUBRIC.md`, and fixes on a branch for review.
 It uses page comments when they are on, since Omar's own notes come before the rubric.
+When the look needs real design work, it hands over to `design-engaging-ui`, which checks the page against `PRINCIPLES.md`.
 
 The plugin's watcher starts with every session.
 In a repo without comments turned on, it stops at once and prints nothing.
@@ -56,7 +58,7 @@ In a repo without comments turned on, it stops at once and prints nothing.
 ## Task management
 
 ```javascript
-TaskCreate({ subject: "Introduce the plugin", description: "Explain page comments, improve-hub and the other skills", activeForm: "Introducing development-manager" })
+TaskCreate({ subject: "Introduce the plugin", description: "Explain page comments, improve-hub, design-engaging-ui and the other skills", activeForm: "Introducing development-manager" })
 TaskCreate({ subject: "Route to a skill", description: "Ask what they want and hand off", activeForm: "Routing" })
 ```
 
@@ -72,7 +74,7 @@ AskUserQuestion({
     options: [
       { label: "Turn on page comments here", description: "Runs enable-page-comments in this repo. Changes a few files you then review and commit." },
       { label: "Answer open comments", description: "Runs answer-page-comments on this repo's open threads. Fixes are committed one per thread." },
-      { label: "Improve a hub", description: "Runs improve-hub on this repo's hub. Fixes land on a branch you review; anything that reaches the tailnet or the internet is left for you." },
+      { label: "Improve a hub or page", description: "Runs improve-hub to review it and fix the small things, then design-engaging-ui if the look needs real design work. Changes land on a branch you review; anything that reaches the tailnet or the internet is left for you." },
       { label: "Just learning", description: "Nothing changes. Stop here." }
     ],
     multiSelect: false

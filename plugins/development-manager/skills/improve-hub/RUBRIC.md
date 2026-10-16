@@ -27,7 +27,8 @@ Each row has:
 ## The page itself (look)
 
 Look at the site map's shots, or open the page. Use `visual-site-review` for the screenshot
-critique when it is installed, and `frontend-design` when a fix needs design work.
+critique when it is installed. When a fix needs design work rather than a one-line change, hand it to
+`design-engaging-ui`; its `PRINCIPLES.md` goes deeper on each of these rows.
 
 | Id | Check | How to tell | Fix | ROI |
 |---|---|---|---|---|

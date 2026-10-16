@@ -1,6 +1,6 @@
 ---
 name: improve-hub
-description: Review one of Omar's hubs (a local web page listed in the hubs catalog through its repo's hub.yaml) and make it better - score it against a rubric, fix the changes worth the most for the effort, look again, and log the rest in that repo's backlog. Use when asked to "improve this hub", "review the hub", "what's wrong with this hub", "make the hub better", "polish the dashboard", or to check a hub before sharing it on the phone or publishing it.
+description: Review one of Omar's hubs (a local web page listed in the hubs catalog through its repo's hub.yaml) and make it better - score it against a rubric, fix the changes worth the most for the effort, look again, and log the rest in that repo's backlog. Use when asked to "improve this hub", "review the hub", "what's wrong with this hub", "make the hub better", or to check a hub before sharing it on the phone or publishing it.
 ---
 
 # Improve a hub
@@ -18,7 +18,7 @@ It builds on other tools rather than repeating them:
 
 - the hubs repo's `make check`, `make router-check` and `make sitemap`;
 - `visual-site-review`, for the screenshot critique;
-- `frontend-design`, for design fixes;
+- `design-engaging-ui`, for look rows that need real design work rather than a one-line fix;
 - `answer-page-comments`, for comments Omar left on the page.
 
 Read RUBRIC.md now, every time. It can change without this skill changing.
@@ -71,6 +71,7 @@ TaskCreate({ subject: "Log the rest and report", description: "Backlog lines in 
    - Run the repo's own tests if it has them.
 6. **Log the rest.**
    - Add one line per remaining failure to the hub repo's backlog (`docs/tasks/backlog.md` or whatever task file that repo uses), with the rubric id and the fix.
+   - When several look rows (L1, L4 to L6) fail together, log one line that hands them to `design-engaging-ui` rather than one line each.
    - If the same problem keeps coming back across hubs, add or sharpen a rubric row instead of logging it again.
 7. **Report** in plain words:
    - the score before and after;

@@ -13,7 +13,8 @@ It reads the request, picks the skill below, and follows that skill's SKILL.md.
 | "turn on comments", "let me comment on the page", "set up page comments", "check comments work", "remove page comments", "undo" | `enable-page-comments` (with `--check` or `--undo` as asked) |
 | "comment from my phone", "use it on the phone", "Tailscale", "turn the phone off" | `enable-page-comments` with `--phone` (or `--phone --undo`) |
 | A watcher line such as `ev=thread_new`; "answer the comments", "go through the page comments", "fix what I marked" | `answer-page-comments` |
-| "improve this hub", "review the hub", "what's wrong with this hub", "polish the dashboard", "check it before I share it" | `improve-hub` |
+| "improve this hub", "review the hub", "what's wrong with this hub", "check it before I share it" | `improve-hub` |
+| "make this page look good", "make it more engaging", "polish the UI", "redesign the dashboard", "it looks like a default AI page" | `design-engaging-ui` |
 | "what is this plugin", "what can you do" | `introduce` |
 
 ## Task management
