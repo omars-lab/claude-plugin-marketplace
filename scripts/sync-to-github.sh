@@ -16,6 +16,16 @@
 
 set -e
 
+# The run switches to the mirror branch, which rewrites this file on disk while bash is still
+# reading it. Run from a copy, so a mirror holding an older version can't change it mid-run.
+if [ -z "$SYNC_TO_GITHUB_COPY" ]; then
+    SYNC_TO_GITHUB_COPY=$(mktemp)
+    cp "$0" "$SYNC_TO_GITHUB_COPY"
+    export SYNC_TO_GITHUB_COPY
+    exec bash "$SYNC_TO_GITHUB_COPY" "$@"
+fi
+trap 'rm -f "$SYNC_TO_GITHUB_COPY"' EXIT
+
 # Colors
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -123,7 +133,8 @@ if ! git merge-base --is-ancestor "$LAST_LOCAL_SHA" "$CURRENT_LOCAL_SHA"; then
 fi
 
 # Count new commits
-NEW_COMMITS=$(git rev-list --reverse "$LAST_LOCAL_SHA..$CURRENT_LOCAL_SHA")
+# Parents before children, so a merge comes after every commit it brings in.
+NEW_COMMITS=$(git rev-list --reverse --topo-order "$LAST_LOCAL_SHA..$CURRENT_LOCAL_SHA")
 NEW_COMMIT_COUNT=$(echo "$NEW_COMMITS" | wc -l | tr -d ' ')
 
 if [ -z "$NEW_COMMITS" ]; then
@@ -194,7 +205,9 @@ for COMMIT in $NEW_COMMITS; do
     else
         git diff --binary "$COMMIT^" "$COMMIT" -- . "${EXCLUDES[@]}" > "$PATCH_FILE"
     fi
-    if [ -s "$PATCH_FILE" ] && ! git apply --index "$PATCH_FILE"; then
+    # A commit from a side branch was made before the other side's edits to the same file,
+    # so its plain patch may not fit the mirror; --3way merges it using both file versions.
+    if [ -s "$PATCH_FILE" ] && ! git apply --index "$PATCH_FILE" 2>/dev/null && ! git apply --3way --index "$PATCH_FILE"; then
         echo -e "    ${RED}✗${NC} $SHORT_SHA - apply failed"
         echo -e "${RED}Conflict detected. Aborting.${NC}"
         rm -rf "$NP_DIR"
@@ -251,6 +264,16 @@ if [ "$SQUASH" = 1 ]; then
 fi
 
 # Last guards before anything leaves this machine.
+# The mirror must end up with exactly $BRANCH's files (minus PRIVATE_PATHS), however the
+# commits were replayed. A three-way merge that went wrong shows up here.
+if ! git diff --quiet HEAD "$CURRENT_LOCAL_SHA" -- . "${EXCLUDES[@]}"; then
+    echo -e "${RED}BLOCKED: the mirror's files don't match $BRANCH after replaying the commits. Not pushing.${NC}"
+    git diff --stat HEAD "$CURRENT_LOCAL_SHA" -- . "${EXCLUDES[@]}"
+    rm -rf "$NP_DIR"
+    git checkout "$BRANCH"
+    git branch -D "$SYNC_BRANCH" 2>/dev/null || true
+    exit 1
+fi
 if [ -n "$(git ls-tree -r --name-only HEAD -- "${PRIVATE_PATHS[@]}")" ]; then
     echo -e "${RED}BLOCKED: a private path (${PRIVATE_PATHS[*]}) is in the mirror tree. Not pushing.${NC}"
     rm -rf "$NP_DIR"
