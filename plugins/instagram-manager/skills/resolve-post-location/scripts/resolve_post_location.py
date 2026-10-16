@@ -608,12 +608,17 @@ def merge(saves, tags, places, fetcher=None, frames=False):
             if frames:  # spots read off the video add to what the caption gave
                 new_pins = (pins.get(code) or []) + new_pins
                 new_review = [e for e in review.get(code) or [] if key(e) not in redone] + new_review
-            for d, v in ((pins, new_pins), (review, new_review)):  # a caption answer replaces the last one
+            else:  # a caption answer replaces the caption's last one; the video's spots stay
+                given = {key(e) for e in new_pins + new_review}
+                new_pins += [e for e in pins.get(code) or [] if e.get("from") == "video" and key(e) not in given]
+                new_review += [e for e in review.get(code) or [] if isinstance(e, dict) and e.get("from") == "video"
+                               and key(e) not in given]
+            for d, v in ((pins, new_pins), (review, new_review)):
                 if v:
                     d[code] = v
                 else:
                     d.pop(code, None)
-            if spots:
+            if spots or new_pins or new_review:
                 no_spot.pop(code, None)
             elif not frames:
                 no_spot[code] = {"areas": areas}

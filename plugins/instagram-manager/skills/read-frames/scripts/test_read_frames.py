@@ -276,6 +276,21 @@ class MergeFrames(Home):
         self.assertEqual((pin["name"], pin["from"]), ("Example Point Lookout", "video"))
         self.assertNotIn("NOSPOT", self.read("data/pins-review.yaml"))
 
+    def test_reading_the_caption_again_keeps_the_videos_spots(self):
+        self.batch(1, {"EATTWN": [{"said": "Example Grill", "near": "Fixture Town"},
+                                  {"said": "Fancy Script Bar", "near": "Fixture Town"}]})
+        self.merge()
+        out = rpl.batch_dir()
+        os.makedirs(out, exist_ok=True)
+        self.write("batch-001.json", {"batch": "batch-001", "answers": os.path.join(out, "batch-001.answers.json"),
+                                      "saves": [{"code": "EATTWN", "areas": [{"name": "Fixture Town"}]}]}, base=out)
+        self.write("batch-001.answers.json", {"answers": {"EATTWN": []}}, base=out)   # the pier is gone now
+        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+            rpl.main(["--merge"], fetcher=lambda params: [])
+        self.assertEqual([p["said"] for p in self.read("data/pins.yaml")["EATTWN"]], ["Example Grill"])
+        self.assertEqual([e["said"] for e in self.read("data/pins-review.yaml")["EATTWN"]], ["Fancy Script Bar"])
+        self.assertNotIn("EATTWN", self.read("data/no-spot.yaml"))
+
     def test_a_new_round_never_reuses_a_merged_name(self):
         self.batch(1, {"NOSPOT": []})
         self.merge()
