@@ -1158,7 +1158,8 @@ def build(hub, out, title, home=(), with_previews=True):
         write(os.path.join(out, "places", place["slug"] + ".html"), place_page(hub, place))
     for post in hub.posts:
         write(os.path.join(out, "posts", post["file"] + ".html"), post_page(hub, post))
-    extra = [(f, t) for f, t in (("moves.html", "Saves to move"), ("pins.html", "Pins to check"))
+    extra = [(f, t) for f, t in (("decisions.html", "Your decisions"), ("moves.html", "Saves to move"),
+                                 ("pins.html", "Pins to check"))
              if os.path.exists(os.path.join(out, f))]
     write(os.path.join(out, "index.html"), index_page(hub, title, extra, home))
     return thumbs

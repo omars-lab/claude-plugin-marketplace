@@ -75,6 +75,11 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
      off. The hub marks these links "picked by Claude from Google's list: check it".
    - **Leave real toss-ups for the user** (two branches equally near, a name that could be either
      of two places) and list them in the report; their picks go in with the default `PICK_BY=hand`.
+     Every spot left for a person is kept in `.cache/google-to-pick.json`: our search text and
+     Google's candidate ids in Google's order, nothing else of Google's. A spot leaves it once it is
+     picked, marked none, kept by name or searched with nothing found. The hub's decisions page
+     (**build-hub**, `decisions.html`) lists them as "Option 1, 2, 3", each opening that exact place
+     on Google Maps, and builds the `make google-ids PICK=… NONE=…` line to copy.
    - A spot marked `none` because its town or area in our data is wrong (a beach filed under a
      park in another state) is fixed in resolve-post-location ("A spot in the wrong area"). The
      fix gives it a new pin, so it is searched again on the next run, and `GOOGLE_PRUNE=1` drops
@@ -89,9 +94,9 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
 
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
-| `scripts/google_ids.py` | One Google search per spot, keeps an id by name or prints candidates; `--pick`/`--none` record a person's choice | After new spots land, or to pick the leftovers | `python3 scripts/google_ids.py --pilot <name>` (`--all`, `--only`, `--limit`, `--refresh`, `--box-km`, `--dry-run`, `--prune`, `--pick KEY=ID`, `--none KEY`, `--by hand\|claude`) |
+| `scripts/google_ids.py` | One Google search per spot, keeps an id by name or prints candidates (and keeps their ids in `.cache/google-to-pick.json` for the decisions page); `--pick`/`--none` record a person's choice | After new spots land, or to pick the leftovers | `python3 scripts/google_ids.py --pilot <name>` (`--all`, `--only`, `--limit`, `--refresh`, `--box-km`, `--dry-run`, `--prune`, `--pick KEY=ID`, `--none KEY`, `--by hand\|claude`) |
 | `../../shared/scripts/google_places.py` | The search, the box, the name rule, the waits after a refusal, and the link; build-hub and send-topics use it to put kept ids into links | Imported, not run | — |
-| `scripts/test_google_ids.py` | Offline tests with Google stubbed: the box, the name rule (one match, two, a short name), each spot searched once, the town box, a rerun skipping kept spots, `--pick` keeping Google's current id, `--none`, the daily cap, the waits, a spot in the wrong area left unsearched, stale ids listed and pruned (never another area's), and that the file holds nothing of Google's but ids | After any change to either script | `python3 scripts/test_google_ids.py` |
+| `scripts/test_google_ids.py` | Offline tests with Google stubbed: the box, the name rule (one match, two, a short name), each spot searched once, the town box, a rerun skipping kept spots, `--pick` keeping Google's current id, `--none`, the daily cap, the waits, a spot in the wrong area left unsearched, stale ids listed and pruned (never another area's), and that the file and the spots left for a person hold nothing of Google's but ids | After any change to either script | `python3 scripts/test_google_ids.py` |
 
 In the data repo: `make google-ids` with `GOOGLE_DRY=1`, `GOOGLE_LIMIT=`, `GOOGLE_ONLY=`,
 `GOOGLE_REFRESH=1`, `GOOGLE_BOX=`, `GOOGLE_PRUNE=1`, `PICK=` and `NONE=` (several, space-separated), `PICK_BY=`

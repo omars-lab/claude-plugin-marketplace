@@ -18,6 +18,11 @@ and "CLOSED FOR GOOD"; none of that is written anywhere (shared/scripts/google_p
   - Nothing in the box is kept as `verdict: none`, so it is not searched again. `--none KEY` lets a
     person say the same of a spot whose candidates are all wrong.
 
+The spots left for a person also go to .cache/google-to-pick.json with their candidates' place ids
+in Google's order, and nothing else of Google's, so build-hub's decisions_page.py can list them as
+"open in Google Maps" links to pick from. A spot leaves that file once it is picked, marked none or
+kept by name.
+
 data/google.yaml is rewritten after every spot, so a run stopped by the day's cap (HTTP 429 "per
 day") keeps what it found; the same command tomorrow carries on. A spot already there with the same
 search text is skipped (--refresh searches it again).
@@ -33,6 +38,7 @@ The key comes from GOOGLE_MAPS_API_KEY; `make google-ids` in the data repo runs 
 
 import argparse
 import datetime as dt
+import json
 import os
 import sys
 import urllib.error
@@ -51,6 +57,7 @@ from pilot import in_pilot  # noqa: E402
 from places import Places, load_yaml  # noqa: E402
 
 OUT = os.path.join("data", "google.yaml")
+TO_PICK = "google-to-pick.json"   # in .cache: the spots left for a person, with their candidates' ids
 STALE_SHOWN = 20   # how many stale keys to list on screen
 HEADER = ("# Google place ids for the spots in data/pins.yaml and data/pins-review.yaml, written by\n"
           "# instagram-manager's find-google-ids. Only the id is kept, with our own search text, the date\n"
@@ -109,6 +116,25 @@ def write_kept(kept):
     os.replace(tmp, path)
 
 
+def load_to_pick():
+    try:
+        with open(cache(TO_PICK), encoding="utf-8") as fh:
+            got = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return got if isinstance(got, dict) else {}
+
+
+def write_to_pick(to_pick):
+    """The spots left for a person: key → {query, ids, date}. Only place ids, never a name."""
+    path = cache(TO_PICK)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({k: to_pick[k] for k in sorted(to_pick)}, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
+
+
 def entry(query, verdict, by, today, place_id=None):
     out = {"query": query, "verdict": verdict}
     if place_id:
@@ -162,6 +188,7 @@ def main(argv=None):
     spots = spots_in_scope(bh.load_saves(saves_path), tags, pins, placed, pilot)
     places = Places.load()
     kept = load_kept()
+    to_pick = load_to_pick()
     today = dt.date.today().isoformat()
 
     picks, nones = pairs(args.pick, "--pick"), [k.strip() for k in args.none or []]
@@ -183,6 +210,9 @@ def main(argv=None):
             kept[k] = entry(gp.query_for(spots[k][0]), "none", args.by, today)
             log("google_none", key=k, by=args.by)
         write_kept(kept)
+        for k in list(picks) + nones:
+            to_pick.pop(k, None)
+        write_to_pick(to_pick)
         print(f"kept {len(picks)} picked and {len(nones)} marked none in {OUT}")
         return
 
@@ -247,6 +277,7 @@ def main(argv=None):
             log("google_error", key=k, http=e2.code, msg=gp.error_text(e2)[:200])
             raise
         log("google_found", key=k, candidates=len(found))
+        to_pick.pop(k, None)
         if not found:
             kept[k] = entry(q, "none", "auto", today)
             none += 1
@@ -262,8 +293,10 @@ def main(argv=None):
                     closed.append(k)
             else:
                 left.append(k)
+                to_pick[k] = {"query": q, "ids": [c["id"] for c in found], "date": today}
                 print("\n".join(gp.show(k, q, found, words)))
         write_kept(kept)
+        write_to_pick(to_pick)
     print(f"\n{auto} kept by name, {len(left)} for a person to pick, {none} with nothing in the box; "
           f"{len(closed)} kept places Google says are closed for good"
           + (f" ({', '.join(closed)})" if closed else ""))

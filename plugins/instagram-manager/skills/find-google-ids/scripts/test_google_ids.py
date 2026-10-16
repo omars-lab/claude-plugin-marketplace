@@ -182,6 +182,21 @@ class Ids(unittest.TestCase):
         self.run_ids("--pilot", "fixture")
         self.assertEqual(self.calls, [])                     # nothing left to search
 
+    def test_spots_left_for_a_person_keep_only_candidate_ids(self):
+        self.run_ids("--pilot", "fixture")
+        path = os.path.join(self.root, ".cache", google_ids.TO_PICK)
+        with open(path) as fh:
+            text = fh.read()
+        left = json.loads(text)
+        self.assertEqual(sorted(left), ["osm:node/2", "osm:node/3"])
+        self.assertEqual(left["osm:node/2"]["ids"], ["ID_GRILL_A", "ID_GRILL_B"])   # Google's order
+        self.assertEqual(left["osm:node/2"]["query"], "Example Grill, Fixture Town")
+        for google_words in ("Example Grill & Bar", "1 Google Way", "restaurant", "OPERATIONAL", "name", "address"):
+            self.assertNotIn(google_words, text)             # ids only, nothing else of Google's
+        self.run_ids("--pilot", "fixture", "--pick", "osm:node/2=ID_GRILL_A", "--none", "osm:node/3")
+        with open(path) as fh:
+            self.assertEqual(json.load(fh), {})              # picked or marked none: off the list
+
     def test_a_spot_in_the_wrong_area_is_not_searched(self):
         review = {**REVIEW, "EAT1": [{"said": "Other Diner", "asked": "Other Diner", "near": "Fixture Town",
                                       "why": "not found near Fixture Town", "really_in": "Other Town"}]}
