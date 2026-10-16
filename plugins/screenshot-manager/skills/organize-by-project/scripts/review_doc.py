@@ -229,15 +229,79 @@ def ticks(doc: Path) -> tuple[dict[str, list[str]], set[str]]:
     return per, loose
 
 
+def plain(s: str) -> str:
+    return s.replace(" ", " ").replace(" ", " ")
+
+
+def comments(doc: Path, groups: list[dict]) -> list[dict]:
+    """Open review-md threads on the doc, each placed on its group and, when it can be told,
+    its picture: an image comment by the picture's file name (G12-3.jpg), a text comment by
+    the line its block id sits on (a heading, a tick line, or the end of the caption list,
+    which Obsidian treats as one block) and by the screenshot file name in its quote."""
+    log("reviews_start", doc=doc)
+    try:
+        r = subprocess.run(["reviews", "list", str(doc), "--open", "--json"],
+                           capture_output=True, text=True, timeout=30)
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        log("reviews_failed", err=type(e).__name__)
+        return []
+    log("reviews_done", code=r.returncode)
+    if r.returncode != 0:
+        return []
+    lines = doc.read_text().splitlines()
+    by_id = {g["id"]: g for g in groups}
+    out = []
+    for t in json.loads(r.stdout).get("threads", []):
+        anchor, gid, pic = t.get("anchor", {}), None, None
+        if m := re.search(r"/(G\d+)-(\d+)\.jpg", anchor.get("src", "")):
+            gid, pic = m.group(1), int(m.group(2))
+        elif bid := anchor.get("blockId"):
+            at = next((i for i, ln in enumerate(lines) if ln.endswith(f"^{bid}")), None)
+            for ln in reversed(lines[:at + 1] if at is not None else []):
+                if m := HEADING.match(ln):
+                    gid = m.group(1)
+                    break
+            quote = plain(anchor.get("quote", ""))
+            for i, f in enumerate(by_id.get(gid, {}).get("files", []), 1):
+                if plain(Path(f).name) in quote:
+                    pic = i
+        out.append({"id": t["id"], "group": gid, "picture": pic,
+                    "said": " / ".join(m["body"] for m in t.get("messages", []))})
+    return out
+
+
 def read(a) -> None:
     doc = a.doc.expanduser()
     data = json.loads((doc.parent / f".{doc.stem}.groups.json").read_text())
     per, loose = ticks(doc)
+    # --set G12=3d-models answers a whole group, --set G12.3=hifth one picture of it: what the
+    # user wrote in a comment. A --set wins over a tick.
+    whole, pics = {}, {}
+    for s in a.set or []:
+        m = re.fullmatch(r"(G\d+)(?:\.(\d+))?=(.+)", s)
+        if not m:
+            sys.exit(f"--set {s!r}: write it as G12=<project> or G12.3=<project>")
+        (pics.__setitem__((m.group(1), int(m.group(2))), m.group(3)) if m.group(2)
+         else whole.__setitem__(m.group(1), m.group(3)))
     answers = json.loads(a.answers.read_text()) if a.answers.is_file() else {}
     aliases = None if not a.aliases else json.loads(a.aliases.read_text()) if a.aliases.is_file() else {}
     filed, rules, keys, comment, open_, many = [], [], [], [], [], []
     for g in data["groups"]:
-        got = per.get(g["id"], [])
+        got = [whole[g["id"]]] if g["id"] in whole else per.get(g["id"], [])
+        mine = {i: v for (gid, i), v in pics.items() if gid == g["id"]}
+        if g["kind"] == "shots" and mine:
+            base = got[0] if len(got) == 1 and got[0] not in ("unsure", "other") else None
+            reason = f"the user, review doc {data.get('made', '')}: {g['title']}"
+            done = []
+            for i, f in enumerate(g["files"], 1):
+                v = mine.get(i, base)
+                if v and v != "unsure":
+                    answers[f] = ({"project": "none", "folder": v.removeprefix("folder:"), "reason": reason}
+                                  if v.startswith("folder:") else {"project": v, "reason": reason})
+                    done.append(f"{i}->{v}")
+            filed.append(f"{g['id']} pictures {', '.join(done)}: {g['title']} "
+                         f"({len(done)} of {len(g['files'])}; the rest stay)")
+            continue
         if len(got) > 1:
             many.append(g["id"])
             continue
@@ -284,6 +348,13 @@ def read(a) -> None:
               + " ".join(f'--keys-from "{k}"' for k in keys))
     if "show-none" in loose:
         print("\nthe user wants the not-project-work screenshots in the next review doc too")
+    threads = comments(doc, data["groups"])
+    if threads:
+        print("\nopen comments (turn each answer into --set G12=<project> or G12.3=<project>, run read "
+              "again, then reply and resolve):")
+        for t in threads:
+            where = (t["group"] or "?") + (f" picture {t['picture']}" if t["picture"] else "")
+            print(f"  {where} [{t['id']}]: {t['said']}")
 
 
 def main() -> None:
@@ -303,6 +374,8 @@ def main() -> None:
     p.add_argument("--doc", type=Path, required=True)
     p.add_argument("--answers", type=Path, required=True, help="merged into; pass it last to plan --vision")
     p.add_argument("--aliases", type=Path, help="add folder answers to its _folders / _skip")
+    p.add_argument("--set", action="append", metavar="G12[.3]=VALUE",
+                   help="an answer the user wrote in a comment, for a group or one picture of it (repeatable)")
     a = ap.parse_args()
     {"draft": draft, "write": write, "read": read}[a.cmd](a)
 

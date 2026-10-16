@@ -315,8 +315,17 @@ reviews list "$ROOT/_review" --open --waiting claude --json
      `_folders` / `_skip` in the aliases file, and prints the `--keys-to/--keys-from` flags for
      Step 7. It lists the groups with more than one tick (ask again) and the ones that point
      at a comment.
-   - Read each comment with `reviews show`, act on it, and answer it in the doc with the
-     review-md `reply` tool (Obsidian has to be running), then `resolve` it.
+   - It ends with the open comments, each tied to its group and, when it can tell, the
+     picture (`G12 picture 3 [iyx00t]: …`). Turn each answer into `--set` and run `read`
+     again: `--set G12=<project>` files the whole group (it beats the ticks), and
+     `--set G12.3=<project>` files one picture; the group's other pictures follow its single
+     tick if it has one, or stay on the Desktop. `--set` repeats. A company name such as
+     `--set G14.2=<org>` files into that company's own folder.
+   - "Delete it" is the user's to do: the safety check won't let Claude move files to the
+     Trash. Leave those out, give the user the `mv … ~/.Trash/` command to run with `!`, and
+     leave that thread open until it's done.
+   - Reply in each comment's thread with the review-md `reply` tool (Obsidian has to be
+     running) saying where the pictures go, then `resolve` it.
    - Then do the "write it down" steps below for each group, using the "filed" list `read`
      prints.
 
@@ -422,7 +431,7 @@ come back in the next review doc; the ones they left blank do too.
 | `move_to_projects.py batch` | Splits the unplaced screenshots and undecided folders' samples into image-check batch files | Step 5 | `python3 "$OP/move_to_projects.py" batch --root … --shots … --inside … --fingerprints … --out-dir …` |
 | `review_doc.py draft` | Groups what the plan left unclear (unsure shots, undecided folders, key-file folders) into a groups JSON to edit | Step 6, more than 4 groups | `python3 "$OP/review_doc.py" draft --plan … --shots … --out "$WORK/groups.json"` |
 | `review_doc.py write` | Writes the Obsidian review doc with the pictures and tick boxes; won't overwrite one with ticks | Step 6, after editing the groups | `python3 "$OP/review_doc.py" write --groups … --vault "$ROOT/_review"` |
-| `review_doc.py read` | Turns the ticks into an answers file, alias rules and key-file plan flags | Step 6, when the user says they're done | `python3 "$OP/review_doc.py" read --doc … --answers "$WORK/vision_answers_user.json" --aliases "$ROOT/.aliases.json"` |
+| `review_doc.py read` | Turns the ticks into an answers file, alias rules and key-file plan flags, and lists the open comments by group and picture | Step 6, when the user says they're done; again with `--set` for each comment's answer | `python3 "$OP/review_doc.py" read --doc … --answers "$WORK/vision_answers_user.json" --aliases "$ROOT/.aliases.json" [--set G12=<project>] [--set G12.3=<project>]` |
 | `move_to_projects.py plan` | Builds every destination and prints the table. Moves nothing | Step 7 | `python3 "$OP/move_to_projects.py" plan --root … --shots … --folders … --inside … --vision … [--keys-to … --keys-from …] --out …` |
 | `move_to_projects.py apply` | Writes the undo list, then moves | Step 8, after approval | `python3 "$OP/move_to_projects.py" apply --plan … --only folders` |
 | `move_to_projects.py undo` | Moves one batch back, newest first | When the user wants it undone | `python3 "$OP/move_to_projects.py" undo --log "$ROOT/.moves/<time>.json"` |
@@ -478,6 +487,16 @@ come back in the next review doc; the ones they left blank do too.
   twice.
 - **Choice values are hidden**, as `%%value%%` at the end of each tick line. Obsidian hides
   them in Reading view, and review-md may add ` ^id` after them; `read` allows for both.
+- **Comments say a lot the boxes can't:** a different project for one picture of a group,
+  a split ("the first two here, the last one there"), "delete it", or a doubt that turns a
+  "none" into a real project. Expect several, and read them before the ticks count as final.
+- **A caption list is one block.** A comment on any caption lands its ` ^id` at the end of
+  the whole numbered list, so the line number points at the group, not the picture. The
+  comment's quoted text holds the file name, which tells `read` which picture it means. A
+  comment on a picture carries the picture's own path, which is exact.
+- **Desktop names hide a narrow space.** macOS puts U+202F before AM/PM in screenshot names.
+  `read` matches names with it swapped for a plain space; in a shell command for the user,
+  write `?` in its place.
 - **Obsidian rewrites its vault list when it quits.** Edit `obsidian.json` only while it is
   closed, or the new vault is gone the next time it opens.
 - **Don't script Obsidian with AppleScript** (`tell application "Obsidian" …`). It hangs and
