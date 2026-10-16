@@ -320,6 +320,37 @@ class PlacesAndMoves(Home):
         self.assertEqual(self.read("data/tags.yaml")["MIS"]["cities"], ["Faraway Land"])
         self.assertEqual(self.read("data/tags.yaml")["MIS"]["purposes"], ["stay"])  # kept through the move
 
+    def test_tags_fixed_by_hand_survive_a_retag_and_a_move(self):
+        mis = save("MIS", "A road trip through Faraway Land", ["Fixture Town"])
+        self.write(".cache/saves.json", {"saves": SAVES + [mis]})
+        self.tag("--all")
+        tags = self.read("data/tags.yaml")
+        self.assertIn("Fixture State", tags["MIS"]["cities"])               # the collection's, kept until moved
+        fixed = {"topics": ["travel"], "cities": ["Faraway Land"], "purposes": ["stay"], "source": "model",
+                 "by": "hand"}
+        tags["MIS"] = fixed                                                 # a person drops the wrong place now
+        self.write("data/tags.yaml", tags)
+        out = self.run_tag("--prepare", "--all", "--retag")
+        self.agent(out.split())
+        batched = []
+        for p in self.batches():
+            with open(p) as fh:
+                batched += [r["code"] for r in json.load(fh)["saves"]]
+        self.assertNotIn("MIS", batched)
+        self.run_tag("--merge")
+        self.assertEqual(self.read("data/tags.yaml")["MIS"], fixed)
+        self.write(".cache/batches/tag/batch-009.json",                     # a batch made before the fix
+                   {"batch": "batch-009", "answers": os.path.join(self.tmp.name, ".cache/batches/tag/batch-009.answers.json"),
+                    "saves": [{"code": "MIS", "caption": mis["caption"]}]})
+        self.write(".cache/batches/tag/batch-009.answers.json",
+                   {"answers": {"MIS": {"topics": ["other"], "cities": ["Fixture State"]}}})
+        self.assertIn("1 answers left out", self.run_tag("--merge"))
+        mis["collections"] = ["Fixture Abroad"]                             # then moved in the app
+        self.write(".cache/saves.json", {"saves": SAVES + [mis]})
+        self.run_tag("--merge")
+        self.assertEqual(self.read("data/tags.yaml")["MIS"], fixed)
+        self.assertEqual(self.read("data/moves.yaml"), {})
+
     def test_the_moves_page_shows_each_move_with_its_quote_marked(self):
         mis = save("MIS", "A road trip through Faraway Land <b>soon</b>", ["Fixture Town"])
         self.write(".cache/saves.json", {"saves": SAVES + [mis]})

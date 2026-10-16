@@ -57,6 +57,15 @@ up to three collections that fit better. The tags are not changed yet: both stay
 export shows the save has left that collection, then the wrong tags are dropped and the move comes
 off the list. `--moves` prints the list; the moves page shows it with links to open each post.
 
+## Fixing by hand
+
+To fix one save's tags yourself (drop a wrong place now rather than wait for the move, add a topic
+the agent missed), edit its entry in `data/tags.yaml` and add `by: hand`. That entry is final:
+no round reads the save again (`--retag` included), the merge ignores any answer for it, the
+collection's tags are not added back, the review list adds no place to it, and a finished move
+leaves it alone. Without the mark, the next round can undo the fix. A fix that holds for many
+saves belongs in the lists instead (step 6).
+
 **No script calls a model.** The script writes batch files and checks the answers; this session
 starts the agents. They run on the plan Claude Code is logged in with, so there is no API key.
 
@@ -144,7 +153,7 @@ data/moves.yaml                              <code>: {collections, not: [...], q
 ```
 
 `source` is `model` (an agent tagged it) or `rules` (collection tags only: `--rules-only`, or no
-usable answer yet). `hints` are the place matches. `tags.yaml` is sorted by code, so a rerun with
+usable answer yet). `by: hand` marks an entry a person fixed (see "Fixing by hand"). `hints` are the place matches. `tags.yaml` is sorted by code, so a rerun with
 no changes leaves git clean. A new `--prepare` removes the last round's batch files.
 
 ## Batch review

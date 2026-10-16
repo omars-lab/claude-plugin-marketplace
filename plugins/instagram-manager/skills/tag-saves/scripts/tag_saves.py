@@ -57,6 +57,12 @@ sends only the collection's tags as `already`, so a fresh answer can drop a wron
 A save with no usable answer
 keeps its rule tags, the reason goes in the review file, and the next --prepare batches it again.
 
+Fixing by hand
+  A person who corrects a save's tags in data/tags.yaml adds `by: hand` to the entry. That entry is
+  final: no round batches it again (--retag included), the merge ignores any answer for it, the
+  collection's tags are not added back, the review list adds no place to it, and a finished move
+  leaves its tags as they are. Without the mark, the next round can undo the fix.
+
 A pilot looks at the saves in its collections plus any save with a hint for one of its cities.
 A save outside those collections whose caption names no listed place is not looked at; --all
 closes that gap.
@@ -130,6 +136,11 @@ def collection_tags(save, collections):
         topics |= set(rule.get("topics") or [])
         cities |= set(rule.get("cities") or [])
     return topics, cities
+
+
+def by_hand(t):
+    """True for a tags entry a person wrote or corrected (`by: hand`); no round changes it."""
+    return isinstance(t, dict) and t.get("by") == "hand"
 
 
 def run_together(name):
@@ -268,7 +279,7 @@ def settle_moves(by_code, tags, moves, collections, places):
             continue
         rule_topics, rule_cities = collection_tags(s, collections)
         t = tags.get(code)
-        if t:
+        if t and not by_hand(t):
             gone = {x for x in m["not"] if x not in rule_topics | rule_cities}
             topics = set(t["topics"]) - gone
             base = set(t["cities"]) - places.fold(gone & set(t["cities"]))
@@ -285,7 +296,7 @@ def recheck_review(tags, review, places):
     moved = 0
     for code, r in list(review.items()):
         said = r.get("other_places") if isinstance(r, dict) else None
-        if not said or code not in tags:
+        if not said or code not in tags or by_hand(tags[code]):
             continue
         hit = {places.resolve(p) for p in said} - {None}
         if not hit:
@@ -340,7 +351,7 @@ def report(saves, tags, pilot, compiled):
     print("|---|---|---|---|---|---|")
     for s, tag, notes in sorted(rows, key=lambda r: (not r[2], r[0]["code"])):
         print(f"| {s['code']} | {', '.join(s.get('collections') or []) or '-'} | {', '.join(tag['topics'])} "
-              f"| {', '.join(tag['cities'])} | {tag['source']} | {'; '.join(notes)} |")
+              f"| {', '.join(tag['cities'])} | {tag.get('by') or tag['source']} | {'; '.join(notes)} |")
     if rejected:
         print("\nA place name matched, but the agent did not put these in the pilot's places:")
         for s, tag in rejected:
@@ -372,8 +383,11 @@ def prepare(args, saves, topics_known, purposes_known, collections, places, comp
         hints = place_hints(s, compiled)
         if pilot and not in_pilot(s, None, pilot, hints):
             continue
-        rule_topics, rule_cities = collection_tags(s, collections)
         old = tags.get(s["code"])
+        if by_hand(old):  # a person's fix: never batched, never topped up with the rule tags
+            kept += 1
+            continue
+        rule_topics, rule_cities = collection_tags(s, collections)
         model = bool(old) and old.get("source") == "model"
         if model and not args.retag:
             tags[s["code"]] = entry(set(old["topics"]) | rule_topics, places.fold(set(old["cities"]) | rule_cities),
@@ -424,7 +438,7 @@ def prepare(args, saves, topics_known, purposes_known, collections, places, comp
 def merge(saves, topics_known, purposes_known, collections, places, compiled, tags, review, moves):
     by_code = {s["code"]: s for s in saves}
     out = batch_dir()
-    answered = missing = pending = done = 0
+    answered = missing = pending = done = kept_hand = 0
     rechecked = recheck_review(tags, review, places)
     settled = settle_moves(by_code, tags, moves, collections, places)
     for path in sorted(glob.glob(os.path.join(out, "batch-[0-9][0-9][0-9].json"))):
@@ -450,6 +464,9 @@ def merge(saves, topics_known, purposes_known, collections, places, compiled, ta
             code = rec["code"]
             s = by_code.get(code)
             if s is None:
+                continue
+            if by_hand(tags.get(code)):  # fixed by a person after this batch was made
+                kept_hand += 1
                 continue
             hints = place_hints(s, compiled)
             rule_topics, rule_cities = collection_tags(s, collections)
@@ -494,10 +511,12 @@ def merge(saves, topics_known, purposes_known, collections, places, compiled, ta
     write_yaml(MOVES, moves)
     log("tag_merge", answered=answered, missing=missing, batches_waiting=pending, batches_merged_before=done,
         review=len(review), places_from_review=rechecked, moves=len(moves), moves_done=settled,
-        out=os.path.join(home(), TAGS))
+        kept_hand=kept_hand, out=os.path.join(home(), TAGS))
     print(f"merged {answered} answers ({missing} unusable); {pending} batches still waiting for their agent")
     if rechecked:
         print(f"{rechecked} saves got a place from the review list")
+    if kept_hand:
+        print(f"{kept_hand} answers left out: those saves' tags were fixed by hand")
     print(f"{len(moves)} saves on the moves list ({settled} moved since the last run)")
     return 0
 
