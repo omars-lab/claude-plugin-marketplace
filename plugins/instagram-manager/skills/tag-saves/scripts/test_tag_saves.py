@@ -201,6 +201,18 @@ class TagSaves(Home):
         self.tag("--pilot", "fixture", "--retag")
         self.assertEqual(self.read("data/tags.yaml")["BAY"]["cities"], ["Fixture State"])  # a retag can drop it
 
+    def test_retag_topic_reads_again_only_the_saves_with_that_topic(self):
+        self.tag("--all")
+        tags = self.read("data/tags.yaml")
+        tags["FAR"]["topics"] = ["other"]                                  # filed under other before a topic fit
+        self.write("data/tags.yaml", tags)
+        out = self.run_tag("--prepare", "--all", "--retag-topic", "other")
+        with open(out.split()[0]) as fh:
+            recs = {r["code"]: r for r in json.load(fh)["saves"]}
+        self.assertEqual(sorted(recs), ["BAD", "FAR"])                     # BAD has no answer yet; TOWN1, BAY, SOUR stay
+        self.assertNotIn("other", recs["FAR"]["already"]["topics"])        # so the fresh answer can drop it
+        self.assertEqual(self.read("data/tags.yaml")["FAR"]["topics"], ["other"])  # kept until an answer lands
+
     def test_a_listed_place_written_as_a_hashtag_is_a_hint_and_a_new_hint_is_read_once(self):
         self.write(".cache/saves.json", {"saves": SAVES + [save("TAG", "A weekend away", ["Fixture Town"],
                                                                 ["fixturecity"])]})

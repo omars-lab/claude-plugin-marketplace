@@ -140,6 +140,8 @@ Each agent reads a whole batch, so many at once can hit the plan's usage limits.
    A save an agent tagged before purposes were asked (no `purposes` in its tags) goes back once by
    itself, with its topics and places under `already`, so the round adds purposes without dropping
    a place. A `--retag` sends only the collection's tags under `already`, so it can drop one.
+   After adding topics, `--retag-topic other` sends back only the saves filed under `other`, the
+   same way, so each can move to a new topic; the rest keep their tags.
 7. **Go wider** once the user has seen the pilot: `--all`, in rounds of `--limit 1000`. That is a
    change of scope, so ask with `AskUserQuestion`. The options: tag every save now (about 210
    batches over several rounds on the plan, and the later steps can use every topic), or fix the
@@ -216,6 +218,7 @@ hand instead.
 |---|---|---|---|
 | `scripts/tag_saves.py --rules-only` | Collection tags and place matches only, no batches | Sizing a pilot, or checking a config change | `python3 scripts/tag_saves.py --rules-only --pilot <name>` |
 | `scripts/tag_saves.py --prepare` | Rule tags, then batch files for the agents; prints their paths | The start of every round | `python3 scripts/tag_saves.py --prepare --pilot <name>` (or `--all --limit 1000`) |
+| `scripts/tag_saves.py --prepare --retag-topic <slug>` | Batches again only the agent-tagged saves with that topic, with only their collection's tags under `already` | After adding topics to `topics.yaml`: re-read the `other` saves against the longer list | `python3 scripts/tag_saves.py --prepare --all --retag-topic other --limit 1000` |
 | `scripts/tag_saves.py --merge` | Checks the agents' answers and folds them into `tags.yaml`; says how many batches still wait | After every wave of agents | `python3 scripts/tag_saves.py --merge` |
 | `scripts/tag_saves.py --report` | The pilot as a table, what to check first | Spot-checking a round | `python3 scripts/tag_saves.py --report --pilot <name>` |
 | `scripts/tag_saves.py --moves` | The saves filed in the wrong collection, with where to move them | After a merge that found moves | `python3 scripts/tag_saves.py --moves` |
@@ -225,5 +228,5 @@ hand instead.
 | `scripts/test_tag_saves.py` | Offline tests, with a fake agent writing canned answers | After any change to the tagger | `python3 scripts/test_tag_saves.py` |
 | `scripts/test_batch_review.py` | Offline tests on invented transcripts and merge logs | After any change to the batch review | `python3 scripts/test_batch_review.py` |
 
-Other options: `--retag`, `--limit N` (saves per round), `--batch-saves N` (default 40),
+Other options: `--retag`, `--retag-topic SLUG`, `--limit N` (saves per round), `--batch-saves N` (default 40),
 `--batch-chars N` (default 60000).

@@ -28,6 +28,9 @@ You sort one person's saved Instagram posts. You get the path of one batch file.
      list has `{"Example Town": "Example State"}` but the post is about an Example Town in Other
      State, do not use `Example Town`: use `Other State`, and name `"Example Town, Other State"`
      under `other_places`. A hint is only a name match, so check it is the same town.
+     A state and a city with the same name are two places too: when the list has only the state
+     `Example` and the post is about the city of Example in another state, do not use `Example`;
+     use the state the city sits in and name `"Example, Other State"` under `other_places`.
    - **Hashtags name places too.** When the post is about a place (a trip, a beach, a restaurant,
      something seen there), a place in its hashtags or `hints` counts as much as one in the
      caption: a shark seen off a beach, captioned "in California" and tagged `#exampletown`, gets

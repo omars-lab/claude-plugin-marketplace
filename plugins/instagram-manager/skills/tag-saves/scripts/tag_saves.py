@@ -8,7 +8,8 @@ save-tagger subagent in batches. This script never calls a model.
     tag_saves.py --rules-only --pilot NAME  rule tags only, no batches (sizing a pilot, checking config)
     tag_saves.py --report --pilot NAME      the pilot's tags as a table; tags nothing
     tag_saves.py --moves                    the saves filed in the wrong collection, as a table
-    options: --limit N (saves in this round), --retag (read again), --batch-saves N, --batch-chars N
+    options: --limit N (saves in this round), --retag (read again), --retag-topic SLUG (read again
+             only the saves with that topic), --batch-saves N, --batch-chars N
 
 Reads   $INSTAGRAM_HOME/.cache/saves.json (from import-saves)
         $INSTAGRAM_HOME/config/topics.yaml, collections.yaml, places.yaml
@@ -54,6 +55,8 @@ for purposes (no `purposes` in its tags) is read once more, keeping the topics a
 they go to the agent under `already`, and the merge keeps everything under `already`. So is one that
 now has a place hint it was not read with (a place added to the list since, say). A --retag
 sends only the collection's tags as `already`, so a fresh answer can drop a wrong place.
+--retag-topic SLUG does the same for only the saves tagged SLUG: after new topics are added, the
+saves under `other` are read again with the longer list.
 A save with no usable answer
 keeps its rule tags, the reason goes in the review file, and the next --prepare batches it again.
 
@@ -404,7 +407,8 @@ def prepare(args, saves, topics_known, purposes_known, collections, places, comp
             continue
         rule_topics, rule_cities = collection_tags(s, collections)
         model = bool(old) and old.get("source") == "model"
-        if model and not args.retag:
+        retag = args.retag or (model and args.retag_topic in (old.get("topics") or []))
+        if model and not retag:
             tags[s["code"]] = entry(set(old["topics"]) | rule_topics, places.fold(set(old["cities"]) | rule_cities),
                                     "model", hints, old.get("purposes"))
             new_hints = hints - set(old.get("hints") or []) - set(tags[s["code"]]["cities"])
@@ -551,6 +555,8 @@ def main(argv=None):
     scope.add_argument("--pilot", help="a pilot name from config/collections.yaml")
     scope.add_argument("--all", action="store_true", help="every save")
     ap.add_argument("--retag", action="store_true", help="batch saves the agent already tagged")
+    ap.add_argument("--retag-topic", metavar="SLUG",
+                    help="batch again only the tagged saves with this topic (after adding topics, say)")
     ap.add_argument("--limit", type=int, default=0, help="at most this many saves this round (0 = no limit)")
     ap.add_argument("--batch-saves", type=int, default=BATCH_SAVES, help="most saves in one batch")
     ap.add_argument("--batch-chars", type=int, default=BATCH_CHARS, help="about the most characters in one batch")
