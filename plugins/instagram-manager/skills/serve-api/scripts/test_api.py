@@ -162,6 +162,28 @@ class Api(unittest.TestCase):
         town = self.get("/v1/spots?exact=false")["spots"]
         self.assertTrue(town and all("lat" not in r for r in town))
 
+    def test_spots_near_a_point(self):
+        rows = self.get("/v1/spots?lat=10.51&lon=20.51&km=5")["spots"]
+        self.assertEqual((rows[0]["name"], rows[0]["km_away"]), ("Example Cove Beach", 0.0))
+        self.assertEqual([r["km_away"] for r in rows], sorted(r["km_away"] for r in rows))
+        self.assertTrue(all(r["km_away"] <= 5 for r in rows))
+        self.assertNotIn("Example Point", {r["name"] for r in rows})        # about 47 km away
+        self.assertIn("Example Point", {r["name"] for r in self.get("/v1/spots?lat=10.51&lon=20.51&km=100")["spots"]})
+        self.assertNotIn("km_away", self.get("/v1/spots?area=fixture-state")["spots"][0])
+        self.get("/v1/spots?lat=10.51", 422)                                 # lat and lon go together
+        self.get("/v1/spots?lat=91&lon=0", 422)
+
+    def test_spots_near_a_google_place(self):
+        self.write("data/google.yaml", {"osm:node/8": {"query": "Example Point, Fixture Coast", "verdict": "match",
+                                                       "id": "ChIJexamplePoint", "by": "auto", "date": "2026-01-02"}})
+        self.assertEqual(self.client.post("/v1/manage/reload", headers=TOKEN).status_code, 200)
+        rows = self.get("/v1/spots?google_id=ChIJexamplePoint&km=3")["spots"]
+        self.assertEqual((rows[0]["name"], rows[0]["km_away"]), ("Example Point", 0.0))
+        self.assertIn("Example Bluff", {r["name"] for r in rows})            # about 1.5 km away
+        self.assertNotIn("Example Cove Beach", {r["name"] for r in rows})
+        self.get("/v1/spots?google_id=ChIJnotOneOfOurs", 404)                # look it up, pass lat and lon
+        self.get("/v1/spots?google_id=ChIJexamplePoint&lat=1&lon=1", 422)
+
     def test_media_stays_in_its_folder(self):
         self.assertEqual(self.client.get("/media/TRIP1/thumb.jpg").status_code, 200)
         self.assertEqual(self.client.get("/media/../secret.txt").status_code, 404)

@@ -210,6 +210,19 @@
       "description": "Its travel file, travel/<area>.",
       "title": "Area File",
       "type": "string"
+    },
+    "km_away": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "How far it is, in km, when the search was within km of a point or a Google place.",
+      "title": "Km Away"
     }
   },
   "required": [

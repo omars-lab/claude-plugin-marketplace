@@ -18,7 +18,7 @@ Track the work with `TaskCreate`: one task per step below, each marked done as i
 | `GET /v1/areas`, `/v1/areas/{area}` | each state or country: as `out/travel/<area>.yaml` |
 | `GET /v1/topics`, `/v1/topics/{topic}` | each other topic: as `out/<topic>.yaml` |
 | `GET /v1/saves`, `/v1/saves/{code}` | saves with all their spots together; filter by `topic`, `area`, `purpose`, `creator`, `place`; `limit`, `offset` |
-| `GET /v1/spots` | every location, one row per spot; filter by `area`, `kind`, `exact`, `near`, `code` |
+| `GET /v1/spots` | every location, one row per spot; filter by `area`, `kind`, `exact`, `near` (the town), `code`. Within `km` (default 5) of a point (`lat`, `lon`) or of a saved spot's Google place (`google_id`): pinned spots only, nearest first, each with `km_away` |
 | `GET /media/{path}` | a thumbnail, still or clip from the media folder (read only) |
 | `GET /v1/manage/decisions` | what waits on a person: Google picks, review spots, town-only spots, moves, decisions elsewhere |
 | `PUT /v1/manage/tags/{code}` | a save's topics, places and purposes, written `by: hand` |
@@ -33,6 +33,11 @@ Track the work with `TaskCreate`: one task per step below, each marked done as i
 `-H "X-Hub-Token: $(cat .cache/api-token)"`. A write goes through the same functions as the make
 targets and is refused (422, with the problems) when `make check` would report something new.
 Nothing is written then.
+
+**Near a Google place.** `google_id` works when one of the saves names that place (its id is kept in
+`data/google.yaml`); the centre is then the spot's own OpenStreetMap pin. For any other place the caller
+looks its position up itself and passes `lat` and `lon`. The server keeps no request log (uvicorn's
+`--no-access-log`), so a position from Google never lands in a log.
 
 **Never in the API:** anything that fetches from Instagram, the Google key (picking a Google place
 needs it, so that stays a `make google-ids` line), and model steps. The server binds to

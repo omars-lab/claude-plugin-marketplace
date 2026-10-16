@@ -88,6 +88,8 @@ class SpotAt(Spot):
     """A spot in the flat list of every location, with the save that names it."""
     code: str = Field(description="The save that names it.")
     area_file: str = Field(description="Its travel file, travel/<area>.")
+    km_away: Optional[float] = Field(None, description="How far it is, in km, when the search was within "
+                                                       "km of a point or a Google place.")
 
 
 class FileSummary(Strict):

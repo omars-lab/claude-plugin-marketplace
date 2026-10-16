@@ -21,7 +21,9 @@ services:
       - ${INSTAGRAM_MEDIA_DIR:?set INSTAGRAM_MEDIA_DIR to the media folder}:/media:ro
       - ../../..:/plugin:ro
     # --reload: a code edit in the plugin restarts the server. Data edits are read again by api.py itself.
+    # --no-access-log: a request line holds its query, and a caller may search near a position it got
+    # from Google, which must never be written to a log.
     command: >-
       uvicorn api:app --app-dir /plugin/skills/serve-api/scripts --host 0.0.0.0 --port 8000
-      --reload --reload-dir /plugin
+      --reload --reload-dir /plugin --no-access-log
     restart: unless-stopped

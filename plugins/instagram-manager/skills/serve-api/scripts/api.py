@@ -8,7 +8,8 @@ the hub to manage the data through. Runs in Docker (../docker/compose.yaml), bou
 Read   /v1/areas, /v1/areas/{area}     the travel areas (states, countries), as out/travel/<area>.yaml
        /v1/topics, /v1/topics/{topic}  the other topics, as out/<topic>.yaml
        /v1/saves, /v1/saves/{code}     saves with every area's spots together; filters
-       /v1/spots                       every location, one row per spot; filters
+       /v1/spots                       every location, one row per spot; filters, and within km of a
+                                       point (lat, lon) or of a saved spot's Google place (google_id)
        /v1/manage/decisions            everything waiting on a person, as the decisions page lists it
        /media/{path}                   a thumbnail, still or clip, when the media folder is mounted
 Write  PUT  /v1/manage/tags/{code}            a save's topics, places and purposes (`by: hand`)
@@ -38,6 +39,7 @@ Env    INSTAGRAM_HOME (the data folder), INSTAGRAM_MEDIA_DIR (optional), API_PIL
 import argparse
 import datetime as dt
 import json
+import math
 import os
 import secrets
 import sys
@@ -317,16 +319,48 @@ def save(code: str):
     return s
 
 
+def km_between(lat1, lon1, lat2, lon2):
+    """Great-circle distance in km."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = (math.sin((p2 - p1) / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2)
+    return 6371.0 * 2 * math.asin(math.sqrt(a))
+
+
 @app.get("/v1/spots", response_model=c.SpotsPage, tags=["read"], **READ)
 def spots(area: Optional[str] = Query(None, description="an area's slug"), kind: Optional[str] = None,
           exact: Optional[bool] = Query(None, description="true: pinned at the spot; false: at its town"),
-          near: Optional[str] = None, code: Optional[str] = None,
+          near: Optional[str] = Query(None, description="the town, park or area, as the spot's `near`"),
+          code: Optional[str] = None,
+          lat: Optional[float] = Query(None, ge=-90, le=90, description="with lon: spots within `km` of here"),
+          lon: Optional[float] = Query(None, ge=-180, le=180),
+          google_id: Optional[str] = Query(None, description="spots within `km` of the saved spot that "
+                                                             "carries this Google place id"),
+          km: float = Query(5, gt=0, le=500, description="how far from lat/lon or google_id"),
           limit: int = Query(500, ge=1, le=5000), offset: int = Query(0, ge=0)):
-    """Every location the saves name, one row per spot per save."""
-    rows = [s for s in STORE.need()["spots"]
+    """Every location the saves name, one row per spot per save. With lat and lon, or google_id, only
+    the pinned spots within `km`, nearest first, each with `km_away`. google_id works for a Google
+    place one of the saves names; for any other place, look its position up and pass lat and lon."""
+    every = STORE.need()["spots"]
+    if (lat is None) != (lon is None):
+        raise HTTPException(422, "lat and lon go together")
+    if google_id and lat is not None:
+        raise HTTPException(422, "give lat and lon, or google_id, not both")
+    if google_id:
+        at = next((s for s in every if s.get("google_id") == google_id and s.get("lat") is not None), None)
+        if at is None:
+            raise HTTPException(404, "no saved spot with a pin carries that Google place id; "
+                                     "look its position up and pass lat and lon")
+        lat, lon = at["lat"], at["lon"]
+    rows = [s for s in every
             if (not area or s["area_file"] == f"travel/{area}") and (not kind or s.get("kind") == kind)
             and (exact is None or s["exact"] == exact) and (not near or s.get("near") == near)
             and (not code or s["code"] == code)]
+    if lat is not None:
+        rows = sorted(({**s, "km_away": round(km_between(lat, lon, s["lat"], s["lon"]), 3)}
+                       for s in rows if s.get("lat") is not None and s.get("lon") is not None),
+                      key=lambda s: s["km_away"])
+        rows = [s for s in rows if s["km_away"] <= km]
     head, rows = page(rows, limit, offset)
     return {**head, "spots": rows}
 
