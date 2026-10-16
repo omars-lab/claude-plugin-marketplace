@@ -187,7 +187,8 @@ q { display: inline-block; background: var(--quote-bg); padding: .05rem .4rem; b
     {{PINS}}
     <h2>To review ({{N_REVIEW}})</h2>
     <p class="lede">Add <code>lookup: "Other Name"</code> to an entry in data/pins-review.yaml to search
-    for that instead, or <code>drop: true</code> to leave it out, then merge again.</p>
+    for that instead, or <code>drop: true</code> to leave it out (on a wrong pin too), then merge again.
+    These fixes survive a re-read; deleting an entry does not.</p>
     {{REVIEW}}
   </div>
 </div>

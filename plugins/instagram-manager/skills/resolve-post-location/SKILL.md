@@ -61,16 +61,24 @@ answers. **No script calls a model**, and there is no API key: this session star
    person has looked: a lookup can land on the town centre, or on the sandwich shop next to the
    café the post meant.
 
-## Fixing the review list
+## Fixing by hand
 
 Each entry in `data/pins-review.yaml` says why it is there. Edit it by hand:
 
 - **`lookup: "Other Name"`**: the next `--merge` searches that text instead of the caption's
   words. A person wrote it, so there is no quote check. If it is found within reach, it moves to
-  `pins.yaml`, with `asked:` showing what was searched.
+  `pins.yaml`, with `asked:` showing what was searched, and keeps its `lookup:`.
 - **`near:`** can be changed to another area in `data/places.yaml`.
-- **`drop: true`** leaves the entry alone for good.
+- **`drop: true`** leaves the entry out for good. On a pin in `pins.yaml` it does the same: the
+  next `--merge` moves the pin to review, and the hub leaves it out.
+- **`by: hand`** on a pin a person wrote or okayed in `pins.yaml` (a branch the search missed, a
+  pin placed from the map).
 - Deleting all of a save's entries sends the save back to the agent on the next round.
+
+**These fixes survive a re-read.** A `--redo` round or the video's spots merged again never
+replaces an entry with `lookup:`, `drop: true` or `by: hand`, and the agent's spots with the same
+`said` are left out for that save, whatever area it files them under this time. Deleting a wrong
+pin is not a fix, because the next re-read finds it again; mark it `drop: true` instead.
 
 A spot with the wrong area (a café in the next town over) is fixed with `near:`. A spot in an area
 that is not listed yet needs that area added with `add_places.py` first.
@@ -135,7 +143,7 @@ The same as tag-saves:
 .cache/batches/locate/batch-001.answers.json    written by the agent: {"answers": {<code>: [{said, near, name?}], <code>: []}}
 .cache/batches/locate/batch-001.answers.merged.json   the same, renamed once merged
 .cache/batches/locate/merged.jsonl              one line per merged batch: saves, pins, review, no_spot, unanswered
-data/pins.yaml                                  <code>: [{name, said, near, kind, lat, lon, km, osm?, wikidata?, found, map, asked?, address?}]
+data/pins.yaml                                  <code>: [{name, said, near, kind, lat, lon, km, osm?, wikidata?, found, map, asked?, address?, from?, lookup?, by?}]
 data/pins-review.yaml                           <code>: [{said, near, why, asked?, address?, and what was found if anything; lookup?, drop?}]
 data/no-spot.yaml                               <code>: {areas: [Example Town]}
 .cache/geocode.json                             every OpenStreetMap answer, misses too (bounded searches keyed by their box)
@@ -160,8 +168,8 @@ EXAMPLECODE1:
 
 `osm` and `wikidata` are the ids other place wikis carry, so a place page elsewhere can list the
 saves that name it. The files are sorted by code, so a merge with nothing new leaves git clean.
-A save's new answer (`--redo`) replaces its old pins; a `lookup:` or `drop:` a person added to a
-review entry carries over when the agent names the same spot again.
+A save's new answer (`--redo`) replaces its old pins, except the video's and a person's fixes
+(see "Fixing by hand").
 
 ## Scripts — when to use each
 

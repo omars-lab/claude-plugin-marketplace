@@ -353,6 +353,34 @@ class Merge(Home):
         self.assertEqual((p["name"], p["asked"]), ("Near Tower", "Far Away Tower, Fixture Town"))
         self.assertNotIn("Far Away Tower", [e["said"] for e in self.read("data/pins-review.yaml")["TOWNA"]])
 
+    def test_hand_fixes_survive_a_re_read(self):
+        self.locate()
+        review = self.read("data/pins-review.yaml")
+        for e in review["TOWNA"]:
+            if e["said"] == "Far Away Tower":
+                e["lookup"] = "Far Away Tower, Fixture Town"          # a person's lookup
+        review["TOWNA"] = [e for e in review["TOWNA"] if e["said"] != "Invented Lighthouse"]
+        self.write("data/pins-review.yaml", review)
+        pins = self.read("data/pins.yaml")
+        for p in pins["LISTA"]:
+            if p["said"] == "Example Pier":
+                p["drop"] = True                                       # a wrong pin, dropped where it is
+        pins["TOWNA"].append({"name": "Invented Lighthouse", "said": "Invented Lighthouse", "near": "Fixture Town",
+                              "lat": 40.01, "lon": -120.01, "by": "hand"})   # a pin a person placed
+        self.write("data/pins.yaml", pins)
+        self.assertIn("1 pins marked drop: true", self.run_script("--merge"))
+
+        self.agent(self.run_script("--prepare", "--pilot", "fixture", "--redo").split())
+        self.run_script("--merge")                                     # the agent reads every save again
+        pins, review = self.read("data/pins.yaml"), self.read("data/pins-review.yaml")
+        tower = [p for p in pins["TOWNA"] if p["said"] == "Far Away Tower"]
+        self.assertEqual([(p["name"], p["lookup"]) for p in tower], [("Near Tower", "Far Away Tower, Fixture Town")])
+        self.assertEqual([p.get("by") for p in pins["TOWNA"] if p["said"] == "Invented Lighthouse"], ["hand"])
+        self.assertNotIn("Example Pier", [p["said"] for p in pins["LISTA"]])
+        self.assertEqual([e.get("drop") for e in review["LISTA"] if e["said"] == "Example Pier"], [True])
+        self.assertEqual([e["said"] for e in review.get("TOWNA") or []
+                          if e["said"] in ("Far Away Tower", "Invented Lighthouse")], [])
+
     def test_rerunning_is_safe(self):
         self.locate()
         files = ("data/pins.yaml", "data/pins-review.yaml", "data/no-spot.yaml")

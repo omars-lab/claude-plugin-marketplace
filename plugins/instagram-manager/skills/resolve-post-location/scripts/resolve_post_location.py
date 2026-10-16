@@ -74,11 +74,17 @@ What the merge checks, per spot
     up in the same box. Found within reach: a pin at the address, named for the venue (kind
     "address", no osm id, since the building's id is not the venue's).
 
-Fixing a review entry
-  Add `lookup: "Other Name"` to the entry: the next --merge searches that instead of what the caption
-  said (the quote check is skipped, since a person wrote it). `near:` may be changed to another
-  area in data/places.yaml. A found spot moves to pins.yaml. `drop: true` leaves the entry alone
-  for good. Deleting all of a save's entries sends the save back to the agent on the next round.
+Fixing by hand
+  - A review entry: add `lookup: "Other Name"`, and the next --merge searches that instead of what
+    the caption said (the quote check is skipped, since a person wrote it). `near:` may be changed
+    to another area in data/places.yaml. A found spot moves to pins.yaml and keeps its `lookup:`.
+  - A wrong spot: add `drop: true`, to a review entry or to a pin. The next --merge moves a dropped
+    pin to review, and the hub leaves it out.
+  - A pin a person placed or okayed: write it in pins.yaml with `by: hand`.
+  Each of these survives a re-read (--redo, or the video's spots merged again): it is never
+  replaced, and the agent's spots with the same `said` are left out for that save, whatever area
+  they are filed under. Deleting a pin or entry is not a fix, since the next re-read brings it back.
+  Deleting all of a save's entries sends the save back to the agent on the next round.
 
 Rerunning is safe: a merged batch is never merged twice, a lookup is cached, and the files are
 written in a fixed order, so a merge with nothing new changes nothing. A new --prepare refuses to
@@ -557,6 +563,38 @@ def prepare(args, saves, tags, places, pilot, done):
 
 # --- merge ---------------------------------------------------------------------------------------
 
+def by_hand(entry):
+    """A pin or review entry a person made or fixed: `by: hand`, a `lookup:` or `drop: true`.
+    A re-read never replaces it, and the agent's spots of the same name are left out for that save."""
+    return isinstance(entry, dict) and (entry.get("by") == "hand" or entry.get("drop") is True
+                                        or (isinstance(entry.get("lookup"), str) and bool(entry["lookup"].strip())))
+
+
+def said_key(entry):
+    return " ".join(str(entry.get("said") or "").lower().split())
+
+
+def move_dropped(pins, review):
+    """Pins a person marked `drop: true` move to review, where they stay dropped."""
+    moved = 0
+    for code, entries in list(pins.items()):
+        if not isinstance(entries, list):
+            continue
+        gone = [e for e in entries if isinstance(e, dict) and e.get("drop") is True]
+        if not gone:
+            continue
+        review[code] = (review.get(code) or []) + gone
+        keep = [e for e in entries if e not in gone]
+        if keep:
+            pins[code] = keep
+        else:
+            del pins[code]
+        moved += len(gone)
+        for e in gone:
+            log("locate_pin_dropped", code=code, said=e.get("said"))
+    return moved
+
+
 def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
     """Review entries a person gave a `lookup:` are searched again; found ones move to pins."""
     moved = 0
@@ -575,6 +613,7 @@ def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
             if e.get("from"):
                 new["from"] = e["from"]
             if where == "pin":
+                new["lookup"] = e["lookup"]  # still a person's fix once pinned, so a re-read keeps it
                 pins.setdefault(code, [])
                 if not any(p["said"] == new["said"] and p["near"] == new["near"] for p in pins[code]):
                     pins[code].append(new)
@@ -629,6 +668,7 @@ def merge(saves, tags, places, fetcher=None, frames=False):
     by_code = {s["code"]: s for s in saves}
     pins, review, no_spot = load_yaml(PINS), load_yaml(REVIEW), load_yaml(NO_SPOT)
     reaches = {}
+    dropped = move_dropped(pins, review)
     fixed = recheck_review(by_code, tags, places, pins, review, reaches, fetcher)
     out = batch_dir(frames)
     counts = {"pins": 0, "review": 0, "no_spot": 0, "unanswered": 0}
@@ -657,19 +697,17 @@ def merge(saves, tags, places, fetcher=None, frames=False):
             seen = video_text(code) if frames else None
             areas = [a["name"] for a in rec["areas"]]
             key = lambda e: (e.get("said"), e.get("near"))  # noqa: E731
-            old = {key(e): e for e in review.get(code) or [] if isinstance(e, dict)}
             pinned = {key(e) for e in pins.get(code) or [] if isinstance(e, dict)}
+            # A name a person settled (pinned by hand, given a lookup, or dropped) stays as they left
+            # it, whichever area the agent files it under this time.
+            settled = {said_key(e) for e in (pins.get(code) or []) + (review.get(code) or []) if by_hand(e)}
             new_pins, new_review, redone = [], [], set()
             for spot in spots:
                 if frames and key(spot) in pinned:  # the caption already gave it
                     continue
-                prior = old.get(key(spot)) or {}
-                redone.add(key(spot))
-                if prior.get("drop"):  # a person dropped it before: keep it dropped
-                    new_review.append(prior)
+                if said_key(spot) in settled:
                     continue
-                if prior.get("lookup"):  # a person's fix carries over a re-read
-                    spot["lookup"] = prior["lookup"]
+                redone.add(key(spot))
                 where, entry = resolve(spot, caption, areas, places, reaches, fetcher, creator_of(by_code[code]),
                                        seen)
                 if frames:
@@ -680,11 +718,12 @@ def merge(saves, tags, places, fetcher=None, frames=False):
             if frames:  # spots read off the video add to what the caption gave
                 new_pins = (pins.get(code) or []) + new_pins
                 new_review = [e for e in review.get(code) or [] if key(e) not in redone] + new_review
-            else:  # a caption answer replaces the caption's last one; the video's spots stay
+            else:  # a caption answer replaces the caption's last one; the video's spots and a person's stay
                 given = {key(e) for e in new_pins + new_review}
-                new_pins += [e for e in pins.get(code) or [] if e.get("from") == "video" and key(e) not in given]
-                new_review += [e for e in review.get(code) or [] if isinstance(e, dict) and e.get("from") == "video"
-                               and key(e) not in given]
+                stays = lambda e: (isinstance(e, dict) and (e.get("from") == "video" or by_hand(e))  # noqa: E731
+                                   and key(e) not in given)
+                new_pins += [e for e in pins.get(code) or [] if stays(e)]
+                new_review += [e for e in review.get(code) or [] if stays(e)]
             for d, v in ((pins, new_pins), (review, new_review)):
                 if v:
                     d[code] = v
@@ -706,13 +745,16 @@ def merge(saves, tags, places, fetcher=None, frames=False):
     write_yaml(PINS, pins)
     write_yaml(REVIEW, review)
     write_yaml(NO_SPOT, no_spot)
-    log("locate_merge", **counts, review_fixed=fixed, batches_waiting=pending, batches_merged_before=before,
+    log("locate_merge", **counts, review_fixed=fixed, pins_dropped=dropped, batches_waiting=pending,
+        batches_merged_before=before,
         saves_with_pins=len(pins), saves_in_review=len(review), saves_no_spot=len(no_spot))
     print(f"{counts['pins']} spots pinned, {counts['review']} for review, {counts['no_spot']} saves "
           f"{'show' if frames else 'name'} no spot, "
           f"{counts['unanswered']} saves with no usable answer; {pending} batches still waiting for their agent")
     if fixed:
         print(f"{fixed} review entries found with their lookup text and moved to the pins")
+    if dropped:
+        print(f"{dropped} pins marked drop: true moved to review, and stay out of the pins")
     return 0
 
 
