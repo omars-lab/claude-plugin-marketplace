@@ -1031,8 +1031,10 @@ def wrong_area(review):
             if not isinstance(e, dict) or e.get("drop") or not isinstance(e.get("near"), str):
                 continue
             said = str(e.get("said") or "")
-            if isinstance(e.get("really_in"), str) and e["really_in"].strip():
-                out.append((code, said, e["near"], f"really in {e['really_in'].strip()}"))
+            really = e["really_in"].strip() if isinstance(e.get("really_in"), str) else ""
+            # "really in Example Town, Example State" under Example Town is the same town: not misfiled
+            if really and really.split(",")[0].strip().lower() != e["near"].strip().lower():
+                out.append((code, said, e["near"], f"really in {really}"))
                 continue
             km = e.get("km")
             if isinstance(km, (int, float)) and km > FAR_KM:

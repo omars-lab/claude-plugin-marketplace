@@ -505,7 +505,9 @@ class Merge(Home):
             self.assertEqual([w[1] for w in rpl.wrong_area({"X": [{"said": "Far", "near": "T", "km": 61.0},
                                                                  {"said": "Close", "near": "T", "km": 40.0},
                                                                  {"said": "Gone", "near": "T", "km": 99.0,
-                                                                  "drop": True}]})], ["Far"])
+                                                                  "drop": True},
+                                                                 {"said": "Home", "near": "T",   # the same town
+                                                                  "really_in": "T, Other State"}]})], ["Far"])
             places = {"places": {**PLACES["places"], "Other Town": {
                 "kind": "city", "in": "Fixture State", "lat": 41.49, "lon": -120.0, "found": "Other Town"}}}
             self.write("data/places.yaml", places)
