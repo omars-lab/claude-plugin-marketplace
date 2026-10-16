@@ -88,6 +88,8 @@ Fixing by hand
     Example Town" when the spot really is there): add `ok: true`, and the next --merge moves it to
     pins.yaml as found, marked `by: hand`.
   - A pin a person placed or okayed: write it in pins.yaml with `by: hand`.
+  - Pins that truly share one place (food trucks on one lot, stalls in a food hall): give each the
+    same `building:` text and `by: hand`, so check_data.py accepts the shared map point.
   Each of these survives a re-read (--redo, or the video's spots merged again): it is never
   replaced, and the agent's spots with the same `said` are left out for that save, whatever area
   they are filed under. Deleting a pin or entry is not a fix, since the next re-read brings it back.

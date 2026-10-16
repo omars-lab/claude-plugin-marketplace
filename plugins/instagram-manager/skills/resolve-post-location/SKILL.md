@@ -108,6 +108,10 @@ Each entry in `data/pins-review.yaml` says why it is there. Edit it by hand:
   next `--merge` moves the pin to review, and the hub leaves it out.
 - **`by: hand`** on a pin a person wrote or okayed in `pins.yaml` (a branch the search missed, a
   pin placed from the map).
+- **`building: "..."`**, the same text on each pin that truly shares one place (food trucks on
+  one lot, stalls in a food hall, two names for one lounge), together with `by: hand`. The data
+  check flags different spots on one map point; this tells it the shared point is right. If they
+  are one venue under two names, keep one pin and rename it instead.
 - Deleting all of a save's entries sends the save back to the agent on the next round.
 
 **These fixes survive a re-read.** A `--redo` round or the video's spots merged again never
