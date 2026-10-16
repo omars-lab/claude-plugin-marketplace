@@ -163,7 +163,7 @@ def maps_link(name, where=""):
 # Review entries whose quote and area checked out, and only the map lookup failed or looked doubtful.
 # OpenStreetMap is thin on small restaurants and cafés, so these are mostly real venues.
 LOOKUP_MISSES = (re.compile(r"^not found near "), re.compile(r"^found .*, a different name$"),
-                 re.compile(r"^\d+ km from "))
+                 re.compile(r"^\d+ km from "), re.compile(r"^only the street was found near "))
 
 
 def placed_spots(review):
@@ -180,8 +180,11 @@ def placed_spots(review):
                 continue
             said = e.get("said") if isinstance(e.get("said"), str) else ""
             # What was searched: a person's lookup, else what the merge asked. Not `name`, which on a
-            # doubtful match is the other place OpenStreetMap found.
-            name = next((e[k] for k in ("lookup", "asked") if isinstance(e.get(k), str) and e[k].strip()), "")
+            # doubtful match is the other place OpenStreetMap found. A pin sent back for finding only the
+            # street keeps our own name for the spot, so there `name` counts too.
+            keys = ("lookup", "asked", "name") if str(e.get("why") or "").startswith("only the street") \
+                else ("lookup", "asked")
+            name = next((e[k] for k in keys if isinstance(e.get(k), str) and e[k].strip()), "")
             name = (name or said.lstrip("@#")).strip()
             if name:
                 spot = {"name": name, "said": said, "near": e["near"], "placed": True}
@@ -190,6 +193,8 @@ def placed_spots(review):
                     spot["map"] = maps_link(name, spot["address"])   # the caption's address
                 if isinstance(e.get("really_in"), str) and e["really_in"].strip():
                     spot["really_in"] = e["really_in"].strip()   # filed under the wrong area
+                if str(e.get("why") or "").startswith("only the street"):
+                    spot["street_only"] = True   # OpenStreetMap has the road, not the house
                 out.setdefault(code, []).append(spot)
     return out
 
@@ -277,7 +282,8 @@ class Hub:
                                 "map": e.get("map") or maps_link(name, near or ""), "parent": near, "spot": True,
                                 "posts": [], "said": {}, "osm": e.get("osm"), "wikidata": e.get("wikidata"),
                                 "notes": e.get("notes"), "found": e.get("found") if isinstance(e.get("found"), str) else "",
-                                "placed": bool(e.get("placed")), "google_by": e.get("google_by"),
+                                "placed": bool(e.get("placed")), "street_only": bool(e.get("street_only")),
+                                "google_by": e.get("google_by"),
                                 "google_chain": bool(e.get("google_chain"))}
         elif e.get("google_by") and not self.places[key].get("google_by"):   # another post's copy has the id
             self.places[key].update(map=e["map"], google_by=e["google_by"])
@@ -611,6 +617,9 @@ def place_page(hub, place):
     rows.append(("On a map", " · ".join(where)))
     if place["lat"] is None:
         rows.append(("Pin", '<span class="muted">not looked up yet, so it is not on the map</span>'))
+    elif place.get("placed") and place.get("street_only"):
+        rows.append(("Pin", f'<span class="muted">at {esc(place["parent"])}: OpenStreetMap found only its street, '
+                            'not the house, so Google Maps searches for it by name</span>'))
     elif place.get("placed"):
         rows.append(("Pin", f'<span class="muted">at {esc(place["parent"])}: OpenStreetMap does not list it, '
                             'so Google Maps searches for it by name</span>'))
@@ -731,7 +740,7 @@ function popup(pin){
   var th=(p.sp&&p.sp[pin[3]])||p.th;if(th){var img=el('img');img.src=th;img.alt='';box.appendChild(img)}
   box.appendChild(el('p','pwho',p.u?'@'+p.u:'Unknown creator'));
   var where=el('p','pwhere');where.appendChild(link(pl.s,pl.n));box.appendChild(where);
-  if(pl.x)box.appendChild(el('p','pnote','Pinned at the town: OpenStreetMap does not list it. Google Maps searches for it by name.'));
+  if(pl.x)box.appendChild(el('p','pnote','Pinned at the town: OpenStreetMap could not place it. Google Maps searches for it by name.'));
   if(p.t)box.appendChild(el('p','ptext',p.t));
   var ln=el('p','plinks');ln.appendChild(link(p.f,'Post page'));ln.appendChild(link(p.i,'Open on Instagram',true));
   ln.appendChild(link(pl.m,'Open in Google Maps',true));

@@ -168,6 +168,20 @@ class Hub(unittest.TestCase):
         self.assertNotIn("Example Baguette", self.page("posts/TOWN1.html"))
         self.assertIn("eat or stay posts: 0 open a spot OpenStreetMap placed, 1 one it doesn't list", out)
 
+    def test_a_spot_found_only_as_its_street_is_shown_at_its_town(self):
+        self.write("data/pins-review.yaml", {
+            "TOWN1": [{"said": "@examplegrill", "name": "Example Grill", "near": "Fixture Town",
+                       "address": "12 Long Rd", "why": "only the street was found near Fixture Town, not the house",
+                       "street_tried": True}]})
+        self.build("--pilot", "fixture")
+        d = self.data()
+        names = [p["n"] for p in d["places"]]
+        town1 = [(names[pl], style) for _, _, post, pl, style, _ in d["pins"] if d["posts"][post]["c"] == "TOWN1"]
+        self.assertEqual(town1, [("Example Grill", "placed")])
+        grill = self.page("places/example-grill.html")
+        self.assertIn("query=Example+Grill%2C+12+Long+Rd", grill)
+        self.assertIn("OpenStreetMap found only its street", grill)
+
     def test_a_kept_google_id_opens_that_exact_place(self):
         self.write("data/pins-review.yaml", {
             "TOWN1": [{"said": "Example Deli", "near": "Fixture Town", "why": "not found near Fixture Town",
