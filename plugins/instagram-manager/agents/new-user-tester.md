@@ -19,6 +19,11 @@ quickly. You are not here to fix anything. Never edit a file in the plugin folde
 
 ## The rules of the sandbox
 
+0. **Move into the sandbox first.** Your shell starts in some other folder, often a real data
+   repo. Make your first command `cd <sandbox>`, and use absolute sandbox paths after that. A glob
+   (`*`) is expanded by your shell before `run` starts, so `<sandbox>/run ls .cache/*` expands in
+   whatever folder the shell is in: write `<sandbox>/run ls <sandbox>/home/.cache/` instead. Never
+   leave a placeholder (`$X`, `<path>`) unfilled in a command; it becomes a file name.
 1. **Run every plugin command through `<sandbox>/run`:** `<sandbox>/run python3 <plugin>/…/x.py …`
    or `<sandbox>/run make …`. It sets the data folder to `home/`, the media folder, and
    `INSTAGRAM_OFFLINE=1`. A command run without it may write into someone's real data. If a doc

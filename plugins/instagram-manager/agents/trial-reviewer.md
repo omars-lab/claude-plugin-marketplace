@@ -15,6 +15,10 @@ and `<plugin>/skills/new-user-trial/SKILL.md` for the sandbox's rules. The same 
 every plugin command through `<sandbox>/run`, nothing outside the plugin folder and the sandbox,
 no network for the plugin, no servers on ports 8765 to 8769 or 8780, no edits to the plugin.
 
+Your shell starts in some other folder, often a real data repo, so make your first command
+`cd <sandbox>` and use absolute sandbox paths after that. Your shell expands a `*` before `run`
+starts, so glob only on absolute sandbox paths, and never leave a placeholder unfilled in a command.
+
 ## 1. Check each finding
 
 For every finding in the diary, blocker to polish:

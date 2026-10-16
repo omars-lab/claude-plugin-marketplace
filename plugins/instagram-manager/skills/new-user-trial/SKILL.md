@@ -58,7 +58,8 @@ With no network the map tiles stay grey; pins, lists and links still show.
 ## Steps
 
 1. **Pick the persona.** Read `personas.md` and pick one (the trip planner unless asked otherwise).
-   Note today's date; the reports go in `<data repo>/docs/user-trials/<date>-<persona>/`.
+   Note today's date. The agents write their reports inside the sandbox (`diary.md`,
+   `review.md`), so neither ever touches the data repo; step 8 copies them in.
 2. **Note the real data repo's state.** Run `git -C <data repo> status --short` and keep the
    output. The trial must leave it exactly the same.
 3. **Make the sandbox.** Run `make_sandbox.py --out <scratch>/trial-<date>-<persona>`. Use the
@@ -67,18 +68,19 @@ With no network the map tiles stay grey; pins, lists and links still show.
    yet because the plugin was not reloaded, start a `general-purpose` agent with model sonnet and
    the prompt "Follow `<plugin>/agents/new-user-tester.md` exactly", then the details below).
    Give it: the plugin folder, the sandbox folder, the persona's name, the diary's path
-   (`<data repo>/docs/user-trials/<date>-<persona>/diary.md`) and the playwright-core folder.
+   (`<sandbox>/diary.md`) and the playwright-core folder.
    Do not give it the data repo's own docs, Makefile or CLAUDE.md; a newcomer has none of them.
 5. **Start the reviewer** when the tester is done. One agent, `instagram-manager:trial-reviewer`
    (or `general-purpose`, model opus, "Follow `<plugin>/agents/trial-reviewer.md` exactly").
    Give it the same plugin and sandbox folders, the diary's path, and the review's path
-   (`…/review.md`). It works in the same sandbox, so do not delete it in between.
-6. **Check nothing leaked.** Run `git -C <data repo> status --short` again; it must match step 2,
-   apart from the two new report files. Look at `<sandbox>/home/` to see what the trial made.
+   (`<sandbox>/review.md`). It works in the same sandbox, so do not delete it in between.
+6. **Check nothing leaked.** Run `git -C <data repo> status --short` again; it must match step 2
+   (another session's running job may have changed its own files; check any difference is theirs).
+   Look at `<sandbox>/home/` to see what the trial made.
 7. **Read both reports yourself,** then open one task per confirmed fix, in the review's ROI order,
    each naming the finding and the file to change. Leave "not reproduced" findings as they are.
-8. **Commit the two reports** in the data repo by name. Screenshots stay in the sandbox; they
-   never go into git.
+8. **Copy the two reports** to `<data repo>/docs/user-trials/<date>-<persona>/` and commit them
+   by name. Screenshots stay in the sandbox; they never go into git.
 9. **Report in plain words:** the persona, how far the newcomer got, the three fixes worth most,
    and where the diary and review are.
 
