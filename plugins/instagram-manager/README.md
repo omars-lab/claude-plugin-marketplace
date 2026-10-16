@@ -11,7 +11,7 @@ that feeds your other projects.
 /instagram-manager:introduce                            # what it can do
 ```
 
-## Skills (12)
+## Skills (13)
 
 | Category | Skill | What it does |
 |---|---|---|
@@ -28,11 +28,14 @@ that feeds your other projects.
 | **Hub** | `build-hub` | A private local site: a map, a page per place, a page per post |
 | **Send** | `send-topics` | The files other repos read: one per state or country for travel, one per other topic |
 | **Send** | `serve-api` | The same data as a local web API in Docker, with Swagger and JSON Schema, and the hub's decisions as writes |
+| **Check** | `new-user-trial` | A newcomer tries the plugin in a sandbox with an invented export and writes a diary; a reviewer re-checks it and ranks the fixes |
 
-## Agents (4)
+## Agents (6)
 
 `save-tagger` (topics, purposes, places), `save-splitter` (the things a non-travel caption names),
 `post-locator` (the spots a caption names) and `frame-reader` (the spots a video shows) each read one batch file and write its answers (Haiku).
+`new-user-tester` (Sonnet) and `trial-reviewer` (Opus) run the new-user trial: one plays a newcomer
+in a sandbox, the other re-checks its diary.
 No script calls a model: the Claude Code session starts the agents, on the plan it is logged in
 with. No API key.
 

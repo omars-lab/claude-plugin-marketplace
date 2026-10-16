@@ -6,6 +6,11 @@ therefore reads and writes in the data repo: $INSTAGRAM_HOME, or ~/Workspace/git
     from home import home, cache
     home()                 # the data repo
     cache("saves.json")    # <data repo>/.cache/saves.json (gitignored there)
+    offline()              # True when INSTAGRAM_OFFLINE is set: no script may reach the network
+
+INSTAGRAM_OFFLINE=1 is for trial runs and sandboxes (new-user-trial): OpenStreetMap lookups
+fail as if the network were down (only answers already in the cache are used), and fetch-media
+and find-google-ids refuse to run. Nothing reaches Instagram, Google or OpenStreetMap.
 """
 
 import os
@@ -19,3 +24,7 @@ def home():
 
 def cache(*parts):
     return os.path.join(home(), ".cache", *parts)
+
+
+def offline():
+    return os.environ.get("INSTAGRAM_OFFLINE", "") not in ("", "0")

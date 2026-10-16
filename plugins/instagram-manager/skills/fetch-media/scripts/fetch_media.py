@@ -81,7 +81,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared", "scripts"))
 import yaml  # noqa: E402
 
-from home import cache, home  # noqa: E402
+from home import cache, home, offline  # noqa: E402
 from log import log, log_to  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 
@@ -700,6 +700,10 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
 
     log_path = cache("logs", "fetch-media.log")
     log_to(log_path)
+    if offline():
+        log("refused", reason="offline")
+        print("fetch_media: INSTAGRAM_OFFLINE is set, so nothing is fetched from Instagram", file=sys.stderr)
+        return 2
     requests = collections.deque()
     watcher = Watcher(requests)
     opts = ydl_options(watcher)

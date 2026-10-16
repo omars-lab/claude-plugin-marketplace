@@ -65,7 +65,7 @@ sys.path.insert(0, os.path.join(SKILLS, os.pardir, "shared", "scripts"))
 sys.path.insert(0, os.path.join(SKILLS, "build-hub", "scripts"))
 import build_hub as bh  # noqa: E402
 import google_places as gp  # noqa: E402
-from home import cache, home  # noqa: E402
+from home import cache, home, offline  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import Places, load_yaml  # noqa: E402
@@ -240,6 +240,8 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true", help="list what would be searched; no key, no calls")
     ap.add_argument("--prune", action="store_true", help="drop kept ids that no spot uses any more")
     args = ap.parse_args(argv)
+    if offline() and not args.dry_run and not (args.pick or args.none or args.chain):
+        sys.exit("google_ids: INSTAGRAM_OFFLINE is set, so Google is not searched; --dry-run lists what would be")
 
     saves_path = cache("saves.json")
     if not os.path.exists(saves_path):

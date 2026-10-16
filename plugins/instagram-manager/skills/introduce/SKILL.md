@@ -100,6 +100,7 @@ For a multi-step run, track each step with `TaskCreate` and mark it done as it f
 | Send travel saves to my trip planner | send-topics | `/instagram-manager:send-topics` |
 | Let another app read my saved places over HTTP | serve-api | `/instagram-manager:serve-api` |
 | What should I run next? | manage-saves | `/instagram-manager:manage-saves` |
+| How easy is this for someone else? Where are the gaps? | new-user-trial | `/instagram-manager:new-user-trial` |
 
 ## Plugin Map
 
@@ -116,12 +117,16 @@ instagram-manager
   ├── find-google-ids        — spots → one Google search each → data/google.yaml (place ids only)
   ├── build-hub              — data/ → <data repo>/.cache/hub/ (map, place pages, post pages)
   ├── send-topics            — data/ → <data repo>/out/travel/<area>.yaml, out/<topic>.yaml for other repos
-  └── serve-api              — data/ → a local API in Docker on 127.0.0.1 (read, schema, the hub's writes)
+  ├── serve-api              — data/ → a local API in Docker on 127.0.0.1 (read, schema, the hub's writes)
+  └── new-user-trial         — a sandbox + invented export → new-user-tester diary → trial-reviewer review
 
   agents/ (Haiku, one batch file in, one answers file out)
     ├── save-tagger    — topics, purposes and places
+    ├── save-splitter  — the dishes, ideas and tips a non-travel caption names
     ├── post-locator   — the spots a caption names
-    └── frame-reader   — the spots a video shows
+    ├── frame-reader   — the spots a video shows
+    ├── new-user-tester — (Sonnet) plays a newcomer in a sandbox, writes a diary
+    └── trial-reviewer  — (Opus) re-checks the diary, ranks the fixes
 
   shared/scripts/
     ├── home.py        — finds the data repo (INSTAGRAM_HOME)

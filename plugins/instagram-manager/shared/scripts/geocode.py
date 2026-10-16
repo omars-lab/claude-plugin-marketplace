@@ -29,6 +29,10 @@ more; refused again, lookup() raises Refused and the caller stops its run, so no
 going through twelve minutes of refusals filed 269 lookups that way: docs/issues in the data repo,
 "osm-refused-lookups".)
 
+With INSTAGRAM_OFFLINE set (home.offline()), no request is sent: a name already in the cache
+is answered from it, a name in $INSTAGRAM_GEOCODE_FIXTURE (invented places, for trial runs) from
+that, and any other fails like a dropped network, so it is not cached either.
+
 Standard library only.
 """
 
@@ -39,7 +43,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from home import cache
+from home import cache, offline
 from log import log
 
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
@@ -132,7 +136,33 @@ def best(hits):
     return min(hits, key=lambda h: (RANK.get(kind_of(h), 3), -(h.get("importance") or 0)))
 
 
+def offline_hits(query, viewbox=None):
+    """Offline (INSTAGRAM_OFFLINE): the hits in $INSTAGRAM_GEOCODE_FIXTURE (a JSON list of
+    Nominatim-shaped hits, invented places only) whose name is the query's first part, inside the
+    viewbox when one is given. No fixture, or no match, fails like a dropped network, so the miss
+    is not cached and a later online run asks again."""
+    path = os.environ.get("INSTAGRAM_GEOCODE_FIXTURE")
+    first = query.split(",")[0].strip().lower()
+    hits = []
+    if path:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                fixture = json.load(fh)
+        except (OSError, ValueError):
+            fixture = []
+        hits = [h for h in fixture if (h.get("name") or "").strip().lower() == first]
+        if viewbox:
+            w, n, e, so = (float(x) for x in viewbox.split(","))
+            hits = [h for h in hits if so <= float(h["lat"]) <= n and w <= float(h["lon"]) <= e]
+    log("geocode_offline", q=query, hits=len(hits))
+    if not hits:
+        raise urllib.error.URLError("offline: INSTAGRAM_OFFLINE is set and the fixture has no such place")
+    return hits
+
+
 def fetch(query):
+    if offline():  # INSTAGRAM_OFFLINE: the fixture's answers, else fail like a dropped network
+        return offline_hits(query)
     params = urllib.parse.urlencode({"q": query, "format": "jsonv2", "addressdetails": 1, "limit": 5,
                                      "accept-language": "en"})
     req = urllib.request.Request(f"{NOMINATIM}?{params}", headers={"User-Agent": UA})
@@ -173,6 +203,8 @@ def near_params(query, box):
 
 def fetch_params(params):
     """One paced request with these parameters: the same User-Agent and wait as fetch()."""
+    if offline():
+        return offline_hits(params.get("q") or "", params.get("viewbox"))
     req = urllib.request.Request(f"{NOMINATIM}?{urllib.parse.urlencode(params)}", headers={"User-Agent": UA})
     log("geocode_call", q=params.get("q"), box=params.get("viewbox"))
     try:
