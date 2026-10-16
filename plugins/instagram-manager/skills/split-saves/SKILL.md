@@ -1,6 +1,6 @@
 ---
 name: split-saves
-description: Split each saved Instagram post that is not travel (recipes, design, business, 3D prints, parenting, other) into the things its caption names, a dish, a technique, a product idea or a tip, each with the caption's exact words, into the data repo's data/items.yaml. Save-splitter agents read batches of saves; the script checks every quote. Use after tag-saves, when someone wants their recipe, design or business saves broken into items, or when the topic files other repos read have empty item lists. Not for travel saves; their items are spots (resolve-post-location).
+description: Split each saved Instagram post that is not travel (recipes, design, business, 3D prints, parenting, other) into the things its caption names, a dish, a technique, a product idea or a tip, each with the caption's exact words, into the data repo's data/items/ folder (one file per topic). Save-splitter agents read batches of saves; the script checks every quote. Use after tag-saves, when someone wants their recipe, design or business saves broken into items, or when the topic files other repos read have empty item lists. Not for travel saves; their items are spots (resolve-post-location).
 ---
 
 # Split Saves
@@ -30,7 +30,7 @@ kinds yourself, add `item_kinds: {kind: what counts}` to it in the data repo's
 ## How a save gets its items
 
 1. **Which saves.** Every tagged save (`data/tags.yaml`) with a topic other than travel, tagged by
-   the agent or only by its collection. A save is skipped once `data/items.yaml` has an entry for
+   the agent or only by its collection. A save is skipped once `data/items/` has an entry for
    it split for the same topics, `items: []` included, so a rerun only reads new saves. A save
    whose topics changed since (a later tagging round added one) is read again. `--redo` reads
    every save again.
@@ -50,10 +50,10 @@ starts the agents. They run on the plan Claude Code is logged in with, so there 
 
 ## Fixing by hand
 
-Edit a save's entry in `data/items.yaml` and add `by: hand`. That entry is final: no round batches
+Edit a save's entry in its file under `data/items/` and add `by: hand`. That entry is final: no round batches
 the save again (`--redo` included) and the merge ignores any answer for it. To have the agent read
 a save again, delete its entry. An item in the review file whose quote was nearly right can be
-copied into `items.yaml` by hand with the caption's exact words.
+copied into the save's entry by hand with the caption's exact words.
 
 ## Batches and pacing
 
@@ -97,7 +97,7 @@ characters; a save is never split across batches. Change it with `--batch-saves`
    ```
    It prints `merged <N> answers (<M> unusable), <I> items kept and <R> sent to review; <K>
    batches still waiting for their agent`. When K is 0 the round is done.
-5. **Spot-check.** Open `data/items.yaml` and read 20 saves against their captions (the post link
+5. **Spot-check.** Open a file in `data/items/` and read 20 saves against their captions (the post link
    is `https://www.instagram.com/p/<code>/`): are the names right, is anything missed, are the
    `[]` saves really empty? Then read `data/items-review.yaml`: a lot of "quote is not in the
    caption" means the agent is rewording, so tighten `agents/save-splitter.md`. Show the user
@@ -112,12 +112,20 @@ characters; a save is never split across batches. Change it with `--batch-saves`
 .cache/batches/split/batch-001.answers.json     written by the agent: {"answers": {<code>: [{topic, kind, name, quote}]}}
 .cache/batches/split/batch-001.answers.merged.json   the same, renamed once merged
 .cache/batches/split/merged.jsonl               one line per merged batch: saves, answered, missing, chars
-data/items.yaml                                 <code>: {topics: [recipes-coffee], items: [{topic, kind, name, quote}]}; by: hand on a fixed one
+data/items/<topic>.yaml                         <code>: {topics: [recipes-coffee], items: [{topic, kind, name, quote}]}; by: hand on a fixed one
 data/items-review.yaml                          <code>: [{why, topic, kind, name, quote}] or [{why}] when the answer was unusable
 ```
 
-`topics` in an entry are the topics the save was split for, so a change shows. Both files are
+`topics` in an entry are the topics the save was split for, so a change shows. Every file is
 sorted by code, so a rerun with nothing new leaves git clean.
+
+**One file per topic.** A save's whole entry sits in the file of the first of its own topics,
+sorted (a save tagged business and recipes-coffee goes in `business.yaml`, both topics' items
+together); a save with no topics goes in `other.yaml`. One file grew past the data repo's 1 MB
+limit, so the items are split this way (`shared/scripts/items_store.py` reads and writes them).
+A repo that still has the old single `data/items.yaml` keeps working: it is read, and the next
+merge moves its entries into the folder and removes it. `make check` flags a save that sits in
+two files or in the wrong one.
 
 ## Example
 
@@ -136,7 +144,7 @@ item would go to review with "quote is not in the caption", and the blondie woul
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/split_saves.py --prepare` | Batch files for the agents, of non-travel saves not split yet; prints their paths and how many wait | The start of every round | `make split-prepare` or `python3 scripts/split_saves.py --prepare --pilot <name>` (`--all --limit 400`, `--redo`) |
-| `scripts/split_saves.py --merge` | Checks every item's quote and topic, writes `items.yaml` and `items-review.yaml`; says how many batches still wait | After every wave of agents | `make split-merge` or `python3 scripts/split_saves.py --merge` |
+| `scripts/split_saves.py --merge` | Checks every item's quote and topic, writes `data/items/<topic>.yaml` and `items-review.yaml`; says how many batches still wait | After every wave of agents | `make split-merge` or `python3 scripts/split_saves.py --merge` |
 | `scripts/test_split_saves.py` | Offline tests on invented saves, with a fake agent writing canned answers | After any change to this step | `python3 scripts/test_split_saves.py` |
 
 Other options: `--limit N` (saves per round), `--batch-saves N` (default 40), `--batch-chars N`

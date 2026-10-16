@@ -18,9 +18,10 @@ Checks, each one only when its file exists:
                            start with the name OpenStreetMap found there are one place ("Example
                            Roastery USA" at Example Roastery). Shops that really share a building (a
                            food hall, a mall) each get the same `building:` value and pass.
-  data/items.yaml          code → {topics[], items[{topic, kind, name, quote}]} from split-saves: codes
+  data/items/<topic>.yaml  code → {topics[], items[{topic, kind, name, quote}]} from split-saves: codes
                            in the export, each item's topic known and not travel, a name and a kind,
-                           and with .cache/saves.json present, its quote in the caption word for word
+                           and with .cache/saves.json present, its quote in the caption word for word;
+                           each save in one file only, the file of its first topic (items_store.py)
   (a known place is a city in collections.yaml or a key in config/ or data/places.yaml)
 
 Prints one ev= line per problem and exits 1 if there is any.
@@ -34,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import yaml  # noqa: E402
 
 from home import cache, home  # noqa: E402
+import items_store  # noqa: E402
 from log import log  # noqa: E402
 from purposes import load as load_purposes  # noqa: E402
 from quote import quote_ok  # noqa: E402
@@ -81,7 +83,7 @@ def shared_spots(pins):
 
 
 def item_problems(items, known=(), captions=None):
-    """[(code, {why, ...})]: what is wrong in data/items.yaml. `known` is the topic list (empty: not
+    """[(code, {why, ...})]: what is wrong in the items (data/items/). `known` is the topic list (empty: not
     checked); `captions` maps code → caption (None: codes and quotes not checked)."""
     out = []
     if not isinstance(items, dict):
@@ -218,10 +220,17 @@ def _problems(quiet):
             if mapping and name not in mapping:
                 bad("check_fail", file="data/moves.yaml", code=code, collection=name, msg="move to a collection with no entry")
 
-    items = load("data/items.yaml")
-    if items is not None:
+    if items_store.exists(home()):
+        items = items_store.load_items(home())
         for code, why in item_problems(items, known, captions):
-            bad("check_fail", file="data/items.yaml", code=code, **why)
+            bad("check_fail", file=items_store.file_for(items.get(code)), code=code, **why)
+        for code, rels in items_store.duplicates(home()).items():
+            bad("check_fail", file="|".join(rels), code=code, msg="a save in two item files: keep one")
+        for rel in items_store.files(home()):
+            for code, e in (load(rel) or {}).items():
+                if isinstance(e, dict) and items_store.file_for(e) != rel:
+                    bad("check_fail", file=rel, code=code, should_be=items_store.file_for(e),
+                        msg="in the wrong item file: run make split-merge to move it")
 
     for where, names in shared_spots(load("data/pins.yaml")):
         bad("check_fail", file="data/pins.yaml", at=where, spots="|".join(names),

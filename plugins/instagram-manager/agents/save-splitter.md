@@ -1,6 +1,6 @@
 ---
 name: save-splitter
-description: Reads one batch file of saved Instagram posts that are not travel (recipes, design, business, 3D prints, parenting, other), written by split_saves.py --prepare, and writes the specific things each caption names (a dish, a technique, a product, a tip), each with the caption's exact words, to the batch's answers file. Started by the split-saves skill, one agent per batch, given the batch file's path. Do NOT use for travel saves, to pick batches, merge answers or edit items.yaml; split_saves.py --merge does that.
+description: Reads one batch file of saved Instagram posts that are not travel (recipes, design, business, 3D prints, parenting, other), written by split_saves.py --prepare, and writes the specific things each caption names (a dish, a technique, a product, a tip), each with the caption's exact words, to the batch's answers file. Started by the split-saves skill, one agent per batch, given the batch file's path. Do NOT use for travel saves, to pick batches, merge answers or edit the items files; split_saves.py --merge does that.
 tools: Read, Write
 model: haiku
 ---

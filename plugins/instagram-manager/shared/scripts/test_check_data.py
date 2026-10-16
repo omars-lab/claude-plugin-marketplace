@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for check_data.py: two different spots on one map point, and split-saves' items."""
+"""Offline tests for check_data.py: two different spots on one map point, and split-saves' items and their files."""
 
 import os
 import sys
@@ -7,6 +7,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from check_data import item_problems, shared_spots  # noqa: E402
+import items_store  # noqa: E402
 
 
 def spot(name, lat=10.0, lon=20.0, osm=None, found=None, **kw):
@@ -69,6 +70,20 @@ class Items(unittest.TestCase):
     def test_without_the_export_quotes_are_not_checked(self):
         items = {"SOUP1": {"items": [{"topic": "recipes", "kind": "dish", "name": "X", "quote": "not there"}]}}
         self.assertEqual(item_problems(items, self.KNOWN, None), [])
+
+
+class ItemFiles(unittest.TestCase):
+    def test_a_save_in_two_topic_files_is_found(self):
+        import tempfile
+        root = tempfile.mkdtemp()
+        os.makedirs(os.path.join(root, items_store.DIR))
+        for slug in ("crafts", "recipes"):
+            with open(os.path.join(root, items_store.DIR, f"{slug}.yaml"), "w") as fh:
+                fh.write("SOUP1: {topics: [recipes], items: []}\n")
+        self.assertEqual(items_store.duplicates(root),
+                         {"SOUP1": [os.path.join(items_store.DIR, "crafts.yaml"), os.path.join(items_store.DIR, "recipes.yaml")]})
+        self.assertEqual(items_store.file_for({"topics": ["recipes", "crafts"]}), os.path.join(items_store.DIR, "crafts.yaml"))
+        self.assertEqual(items_store.file_for({"topics": []}), os.path.join(items_store.DIR, "other.yaml"))
 
 
 if __name__ == "__main__":

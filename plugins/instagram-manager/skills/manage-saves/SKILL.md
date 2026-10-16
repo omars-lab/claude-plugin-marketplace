@@ -25,7 +25,7 @@ that is missing is the next step:
 | reels in `data/no-spot.yaml` or placed only at their town, with no `from: video` pins | **read-frames** (videos through **fetch-media** `--video`) |
 | a `data/stills.yaml` entry for each spot of a reel with a video | **extract-stills** (`make stills`) |
 | a `data/google.yaml` entry for each spot (a place id, or `none`) | **find-google-ids** (`make google-ids`) |
-| a `data/items.yaml` entry for each save with a topic other than travel | **split-saves** (`make split-prepare`, agents, `make split-merge`); for travel the items are the spots |
+| a `data/items/<topic>.yaml` entry for each save with a topic other than travel | **split-saves** (`make split-prepare`, agents, `make split-merge`); for travel the items are the spots |
 | `out/travel/<area>.yaml` and `out/<topic>.yaml`, newer than the data they come from | **send-topics** (`make send-topics`) |
 
 A newer export zip than the one `saves.json` came from also means: run **import-saves** again,

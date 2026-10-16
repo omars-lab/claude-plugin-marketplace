@@ -13,9 +13,11 @@ Reads   $INSTAGRAM_HOME/.cache/saves.json          captions and creators (from i
         $INSTAGRAM_HOME/config/topics.yaml         the topics; `travel` is left to the spot steps
         $INSTAGRAM_HOME/config/collections.yaml    the pilots
         $INSTAGRAM_HOME/data/tags.yaml             each save's topics (from tag-saves)
-Writes  $INSTAGRAM_HOME/data/items.yaml            code → {topics: [split for], items: [{topic, kind,
+Writes  $INSTAGRAM_HOME/data/items/<topic>.yaml    code → {topics: [split for], items: [{topic, kind,
                                                    name, quote}]}; `items: []` when the caption names
-                                                   nothing specific
+                                                   nothing specific. One file per topic, each save in
+                                                   the file of its first topic (shared/scripts/
+                                                   items_store.py), so no file passes 1 MB
         $INSTAGRAM_HOME/data/items-review.yaml     code → [{why, ...}]: items that failed a check, or
                                                    why a save's answer could not be used
         $INSTAGRAM_HOME/.cache/batches/split/      batch-NNN.json (in), batch-NNN.answers.json (out),
@@ -25,7 +27,7 @@ Writes  $INSTAGRAM_HOME/data/items.yaml            code → {topics: [split for]
 
 Which saves go in
   A save goes in when its tags hold a topic other than travel (travel's items are its spots, from
-  resolve-post-location). It is skipped once data/items.yaml has an entry for it that was split for
+  resolve-post-location). It is skipped once data/items/ has an entry for it that was split for
   the same topics, `items: []` included, so a rerun only reads new saves. A save whose topics
   changed since (the tagger added one) is read again, whole. --redo reads every save again.
 
@@ -45,7 +47,7 @@ What the merge checks, per item
   batches it again. An item that failed a check is not read again: a person looks at the review.
 
 Fixing by hand
-  Edit a save's entry in data/items.yaml and add `by: hand`. That entry is final: no round batches
+  Edit a save's entry in its data/items/<topic>.yaml file and add `by: hand`. That entry is final: no round batches
   the save again (--redo included) and the merge ignores any answer for it. Deleting an entry sends
   the save back to the agent on the next round.
 
@@ -69,6 +71,7 @@ sys.path.insert(0, os.path.join(SKILLS, "tag-saves", "scripts"))
 sys.path.insert(0, os.path.join(SKILLS, "resolve-post-location", "scripts"))
 
 from home import cache, home  # noqa: E402
+from items_store import DIR as ITEMS, load_items, write_items  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import load_yaml  # noqa: E402
@@ -76,7 +79,6 @@ from quote import norm, quote_ok  # noqa: E402
 from resolve_post_location import write_yaml  # noqa: E402
 from tag_saves import BATCH_CHARS, BATCH_SAVES, CAPTION_CHARS, by_hand, chunk, size, write_json  # noqa: E402
 
-ITEMS = os.path.join("data", "items.yaml")
 REVIEW = os.path.join("data", "items-review.yaml")
 TAGS = os.path.join("data", "tags.yaml")
 TRAVEL = "travel"
@@ -296,7 +298,7 @@ def merge(saves, topics_conf, tags, items, review):
                                  "batch_file": path, "saves": len(batch["saves"]), "answered": got,
                                  "missing": miss, "chars": sum(size(r) for r in batch["saves"])}) + "\n")
         os.replace(ans_path, merged_path)
-    write_yaml(ITEMS, items)
+    write_items(items, write_yaml)
     write_yaml(REVIEW, review)
     log("split_merge", answered=answered, missing=missing, items=n_items, items_to_review=n_review,
         batches_waiting=pending, batches_merged_before=merged_before, kept_hand=kept_hand,
@@ -312,7 +314,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     action = ap.add_mutually_exclusive_group(required=True)
     action.add_argument("--prepare", action="store_true", help="batch files for the save-splitter agents")
-    action.add_argument("--merge", action="store_true", help="check the agents' answers into data/items.yaml")
+    action.add_argument("--merge", action="store_true", help="check the agents' answers into data/items/<topic>.yaml")
     scope = ap.add_mutually_exclusive_group()
     scope.add_argument("--pilot", help="a pilot name from config/collections.yaml")
     scope.add_argument("--all", action="store_true", help="every tagged save")
@@ -328,7 +330,7 @@ def main(argv=None):
     saves = load_saves(args.saved)
     topics_conf = load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {}
     tags = load_yaml(TAGS)
-    items = load_yaml(ITEMS)
+    items = load_items()
     if args.merge:
         return merge(saves, topics_conf, tags, items, load_yaml(REVIEW))
     pilot = None

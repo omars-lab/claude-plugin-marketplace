@@ -18,7 +18,7 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
   A road trip across two states is in both files, each with only its spots there.
 - **`out/<topic>.yaml`** for every other topic, even one with no saves yet, so a reading repo can
   count on the file being there. Each save's `items` are the things **split-saves** found in its
-  caption under that topic (`data/items.yaml`); `[]` until it has read the save.
+  caption under that topic (`data/items/<topic>.yaml`); `[]` until it has read the save.
 
 Every file starts with `topic`, `area` (travel only), `feeds`, `scope` (which saves are in it:
 the pilot only, or every tagged save) and `count`, then `saves`, sorted by code.

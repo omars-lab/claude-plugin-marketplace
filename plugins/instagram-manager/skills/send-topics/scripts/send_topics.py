@@ -17,8 +17,8 @@ Reads   $INSTAGRAM_HOME/.cache/saves.json          link, creator, date saved
         $INSTAGRAM_HOME/data/pins-review.yaml      spots OpenStreetMap did not list (optional)
         $INSTAGRAM_HOME/data/media.yaml            each save's thumbnail (optional)
         $INSTAGRAM_HOME/data/stills.yaml           a still and a clip per spot (optional)
-        $INSTAGRAM_HOME/data/items.yaml            the things each non-travel save names (optional;
-                                                   from split-saves)
+        $INSTAGRAM_HOME/data/items/<topic>.yaml    the things each non-travel save names (optional;
+                                                   from split-saves, one file per topic)
 Writes  $INSTAGRAM_HOME/out/travel/<area>.yaml     the travel saves naming a place in that state or
                                                    country, each with its spots there
         $INSTAGRAM_HOME/out/<topic>.yaml           every other topic's saves, each with its items
@@ -58,6 +58,7 @@ sys.path.insert(0, os.path.join(SKILLS, "build-hub", "scripts"))
 import build_hub as bh  # noqa: E402
 import google_places as gp  # noqa: E402
 from home import cache, home  # noqa: E402
+from items_store import load_items  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import Places, load_yaml  # noqa: E402
@@ -273,7 +274,7 @@ def load(pilot_name=None):
     sender = Sender(saves, tags, places, pins, placed,
                     load_yaml(os.path.join("data", "media.yaml")), stills,
                     load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {},
-                    load_yaml(os.path.join("data", "items.yaml")))
+                    load_items())
     return sender, places, saves, pilot
 
 

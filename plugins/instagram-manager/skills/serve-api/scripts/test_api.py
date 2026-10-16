@@ -41,7 +41,7 @@ class Api(unittest.TestCase):
         for rel, data in (("config/topics.yaml", fx.TOPICS), ("config/collections.yaml", fx.COLLECTIONS),
                           ("data/places.yaml", fx.PLACES), ("data/tags.yaml", fx.TAGS), ("data/pins.yaml", fx.PINS),
                           ("data/pins-review.yaml", REVIEW), ("data/media.yaml", fx.MEDIA),
-                          ("data/stills.yaml", fx.STILLS), ("data/items.yaml", fx.ITEMS)):
+                          ("data/stills.yaml", fx.STILLS), ("data/items/recipes.yaml", fx.ITEMS)):
             self.write(rel, data)
         self.write(".cache/saves.json", {"saves": fx.SAVES, "collections": [{"name": n} for n in fx.COLLECTIONS["collections"]]})
         self.write(".cache/google-to-pick.json", {"osm:way/7": {"query": "Example Cove Beach, Fixture Town",
@@ -210,6 +210,13 @@ class Api(unittest.TestCase):
         self.write("data/tags.yaml", tags)
         self.assertTrue(api.STORE.check())
         self.assertEqual([s["code"] for s in self.get("/v1/topics/crafts")["saves"]], ["SOUP1"])
+
+    def test_an_edited_topic_items_file_is_read_again(self):
+        self.assertFalse(api.STORE.check())
+        items = self.read("data/items/recipes.yaml")
+        items["SOUP2"]["items"] = [{"topic": "recipes", "kind": "dish", "name": "Example broth", "quote": "broth"}]
+        self.write("data/items/recipes.yaml", items)
+        self.assertTrue(api.STORE.check(), "a file in data/items/ is watched too")
 
     def test_a_broken_file_keeps_the_data_before(self):
         with open(os.path.join(self.root, "data", "tags.yaml"), "a") as fh:

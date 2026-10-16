@@ -18,6 +18,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import split_saves  # noqa: E402
+import items_store  # noqa: E402  (on the path once split_saves is in)
 import yaml  # noqa: E402
 
 TOPICS = """topics:
@@ -117,6 +118,16 @@ class Home(unittest.TestCase):
         with open(path) as fh:
             return yaml.safe_load(fh) or {}
 
+    def items(self):
+        return items_store.load_items(self.tmp.name)
+
+    def item_files(self):
+        out = {}
+        for rel in items_store.files(self.tmp.name):
+            with open(os.path.join(self.tmp.name, rel)) as fh:
+                out[rel] = fh.read()
+        return out
+
     def run_split(self, *argv):
         err = io.StringIO()
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()) as out:
@@ -159,7 +170,7 @@ class Prepare(Home):
         self.assertIn("technique", batch["topics"]["islamic-design"]["kinds"])
         self.assertIn("note", batch["topics"]["parenting-kids"]["kinds"])
         self.assertIn("waiting=5", self.log)
-        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "data", "items.yaml")))  # prepare writes no data
+        self.assertEqual(self.items(), {})  # prepare writes no data
 
     def test_pilot_limit_and_batch_size(self):
         self.run_split("--prepare", "--pilot", "fixture")
@@ -194,7 +205,7 @@ class Merge(Home):
 
     def test_merge_keeps_checked_items(self):
         out = self.merge_round()
-        items = self.read("data/items.yaml")
+        items = self.items()
         self.assertEqual(items["BAKE1"]["topics"], ["recipes-coffee"])
         self.assertEqual([i["name"] for i in items["BAKE1"]["items"]], ["Lemon drizzle loaf", "Brown butter blondie"])
         self.assertEqual(list(items["BAKE1"]["items"][0]), ["topic", "kind", "name", "quote"])
@@ -205,7 +216,7 @@ class Merge(Home):
 
     def test_bad_quote_goes_to_review_not_data(self):
         self.merge_round()
-        items, review = self.read("data/items.yaml"), self.read("data/items-review.yaml")
+        items, review = self.items(), self.read("data/items-review.yaml")
         self.assertNotIn("Lemon drizzle cake", [i["name"] for i in items["BAKE1"]["items"]])
         self.assertEqual(review["BAKE1"], [{"topic": "recipes-coffee", "kind": "dish", "name": "Lemon drizzle cake",
                                             "quote": "lemon drizzle cake", "why": "quote is not in the caption"}])
@@ -213,13 +224,13 @@ class Merge(Home):
 
     def test_items_only_under_the_saves_own_topics(self):
         self.merge_round()
-        items, review = self.read("data/items.yaml"), self.read("data/items-review.yaml")
+        items, review = self.items(), self.read("data/items-review.yaml")
         self.assertEqual(sorted(i["topic"] for i in items["MIX1"]["items"]), ["parenting-kids", "recipes-coffee"])
         self.assertEqual(sorted(r["topic"] for r in review["MIX1"]), ["business", "travel"])
 
     def test_unknown_kind_becomes_the_topics_first_kind(self):
         self.merge_round()
-        star = self.read("data/items.yaml")["STAR1"]["items"]
+        star = self.items()["STAR1"]["items"]
         self.assertEqual([i["kind"] for i in star], ["technique", "subject"])
 
     def test_no_second_prepare_after_merge(self):
@@ -234,9 +245,9 @@ class Merge(Home):
         self.merge_round()
         tags = dict(TAGS, BAKE1={"topics": ["recipes-coffee", "business"], "cities": [], "source": "model"})
         self.write("data/tags.yaml", yaml.safe_dump(tags))
-        items = self.read("data/items.yaml")
-        items["STAR1"]["by"] = "hand"
-        self.write("data/items.yaml", yaml.safe_dump(items))
+        star = self.read("data/items/islamic-design.yaml")
+        star["STAR1"]["by"] = "hand"
+        self.write("data/items/islamic-design.yaml", yaml.safe_dump(star))
         self.run_split("--prepare", "--all", "--redo")
         self.assertNotIn("STAR1", self.batched_codes())
         self.run_split("--merge")  # no answers: nothing changes
@@ -245,11 +256,9 @@ class Merge(Home):
 
     def test_rerun_merge_changes_nothing(self):
         self.merge_round()
-        with open(os.path.join(self.tmp.name, "data", "items.yaml")) as fh:
-            before = fh.read()
+        before = self.item_files()
         out = self.run_split("--merge")
-        with open(os.path.join(self.tmp.name, "data", "items.yaml")) as fh:
-            self.assertEqual(fh.read(), before)
+        self.assertEqual(self.item_files(), before)
         self.assertIn("merged 0 answers", out)
 
     def test_unparsable_answers_file(self):
@@ -261,11 +270,37 @@ class Merge(Home):
         self.run_split("--merge")
         review = self.read("data/items-review.yaml")
         self.assertTrue(all(r[0]["why"].startswith("the answers file is not JSON") for r in review.values()))
-        self.assertEqual(self.read("data/items.yaml"), {})
+        self.assertEqual(self.items(), {})
+
+    def test_one_file_per_topic(self):
+        self.merge_round()
+        self.assertEqual(items_store.files(self.tmp.name), ["data/items/islamic-design.yaml",
+                                                            "data/items/parenting-kids.yaml",
+                                                            "data/items/recipes-coffee.yaml"])
+        self.assertIn("MIX1", self.read("data/items/parenting-kids.yaml"))  # the first of its topics
+        self.assertNotIn("MIX1", self.read("data/items/recipes-coffee.yaml"))  # and only there
+        self.assertEqual(sorted(self.read("data/items/recipes-coffee.yaml")), ["BAKE1", "EMPTY1"])
+
+    def test_old_single_file_moves_into_the_folder(self):
+        self.write("data/items.yaml", yaml.safe_dump({"OLD1": {"topics": ["business"], "items": []}}))
+        self.assertIn("OLD1", self.items())  # still read before the move
+        self.merge_round()
+        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "data", "items.yaml")))
+        self.assertEqual(self.read("data/items/business.yaml"), {"OLD1": {"topics": ["business"], "items": []}})
+        self.assertIn("BAKE1", self.items())
+
+    def test_a_save_that_changes_topic_moves_file(self):
+        self.merge_round()
+        tags = dict(TAGS, BAKE1={"topics": ["recipes-coffee", "business"], "cities": [], "source": "model"})
+        self.write("data/tags.yaml", yaml.safe_dump(tags))
+        self.merge_round({"BAKE1": REPLIES["BAKE1"]})
+        self.assertIn("BAKE1", self.read("data/items/business.yaml"))
+        self.assertNotIn("BAKE1", self.read("data/items/recipes-coffee.yaml"))
+        self.assertEqual(items_store.duplicates(self.tmp.name), {})
 
     def test_answers_as_items_dicts(self):
         self.merge_round({code: {"items": items} for code, items in REPLIES.items()})
-        self.assertEqual(len(self.read("data/items.yaml")["BAKE1"]["items"]), 2)
+        self.assertEqual(len(self.items()["BAKE1"]["items"]), 2)
 
 
 if __name__ == "__main__":

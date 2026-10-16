@@ -93,7 +93,7 @@ class Send(unittest.TestCase):
         for rel, data in (("config/topics.yaml", TOPICS), ("config/collections.yaml", COLLECTIONS),
                           ("data/places.yaml", PLACES), ("data/tags.yaml", TAGS), ("data/pins.yaml", PINS),
                           ("data/pins-review.yaml", REVIEW), ("data/media.yaml", MEDIA),
-                          ("data/stills.yaml", STILLS), ("data/items.yaml", ITEMS)):
+                          ("data/stills.yaml", STILLS), ("data/items/recipes.yaml", ITEMS)):
             self.write(rel, data)
         self.write(".cache/saves.json", {"saves": SAVES})
         self.env = os.environ.get("INSTAGRAM_HOME")

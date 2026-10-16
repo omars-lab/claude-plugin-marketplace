@@ -79,14 +79,13 @@ ELSEWHERE = os.path.join("docs", "tasks", "elsewhere.yaml")
 # --- the data, read again when a file changes ------------------------------------------------------
 
 def watched():
-    """The files the answers come from: config/ and data/, the export copy, the Google to-pick list
-    and the elsewhere list. iCloud placeholders (.name.icloud) are listed too, so they are seen."""
+    """The files the answers come from: config/ and data/ with their folders (data/items/ holds one
+    file per topic), the export copy, the Google to-pick list and the elsewhere list. iCloud
+    placeholders (.name.icloud) are listed too, so they are seen."""
     out = []
     for d in ("config", "data"):
-        folder = os.path.join(home(), d)
-        for name in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
-            if name.endswith((".yaml", ".icloud")):
-                out.append(os.path.join(folder, name))
+        for folder, _, names in sorted(os.walk(os.path.join(home(), d))):
+            out +=[os.path.join(folder, n) for n in sorted(names) if n.endswith((".yaml", ".icloud"))]
     for p in (cache("saves.json"), cache(gi.TO_PICK), os.path.join(home(), ELSEWHERE)):
         out += [p, os.path.join(os.path.dirname(p), "." + os.path.basename(p) + ".icloud")]
     return out
