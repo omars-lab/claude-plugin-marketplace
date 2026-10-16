@@ -78,6 +78,10 @@ Fixing by hand
   - A review entry: add `lookup: "Other Name"`, and the next --merge searches that instead of what
     the caption said (the quote check is skipped, since a person wrote it). `near:` may be changed
     to another area in data/places.yaml. A found spot moves to pins.yaml and keeps its `lookup:`.
+  - A spot in the wrong area (a road trip's stop filed under a park in another state; the merge
+    lists them, from the agent's `really_in` or a find far away): add the right area to
+    config/places.yaml and run add_places.py, then give the entry the new `near:` and a `lookup:`.
+    A changed `near:` alone is not searched again, and a re-read puts the agent's area back.
   - A wrong spot: add `drop: true`, to a review entry or to a pin. The next --merge moves a dropped
     pin to review, and the hub leaves it out.
   - A review entry whose find is right ("found Example Mall, a different name", "31 km from
@@ -132,6 +136,8 @@ POINT_AREA_KM = 50.0                         # a park or region OpenStreetMap st
 BOX_KM = 10.0
 AREA_SEARCH_KM = 60.0
 MARGIN_KM = 25.0                             # searched past the reach, so a near miss shows its distance
+FAR_KM = 60.0                                # a review spot found this far out is most likely in the wrong area
+WRONG_SHOWN = 20                             # wrong-area spots printed after a merge; the rest are counted
 CAPTION_CHARS = 2500                         # the batch limits are the tagger's
 BATCH_SAVES = 40
 BATCH_CHARS = 60000
@@ -426,7 +432,7 @@ def resolve_near(spot, caption, areas, places, reaches, fetcher=None, creator=""
     said, near = spot["said"], spot["near"]
     by_person = isinstance(spot.get("lookup"), str) and bool(spot["lookup"].strip())
     base = {"said": said, "near": near}
-    keep = {k: spot[k] for k in ("lookup", "name", "address") if spot.get(k)}
+    keep = {k: spot[k] for k in ("lookup", "name", "address", "really_in") if spot.get(k)}
     if isinstance(keep.get("address"), str):
         keep["address"] = " ".join(keep["address"].split())   # one line, as copied across line breaks
     if "address" in keep and not (by_person or address_in(keep["address"], caption)
@@ -680,7 +686,7 @@ def clean_spots(answer):
                 and isinstance(s.get("near"), str) and s["near"].strip()):
             continue
         spot = {"said": s["said"].strip(), "near": s["near"].strip()}
-        for k in ("name", "address"):
+        for k in ("name", "address", "really_in"):
             if isinstance(s.get(k), str) and s[k].strip():
                 spot[k] = s[k].strip()
         try:
@@ -784,7 +790,38 @@ def merge(saves, tags, places, fetcher=None, frames=False):
         print(f"{fixed} review entries a person fixed (ok: true, or found with their lookup) moved to the pins")
     if dropped:
         print(f"{dropped} pins marked drop: true moved to review, and stay out of the pins")
+    wrong = wrong_area(review)
+    log("locate_wrong_area", spots=len(wrong))
+    if wrong:
+        print(f"{len(wrong)} spots in review look filed under the wrong area, or matched a namesake far off "
+              "(for the first, add the area, then give the spot `near:` and `lookup:`; for the second, a "
+              "`lookup:` alone; see the skill's \"A spot in the wrong area\"):")
+        for code, said, near, hint in wrong[:WRONG_SHOWN]:
+            print(f"  {code}  {said!r} under {near}: {hint}")
+        if len(wrong) > WRONG_SHOWN:
+            print(f"  ... and {len(wrong) - WRONG_SHOWN} more (ev=locate_wrong_area)")
     return 0
+
+
+def wrong_area(review):
+    """(code, said, near, hint) for the review spots most likely filed under the wrong area: the agent
+    said the spot is really somewhere else (`really_in`), or OpenStreetMap found it far from its area.
+    A road-trip reel names stops in towns the save is not tagged with, and the agent can only file a
+    spot under one of the save's areas, so such a stop lands under the nearest one, often in another
+    state. Its Google search then looks in the wrong place too."""
+    out = []
+    for code, entries in sorted(review.items()):
+        for e in entries if isinstance(entries, list) else []:
+            if not isinstance(e, dict) or e.get("drop") or not isinstance(e.get("near"), str):
+                continue
+            said = str(e.get("said") or "")
+            if isinstance(e.get("really_in"), str) and e["really_in"].strip():
+                out.append((code, said, e["near"], f"really in {e['really_in'].strip()}"))
+                continue
+            km = e.get("km")
+            if isinstance(km, (int, float)) and km > FAR_KM:
+                out.append((code, said, e["near"], f"found {km:.0f} km away ({str(e.get('found') or '')[:60]})"))
+    return out
 
 
 def main(argv=None, fetcher=None):

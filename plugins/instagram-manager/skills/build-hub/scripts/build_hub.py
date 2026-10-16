@@ -178,6 +178,8 @@ def placed_spots(review):
                 if isinstance(e.get("address"), str) and e["address"].strip():
                     spot["address"] = e["address"].strip()
                     spot["map"] = maps_link(name, spot["address"])   # the caption's address
+                if isinstance(e.get("really_in"), str) and e["really_in"].strip():
+                    spot["really_in"] = e["really_in"].strip()   # filed under the wrong area
                 out.setdefault(code, []).append(spot)
     return out
 

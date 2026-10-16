@@ -36,6 +36,13 @@ You find the spots that saved Instagram posts name. You get the path of one batc
      because its own town is not in `areas`: give the closest area, and the merge measures the
      distance and sends anything too far for a person to check. When you cannot tell which area it
      is in, pick the one the caption puts it next to.
+   - **`really_in`, for a spot far from every area.** A road-trip reel often names stops in another
+     town, state or country than any of the save's `areas` (an Example State coast stop on a trip
+     tagged only for a park next door). Still give the closest area as `near`, and add `really_in`:
+     the place the caption puts the spot in, in plain words (`"Other Town, Other State"`). Take it
+     only from the caption: a section heading ("Day 3: Other Town"), "in Other Town", or a
+     hashtag. Leave it out when the spot is in or just outside one of the `areas`, or when the
+     caption does not say where it is. A person reads it to add the right area.
    - **An address or coordinates, when the caption gives them.** `address` is the street address
      copied exactly from the caption (`"12 Example St, Example Town"`); `lat` and `lon` are numbers
      copied exactly from the caption (`"Example Nook: 36.55644, -121.91886"` gives `"lat":
@@ -56,7 +63,9 @@ You find the spots that saved Instagram posts name. You get the path of one batc
 3. **Write the answers file** at the batch's `answers` path, as JSON and nothing else:
    ```json
    {"answers": {"<code>": [{"said": "Example Cove Beach", "near": "Example Town"},
-                           {"said": "Example Falls Trail", "near": "Example National Park"}],
+                           {"said": "Example Falls Trail", "near": "Example National Park"},
+                           {"said": "Other Arch", "near": "Example National Park",
+                            "really_in": "Other Town, Other State"}],
                 "<code>": [],
                 "<code>": [{"said": "@examplecafe", "near": "Example Town", "name": "Example Cafe"},
                            {"said": "Example Diner", "near": "Example Town",

@@ -70,7 +70,9 @@ Each entry in `data/pins-review.yaml` says why it is there. Edit it by hand:
   `pins.yaml`, with `asked:` showing what was searched, and keeps its `lookup:`.
 - **`ok: true`**: the find is right after all (a different name for the same place, or a spot
   really that far out). The next `--merge` moves it to `pins.yaml` as found, marked `by: hand`.
-- **`near:`** can be changed to another area in `data/places.yaml`.
+- **`near:`** can be changed to another area in `data/places.yaml`, always together with a
+  `lookup:`. A changed `near:` alone is not searched again, and a re-read puts the agent's area
+  back (see the next section).
 - **`drop: true`** leaves the entry out for good. On a pin in `pins.yaml` it does the same: the
   next `--merge` moves the pin to review, and the hub leaves it out.
 - **`by: hand`** on a pin a person wrote or okayed in `pins.yaml` (a branch the search missed, a
@@ -82,8 +84,41 @@ replaces an entry with `lookup:`, `ok: true`, `drop: true` or `by: hand`, and th
 `said` are left out for that save, whatever area it files them under this time. Deleting a wrong
 pin is not a fix, because the next re-read finds it again; mark it `drop: true` instead.
 
-A spot with the wrong area (a café in the next town over) is fixed with `near:`. A spot in an area
-that is not listed yet needs that area added with `add_places.py` first.
+## A spot in the wrong area
+
+The agent must file each spot under one of the save's own areas. A road-trip reel saved under one
+park often names stops in another town, state or country, and each of those lands under whichever
+area is closest. That can be a park hundreds of kilometres away. The search then looks round the
+wrong town, finds nothing, and the spot sits in review. Its map link searches the wrong town too.
+
+**How the merge points them out.** After each `--merge` it lists, under "spots in review look
+filed under the wrong area", every review spot that either:
+
+- has `really_in`, where the agent quoted the caption's own place for it ("Day 3: Other Town"), or
+- was found more than 60 km from its area.
+
+The log line is `ev=locate_wrong_area spots=N`. A find far off can also be a namesake: a café of
+the same name in another town while the spot's area is right. Read the caption. If the area is
+right, a `lookup:` with a better name is the whole fix.
+
+**The fix, for each listed spot:**
+
+1. **Add its real area** to `config/places.yaml`. Give it a `lookup:` such as "Other Town, Other
+   State" when the bare name finds the wrong place, and an `in:` for its state or country.
+2. **Look it up.** Run `add_places.py --dry-run` and check that each match is the right place,
+   then run `add_places.py` for real. In the data repo: `make places PLACES_DRY=1`, then
+   `make places`.
+3. **Point the spot at it.** In `data/pins-review.yaml`, set `near:` to the new area and `lookup:`
+   to the name to search. Use the caption's name, or the map's own name for it when that differs
+   ("God's Thumb" for a caption's "The Thumb"). Both are needed. `lookup:` is what makes the next
+   merge search again and what keeps the fix through a re-read.
+4. **Merge** (`make locate-merge`). Check each newly pinned spot against its quote. A spot that is
+   still not found stays in review under the right area, ready for a person.
+5. **Refresh the Google ids.** Run `make google-ids GOOGLE_DRY=1`, then
+   `make google-ids GOOGLE_PRUNE=1`. The moved spots have new pins, so they are searched
+   afresh, and their old ids, searched round the wrong town, are dropped (**find-google-ids**).
+
+A café in the next town over, both of them already listed areas, needs only step 3.
 
 ## Pacing: waves, and stopping on a limit
 
@@ -142,11 +177,11 @@ The same as tag-saves:
 
 ```
 .cache/batches/locate/batch-001.json            {batch, answers: <path>, saves: [{code, creator, areas: [{name, kind, lat, lon}], caption}]}
-.cache/batches/locate/batch-001.answers.json    written by the agent: {"answers": {<code>: [{said, near, name?}], <code>: []}}
+.cache/batches/locate/batch-001.answers.json    written by the agent: {"answers": {<code>: [{said, near, name?, address?, lat?, lon?, really_in?}], <code>: []}}
 .cache/batches/locate/batch-001.answers.merged.json   the same, renamed once merged
 .cache/batches/locate/merged.jsonl              one line per merged batch: saves, pins, review, no_spot, unanswered
 data/pins.yaml                                  <code>: [{name, said, near, kind, lat, lon, km, osm?, wikidata?, found, map, asked?, address?, from?, lookup?, by?}]
-data/pins-review.yaml                           <code>: [{said, near, why, asked?, address?, and what was found if anything; lookup?, drop?}]
+data/pins-review.yaml                           <code>: [{said, near, why, asked?, address?, really_in?, and what was found if anything; lookup?, drop?}]
 data/no-spot.yaml                               <code>: {areas: [Example Town]}
 .cache/geocode.json                             every OpenStreetMap answer, misses too (bounded searches keyed by their box)
 ```

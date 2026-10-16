@@ -42,7 +42,15 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
 
 1. **Dry run.** `google_ids.py --pilot <name> --dry-run` (`make google-ids GOOGLE_DRY=1`) lists each spot,
    its search text and its box, with no key and no calls. Spots with no pin whose area is a state or
-   a country have no box narrow enough and are left out (`ev=google_no_box`).
+   a country have no box narrow enough and are left out (`ev=google_no_box`). Two more lists can
+   follow:
+   - **"not searched: filed under the wrong area"**: spots with no pin that the locator says are
+     really in another town (`really_in`). A box round the wrong town would waste the search. Fix
+     their area first (**resolve-post-location**, "A spot in the wrong area"), then run this again.
+   - **"kept ids no spot uses any more"**: the spot moved to a new pin or town, which gives it a
+     new key, or it was dropped. `--prune` (`GOOGLE_PRUNE=1`) drops them. It first prints any that
+     a person or Claude picked, so a moved spot's pick can be made again. Stale ids are worked
+     out over every save, not only the pilot, so another area's ids are never dropped.
 2. **Search.** `make google-ids` (`GOOGLE_LIMIT=` for a trial). One search per spot, even when several
    posts name it. Google's top 3 come back, and:
    - **kept by name** (`by: auto`): exactly one of the 3 carries every word of our name, and our
@@ -68,8 +76,9 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
    - **Leave real toss-ups for the user** (two branches equally near, a name that could be either
      of two places) and list them in the report; their picks go in with the default `PICK_BY=hand`.
    - A spot marked `none` because its town or area in our data is wrong (a beach filed under a
-     park in another state) is worth telling the user: fixing the spot changes its search text, so
-     it is searched again on the next run.
+     park in another state) is fixed in resolve-post-location ("A spot in the wrong area"). The
+     fix gives it a new pin, so it is searched again on the next run, and `GOOGLE_PRUNE=1` drops
+     the old `none`.
 5. **Build** (**build-hub**, **send-topics**). Every spot with a kept id gets a link that opens that
    exact place, on its place page, its map popup and its post page, and `google_id` in
    `out/travel/<area>.yaml`. A spot whose name or address changes later has a new search text, so
@@ -80,12 +89,12 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
 
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
-| `scripts/google_ids.py` | One Google search per spot, keeps an id by name or prints candidates; `--pick`/`--none` record a person's choice | After new spots land, or to pick the leftovers | `python3 scripts/google_ids.py --pilot <name>` (`--all`, `--only`, `--limit`, `--refresh`, `--box-km`, `--dry-run`, `--pick KEY=ID`, `--none KEY`, `--by hand\|claude`) |
+| `scripts/google_ids.py` | One Google search per spot, keeps an id by name or prints candidates; `--pick`/`--none` record a person's choice | After new spots land, or to pick the leftovers | `python3 scripts/google_ids.py --pilot <name>` (`--all`, `--only`, `--limit`, `--refresh`, `--box-km`, `--dry-run`, `--prune`, `--pick KEY=ID`, `--none KEY`, `--by hand\|claude`) |
 | `../../shared/scripts/google_places.py` | The search, the box, the name rule, the waits after a refusal, and the link; build-hub and send-topics use it to put kept ids into links | Imported, not run | — |
-| `scripts/test_google_ids.py` | Offline tests with Google stubbed: the box, the name rule (one match, two, a short name), each spot searched once, the town box, a rerun skipping kept spots, `--pick` keeping Google's current id, `--none`, the daily cap, the waits, and that the file holds nothing of Google's but ids | After any change to either script | `python3 scripts/test_google_ids.py` |
+| `scripts/test_google_ids.py` | Offline tests with Google stubbed: the box, the name rule (one match, two, a short name), each spot searched once, the town box, a rerun skipping kept spots, `--pick` keeping Google's current id, `--none`, the daily cap, the waits, a spot in the wrong area left unsearched, stale ids listed and pruned (never another area's), and that the file holds nothing of Google's but ids | After any change to either script | `python3 scripts/test_google_ids.py` |
 
 In the data repo: `make google-ids` with `GOOGLE_DRY=1`, `GOOGLE_LIMIT=`, `GOOGLE_ONLY=`,
-`GOOGLE_REFRESH=1`, `GOOGLE_BOX=`, `PICK=` and `NONE=` (several, space-separated), `PICK_BY=`
+`GOOGLE_REFRESH=1`, `GOOGLE_BOX=`, `GOOGLE_PRUNE=1`, `PICK=` and `NONE=` (several, space-separated), `PICK_BY=`
 (`hand`, the default, or `claude`), and `PILOT=`
 (empty for every save). Before a run past the pilot, take the spot count from the dry run and ask
 with `AskUserQuestion`: all at once (one search per spot, against the month's 5,000 free and the

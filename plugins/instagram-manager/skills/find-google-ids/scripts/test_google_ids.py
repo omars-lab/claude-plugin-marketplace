@@ -182,6 +182,38 @@ class Ids(unittest.TestCase):
         self.run_ids("--pilot", "fixture")
         self.assertEqual(self.calls, [])                     # nothing left to search
 
+    def test_a_spot_in_the_wrong_area_is_not_searched(self):
+        review = {**REVIEW, "EAT1": [{"said": "Other Diner", "asked": "Other Diner", "near": "Fixture Town",
+                                      "why": "not found near Fixture Town", "really_in": "Other Town"}]}
+        self.write("data/pins-review.yaml", review)
+        out, _ = self.run_ids("--pilot", "fixture")
+        self.assertNotIn("Other Diner, Fixture Town", [q for q, _, _ in self.calls])
+        self.assertIn("1 not searched: filed under the wrong area, fix its area first", out)
+        self.assertIn("spot:other-diner@fixture-town: 'Other Diner' under Fixture Town, really in Other Town", out)
+
+    def test_ids_no_spot_uses_are_listed_then_pruned(self):
+        self.run_ids("--pilot", "fixture")
+        self.run_ids("--pilot", "fixture", "--pick", "osm:node/2=ID_GRILL_A")
+        pins = {**PINS, "EAT1": [p for p in PINS["EAT1"] if p["osm"] != "node/2"]}   # the grill moved
+        self.write("data/pins.yaml", pins)
+        out, _ = self.run_ids("--pilot", "fixture", "--dry-run")
+        self.assertIn("1 kept ids no spot uses any more (its spot moved or was dropped); --prune drops them: "
+                      "osm:node/2", out)
+        self.assertIn("osm:node/2", self.kept()[1])          # a dry run drops nothing
+        out, _ = self.run_ids("--pilot", "fixture", "--prune")
+        self.assertIn("dropping osm:node/2, picked by hand", out)   # a person's pick is printed first
+        self.assertIn("dropped 1 kept ids", out)
+        kept = self.kept()[1]
+        self.assertNotIn("osm:node/2", kept)
+        self.assertIn("osm:node/1", kept)
+
+    def test_another_pilots_ids_are_not_stale(self):
+        kept = {"osm:node/9": {"query": "Far Cafe, Far Town", "verdict": "match", "id": "ID_FAR"}}
+        far = {**save("FAR1"), "collections": ["Far Trips"]}
+        stale = google_ids.stale_keys(kept, SAVES + [far], TAGS,
+                                      {**PINS, "FAR1": [{"name": "Far Cafe", "near": "Far Town", "osm": "node/9"}]}, {})
+        self.assertEqual(stale, [])
+
     def test_pick_needs_a_known_spot(self):
         with self.assertRaises(SystemExit):
             self.run_ids("--pilot", "fixture", "--pick", "osm:node/999=ID_X")

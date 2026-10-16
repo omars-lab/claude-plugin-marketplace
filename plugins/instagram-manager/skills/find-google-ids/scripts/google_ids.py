@@ -4,6 +4,7 @@
     google_ids.py --pilot NAME [--limit N] [--only KEY,KEY] [--refresh] [--box-km 2] [--dry-run]
     google_ids.py --pilot NAME --pick KEY=PLACE_ID [--pick ...]
     google_ids.py --pilot NAME --none KEY [--none ...]
+    google_ids.py --pilot NAME --prune [--dry-run]
 
 For each spot (data/pins.yaml, and the venues OpenStreetMap lacks from data/pins-review.yaml) it
 sends one Google Text Search: our own search text, inside a box round our own pin, or round the
@@ -20,6 +21,11 @@ and "CLOSED FOR GOOD"; none of that is written anywhere (shared/scripts/google_p
 data/google.yaml is rewritten after every spot, so a run stopped by the day's cap (HTTP 429 "per
 day") keeps what it found; the same command tomorrow carries on. A spot already there with the same
 search text is skipped (--refresh searches it again).
+
+A spot with no pin that the locator says is really in another town (`really_in`) is not searched:
+the box would sit round the wrong town. It is listed to fix its area first. A kept id whose spot
+moved (its new pin or town gives it a new key) or was dropped is listed as no longer used, and
+--prune drops it, after printing any that a person or Claude picked.
 
 The key comes from GOOGLE_MAPS_API_KEY; `make google-ids` in the data repo runs this through
 `dotenvx run`, which decrypts it into this one process. --dry-run needs no key and calls nothing.
@@ -45,6 +51,7 @@ from pilot import in_pilot  # noqa: E402
 from places import Places, load_yaml  # noqa: E402
 
 OUT = os.path.join("data", "google.yaml")
+STALE_SHOWN = 20   # how many stale keys to list on screen
 HEADER = ("# Google place ids for the spots in data/pins.yaml and data/pins-review.yaml, written by\n"
           "# instagram-manager's find-google-ids. Only the id is kept, with our own search text, the date\n"
           "# and who chose it (auto: the only candidate carrying every word of our name; claude: Claude,\n"
@@ -78,6 +85,14 @@ def where(e, places, box_km):
     if half is None:   # a state or a country: too wide to tell one café from another
         return None
     return {"lat": d["lat"], "lon": d["lon"]}, half, f"inside {half:g} km of {town} (no pin of our own)"
+
+
+def stale_keys(kept, saves, tags, pins, placed):
+    """Kept keys that no spot of any save uses any more: the spot moved (a new pin or town gives it a
+    new key) or was dropped. Worked out over every save, not only the pilot, so another run's ids
+    are never counted stale."""
+    used = spots_in_scope(saves, tags, pins, placed, None)
+    return sorted(k for k in kept if k not in used)
 
 
 def load_kept():
@@ -130,6 +145,7 @@ def main(argv=None):
     ap.add_argument("--by", choices=("hand", "claude"), default="hand",
                     help="who chose the --pick/--none: a person (hand, the default) or Claude reading the list")
     ap.add_argument("--dry-run", action="store_true", help="list what would be searched; no key, no calls")
+    ap.add_argument("--prune", action="store_true", help="drop kept ids that no spot uses any more")
     args = ap.parse_args(argv)
 
     saves_path = cache("saves.json")
@@ -141,8 +157,9 @@ def main(argv=None):
         pilot = (load_yaml(os.path.join("config", "collections.yaml")).get("pilots") or {}).get(args.pilot)
         if not isinstance(pilot, dict):
             sys.exit(f"google_ids: no pilot {args.pilot!r} in config/collections.yaml")
-    spots = spots_in_scope(bh.load_saves(saves_path), tags, load_yaml(os.path.join("data", "pins.yaml")),
-                           bh.placed_spots(load_yaml(os.path.join("data", "pins-review.yaml"))), pilot)
+    pins = load_yaml(os.path.join("data", "pins.yaml"))
+    placed = bh.placed_spots(load_yaml(os.path.join("data", "pins-review.yaml")))
+    spots = spots_in_scope(bh.load_saves(saves_path), tags, pins, placed, pilot)
     places = Places.load()
     kept = load_kept()
     today = dt.date.today().isoformat()
@@ -169,14 +186,29 @@ def main(argv=None):
         print(f"kept {len(picks)} picked and {len(nones)} marked none in {OUT}")
         return
 
+    stale = stale_keys(kept, bh.load_saves(saves_path), tags, pins, placed)
+    if args.prune and not args.dry_run:
+        for k in stale:
+            if kept[k].get("by") in ("hand", "claude"):
+                print(f"dropping {k}, picked by {kept[k]['by']} on {kept[k].get('date')}: {kept[k].get('query')!r}")
+            del kept[k]
+        if stale:
+            write_kept(kept)
+        log("google_prune", dropped=len(stale))
+        print(f"dropped {len(stale)} kept ids that no spot uses any more")
+        stale = []
+
     only = {k.strip() for k in (args.only or "").split(",") if k.strip()}
-    todo, no_box = [], []
+    todo, no_box, wrong = [], [], []
     for k in sorted(spots):
         e, codes = spots[k]
         if only and k not in only:
             continue
         q = gp.query_for(e)
         if not args.refresh and isinstance(kept.get(k), dict) and kept[k].get("query") == q:
+            continue
+        if e.get("placed") and e.get("really_in"):
+            wrong.append((k, e))   # searching round the wrong town would waste a call
             continue
         box = where(e, places, args.box_km)
         if box is None:
@@ -187,7 +219,15 @@ def main(argv=None):
     if args.limit is not None:
         todo = todo[:args.limit]
     print(f"{len(spots)} spots in scope; {len(todo)} to search, {len(no_box)} with no box to search in")
-    if args.dry_run:
+    if wrong:
+        print(f"{len(wrong)} not searched: filed under the wrong area, fix its area first "
+              "(resolve-post-location, \"A spot in the wrong area\"):")
+        for k, e in wrong:
+            print(f"  {k}: {e['said']!r} under {e['near']}, really in {e['really_in']}")
+    if stale:
+        print(f"{len(stale)} kept ids no spot uses any more (its spot moved or was dropped); "
+              "--prune drops them: " + ", ".join(stale[:STALE_SHOWN]) + (" …" if len(stale) > STALE_SHOWN else ""))
+    if args.dry_run or not todo:
         for k, e, q, (_, _, words) in todo:
             print(f"  {k}: {q!r}, {words}")
         return

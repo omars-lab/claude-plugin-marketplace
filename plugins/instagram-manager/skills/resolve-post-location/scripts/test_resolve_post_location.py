@@ -329,6 +329,37 @@ class Merge(Home):
         e = self.spot("data/pins-review.yaml", "TOWNA", "Made Up Spot")
         self.assertEqual(e["why"], "near Fixture Park, which is not one of the save's areas")
 
+    def test_a_road_trip_stop_in_the_wrong_area_is_listed_and_fixed_with_near_and_lookup(self):
+        """A stop the save is not tagged near is filed under the nearest area, so the merge lists it;
+        a person adds its town and gives it `near:` and `lookup:`, and the next merge pins it there."""
+        self.write(".cache/saves.json", {"saves": [save("TOWNA", "Day 1 Example Cove Beach. Day 3 Other Arch")]})
+        with mock.patch.dict(OSM, {"Other Arch": [hit("Other Arch", 41.5, -120.0, "arch", 40)]}):   # 167 km off
+            paths = self.run_script("--prepare", "--all").split()
+            self.agent(paths, {"TOWNA": [{"said": "Example Cove Beach", "near": "Fixture Town"},
+                                         {"said": "Other Arch", "near": "Fixture Town",
+                                          "really_in": "Other Town, Other State"}]})
+            out = self.run_script("--merge")
+            self.assertIn("1 spots in review look filed under the wrong area", out)
+            self.assertIn("'Other Arch' under Fixture Town: really in Other Town, Other State", out)
+            self.assertEqual(self.spot("data/pins-review.yaml", "TOWNA", "Other Arch")["really_in"],
+                             "Other Town, Other State")
+            self.assertEqual([w[1] for w in rpl.wrong_area({"X": [{"said": "Far", "near": "T", "km": 61.0},
+                                                                 {"said": "Close", "near": "T", "km": 40.0},
+                                                                 {"said": "Gone", "near": "T", "km": 99.0,
+                                                                  "drop": True}]})], ["Far"])
+            places = {"places": {**PLACES["places"], "Other Town": {
+                "kind": "city", "in": "Fixture State", "lat": 41.49, "lon": -120.0, "found": "Other Town"}}}
+            self.write("data/places.yaml", places)
+            review = self.read("data/pins-review.yaml")
+            for e in review["TOWNA"]:
+                if e["said"] == "Other Arch":
+                    e.update(near="Other Town", lookup="Other Arch")
+            self.write("data/pins-review.yaml", review)
+            out = self.run_script("--merge")
+        p = self.spot("data/pins.yaml", "TOWNA", "Other Arch")
+        self.assertEqual((p["near"], p["osm"], p["lookup"]), ("Other Town", "node/40", "Other Arch"))
+        self.assertNotIn("wrong area", out)
+
     def test_a_handle_is_searched_by_its_plain_name(self):
         self.locate()
         p = self.spot("data/pins.yaml", "TOWNA", "@examplecafe")
