@@ -224,7 +224,8 @@ def main(argv=None):
 
     if pilot is not None:
         mine = {bh.slugify(top(places, places.resolve(c) or c)) for c in pilot.get("cities") or []}
-        scope = f"pilot {args.pilot}: only its saves are here; the rest are not tagged yet"
+        scope = (f"pilot {args.pilot}: only its saves are here; the rest are not tagged yet, and the other "
+                 "travel areas named in also_in are not written yet")
 
         def keep(rel):
             return not rel.startswith("travel/") or os.path.splitext(os.path.basename(rel))[0] in mine
