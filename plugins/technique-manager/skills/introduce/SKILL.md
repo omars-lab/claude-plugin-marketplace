@@ -1,6 +1,6 @@
 ---
 name: introduce
-description: Introduce the technique-manager plugin — turning screenshots of Claude techniques into Claude-style HTML pages built from one shared React component library, then packaging them into a gallery and a zip and syncing the shareable content to another Mac
+description: Introduce the technique-manager plugin — turning screenshots of Claude techniques into Claude-style HTML pages built from one shared React component library, then packaging them into a gallery and a zip and adding the shareable content to the studio folder (directly through iCloud Drive, or over SSH)
 ---
 
 # Introduce Technique Manager
@@ -24,7 +24,8 @@ Every page, the gallery and the catalog render from **one React component librar
           ↓
 /technique-manager:package-gallery       post pages → index.html gallery → techniques-YYYYMMDD.zip
           ↓
-/technique-manager:sync-studio           post view + redacted content → another Mac over SSH (rsync)
+/technique-manager:sync-studio           post view + redacted content → the studio folder, added to what's
+                                         there (iCloud Drive on this Mac, else rsync over SSH)
 
 /technique-manager:build-hub             private hub repo: gallery with status, page comments on every
                                          block, sessions archived; the place to pick each post's focus
@@ -42,7 +43,7 @@ Technique Manager: 7 skills that turn Claude technique screenshots into pages.
 - recreate-technique: one screenshot (or a group of them) becomes a Claude-style HTML page
 - validate-pages: a headless browser checks every page renders the right content
 - package-gallery: all pages become a gallery and an offline zip
-- sync-studio: the shareable content goes to a dedicated folder on another Mac
+- sync-studio: the shareable content is added to the studio folder (via iCloud Drive or SSH)
 Picking screenshots happens first, in /screenshot-manager:suggest-techniques.
 ```
 
@@ -53,7 +54,7 @@ Use `AskUserQuestion`:
 - Turn screenshots into pages → `/technique-manager:recreate-technique`
 - Check the pages render correctly → `/technique-manager:validate-pages`
 - Build the gallery and zip → `/technique-manager:package-gallery`
-- Send new techniques to the studio Mac → `/technique-manager:sync-studio`
+- Send new techniques to the studio folder → `/technique-manager:sync-studio`
 - Show me the component catalog → open `skills/recreate-technique/components/catalog.html`
 
 ## Skills
@@ -82,7 +83,11 @@ Re-renders all pages and builds a gallery `index.html` for each view (cards plus
 ### `sync-studio`
 **Invocation:** `/technique-manager:sync-studio [--dry-run | --prune]`
 
-Stages the post view plus each technique's redacted JSON and an `index.json`, re-runs the privacy scan, and rsyncs them over SSH into one dedicated folder on another Mac. The host and folder are kept in `~/.config/technique-manager/studio.json`, outside the repo. It never sends the internal view, screenshots or unredacted specs.
+Stages the post view plus each technique's redacted JSON and an `index.json`, re-runs the privacy scan, and adds them to the studio folder:
+- **On a Mac with iCloud Drive**, when the folder is inside it, it writes there directly and iCloud carries it to the studio.
+- **Anywhere else**, it rsyncs over SSH to the studio.
+
+Several Macs feed the same folder, so it never replaces what's there. The index and the gallery are rebuilt from the techniques already in the folder plus the new ones, and `--prune` is refused while the folder holds techniques from another Mac. The host and folder are kept in `~/.config/technique-manager/studio.json`, outside the repo; one copy works on every Mac. It never sends the internal view, screenshots or unredacted specs.
 
 ### `build-hub`
 **Invocation:** `/technique-manager:build-hub`
@@ -120,7 +125,8 @@ It then suggests a focus and a back story, which the user confirms by replying "
 | Internal view (+ `img/`) | `~/Desktop/📸 Screenshots of Techniques/pages/internal/` |
 | Post view (shareable) | `~/Desktop/📸 Screenshots of Techniques/pages/post/` |
 | Zip | `~/Desktop/📸 Screenshots of Techniques/techniques-YYYYMMDD.zip` |
-| Studio sync settings | `~/.config/technique-manager/studio.json` |
+| Studio sync settings | `~/.config/technique-manager/studio.json` (`host`, `dest` relative to home) |
+| Studio folder | `dest`: in iCloud Drive, written directly on a Mac that has it; over SSH from one that doesn't |
 | Hub (once set up): specs, notes, threads | `~/workspace/technique-hub/` (private repo); site in `.cache/hub/`, sessions in `archive/` |
 | Which root the scripts use | `~/.config/technique-manager/settings.json` (`root`); without it, the Techniques folder |
 

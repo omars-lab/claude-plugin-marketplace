@@ -76,7 +76,7 @@ Click through to one page and back. Report the zip path, file count and size.
 
 ## Then: sync to the studio
 
-If `~/.config/technique-manager/studio.json` exists, offer `/technique-manager:sync-studio` to send the new techniques to the other Mac.
+If `~/.config/technique-manager/studio.json` exists, offer `/technique-manager:sync-studio` to add the new techniques to the studio folder (through iCloud Drive on a Mac that has it, else over SSH), alongside the ones already there.
 
 ## Optional: publish
 

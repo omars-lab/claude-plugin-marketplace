@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
-"""Copy the shareable technique content to another Mac over SSH (rsync), into one
-dedicated folder there, so new techniques show up where posts get written.
+"""Send the shareable technique content to the studio folder, adding to what is already there,
+so new techniques show up where posts get written.
+
+Two ways to reach the folder, picked by where the script runs:
+    local  this Mac has iCloud Drive and dest is inside it: write into it directly, and iCloud
+           carries it to the studio. No SSH.
+    ssh    otherwise: rsync over SSH to the studio, as before.
+The same studio.json works on both Macs, because dest is relative to the home folder.
+
+The folder is shared: more than one Mac adds techniques to it. Each technique's own files are
+added or updated, never removed, and the two files every technique shares (content/index.json
+and the gallery, pages/index.html) are rebuilt from what is already there plus what is sent, so
+techniques another Mac sent stay listed. A slug sent from here replaces the same slug there.
 
 Only shareable material is sent, and it is staged first:
     <dest>/pages/              the post view (pages/post/: pages, gallery, _lib)
@@ -11,18 +22,23 @@ Never sent: the internal view, the original screenshots, the unredacted specs, s
 
 Settings live outside the repo, in ~/.config/technique-manager/studio.json:
     {"host": "<ssh host alias>", "dest": "<folder on that Mac; relative = from its home>"}
+host can be left out on a Mac that always writes locally.
 
 Usage:
-    python3 sync_studio.py --setup --host my-mac --dest "Documents/content/techniques"
+    python3 sync_studio.py --setup --host my-mac --dest "Library/Mobile Documents/com~apple~CloudDocs/.../claude-techniques"
     python3 sync_studio.py --dry-run          # show what would change
     python3 sync_studio.py                    # sync
-    python3 sync_studio.py --prune            # also delete files there that are gone here
+    python3 sync_studio.py --prune            # also delete files there that are gone here; refused
+                                              # while the folder holds techniques from another Mac
 
-Output (JSON on stdout): {"host", "dest", "staged": N, "sent": [...], "dry_run": bool}
-Exit 1 (with the reason) if the host can't be reached or rsync fails.
+Output (JSON on stdout): {"mode", "host", "dest", "staged": N, "kept": [slugs already there],
+                          "total": N, "sent": [...], "dry_run": bool}
+Exit 1 (with the reason) if the folder can't be reached or rsync fails.
 """
 import argparse
+import html
 import json
+import re
 import shlex
 import shutil
 import subprocess
@@ -30,11 +46,14 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "recreate-technique" / "scripts"))
+SKILLS = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(SKILLS / "recreate-technique" / "scripts"))
 import lib  # noqa: E402
 import scan_privacy  # noqa: E402
 
 CONFIG = Path.home() / ".config" / "technique-manager" / "studio.json"
+ICLOUD = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
+GALLERY = SKILLS / "package-gallery" / "templates" / "gallery.html"
 
 
 def load_config() -> dict:
@@ -53,17 +72,29 @@ def remote_path(path: str) -> str:
     return shlex.quote(path)
 
 
-def stage(root: Path, out: Path) -> int:
-    """Copy the post view and the redacted specs into out; refuse anything with findings."""
+def local_target(dest: str) -> Path | None:
+    """The folder on this Mac when dest is inside iCloud Drive and this Mac has iCloud Drive;
+    else None (go over SSH). Checks the iCloud root, not dest, so a first run still goes local."""
+    target = Path(dest).expanduser()
+    target = target if target.is_absolute() else Path.home() / target
+    if ICLOUD.is_dir() and (target == ICLOUD or ICLOUD in target.parents):
+        return target
+    return None
+
+
+def stage(root: Path, out: Path) -> tuple[list[dict], set[str]]:
+    """Copy the post view and the redacted specs into out; refuse anything with findings.
+    Returns the index rows staged, and every slug this root knows (staged or not)."""
     post = lib.pages_dir(root, "post")
     if not (post / "index.html").exists():
         raise SystemExit("No pages/post/index.html; run render_page.py --all and build_gallery.py first")
     shutil.copytree(post, out / "pages", ignore=shutil.ignore_patterns("_check", ".DS_Store"))
     content = out / "content"
     content.mkdir()
-    index = []
+    index, known = [], set()
     for raw in lib.load_specs(root):
         slug = raw["slug"]
+        known.add(slug)
         if not (post / f"{slug}.html").exists():
             continue  # no post page means its redactions aren't done; don't send its content
         spec = lib.post_spec(raw, root)
@@ -77,9 +108,53 @@ def stage(root: Path, out: Path) -> int:
                       "has_backstory": bool(spec.get("backstory")),
                       # Hub: where it stands, and its confirmed focus (post_spec keeps only a confirmed one).
                       "status": lib.effective_status(raw), "focus": (spec.get("focus") or {}).get("line")})
-    index.sort(key=lambda r: r.get("taken") or "", reverse=True)
-    (content / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return len(index)
+    return index, known
+
+
+def existing_index(host: str | None, dest: str, local: Path | None) -> list[dict]:
+    """content/index.json as it is in the folder now ([] on a first sync). Refuses when iCloud
+    has evicted it to a placeholder: reading nothing there would drop every listed technique."""
+    if local:
+        f = local / "content" / "index.json"
+        if f.exists():
+            return json.loads(f.read_text(encoding="utf-8"))
+        if (f.parent / ".index.json.icloud").exists():
+            raise SystemExit(f"{f} is in iCloud but not downloaded; run `brctl download {shlex.quote(str(f))}`, then sync again")
+        return []
+    f = shlex.quote(dest.rstrip("/") + "/content/index.json")
+    stub = shlex.quote(dest.rstrip("/") + "/content/.index.json.icloud")
+    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", host,
+                        f"if [ -f {f} ]; then cat {f}; elif [ -e {stub} ]; then echo __evicted__; else echo __none__; fi"],
+                       capture_output=True, text=True)
+    out = r.stdout.strip()
+    if r.returncode != 0:
+        raise SystemExit(f"Can't read the index on {host}: {r.stderr.strip()}")
+    if out == "__evicted__":
+        raise SystemExit(f"{host}:{dest}/content/index.json is in iCloud but not downloaded there; open the folder on that Mac, then sync again")
+    return [] if out == "__none__" else json.loads(out)
+
+
+def combine(staged: list[dict], there: list[dict]) -> tuple[list[dict], list[str]]:
+    """Every technique already listed, with the staged ones added or replacing theirs, newest first."""
+    mine = {r["slug"] for r in staged}
+    kept = [r for r in there if r.get("slug") not in mine]
+    rows = sorted(kept + staged, key=lambda r: r.get("taken") or "", reverse=True)
+    return rows, [r["slug"] for r in kept]
+
+
+def write_index(out: Path, rows: list[dict], title: str | None) -> None:
+    """content/index.json and the post gallery, both from the combined rows. The gallery keeps
+    the title it was built with here ("Technique hub" from a hub) unless --title is given."""
+    if not title:
+        m = re.search(r"<title>(.*?)</title>", (out / "pages" / "index.html").read_text(encoding="utf-8"), re.S)
+        title = html.unescape(m.group(1)) if m else "Claude techniques"
+    (out / "content" / "index.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # The same card fields build_gallery.cards_for gives the post view.
+    cards = [{"slug": r["slug"], "href": f"{r['slug']}.html", "status": None, "focus": None,
+              "title": r.get("title") or r["slug"], "mechanism": r.get("mechanism"), "why": r.get("why"),
+              "taken": r.get("taken"), "image": None} for r in rows]
+    (out / "pages" / "index.html").write_text(
+        lib.fill(GALLERY, title, cards, lib.prerender("Gallery", {"title": title, "cards": cards})), encoding="utf-8")
 
 
 def main() -> int:
@@ -88,44 +163,64 @@ def main() -> int:
     ap.add_argument("--setup", action="store_true", help="save --host and --dest to the config")
     ap.add_argument("--host")
     ap.add_argument("--dest")
+    ap.add_argument("--title", help="the gallery's title (default: the one it was built with)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--prune", action="store_true", help="delete files in dest that are gone here")
     args = ap.parse_args()
 
     cfg = load_config()
     if args.setup:
-        if not (args.host and args.dest):
-            raise SystemExit("--setup needs --host and --dest")
+        if not args.dest or not (args.host or local_target(args.dest)):
+            raise SystemExit("--setup needs --dest, and --host unless dest is in this Mac's iCloud Drive")
         CONFIG.parent.mkdir(parents=True, exist_ok=True)
-        CONFIG.write_text(json.dumps({"host": args.host, "dest": args.dest}, indent=2) + "\n", encoding="utf-8")
-        print(json.dumps({"config": str(CONFIG), "host": args.host, "dest": args.dest}, indent=2))
+        saved = {k: v for k, v in (("host", args.host), ("dest", args.dest)) if v}
+        CONFIG.write_text(json.dumps(saved, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps({"config": str(CONFIG), **saved}, indent=2))
         return 0
     host, dest = args.host or cfg.get("host"), args.dest or cfg.get("dest")
-    if not (host and dest):
-        raise SystemExit(f"No host/dest; run with --setup first (config: {CONFIG})")
+    if not dest:
+        raise SystemExit(f"No dest; run with --setup first (config: {CONFIG})")
+    local = local_target(dest)
+    if not (local or host):
+        raise SystemExit(f"{dest} isn't in this Mac's iCloud Drive and there is no host to reach it over SSH")
 
-    # Reach the host and create the folder. BatchMode: fail instead of prompting for a password.
-    probe = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", host,
-                            f"mkdir -p {shlex.quote(dest)} && echo ok"], capture_output=True, text=True)
-    if probe.returncode != 0 or "ok" not in probe.stdout:
-        raise SystemExit(f"Can't reach {host}: {(probe.stderr or probe.stdout).strip().splitlines()[-1:] or ['no output']}")
+    if local:
+        local.mkdir(parents=True, exist_ok=True)
+    else:
+        # Reach the host and create the folder. BatchMode: fail instead of prompting for a password.
+        probe = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", host,
+                                f"mkdir -p {shlex.quote(dest)} && echo ok"], capture_output=True, text=True)
+        if probe.returncode != 0 or "ok" not in probe.stdout:
+            raise SystemExit(f"Can't reach {host}: {(probe.stderr or probe.stdout).strip().splitlines()[-1:] or ['no output']}")
 
     root = lib.find_root(args.root)
     with tempfile.TemporaryDirectory() as tmp:
         staged = Path(tmp) / "techniques"
         staged.mkdir()
-        count = stage(root, staged)
+        rows, known = stage(root, staged)
+        there = existing_index(host, dest, local)
+        foreign = sorted({r.get("slug") for r in there} - known)
+        if args.prune and foreign:
+            raise SystemExit(f"--prune would delete {len(foreign)} techniques this root never had "
+                             f"(another Mac sent them), e.g. {foreign[0]}; sync without --prune")
+        combined, kept = combine(rows, there)
+        write_index(staged, combined, args.title)
+
         cmd = ["rsync", "-a", "--itemize-changes", "--exclude", ".DS_Store"]
         if args.dry_run:
             cmd.append("--dry-run")
         if args.prune:
             cmd.append("--delete")
-        cmd += [f"{staged}/", f"{host}:{remote_path(dest.rstrip('/') + '/')}"]
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        # A local path goes unquoted: remote_path's quoting is for the remote shell only.
+        target = f"{local}/" if local else f"{host}:{remote_path(dest.rstrip('/') + '/')}"
+        r = subprocess.run(cmd + [f"{staged}/", target], capture_output=True, text=True)
         if r.returncode != 0:
             raise SystemExit(f"rsync failed: {r.stderr.strip()}")
-        sent = [line.split(" ", 1)[1] for line in r.stdout.splitlines() if line[:1] in "<>c*" and " " in line]
-    print(json.dumps({"host": host, "dest": dest, "staged": count, "sent": sent, "dry_run": args.dry_run},
+        sent = [line.split(" ", 1)[1] for line in r.stdout.splitlines()
+                if line[:1] in "<>c*" and " " in line and not line.endswith("/")]
+    print(json.dumps({"mode": "local" if local else "ssh", "host": None if local else host,
+                      "dest": str(local) if local else dest, "staged": len(rows), "kept": kept,
+                      "total": len(combined), "sent": sent, "dry_run": args.dry_run},
                      ensure_ascii=False, indent=2))
     return 0
 
