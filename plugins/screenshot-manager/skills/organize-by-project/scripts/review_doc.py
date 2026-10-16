@@ -13,7 +13,7 @@ review-md Obsidian plugin (press c, click a picture or heading) when a box isn't
     python3 review_doc.py draft --plan plan.json [--shots shots.json] [--gap 1800] \
         --out groups.json
 
-    # 2. Write the doc: small copies of the pictures go to <vault>/images/<date>/, the doc to
+    # 2. Write the doc: small copies of the pictures go to <vault>/images/<doc name>/, the doc to
     #    <vault>/<date> Screenshots to file.md, the groups beside it as .<doc name>.groups.json
     python3 review_doc.py write --groups groups.json --vault "<projects root>/_review"
 
@@ -21,6 +21,11 @@ review-md Obsidian plugin (press c, click a picture or heading) when a box isn't
     #    the key-file decisions as plan flags. Comments are read with `reviews list`.
     python3 review_doc.py read --doc "<vault>/<date> Screenshots to file.md" \
         --answers vision_answers_user.json [--aliases "<projects root>/.aliases.json"]
+
+    # 4. After the moves, start the next doc from what is still open, and move the old doc to
+    #    <vault>/done/. Then write the new one under its own name and open it in Obsidian.
+    python3 review_doc.py carry --doc "<vault>/<date> Screenshots to file.md" --out next.json --retire
+    python3 review_doc.py write --groups next.json --vault "<vault>" --name "<date> Screenshots to file, round 2"
 
 groups.json:
     {"made": "2026-10-16", "plan": "<plan.json>", "none_count": 31,
@@ -45,6 +50,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import date, datetime, timezone
@@ -160,7 +166,8 @@ def write(a) -> None:
     vault = a.vault.expanduser()
     made = data.get("made") or date.today().isoformat()
     doc = vault / f"{a.name or made + ' Screenshots to file'}.md"
-    imgdir = Path("images") / made
+    # One picture folder per doc, so a second doc made the same day keeps the first one's pictures.
+    imgdir = Path("images") / doc.stem
     if doc.is_file() and not a.force and (any(ticks(doc)[0].values()) or ticks(doc)[1]):
         sys.exit(f"{doc} already has ticked boxes: run read first, or pass --force to start it over")
     lines = ["---", f"made: {made}", f"groups: {len(data['groups'])}", "---", "",
@@ -357,6 +364,49 @@ def read(a) -> None:
             print(f"  {where} [{t['id']}]: {t['said']}")
 
 
+def carry(a) -> None:
+    """Start the next doc from what the last one left open: the groups with no answer (no box,
+    "not sure", "somewhere else", or two boxes) whose screenshots or folder are still where they
+    were. A screenshot that moved was answered, by a box or a comment, so it drops out. With
+    --retire the old doc, its groups and its comments go to <vault>/done/; its pictures stay."""
+    doc = a.doc.expanduser()
+    side = doc.parent / f".{doc.stem}.groups.json"
+    data = json.loads(side.read_text())
+    per, _ = ticks(doc)
+    kept = []
+    for g in data["groups"]:
+        got = per.get(g["id"], [])
+        if len(got) == 1 and got[0] not in ("unsure", "other"):
+            continue
+        if g["kind"] == "shots":
+            files = [f for f in g["files"] if Path(f).is_file()]
+            if not files:
+                continue
+            g = {**g, "files": files, "captions": {f: c for f, c in g.get("captions", {}).items() if f in files},
+                 "was": g["id"]}
+        elif not Path(g["folder"]).exists():
+            continue
+        else:
+            g = {**g, "was": g["id"]}
+        kept.append(g)
+    for i, g in enumerate(kept, 1):
+        g["id"] = f"G{i:02d}"
+    out = {**data, "made": date.today().isoformat(), "from": str(doc), "groups": kept}
+    a.out.write_text(json.dumps(out, indent=1, ensure_ascii=False))
+    print(f"{len(kept)} of {len(data['groups'])} groups still open "
+          f"({sum(len(g['files']) for g in kept if g['kind'] == 'shots')} screenshots) written to {a.out}")
+    for g in kept:
+        print(f"  {g['id']} (was {g['was']}): {g['title']}")
+    if a.retire:
+        done = doc.parent / "done"
+        done.mkdir(exist_ok=True)
+        for f in (doc, side, doc.parent / f".{doc.stem}.comments.md"):
+            if f.is_file():
+                shutil.move(str(f), str(done / f.name))
+                log("retired", src=f, dst=done / f.name)
+        print(f"moved the old doc to {done}/")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -376,8 +426,12 @@ def main() -> None:
     p.add_argument("--aliases", type=Path, help="add folder answers to its _folders / _skip")
     p.add_argument("--set", action="append", metavar="G12[.3]=VALUE",
                    help="an answer the user wrote in a comment, for a group or one picture of it (repeatable)")
+    p = sub.add_parser("carry")
+    p.add_argument("--doc", type=Path, required=True, help="the last doc, after read and the moves")
+    p.add_argument("--out", type=Path, required=True, help="groups.json for the next write")
+    p.add_argument("--retire", action="store_true", help="move the old doc and its files to <vault>/done/")
     a = ap.parse_args()
-    {"draft": draft, "write": write, "read": read}[a.cmd](a)
+    {"draft": draft, "write": write, "read": read, "carry": carry}[a.cmd](a)
 
 
 if __name__ == "__main__":

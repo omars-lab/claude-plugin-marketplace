@@ -282,7 +282,7 @@ python3 "$OP/review_doc.py" write --groups "$WORK/groups.json" --vault "$ROOT/_r
    projects as choices from the candidates and the captions, and set `recommend` only when
    you would bet on it. Choices that say "none" are labelled "Not project work: leave on the
    Desktop". Every shot of the draft must end up in one group; count them.
-2. **Write.** `write` makes 1200-pixel copies of the pictures in `_review/images/<date>/`, the
+2. **Write.** `write` makes 1200-pixel copies of the pictures in `_review/images/<doc name>/`, the
    doc `_review/<date> Screenshots to file.md`, and the groups beside it as
    `.<doc name>.groups.json`. It adds "Not sure yet" and "Somewhere else (leave a comment)" to
    every group, a "show me the rest next time" box and a final "I'm done" box. It refuses to
@@ -328,6 +328,26 @@ reviews list "$ROOT/_review" --open --waiting claude --json
      running) saying where the pictures go, then `resolve` it.
    - Then do the "write it down" steps below for each group, using the "filed" list `read`
      prints.
+6. **Start the next round** once the moves are done, so the user isn't looking at a doc full
+   of finished groups:
+
+```bash
+python3 "$OP/review_doc.py" carry --doc "$ROOT/_review/<date> Screenshots to file.md" \
+    --out "$WORK/next.json" --retire
+python3 "$OP/review_doc.py" write --groups "$WORK/next.json" --vault "$ROOT/_review" \
+    --name "<date> Screenshots to file, round 2"
+open "obsidian://open?vault=_review&file=<date>%20Screenshots%20to%20file%2C%20round%202"
+```
+
+   - `carry` keeps a group only when it has no single answer (no box, "not sure", "somewhere
+     else", or two boxes) and its screenshots or folder are still in place. A screenshot that
+     moved was answered, by a box or a comment, so it drops out. Groups are numbered from G01
+     again; each keeps `was` (its old id).
+   - `--retire` moves the old doc, its groups file and its comments to `_review/done/`. Its
+     pictures stay in `images/`, so it still shows them.
+   - Edit `next.json` before `write` like a draft: drop a group whose answer is already plain
+     (a folder Claude made on purpose, such as the keys folder, goes in `_skip` instead).
+   - Run it without `--retire` first to see what carries.
 
 ### After every answer
 
@@ -432,6 +452,7 @@ come back in the next review doc; the ones they left blank do too.
 | `review_doc.py draft` | Groups what the plan left unclear (unsure shots, undecided folders, key-file folders) into a groups JSON to edit | Step 6, more than 4 groups | `python3 "$OP/review_doc.py" draft --plan … --shots … --out "$WORK/groups.json"` |
 | `review_doc.py write` | Writes the Obsidian review doc with the pictures and tick boxes; won't overwrite one with ticks | Step 6, after editing the groups | `python3 "$OP/review_doc.py" write --groups … --vault "$ROOT/_review"` |
 | `review_doc.py read` | Turns the ticks into an answers file, alias rules and key-file plan flags, and lists the open comments by group and picture | Step 6, when the user says they're done; again with `--set` for each comment's answer | `python3 "$OP/review_doc.py" read --doc … --answers "$WORK/vision_answers_user.json" --aliases "$ROOT/.aliases.json" [--set G12=<project>] [--set G12.3=<project>]` |
+| `review_doc.py carry` | Keeps only the groups still open and in place for the next doc, and with `--retire` moves the old doc to `_review/done/` | Step 6, after the moves, when anything is left | `python3 "$OP/review_doc.py" carry --doc … --out "$WORK/next.json" [--retire]` |
 | `move_to_projects.py plan` | Builds every destination and prints the table. Moves nothing | Step 7 | `python3 "$OP/move_to_projects.py" plan --root … --shots … --folders … --inside … --vision … [--keys-to … --keys-from …] --out …` |
 | `move_to_projects.py apply` | Writes the undo list, then moves | Step 8, after approval | `python3 "$OP/move_to_projects.py" apply --plan … --only folders` |
 | `move_to_projects.py undo` | Moves one batch back, newest first | When the user wants it undone | `python3 "$OP/move_to_projects.py" undo --log "$ROOT/.moves/<time>.json"` |
@@ -504,3 +525,12 @@ come back in the next review doc; the ones they left blank do too.
   its buttons by screen position, screenshot before and after.
 - **To scroll Reading view with keys,** click into the page first; page-down does nothing
   until the page has focus.
+- **One doc per round.** After the moves, a doc full of answered groups hides the few still
+  open. `carry --retire` starts a short new doc and keeps the old one in `done/` as the record.
+  Each doc has its own picture folder, so a second doc made the same day can't overwrite the
+  first one's pictures.
+- **Some screenshots are about how the work is done, not the work.** A folder of screenshots
+  of AI chat sessions running side by side shows a way of working. It belongs to the project
+  that collects those techniques, not to whichever project each session happened to be on.
+  Splitting it by what's on screen scattered it across three projects, until the user pointed
+  this out and it was put back together with a `_folders` rule. Ask what a folder is *for* before matching what its pictures show.
