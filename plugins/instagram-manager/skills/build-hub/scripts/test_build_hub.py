@@ -111,10 +111,41 @@ class Hub(unittest.TestCase):
         with open(os.path.join(self.out, rel), encoding="utf-8") as fh:
             return fh.read()
 
-    def data(self):
-        """The data the map page carries."""
-        m = re.search(r"var D=(\{.*?\}), map", self.page("index.html"), re.S)
+    def data(self, rel="index.html"):
+        """The data a map page carries."""
+        m = re.search(r"var D=(\{.*?\}), map", self.page(rel), re.S)
         return json.loads(m.group(1))
+
+    def test_each_state_or_country_gets_its_own_map_with_only_its_pins(self):
+        old = os.path.join(self.out, "gone-land")      # an area map an earlier build wrote
+        os.makedirs(old)
+        with open(os.path.join(old, "index.html"), "w") as fh:
+            fh.write("<!doctype html><html><head>" + build_hub.MAP_MARK + "</head></html>")
+        mine = os.path.join(self.out, "notes")         # something else in the folder
+        os.makedirs(mine)
+        with open(os.path.join(mine, "index.html"), "w") as fh:
+            fh.write("not a map")
+        self.build("--all")
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.exists(mine))
+        state, away = self.data("fixture-state/index.html"), self.data("faraway-land/index.html")
+        self.assertIn("Saved places: Fixture State", self.page("fixture-state/index.html"))
+        codes = {p["c"] for p in state["posts"]}
+        self.assertIn("PARK1", codes)
+        self.assertNotIn("AWAY1", codes)
+        self.assertEqual({p["c"] for p in away["posts"]}, {"AWAY1"})
+        self.assertEqual({p["n"] for p in away["places"]}, {"Faraway Land"})
+        for lat, lon, *_ in state["pins"]:
+            self.assertGreater(lat, 0)               # Faraway Land's pin is south of the equator
+        # one folder down, every link and picture climbs back up
+        town = next(p for p in state["posts"] if p["c"] == "TOWN1")
+        self.assertTrue(town["f"].startswith("../posts/") and town["th"].startswith("../thumbs/"))
+        self.assertTrue(all(p["s"].startswith("../places/") for p in state["places"]))
+        self.assertEqual([o[0] for o in state["facets"][0]["o"]], ["fixture-state"])   # no other state in the menu
+        # the menu that opens another map, and the way back from a place page
+        self.assertIn('<option value="../faraway-land/">Faraway Land (1)</option>', self.page("fixture-state/index.html"))
+        self.assertIn('<option value="fixture-state/">', self.page("index.html"))
+        self.assertIn('href="../fixture-state/">&larr; The map of Fixture State', self.page("places/fixture-park.html"))
 
     def test_pilot_holds_its_collections_and_its_places(self):
         self.build("--pilot", "fixture")

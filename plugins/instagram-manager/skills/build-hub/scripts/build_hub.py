@@ -24,14 +24,17 @@ Reads   $INSTAGRAM_HOME/.cache/saves.json          caption, creator, link, saved
                                                    where its name, or else its area, is on screen
                                                    (extract-stills; optional, the same way)
 Writes  OUT/index.html                             the map, the list of places, a search box
+        OUT/<state or country>/index.html          the same map cut to one state or country, for each
+                                                   one with a pin; a Map menu switches between them
         OUT/places/<slug>.html                     one page per place
         OUT/posts/<code>.html                      one page per post
         OUT/thumbs/<code>.jpg                      copies of the thumbnails media.yaml lists
         OUT/stills/<code>/                         copies of the stills and clips stills.yaml lists
         OUT/previews/<code>.jpg, .webp             a small picture and a flipbook per post, for the lists
                                                    (extract-stills' previews.py, made when missing)
-Only places/ and posts/ are cleared on each build; other pages in OUT (the moves page, the pin
-review page) are left alone.
+Only places/, posts/ and the state or country folders an earlier build wrote (they carry a
+marker comment) are cleared on each build; other pages in OUT (the moves page, the pin review
+page) are left alone.
 
 Which pin a post gets
   A post's places are its cities in tags.yaml, and every place they sit in. On the map it gets a
@@ -448,9 +451,10 @@ class Hub:
         return (place["spot"] or place["kind"] == "park") and bool(
             NATIONAL.search(place["name"]) or NATIONAL.search(place.get("found") or ""))
 
-    def facets(self, post):
-        """The menu values a post falls under: its states or countries, national parks, purposes and topics."""
-        named = [self.places[k] for k in self.named(post)]
+    def facets(self, post, keep=None):
+        """The menu values a post falls under: its states or countries, national parks, purposes and topics.
+        `keep`, when given, says which of the places it names count (an area page counts its own)."""
+        named = [self.places[k] for k in self.named(post) if keep is None or keep(k)]
         purposes = [t for t in post["tagged_purposes"] if t in self.purposes]
         for p in named:
             k = self.purpose_of.get(p["kind"])
@@ -524,6 +528,16 @@ def excerpt(caption, words):
 def short(text, n):
     text = " ".join(text.split())
     return text if len(text) <= n else text[:n].rstrip() + "…"
+
+
+def back_link(hub, keys):
+    """The link back to a map: the first of `keys`' states or countries that has its own map page,
+    else the map of everything."""
+    folders = getattr(hub, "map_folders", {})
+    area = next((a for a in map(hub.top_area, (hub.places[k] for k in keys if k in hub.places)) if a in folders), None)
+    if area:
+        return f'<a href="../{folders[area]}/">&larr; The map of {esc(hub.places[area]["name"])}</a>'
+    return '<a href="../index.html">&larr; The map</a>'
 
 
 def place_href(p, up=True):
@@ -766,7 +780,7 @@ def place_page(hub, place):
     n = len(posts)
     notes = f'<p class="notes">{esc(place["notes"])}</p>' if isinstance(place.get("notes"), str) else ""
     sub = esc(kind_word(place)) + (f' in <a href="{place_href(parent)}">{esc(parent["name"])}</a>' if parent else "")
-    content = (f'<main class="page"><nav class="top"><a href="../index.html">&larr; The map</a></nav>'
+    content = (f'<main class="page"><nav class="top">{back_link(hub, [place["key"]])}</nav>'
                f'<header><h1>{esc(place["name"])}</h1><p class="sub">{sub} · '
                f'{n} saved post{"" if n == 1 else "s"}</p>{notes}</header>'
                f'<div class="facts{"" if box else " solo"}">{box}<dl>'
@@ -835,7 +849,7 @@ def post_page(hub, post):
                    + (", or, for spots the video doesn't name, the moment their area is" if by_area else "")
                    + '. Hover, or press Play, for 3 seconds of the video.</p><div class="shots">'
                    + "".join(figure(g) for g in figures) + '</div></section>')
-    content = (f'<main class="page"><nav class="top"><a href="../index.html">&larr; The map</a></nav>'
+    content = (f'<main class="page"><nav class="top">{back_link(hub, [k for k, *_ in post["pins"]])}</nav>'
                f'<header><h1>{esc(who)}</h1><p class="sub">A saved {esc(post["kind"])}'
                + (f' · saved {esc(post["saved"])}' if post["saved"] else "") + '</p></header>'
                + (f'<div class="post">{thumb_html(post, cls="big")}' if post["thumb"] else '<div class="post solo">')
@@ -1008,11 +1022,11 @@ MENUS = (("st", "State or country", "All states and countries"), ("np", "Nationa
          ("pu", "Purpose", "All purposes"), ("tp", "Topic", "All topics"))
 
 
-def menus(hub, places):
+def menus(hub, places, posts, keep=None):
     """The menus over the map, each post's options in them, and each place's state and national
     attraction (itself or what it sits in). An option is [id for the link, label, posts under it];
     options run most posts first, and "not worked out yet" last."""
-    per = [hub.facets(p) for p in hub.posts]
+    per = [hub.facets(p, keep) for p in posts]
     label = {"st": lambda v: hub.places[v]["name"], "np": lambda v: hub.places[v]["name"],
              "pu": lambda v: hub.purposes[v]["label"] if v in hub.purposes else NO_PURPOSE[1],
              "tp": lambda v: hub.topic_label.get(v, v)}
@@ -1041,26 +1055,40 @@ def menus(hub, places):
     return out, picks, inside
 
 
-def index_page(hub, title, extra_links, home=()):
-    """The map page. It opens on the pins inside `home` (the pilot's places), else on every pin."""
-    places = sorted((p for p in hub.places.values()), key=lambda p: (-len(p["posts"]), p["name"]))
+def area_posts(hub, area):
+    """The posts with at least one pin inside `area` (a state or country)."""
+    return [p for p in hub.posts if any(hub.within(k, {area}) for k, *_ in p["pins"])]
+
+
+def index_page(hub, title, extra_links, home=(), area=None, maps=()):
+    """The map page. It opens on the pins inside `home` (the pilot's places), else on every pin.
+    With `area`, it is that state's or country's page, one folder down: only the posts with a pin
+    inside it, and only those pins and places. `maps` lists the area pages, (folder, name, posts), for
+    the menu that opens another map."""
+    keep = (lambda k: hub.within(k, {area})) if area else (lambda k: True)
+    pre = "../" if area else ""
+    posts = area_posts(hub, area) if area else hub.posts
+    codes = {p["code"] for p in posts}
+    count = {k: sum(1 for c in p["posts"] if c in codes) for k, p in hub.places.items() if keep(k)}
+    places = sorted((hub.places[k] for k in count), key=lambda p: (-count[p["key"]], p["name"]))
     pidx = {p["key"]: i for i, p in enumerate(places)}
-    posts = hub.posts
-    facets, picks, inside = menus(hub, places)
+    facets, picks, inside = menus(hub, places, posts, keep if area else None)
     data = {
-        "places": [{"n": p["name"], "s": place_href(p, up=False), "c": len(p["posts"]), "m": p["map"],
+        "places": [{"n": p["name"], "s": pre + place_href(p, up=False), "c": count[p["key"]], "m": p["map"],
                     "k": ("spot" if p["spot"] else kind_word(p).lower()), "g": inside[i], "ic": icon_of(hub, p),
                     **({"x": 1} if p.get("placed") else {})} for i, p in enumerate(places)],
-        "posts": [{"c": p["code"], "u": p["user"], "f": post_href(p, up=False), "i": p["url"], "th": p["thumb"],
-                   **({"pv": p["pv"]} if p["pv"] else {}), **({"pa": p["pa"]} if p["pa"] else {}),
-                   "t": short(p["caption"], POPUP_CHARS), "g": picks[i], "pl": [pidx[k] for k in hub.named(p)],
+        "posts": [{"c": p["code"], "u": p["user"], "f": pre + post_href(p, up=False), "i": p["url"],
+                   "th": p["thumb"] and pre + p["thumb"],
+                   **({"pv": pre + p["pv"]} if p["pv"] else {}), **({"pa": pre + p["pa"]} if p["pa"] else {}),
+                   "t": short(p["caption"], POPUP_CHARS), "g": picks[i],
+                   "pl": [pidx[k] for k in hub.named(p) if k in pidx],
                    "q": " ".join([p["user"], p["name"], p["caption"]] + [hub.places[k]["name"] for k in hub.named(p)]),
-                   **({"sp": {str(pidx[x["key"]]): x["still"] for x in p["shots"] if x["still"]}}
-                      if any(x["still"] for x in p["shots"]) else {})}
+                   **({"sp": {str(pidx[x["key"]]): pre + x["still"] for x in p["shots"] if x["still"] and x["key"] in pidx}}
+                      if any(x["still"] and x["key"] in pidx for x in p["shots"]) else {})}
                    for i, p in enumerate(posts)],
         "facets": facets,
-        "pins": [[lat, lon, i, pidx[k], style, 1 if hub.within(k, set(home)) else 0]
-                 for i, p in enumerate(posts) for k, lat, lon, style in p["pins"]],
+        "pins": [[lat, lon, i, pidx[k], style, 1 if area or hub.within(k, set(home)) else 0]
+                 for i, p in enumerate(posts) for k, lat, lon, style in p["pins"] if k in pidx],
     }
     # The second legend row: each icon on the map, in ICONS order, with how many pins carry it.
     n_icon = {}
@@ -1071,12 +1099,23 @@ def index_page(hub, title, extra_links, home=()):
     kinds = "".join(f'<span><i class="kind">{glyph(g)}</i>{esc(ICON_LABEL[g])} <b class="n">{n_icon[g]}</b></span>'
                     for g, *_ in ICONS if g in n_icon)
     pinned = sum(1 for p in posts if p["pins"])
-    n_places = len({k for p in posts for k, *_ in p["pins"]})
-    links = "".join(f'<a href="{esc(h)}">{esc(t)}</a>' for h, t in extra_links)
+    n_places = len({pin[3] for pin in data["pins"]})
+    sub = (f"{len(posts)} saved posts with a pin in {hub.places[area]['name']}, at {n_places} places" if area
+           else f"{pinned} of {len(posts)} saved posts on the map, at {n_places} places")
+    links = "".join(f'<a href="{esc(pre + h)}">{esc(t)}</a>' for h, t in extra_links)
+    # Each map is its own page, so this menu opens another one rather than narrowing this one.
+    chooser = ""
+    if maps:
+        on_map = sum(1 for p in hub.posts if p["pins"])
+        opts = [(pre or "./", "Every state and country", on_map, not area)] + [
+            (pre + f + "/", name, n, f == hub.places[area]["slug"] if area else False) for f, name, n in maps]
+        chooser = ('<label><span>Map</span><select id="maps" onchange="location.href=this.value">'
+                   + "".join(f'<option value="{esc(h)}"{" selected" if on else ""}>{esc(name)} ({n})</option>'
+                             for h, name, n, on in opts) + '</select></label>')
     content = (f'<header class="bar"><div><h1>{esc(title)}</h1>'
-               f'<p class="sub">{pinned} of {len(posts)} saved posts on the map, at {n_places} places</p></div>'
+               f'<p class="sub">{sub}</p></div>'
                f'<nav class="links">{links}</nav>'
-               '<nav class="facets" aria-label="Narrow the map">'
+               '<nav class="facets" aria-label="Narrow the map">' + chooser
                + "".join(f'<label><span>{esc(name)}</span><select id="f-{key}"></select></label>' for key, name, _ in MENUS)
                + '<button id="clear" type="button" hidden>Clear</button></nav></header>'
                '<div class="panes"><aside><form role="search"><input id="q" type="search" autocomplete="off" '
@@ -1335,6 +1374,16 @@ def build(hub, out, title, home=(), with_previews=True):
     hub.stills = copy_stills(hub, out)
     for sub in ("places", "posts"):   # only our own folders: other pages live in OUT too
         shutil.rmtree(os.path.join(out, sub), ignore_errors=True)
+    # One map page per state or country with a pin, in a folder named after it, most posts first.
+    n = {}
+    for post in hub.posts:
+        for a in {hub.top_area(hub.places[k]) for k, *_ in post["pins"]} - {None}:
+            n[a] = n.get(a, 0) + 1
+    areas = sorted(n, key=lambda a: (-n[a], hub.places[a]["name"]))
+    hub.map_folders = {a: hub.places[a]["slug"] for a in areas if hub.places[a]["slug"] not in OWN_FOLDERS}
+    for folder in old_map_folders(out) - set(hub.map_folders.values()):
+        shutil.rmtree(os.path.join(out, folder), ignore_errors=True)
+    maps = [(hub.map_folders[a], hub.places[a]["name"], n[a]) for a in areas if a in hub.map_folders]
     for place in hub.places.values():
         write(os.path.join(out, "places", place["slug"] + ".html"), place_page(hub, place))
     for post in hub.posts:
@@ -1342,8 +1391,28 @@ def build(hub, out, title, home=(), with_previews=True):
     extra = [(f, t) for f, t in (("decisions.html", "Your decisions"), ("moves.html", "Saves to move"),
                                  ("pins.html", "Pins to check"))
              if os.path.exists(os.path.join(out, f))]
-    write(os.path.join(out, "index.html"), index_page(hub, title, extra, home))
+    write(os.path.join(out, "index.html"), index_page(hub, title, extra, home, maps=maps))
+    for a, folder in hub.map_folders.items():
+        page = index_page(hub, f"Saved places: {hub.places[a]['name']}", extra, area=a, maps=maps)
+        write(os.path.join(out, folder, "index.html"), page.replace("<head>", f"<head>{MAP_MARK}", 1))
     return thumbs
+
+
+OWN_FOLDERS = {"places", "posts", "thumbs", "previews", "stills"}
+MAP_MARK = "<!-- build-hub: area map -->"
+
+
+def old_map_folders(out):
+    """Folders in OUT holding an area map an earlier build wrote (marked), so a state that no longer
+    has a pin loses its page; nothing else in OUT is touched."""
+    found = set()
+    for name in os.listdir(out) if os.path.isdir(out) else ():
+        page = os.path.join(out, name, "index.html")
+        if name not in OWN_FOLDERS and os.path.isfile(page):
+            with open(page, encoding="utf-8") as fh:
+                if MAP_MARK in fh.read(4096):
+                    found.add(name)
+    return found
 
 
 def main(argv=None):

@@ -5,7 +5,7 @@ description: Build the saves hub, a local website made from the data repo. It ha
 
 # Build Hub
 
-Turns the data repo's files into a small website in `.cache/hub/`. The site has three kinds of page:
+Turns the data repo's files into a small website in `.cache/hub/`. The site has four kinds of page:
 
 - **`index.html`: the map.** Saves near each other are grouped into numbered bubbles, which split
   into pins as you zoom in. Each pin opens a popup with:
@@ -37,6 +37,15 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   A single row right above the map says what each kind of pin means. Beside the map is the list of
   places with how many posts name each, and a search box. The search
   looks through captions, creators and place names. On a phone, the map sits above the list.
+- **`<state or country>/index.html`: one map per state or country** (`california/`, `example-land/`)
+  that has a pin. It is the same page, cut down to the posts with a pin there, and to the places and
+  pins inside it, so a road trip that also pins somewhere far away shows only its pins in this
+  state. Its counts are worked out over that cut. The first menu, **Map**, switches between
+  every map: "Every state and country" (the page at `index.html`), then each state or country with
+  its post count, most posts first. Place and post pages link back to their state's map ("← The map
+  of Example State"). Each build removes the folders it wrote last time (they carry a marker
+  comment) before writing them again, so a state with no pins left loses its map; a folder without
+  the marker is never touched.
 - **`places/<name>.html`: one page per place.** Each page has:
   - a small map and a Google Maps link;
   - the place it sits in, and the places inside it, each with its count;
@@ -109,14 +118,15 @@ has one row for colour and one for icon, and lists only the icons on the map, ea
 On a phone, each legend row is one line that scrolls sideways. The small maps on place and post
 pages use the same icons.
 
-The map opens on the pilot's own places (for example, a state). Pins for posts that also name
-somewhere far away are still there when you zoom out.
+A state's map opens on that state. With `--pilot`, the page at `index.html` opens on the pilot's
+own places; pins for posts that also name somewhere far away are still there when you zoom out.
 
 ## Which saves go in
 
+- `--all`: every save. This is what the data repo's `make hub` builds.
 - `--pilot <name>`: the saves in the pilot's collections, plus any save tagged with one of the
-  pilot's places. This is the same rule the tag report uses.
-- `--all`: every save.
+  pilot's places. This is the same rule the tag report uses. Use it to check one pilot on its own
+  (`make hub HUB_PILOT=<name>`).
 
 ## What it reads
 
@@ -147,7 +157,7 @@ page or the spot review page, are kept, and the map page links to them.
 
 1. **Build** from the data repo. Track the build, the look and any fixes with `TaskCreate`.
    ```bash
-   make hub                    # the pilot; PILOT= for every save
+   make hub                    # every save; HUB_PILOT=<name> for one pilot
    ```
    It prints one line of counts: saves, how many have a pin, how many sit at a town, park or spot
    rather than a whole state, place pages, spots, thumbnails and spot stills. A second line is the **venue
@@ -166,10 +176,9 @@ page or the spot review page, are kept, and the map page links to them.
    `data/places.yaml` is wrong (fix it there, or with the `lookup:` field and **tag-saves**'
    `add_places.py`). A missing spot comes from **resolve-post-location**. A missing thumbnail comes
    from **fetch-media**. Then build again.
-4. **Going past the pilot** (`--all`) is a change of scope, so ask with `AskUserQuestion` first.
-   The options: build every save now (every tagged save gets a pin, but saves tagged only by
-   collection rules may sit in the wrong place), or keep the pilot until its places, spots and
-   thumbnails look right (a smaller site to check, but the rest of the saves wait).
+4. **Check a new state on its own map.** After a new place runs through tagging, spots and
+   thumbnails, open its map (`/<state>/`) and look for pins outside it. Saves tagged only by
+   collection rules can sit in the wrong place; those show up there, and on the moves page.
 
 ## Example
 
@@ -187,7 +196,7 @@ State, and a spot from `data/pins.yaml`, Example Falls, near Example Bay. The bu
 
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
-| `scripts/build_hub.py` | Writes the site to `.cache/hub/`: the map, one page per place, one page per post, the thumbnails, and each post's small picture and flipbook | After tagging, finding spots or fetching thumbnails, to see the result | `python3 scripts/build_hub.py --pilot <name>` (or `--all`; `--out DIR` for another folder; `--no-previews` to skip the small pictures) |
-| `scripts/test_build_hub.py` | Offline tests on an invented data repo: which saves go in, where the pins go, the "State or country" menu (a town abroad under its country), spot pages, links up and down, thumbnails, small pictures and flipbooks on the lists (and `--no-previews`), a kept Google id opening its exact place, a chain keeping its search for every branch, and captions that try to break the page | After any change to the build script | `python3 scripts/test_build_hub.py` |
+| `scripts/build_hub.py` | Writes the site to `.cache/hub/`: the map, one map per state or country, one page per place, one page per post, the thumbnails, and each post's small picture and flipbook | After tagging, finding spots or fetching thumbnails, to see the result | `python3 scripts/build_hub.py --all` (or `--pilot <name>`; `--out DIR` for another folder; `--no-previews` to skip the small pictures) |
+| `scripts/test_build_hub.py` | Offline tests on an invented data repo: which saves go in, where the pins go, a map per state with only its pins (and old map folders cleared), the "State or country" menu (a town abroad under its country), spot pages, links up and down, thumbnails, small pictures and flipbooks on the lists (and `--no-previews`), a kept Google id opening its exact place, a chain keeping its search for every branch, and captions that try to break the page | After any change to the build script | `python3 scripts/test_build_hub.py` |
 | `scripts/decisions_page.py` | Writes `.cache/hub/decisions.html`, everything waiting on a person: Google's place to pick per spot (numbered options that open the exact place, "A chain: any branch near here" and "None of these", building one `make google-ids PICK=… NONE=… CHAIN=…` line), spots to check, saves to move, answers not merged, reels waiting on a fetch go-ahead, and a hand-kept list of decisions made elsewhere | After any step that leaves something for a person; the data repo's `make hub` runs it first, so the map links it. Give it the hub's own scope: it works out each post's hub page name the way the build does, so the links are right on a first build and when two codes differ only by case | `python3 scripts/decisions_page.py --pilot <name> --links docs/tasks/elsewhere.yaml` (or `--all`; `--out PATH`) |
 | `scripts/test_decisions_page.py` | Offline tests on invented data: which Google picks still show (not picked or marked a chain since, same search, still a spot), the chain option, spots to check versus shown at their town, answers waiting, reels waiting, the hand-kept list (done ones left out, only http links), escaping, the page holding only ids of Google's, and post links using the build's page names (codes that differ only by case, a post outside the pilot) | After any change to the decisions script | `python3 scripts/test_decisions_page.py` |
