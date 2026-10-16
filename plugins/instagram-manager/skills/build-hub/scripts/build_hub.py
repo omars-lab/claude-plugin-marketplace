@@ -5,6 +5,7 @@ names, a page per place listing every saved post that names it, and a page per p
     build_hub.py --pilot NAME     the pilot's saves (`pilots:` in config/collections.yaml)
     build_hub.py --all            every save
     options: --out DIR            where to write (default $INSTAGRAM_HOME/.cache/hub)
+             --no-previews        leave out the small pictures and flipbooks
 
 Reads   $INSTAGRAM_HOME/.cache/saves.json          caption, creator, link, saved date, collections
         $INSTAGRAM_HOME/config/topics.yaml         topic labels
@@ -26,6 +27,8 @@ Writes  OUT/index.html                             the map, the list of places, 
         OUT/posts/<code>.html                      one page per post
         OUT/thumbs/<code>.jpg                      copies of the thumbnails media.yaml lists
         OUT/stills/<code>/                         copies of the stills and clips stills.yaml lists
+        OUT/previews/<code>.jpg, .webp             a small picture and a flipbook per post, for the lists
+                                                   (extract-stills' previews.py, made when missing)
 Only places/ and posts/ are cleared on each build; other pages in OUT (the moves page, the pin
 review page) are left alone.
 
@@ -53,6 +56,11 @@ in the post page's row of places, where the clip plays on hover or with its Play
 their area's moment (`how: area`) share that one picture: the post page shows it once, titled with
 the area, and lists its spots under it.
 
+The lists of posts (a place page's cards, the posts under the map after a search) show each post's
+small picture, about 5 KB. Its flipbook, about 50 KB, loads and plays only while it is on screen, at
+most previews.MAX_PLAYING at once, so a list of hundreds of posts stays light. A spot's still, where
+there is one, comes first on its place page, as above.
+
 Spots are grouped across posts by their OpenStreetMap id, else by name and area. A spot with the
 same name as its area (a park and its waterfall) is shown on the area's page.
 
@@ -77,6 +85,7 @@ from urllib.parse import quote_plus
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared", "scripts"))
+sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, "extract-stills", "scripts"))
 
 import google_places  # noqa: E402
 from home import cache  # noqa: E402
@@ -84,6 +93,7 @@ from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import Places, load_yaml  # noqa: E402
 from purposes import NO_PURPOSE, PURPOSES, load as load_purposes  # noqa: E402
+import previews  # noqa: E402  extract-stills; ffmpeg and img2webp are needed only for posts not made yet
 
 MEDIA_DEFAULT = os.path.join("~", "Library", "Mobile Documents", "com~apple~CloudDocs", "CloudDesktop", "data",
                              "instagram")
@@ -368,7 +378,7 @@ class Hub:
             "caption": s["caption"], "saved": saved_on(s), "collections": s["collections"],
             "topics": [t for t in tag.get("topics") or [] if isinstance(t, str)],
             "exact": spot_keys + [a for a in leaves if a not in {self.places[k]["parent"] for k in spot_keys}],
-            "areas": areas, "pins": pins, "thumb_src": thumb_src, "thumb": None, "shots": shots,
+            "areas": areas, "pins": pins, "thumb_src": thumb_src, "thumb": None, "pv": None, "pa": None, "shots": shots,
             "tagged_purposes": [t for t in tag.get("purposes") or [] if isinstance(t, str)]})
 
     def _slugs(self):
@@ -479,6 +489,17 @@ def thumb_html(post, up=True, cls="thumb"):
     return f'<span class="{cls} ph" aria-hidden="true">{esc(post["kind"])}</span>'
 
 
+def pv_html(post, up=True, cls="thumb"):
+    """The post's small picture, which turns into its flipbook while on screen (previews.PLAYER_JS);
+    the thumbnail when there is no preview."""
+    if not post["pv"]:
+        return thumb_html(post, up, cls)
+    pre = "../" if up else ""
+    anim = f' data-anim="{pre}{esc(post["pa"])}"' if post["pa"] else ""
+    return (f'<img class="{cls}" src="{pre}{esc(post["pv"])}" data-poster="{pre}{esc(post["pv"])}"{anim} alt="" '
+            'loading="lazy" decoding="async">')
+
+
 # OpenStreetMap types that say what a road or building is, not what the place is: a bridge on a main
 # road comes back as "primary". These show as "Spot".
 NOT_A_KIND = {"yes", "primary", "secondary", "tertiary", "trunk", "motorway", "residential", "unclassified",
@@ -541,7 +562,7 @@ def card(hub, place, post):
     who = f'@{esc(post["user"])}' if post["user"] else "an unknown creator"
     label = "The caption says" if found else "The caption opens"
     return (f'<article class="card"><a class="tlink" href="{post_href(post)}" tabindex="-1" aria-hidden="true">'
-            f'{still_html(post, x, "thumb") if x else thumb_html(post)}</a><div class="cbody">'
+            f'{still_html(post, x, "thumb") if x else pv_html(post)}</a><div class="cbody">'
             f'<p class="who"><a href="{post_href(post)}">{who}</a>'
             + (f' <span class="muted">· saved {esc(post["saved"])}</span>' if post["saved"] else "") + '</p>'
             f'<p class="said"><span class="label">{label}</span> {text}</p>'
@@ -596,7 +617,8 @@ def place_page(hub, place):
                f'<section><h2>Saved posts that name it</h2><div class="cards">'
                + "".join(card(hub, place, p) for p in posts) + '</div></section></main>')
     clips = CLIP_JS if any(hub.shot(p, place["key"]) for p in posts) else ""
-    return shell(place["name"], content, LEAFLET if box else "", js + clips)
+    flips = previews.player_js() if any(p["pa"] and not hub.shot(p, place["key"]) for p in posts) else ""
+    return shell(place["name"], content, LEAFLET if box else "", js + clips + flips)
 
 
 def post_page(hub, post):
@@ -727,7 +749,10 @@ function placesList(rows){
 function postsList(rows){
   var ol=el('ol','rlist');
   rows.forEach(function(p){
-    var a=link(p.f,null);a.appendChild(el('span','rwho',p.u?'@'+p.u:'Unknown creator'));
+    var a=link(p.f,null);
+    if(p.pv){var img=el('img','rpv');img.src=img.dataset.poster=p.pv;if(p.pa)img.dataset.anim=p.pa;
+      img.alt='';img.loading='lazy';img.decoding='async';a.appendChild(img);a.classList.add('has-pv')}
+    a.appendChild(el('span','rwho',p.u?'@'+p.u:'Unknown creator'));
     a.appendChild(el('span','rtext',p.t||''));var li=el('li');li.appendChild(a);ol.appendChild(li);
   });
   return ol;
@@ -788,7 +813,8 @@ function search(){
     ' match. '+n+' pin'+(n===1?' is':'s are')+' on the map.'));
   if(pls.length){out.appendChild(el('h2',null,'Places'));out.appendChild(placesList(pls))}
   if(ps.length){out.appendChild(el('h2',null,'Posts'));out.appendChild(postsList(ps.slice(0,100)));
-    if(ps.length>100)out.appendChild(el('p','said','Showing the first 100.'))}
+    if(ps.length>100)out.appendChild(el('p','said','Showing the first 100.'));
+    if(window.flipbooks)window.flipbooks(out)}
 }
 
 if(!window.L){$('#out').textContent='The map could not load (no connection to cdnjs?). The place pages still work.';return}
@@ -865,6 +891,7 @@ def index_page(hub, title, extra_links, home=()):
                     "k": ("spot" if p["spot"] else kind_word(p).lower()), "g": inside[i],
                     **({"x": 1} if p.get("placed") else {})} for i, p in enumerate(places)],
         "posts": [{"c": p["code"], "u": p["user"], "f": post_href(p, up=False), "i": p["url"], "th": p["thumb"],
+                   **({"pv": p["pv"]} if p["pv"] else {}), **({"pa": p["pa"]} if p["pa"] else {}),
                    "t": short(p["caption"], POPUP_CHARS), "g": picks[i], "pl": [pidx[k] for k in hub.named(p)],
                    "q": " ".join([p["user"], p["name"], p["caption"]] + [hub.places[k]["name"] for k in hub.named(p)]),
                    **({"sp": {str(pidx[x["key"]]): x["still"] for x in p["shots"] if x["still"]}}
@@ -891,7 +918,8 @@ def index_page(hub, title, extra_links, home=()):
                '<span><i class="pin pin-wide"></i>only the state or country</span></div>'
                '<div id="out" aria-live="polite"></div></aside><div id="map"></div></div>')
     js = MAP_JS.replace("__DATA__", data_json(data)).replace("__TILES__", TILES).replace("__CREDIT__", CREDIT)
-    return shell(title, content, LEAFLET + CLUSTER, f"<script>{js}</script>", body="hub")
+    flips = previews.player_js() if any(p["pa"] for p in posts) else ""   # before the map script, which uses it
+    return shell(title, content, LEAFLET + CLUSTER, f"{flips}<script>{js}</script>", body="hub")
 
 
 CSS = """
@@ -974,6 +1002,8 @@ ol{list-style:none;margin:0;padding:0}
 .pkind{grid-column:1;color:var(--muted);font-size:.82rem}
 .pcount{grid-row:1/3;grid-column:2;align-self:center;font-variant-numeric:tabular-nums;color:var(--muted);font-weight:700}
 .rlist a{display:grid;padding:7px 10px;border-radius:8px;text-decoration:none;color:var(--fg)}
+.rlist a.has-pv{grid-template-columns:48px minmax(0,1fr);column-gap:10px;align-content:start}
+.rpv{grid-row:1/3;width:48px;height:64px;border-radius:6px;object-fit:cover;display:block;background:var(--line)}
 .rwho{font-weight:700}
 .rtext{color:var(--muted);font-size:.88rem;overflow-wrap:anywhere}
 
@@ -1093,9 +1123,23 @@ def write(path, text):
         fh.write(text)
 
 
-def build(hub, out, title, home=()):
+def make_previews(hub, out):
+    """Each post's small picture and flipbook in OUT/previews (extract-stills' previews.py, which
+    makes only the ones missing or older than their source). Returns how many have a picture and a
+    flipbook."""
+    made = previews.make_all([p["code"] for p in hub.posts], os.path.join(out, "previews"),
+                             names={p["code"]: p["file"] for p in hub.posts})
+    for post in hub.posts:
+        m = made.get(post["code"]) or {}
+        post["pv"] = "previews/" + m["poster"] if m.get("poster") else None
+        post["pa"] = "previews/" + m["anim"] if m.get("anim") and post["pv"] else None
+    return sum(1 for p in hub.posts if p["pv"]), sum(1 for p in hub.posts if p["pa"])
+
+
+def build(hub, out, title, home=(), with_previews=True):
     os.makedirs(out, exist_ok=True)
     thumbs = copy_thumbs(hub, out)
+    hub.previews = make_previews(hub, out) if with_previews else (0, 0)
     hub.stills = copy_stills(hub, out)
     for sub in ("places", "posts"):   # only our own folders: other pages live in OUT too
         shutil.rmtree(os.path.join(out, sub), ignore_errors=True)
@@ -1116,6 +1160,7 @@ def main(argv=None):
     scope.add_argument("--all", action="store_true", help="every save")
     ap.add_argument("--out", default=None, help="where to write the site (default .cache/hub)")
     ap.add_argument("--saved", default=None, help="saves.json (default: the data repo's .cache)")
+    ap.add_argument("--no-previews", action="store_true", help="leave out the small pictures and flipbooks")
     args = ap.parse_args(argv)
 
     pilots = load_yaml(os.path.join("config", "collections.yaml")).get("pilots") or {}
@@ -1147,7 +1192,7 @@ def main(argv=None):
     hub = Hub(scoped, tags, Places.load(), pins, media, topics, media_dir, purposes, stills)
     out = os.path.abspath(args.out or cache("hub"))
     title = f"Saved places: {args.pilot.replace('-', ' ').title()}" if args.pilot else "Saved places"
-    thumbs = build(hub, out, title, (pilot or {}).get("cities") or ())
+    thumbs = build(hub, out, title, (pilot or {}).get("cities") or (), not args.no_previews)
 
     pinned = sum(1 for p in hub.posts if p["pins"])
     exact = sum(1 for p in hub.posts if any(style != "wide" for *_, style in p["pins"]))
@@ -1157,11 +1202,13 @@ def main(argv=None):
     if hub.no_pin:
         log("hub_no_pin", places=len(hub.no_pin), names=",".join(sorted(hub.no_pin))[:300])
     log("hub", scope=args.pilot or "all", saves=len(hub.posts), pinned=pinned, pins=n_pins,
-        posts_with_2plus_pins=multi, more_exact_than_state=exact, place_pages=len(hub.places), spots=spots, thumbs=thumbs, stills=hub.stills, pins_file=bool(pins), media_file=bool(media),
+        posts_with_2plus_pins=multi, more_exact_than_state=exact, place_pages=len(hub.places), spots=spots, thumbs=thumbs, stills=hub.stills,
+        previews=hub.previews[0], flipbooks=hub.previews[1], pins_file=bool(pins), media_file=bool(media),
         out=out)
     print(f"{len(hub.posts)} saves: {pinned} on the map ({exact} at a town, park or spot) "
           f"with {n_pins} pins, one per place a post names ({multi} posts have 2 or more); "
-          f"{len(hub.places)} place pages ({spots} spots); {thumbs} thumbnails; {hub.stills} spot stills")
+          f"{len(hub.places)} place pages ({spots} spots); {thumbs} thumbnails; {hub.stills} spot stills; "
+          f"{hub.previews[0]} small pictures, {hub.previews[1]} with a flipbook")
     venues = venue_check(hub)
     log("hub_venues", **{k: len(v) for k, v in venues.items()}, town_only_codes=",".join(venues["town"]))
     print(f"eat or stay posts: {len(venues['spot'])} open a spot OpenStreetMap placed, {len(venues['placed'])} "

@@ -523,7 +523,9 @@ class Page(Home):
         self.assertEqual(page.count('class="save has-pv"'), sum(
             1 for group in (pins, review) for c in group if c in ("TOWNA", "PARKA")))
         self.assertIn("IntersectionObserver", page)
-        self.assertIn(f"n < {pins_page.MAX_PLAYING}", page)
+        self.assertIn(f"MAX={pins_page.previews.MAX_PLAYING},", page)
+        page, _ = pins_page.build(pins, review, {}, {}, {"PARKA": pv["PARKA"]})
+        self.assertNotIn("IntersectionObserver", page)   # no flipbook, so no player
         self.assertEqual(pins_page.preview_html("X", {}, None), "")
 
 

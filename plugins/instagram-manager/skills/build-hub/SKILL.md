@@ -37,8 +37,10 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   - the place it sits in, and the places inside it, each with its count;
   - a card for every saved post that names it.
 
-  A card shows the thumbnail (or a grey box), @creator, the caption's own words for the place
-  (highlighted), the post's topics, and links to the post's page and to Instagram.
+  A card shows the spot's still, else the post's small picture (else a grey box), @creator, the
+  caption's own words for the place (highlighted), the post's topics, and links to the post's page
+  and to Instagram. A reel's small picture turns into a short flipbook while it is on screen (see
+  "Lists of many posts" below).
 - **`posts/<code>.html`: one page per post.** The thumbnail, the full caption, the creator, the
   date it was saved, its topics and collections, a link to every place it names (each with a
   Google Maps link), and the Instagram link; a post that names one place also gets an "Open in
@@ -104,6 +106,14 @@ somewhere far away are still there when you zoom out.
 | `data/pins-review.yaml` | spots OpenStreetMap did not place: dashed pins at their town | fine: no dashed pins |
 | `data/media.yaml` + `$INSTAGRAM_MEDIA_DIR` | thumbnails; copied into `.cache/hub/thumbs/` | fine: grey boxes |
 | `data/stills.yaml` + `$INSTAGRAM_MEDIA_DIR` | a still and clip per spot; copied into `.cache/hub/stills/` | fine: the reel's cover |
+| `ffmpeg`, `img2webp` | the small pictures and flipbooks in `.cache/hub/previews/` (**extract-stills**' `previews.py`, made only when missing or older than their source) | fine: the full thumbnail; `--no-previews` skips them |
+
+**Lists of many posts.** A place page can list a hundred posts, and the map's post list after a
+search up to a hundred. Each shows the post's small picture (144 × 192, about 5 KB, loaded only
+when near the screen). A reel's flipbook (12 frames from the whole video, about 50 KB) loads and
+plays only while at least 60% of its picture is on screen, at most 8 at once, and turns back into
+the picture when it scrolls away. With reduced motion asked for, it plays only under the pointer.
+The post page and the map popup keep the full thumbnail.
 
 Each build clears and rewrites `places/` and `posts/`. Other pages in the folder, like the moves
 page or the spot review page, are kept, and the map page links to them.
@@ -147,5 +157,5 @@ State, and a spot from `data/pins.yaml`, Example Falls, near Example Bay. The bu
 
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
-| `scripts/build_hub.py` | Writes the site to `.cache/hub/`: the map, one page per place, one page per post, and the thumbnails | After tagging, finding spots or fetching thumbnails, to see the result | `python3 scripts/build_hub.py --pilot <name>` (or `--all`; `--out DIR` for another folder) |
-| `scripts/test_build_hub.py` | Offline tests on an invented data repo: which saves go in, where the pins go, spot pages, links up and down, thumbnails, a kept Google id opening its exact place, and captions that try to break the page | After any change to the build script | `python3 scripts/test_build_hub.py` |
+| `scripts/build_hub.py` | Writes the site to `.cache/hub/`: the map, one page per place, one page per post, the thumbnails, and each post's small picture and flipbook | After tagging, finding spots or fetching thumbnails, to see the result | `python3 scripts/build_hub.py --pilot <name>` (or `--all`; `--out DIR` for another folder; `--no-previews` to skip the small pictures) |
+| `scripts/test_build_hub.py` | Offline tests on an invented data repo: which saves go in, where the pins go, spot pages, links up and down, thumbnails, small pictures and flipbooks on the lists (and `--no-previews`), a kept Google id opening its exact place, and captions that try to break the page | After any change to the build script | `python3 scripts/test_build_hub.py` |

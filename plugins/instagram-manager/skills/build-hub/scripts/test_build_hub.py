@@ -292,6 +292,49 @@ class Hub(unittest.TestCase):
         self.assertIn('Spot here: <a href="../places/example-cafe.html">Example Cafe</a>', post)
         self.assertIn('src="../stills/PARK1/still-area-fixture-park.jpg"', self.page("places/example-pool.html"))
 
+    def test_post_lists_show_a_small_picture_and_a_flipbook(self):
+        asked = {}
+
+        def fake(codes, out, redo=False, names=None):   # previews.py has its own tests; here only the pages
+            asked.update(out=out, names=names)
+            return {c: {"poster": names[c] + ".jpg", "anim": names[c] + ".webp" if c == "TOWN1" else None}
+                    if c in ("TOWN1", "STATE1") else {"poster": None, "anim": None} for c in codes}
+
+        real, build_hub.previews.make_all = build_hub.previews.make_all, fake
+        try:
+            self.assertIn("2 small pictures, 1 with a flipbook", self.build("--pilot", "fixture"))
+        finally:
+            build_hub.previews.make_all = real
+        self.assertEqual(asked["out"], os.path.join(self.out, "previews"))
+        self.assertEqual(asked["names"]["casea"], "casea-2")      # named as the post pages are
+
+        town = self.page("places/fixture-town.html")
+        self.assertIn('src="../previews/TOWN1.jpg" data-poster="../previews/TOWN1.jpg" '
+                      'data-anim="../previews/TOWN1.webp"', town)
+        self.assertIn("window.flipbooks", town)                    # the player is on the page
+        self.assertIn(f"MAX={build_hub.previews.MAX_PLAYING},", town)
+        self.assertIn('src="../thumbs/TOWN1.jpg"', self.page("posts/TOWN1.html"))   # the post page keeps the cover
+
+        state = self.page("places/fixture-state.html")
+        self.assertIn('src="../previews/STATE1.jpg" data-poster="../previews/STATE1.jpg" alt=""', state)
+        posts = {p["c"]: p for p in self.data()["posts"]}
+        self.assertEqual((posts["TOWN1"]["pv"], posts["TOWN1"]["pa"]), ("previews/TOWN1.jpg", "previews/TOWN1.webp"))
+        self.assertNotIn("pa", posts["STATE1"])
+        self.assertNotIn("pv", posts["PARK1"])
+        index = self.page("index.html")
+        self.assertLess(index.index("window.flipbooks=function"), index.index("var D="))   # ready before the list
+
+    def test_no_previews_leaves_them_out(self):
+        called = []
+        real, build_hub.previews.make_all = build_hub.previews.make_all, lambda *a, **k: called.append(1)
+        try:
+            self.build("--pilot", "fixture", "--no-previews")
+        finally:
+            build_hub.previews.make_all = real
+        self.assertEqual(called, [])
+        self.assertNotIn("data-poster", self.page("places/fixture-town.html"))
+        self.assertNotIn("window.flipbooks=function", self.page("index.html"))
+
     def test_builds_without_pins_or_media(self):
         os.remove(os.path.join(self.root, "data", "pins.yaml"))
         os.remove(os.path.join(self.root, "data", "media.yaml"))

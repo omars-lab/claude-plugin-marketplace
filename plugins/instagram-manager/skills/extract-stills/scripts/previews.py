@@ -27,7 +27,6 @@ sys.path.insert(0, os.path.join(SKILLS, os.pardir, "shared", "scripts"))
 sys.path.insert(0, os.path.join(SKILLS, "read-frames", "scripts"))
 sys.path.insert(0, os.path.join(SKILLS, "build-hub", "scripts"))
 import read_frames as rf  # noqa: E402
-from build_hub import Hub  # noqa: E402
 from home import cache, home  # noqa: E402
 from log import log  # noqa: E402
 from places import load_yaml  # noqa: E402
@@ -39,6 +38,30 @@ FRAME_MS = 350
 QUALITY = 45             # img2webp -lossy -q
 TIMEOUT = 120
 FIT = f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}"
+
+
+MAX_PLAYING = 8          # flipbooks moving at once on a page
+
+# For a page that shows them: <img src=PICTURE data-poster=PICTURE data-anim=FLIPBOOK>. A flipbook
+# loads and plays only while its picture is on screen (at least 60% of it, inside any scrolled box),
+# at most MAX_PLAYING at once, and turns back into the picture when it scrolls away. With reduced
+# motion asked for, it plays only while the pointer is on it. A list drawn later calls
+# window.flipbooks(itsBox); pictures taken off the page are dropped.
+PLAYER_JS = """<script>(function(){var MAX=__MAX__,imgs=[],seen=new Set(),held=null,
+auto=!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches),
+io='IntersectionObserver' in window?new IntersectionObserver(function(es){
+es.forEach(function(e){if(e.isIntersecting)seen.add(e.target);else seen.delete(e.target)});refresh()},{threshold:0.6}):null;
+function refresh(){var n=0;imgs=imgs.filter(function(i){if(i.isConnected)return true;seen.delete(i);if(io)io.unobserve(i);return false});
+imgs.forEach(function(i){var play=i===held||(auto&&seen.has(i)&&n<MAX);if(play&&i!==held)n++;
+var want=play?i.getAttribute('data-anim'):i.getAttribute('data-poster');if(i.getAttribute('src')!==want)i.setAttribute('src',want)})}
+window.flipbooks=function(root){(root||document).querySelectorAll('img[data-anim]:not([data-flip])').forEach(function(i){
+i.setAttribute('data-flip','');imgs.push(i);
+i.addEventListener('mouseenter',function(){held=i;refresh()});i.addEventListener('mouseleave',function(){held=null;refresh()});
+if(io)io.observe(i)});refresh()};window.flipbooks(document);})();</script>"""
+
+
+def player_js():
+    return PLAYER_JS.replace("__MAX__", str(MAX_PLAYING))
 
 
 def media_dir():
@@ -97,13 +120,15 @@ def make(code, entry, src_dir, out, redo=False, name=None):
     return got
 
 
-def make_all(codes, out=None, redo=False):
+def make_all(codes, out=None, redo=False, names=None):
     """{code: {"poster", "anim"}} for each code, logging one line per post it makes. Files are named
-    as the hub names its post pages, since two codes can differ by case alone and a Mac's disk does
-    not."""
+    as the hub names its post pages (`names`, {code: name}, or worked out here), since two codes can
+    differ by case alone and a Mac's disk does not."""
     media = load_yaml(os.path.join(home(), "data", "media.yaml"))
     src, out = media_dir(), out or out_dir()
-    names = Hub._files(list(codes))
+    if names is None:
+        from build_hub import Hub
+        names = Hub._files(list(codes))
     made = {}
     def stamps(name):
         return [os.path.getmtime(p) if os.path.isfile(p) else None

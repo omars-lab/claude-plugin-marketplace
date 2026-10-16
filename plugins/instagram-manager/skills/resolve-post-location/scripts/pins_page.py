@@ -18,7 +18,7 @@ so it stays under .cache, never in git.
 Each save shows a small preview (extract-stills' previews.py, made here when missing): a 144 x 192
 picture, about 5 KB, that loads only as it nears the screen, and for a reel with a video a flipbook
 of 12 frames from the whole reel, a few dozen KB. A flipbook loads and plays only while its save is
-on screen, at most MAX_PLAYING at once, and turns back into the picture when it scrolls away, so a
+on screen, at most previews.MAX_PLAYING at once, and turns back into the picture when it scrolls away, so a
 page of hundreds of saves stays light. With reduced motion asked for, a flipbook plays only while
 the pointer is on it. --no-previews leaves them out.
 """
@@ -37,8 +37,7 @@ from home import cache  # noqa: E402
 from log import log  # noqa: E402
 from places import load_yaml  # noqa: E402
 from resolve_post_location import NO_SPOT, PINS, REVIEW  # noqa: E402
-
-MAX_PLAYING = 8   # flipbooks moving at once
+import previews  # noqa: E402  extract-stills; ffmpeg and img2webp are needed only for posts not made yet
 
 TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -107,9 +106,9 @@ def codes_shown(pins, review):
                   if any(isinstance(e, dict) for e in group[c] or []))
 
 
-def build(pins, review, no_spot, saves, previews=None):
-    """The page, and the number of map markers. `previews` is {code: {"poster", "anim"}}."""
-    previews = previews or {}
+def build(pins, review, no_spot, saves, shown=None):
+    """The page, and the number of map markers. `shown` is {code: {"poster", "anim"}}."""
+    shown = shown or {}
     markers, cards, review_cards, i = [], [], [], 0
     for group, out, is_review in ((pins, cards, False), (review, review_cards, True)):
         for code in sorted(group):
@@ -117,7 +116,7 @@ def build(pins, review, no_spot, saves, previews=None):
             if not entries:
                 continue
             save = saves.get(code) or {}
-            out.append(save_card(code, entries, save, i, is_review, previews.get(code)))
+            out.append(save_card(code, entries, save, i, is_review, shown.get(code)))
             for e in entries:
                 if e.get("lat") is not None and e.get("lon") is not None and not e.get("drop"):
                     markers.append({"i": i, "lat": e["lat"], "lon": e["lon"], "review": is_review,
@@ -139,7 +138,8 @@ def build(pins, review, no_spot, saves, previews=None):
             .replace("{{PINS}}", "".join(cards) or empty)
             .replace("{{REVIEW}}", "".join(review_cards) or '<p class="empty">Nothing to review.</p>')
             .replace("{{N_REVIEW}}", str(n_review))
-            .replace("{{MAX_PLAYING}}", str(MAX_PLAYING)).replace("{{TILES}}", TILES).replace("{{CREDIT}}", CREDIT).replace("{{DATA}}", data))
+            .replace("{{PLAYER}}", previews.player_js() if any((v or {}).get("anim") for v in shown.values()) else "")
+            .replace("{{TILES}}", TILES).replace("{{CREDIT}}", CREDIT).replace("{{DATA}}", data))
     return page, len(markers)
 
 
@@ -252,37 +252,8 @@ q { display: inline-block; background: var(--quote-bg); padding: .05rem .4rem; b
     b.addEventListener("click", function () { on(+b.dataset.i, true); });
   });
 })();
-// Flipbooks: each loads and plays only while its save is on screen, at most {{MAX_PLAYING}} at once,
-// and turns back into its picture when it scrolls away. With reduced motion, only on pointing.
-(function () {
-  var imgs = Array.prototype.slice.call(document.querySelectorAll("img[data-anim]"));
-  if (!imgs.length) return;
-  var auto = !(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
-  var seen = new Set(), held = null;
-  function show(img, play) {
-    var want = play ? img.dataset.anim : img.dataset.poster;
-    if (img.getAttribute("src") !== want) img.setAttribute("src", want);
-  }
-  function refresh() {
-    var n = 0;
-    imgs.forEach(function (img) {
-      var play = img === held || (auto && seen.has(img) && n < {{MAX_PLAYING}});
-      if (play && img !== held) n++;
-      show(img, play);
-    });
-  }
-  imgs.forEach(function (img) {
-    img.addEventListener("mouseenter", function () { held = img; refresh(); });
-    img.addEventListener("mouseleave", function () { held = null; refresh(); });
-  });
-  if (!("IntersectionObserver" in window)) return;
-  var io = new IntersectionObserver(function (es) {
-    es.forEach(function (e) { if (e.isIntersecting) seen.add(e.target); else seen.delete(e.target); });
-    refresh();
-  }, {threshold: 0.6});
-  imgs.forEach(function (img) { io.observe(img); });
-})();
 </script>
+{{PLAYER}}
 </body>
 </html>
 """
@@ -302,7 +273,6 @@ def main(argv=None):
     out = args.out or cache(os.path.join("hub", "pins.html"))
     shown = {}
     if not args.no_previews:
-        import previews   # extract-stills; needs ffmpeg and img2webp only for posts not made yet
         shown = previews.make_all(codes_shown(pins, review), os.path.join(os.path.dirname(out), "previews"))
     page, n = build(pins, review, no_spot, saves, shown)
     os.makedirs(os.path.dirname(out), exist_ok=True)
