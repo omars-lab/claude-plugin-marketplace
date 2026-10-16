@@ -42,7 +42,9 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   Google Maps" button.
   A reel with spot stills (**extract-stills**) also gets "The places in the video": one picture per
   spot, in the order they show in the video, each linking to the spot's page with its time in the
-  reel and a "Play 3 s" button that plays the clip.
+  reel and a "Play 3 s" button that plays the clip. Spots the video shows only by their area
+  ("Stop 2. Big Sur") share their area's picture: it shows once, titled with the area, with
+  "Spots here:" linking each of them.
 
 **Spot stills.** Where a spot has a still in `data/stills.yaml`, its place page card and its map
 popup show that still instead of the reel's cover. The clip plays while the pointer is on a

@@ -247,6 +247,33 @@ class Hub(unittest.TestCase):
         self.assertEqual(posts["PARK1"]["sp"], {str(falls): "stills/PARK1/still-example-falls.jpg"})   # the map popup
         self.assertNotIn("sp", posts["PARK2"])
 
+    def test_spots_shown_by_their_area_share_one_picture(self):
+        pool = {"name": "Example Pool", "said": "the pool", "near": "Fixture Park", "lat": 11.2, "lon": 21.2}
+        cafe = {"name": "Example Cafe", "said": "a cafe", "near": "Fixture Town", "lat": 10.6, "lon": 20.6}
+        self.write("data/pins.yaml", {**PINS, "PARK1": [SPOT, pool, cafe]})
+        park = {"frame": 2, "t": 2.0, "how": "area", "area": "Fixture Park",
+                "still": "PARK1/spots/still-area-fixture-park.jpg", "clip": "PARK1/spots/clip-area-fixture-park.webp"}
+        town = {"frame": 3, "t": 5.0, "how": "area", "area": "The Town",   # an alias: the hub resolves it
+                "still": "PARK1/spots/still-area-the-town.jpg", "clip": "PARK1/spots/clip-area-the-town.webp"}
+        self.write("data/stills.yaml", {"PARK1": [{"name": "Example Falls", "said": "Example Falls trail", **park},
+                                                  {"name": "Example Pool", "said": "the pool", **park},
+                                                  {"name": "Example Cafe", "said": "a cafe", **town}]})
+        os.makedirs(os.path.join(self.media, "PARK1", "spots"))
+        for f in ("still-area-fixture-park.jpg", "clip-area-fixture-park.webp", "still-area-the-town.jpg",
+                  "clip-area-the-town.webp"):
+            with open(os.path.join(self.media, "PARK1", "spots", f), "wb") as fh:
+                fh.write(b"not really an image")
+        self.build("--pilot", "fixture")
+        post = self.page("posts/PARK1.html")
+        self.assertIn("The places in the video (2)", post)   # two pictures for three spots
+        self.assertIn("or, for spots the video doesn't name, the moment their area is", post)
+        self.assertIn('alt="The Fixture Park part of the reel, 0:02 into the reel"', post)
+        self.assertIn('Spots here: <a href="../places/example-falls.html">Example Falls</a>, '
+                      '<a href="../places/example-pool.html">Example Pool</a>', post)
+        self.assertIn('<figcaption><a href="../places/fixture-town.html">Fixture Town</a>', post)
+        self.assertIn('Spot here: <a href="../places/example-cafe.html">Example Cafe</a>', post)
+        self.assertIn('src="../stills/PARK1/still-area-fixture-park.jpg"', self.page("places/example-pool.html"))
+
     def test_builds_without_pins_or_media(self):
         os.remove(os.path.join(self.root, "data", "pins.yaml"))
         os.remove(os.path.join(self.root, "data", "media.yaml"))

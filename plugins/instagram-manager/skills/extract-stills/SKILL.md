@@ -34,11 +34,17 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
      its `lookup` are on screen, in either text reader's words from read-frames' `text.json`
      (letters and digits in order, so odd OCR spacing still matches). A reel with no `text.json`
      gets one made with read-frames' own code;
+   - a spot whose own name never shows takes the moment its area (`near`) is on screen, as road-trip
+     reels do ("Stop 2. Big Sur", then its viewpoints only in the caption). It gets `how: area` and
+     shares one `still-area-<slug>.jpg` with the area's other spots. Only when the reel shows two or
+     more of its areas at different times, never from a frame naming several (a title card, a map),
+     and never for a whole state or country: one area on screen is the whole reel, not a part of it;
    - it cuts `$INSTAGRAM_MEDIA_DIR/<code>/spots/still-<slug>.jpg` (600 px wide) and
      `clip-<slug>.webp` (3 s, 320 px wide, 10 frames a second, silent, looping). A moment within
      3 s of the end starts the clip earlier, so every clip runs its full 3 s;
    - it writes one entry per spot to `data/stills.yaml`: the frame, the time, how it was found
-     (`on_screen`, `hand`, `not_on_screen` or `cut_failed`) and the two file paths. The files stay
+     (`on_screen`, `area` with the `area:` it used, `hand`, `not_on_screen` or `cut_failed`) and the
+     two file paths. The files stay
      in iCloud; git keeps only the pointers.
 
    A rerun cuts only spots that are new or whose time changed. `--redo` cuts every one again.
@@ -50,7 +56,8 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
    `by: hand`. The next run cuts it there and keeps that time on every run after.
 4. **Build the hub** (**build-hub**, `make hub`). Each spot with a still shows it on its place page
    card and in its map popup, and the post page gets "The places in the video": one picture per
-   spot in the order they show in the video, each with a Play button. The pointer playing the clip
+   spot (one per area for spots shown by their area) in the order they show in the video, each with
+   a Play button. The pointer playing the clip
    on hover is turned off when the viewer asks for reduced motion.
 5. **Commit `data/stills.yaml`** in the data repo. Never a still or a clip.
 
@@ -60,7 +67,7 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
 |---|---|---|---|
 | `scripts/extract_stills.py` | A still and a 3 s clip per spot, cut where its name is on screen; writes `data/stills.yaml` | After new videos or spots land, or after a hand-set `t:` | `python3 scripts/extract_stills.py --pilot <name>` (`--all`, `--redo`) |
 | `scripts/extract_stills.py --need-video` | Lists the reels naming 2 or more spots with no video yet; cuts nothing | Before asking to fetch videos for stills | `python3 scripts/extract_stills.py --need-video --pilot <name>` |
-| `scripts/test_extract_stills.py` | Offline tests on an invented data folder and an ffmpeg-made video: the moment picked, a spot never on screen, a rerun cutting nothing, a hand time kept, a clip near the end, the need-video list | After any change to the script | `python3 scripts/test_extract_stills.py` |
+| `scripts/test_extract_stills.py` | Offline tests on an invented data folder and an ffmpeg-made video: the moment picked, a spot never on screen, a road-trip spot taking its area's moment (and a title card, one area or a state not counting), a rerun cutting nothing, a hand time kept, a clip near the end, the need-video list | After any change to the script | `python3 scripts/test_extract_stills.py` |
 
 In the data repo: `make stills` (`STILLS_REDO=1` to cut again), `make stills-need-video`, then
 `make media-video VIDEO_LIST=.cache/stills/need-video.txt MEDIA_LIMIT=<n>`.

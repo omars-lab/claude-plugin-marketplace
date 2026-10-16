@@ -119,7 +119,8 @@ class Stills(unittest.TestCase):
         self.assertEqual((by["Example Cove Beach"]["frame"], by["Example Cove Beach"]["t"]), (2, 2.0))
         self.assertEqual((by["Example Lookout"]["frame"], by["Example Lookout"]["t"]), (3, 4.0))
         self.assertEqual(by["Example Diner"], {"name": "Example Diner", "said": "the diner", "how": "not_on_screen"})
-        self.assertIn("2 spots have a still and a clip (2 cut this run), 1 never show", out)
+        self.assertIn("2 spots have a still and a clip (2 cut this run; 0 from the moment their area is on screen), "
+                      "1 never show", out)
 
         cove = by["Example Cove Beach"]
         self.assertEqual(cove["still"], "LISTED/spots/still-example-cove-beach.jpg")
@@ -139,11 +140,11 @@ class Stills(unittest.TestCase):
     def test_a_rerun_cuts_nothing_new_and_a_hand_time_is_kept(self):
         self.run_stills()
         rows = self.read("data/stills.yaml")
-        self.assertIn("(0 cut this run)", self.run_stills())
+        self.assertIn("(0 cut this run;", self.run_stills())
         diner = next(r for r in rows["LISTED"] if r["name"] == "Example Diner")
         diner.update({"t": 1.0, "by": "hand"})   # a person saw the diner at 1 s
         self.write("data/stills.yaml", rows)
-        self.assertIn("(1 cut this run)", self.run_stills())
+        self.assertIn("(1 cut this run;", self.run_stills())
         diner = next(r for r in self.read("data/stills.yaml")["LISTED"] if r["name"] == "Example Diner")
         self.assertEqual((diner["t"], diner["how"], diner["by"]), (1.0, "hand", "hand"))
         self.assertTrue(os.path.isfile(self.media(diner["still"])))
@@ -160,14 +161,48 @@ class Stills(unittest.TestCase):
         rows = [line.split() for line in info.splitlines() if re.match(r"\s*\d+:", line)]
         self.assertEqual([int(r[6]) for r in rows], [1000, 2000])
 
+    def road_trip(self, *texts):
+        """The lookout moves to a second town, and each frame shows the given text."""
+        self.write("data/pins.yaml", {"LISTED": SPOTS[:2] + [{**SPOTS[2], "said": "the lookout", "near": "Fixture Bay"}]})
+        frames = [{"n": i + 1, "t": 2.0 * i, "file": f"frame-0{i + 1}.jpg", "text": t} for i, t in enumerate(texts)]
+        self.write("text.json", {"video": "LISTED/video.mp4", "seconds": 6.0, "frames": frames, "sheets": []},
+                   base=self.media("LISTED", "frames"))
+        out = self.run_stills()
+        return {r["name"]: r for r in self.read("data/stills.yaml")["LISTED"]}, out
+
+    def test_a_road_trip_spot_gets_the_moment_its_area_is_on_screen(self):
+        self.write("data/places.yaml", {"places": {**PLACES["places"], "Fixture Bay": {"kind": "city", "lat": 41, "lon": -121}}})
+        # The title card names both towns, so it is nobody's moment.
+        by, out = self.road_trip("Fixture Town to Fixture Bay", "Stop 1. Fixture Town", "Stop 2. Fixture Bay")
+        for spot in ("Example Cove Beach", "Example Diner"):   # neither name is on screen; their town is
+            self.assertEqual((by[spot]["how"], by[spot]["area"], by[spot]["t"]), ("area", "Fixture Town", 2.0))
+            self.assertEqual(by[spot]["still"], "LISTED/spots/still-area-fixture-town.jpg")
+        self.assertEqual((by["Example Lookout"]["area"], by["Example Lookout"]["t"]), ("Fixture Bay", 4.0))
+        self.assertTrue(os.path.isfile(self.media("LISTED/spots/clip-area-fixture-town.webp")))
+        self.assertIn("(2 cut this run; 3 from the moment their area is on screen)", out)
+
+    def test_one_area_on_screen_is_the_whole_reel_not_a_part(self):
+        self.write("data/places.yaml", {"places": {**PLACES["places"], "Fixture Bay": {"kind": "city", "lat": 41, "lon": -121}}})
+        by, _ = self.road_trip("Free things to do in Fixture Town", "", "")
+        self.assertEqual({r["how"] for r in by.values()}, {"not_on_screen"})
+
+    def test_a_whole_state_on_screen_is_not_an_area(self):
+        self.write("data/pins.yaml", {"LISTED": [{**SPOTS[1], "near": "Fixture State"}]})
+        self.write("text.json", {"video": "LISTED/video.mp4", "seconds": 6.0, "frames": [
+            {"n": 1, "t": 0.0, "file": "frame-01.jpg", "text": "Best of Fixture State"}], "sheets": []},
+            base=self.media("LISTED", "frames"))
+        self.run_stills()
+        self.assertEqual(self.read("data/stills.yaml")["LISTED"][0]["how"], "not_on_screen")
+
     def test_need_video_lists_the_reels_with_two_spots_and_no_video(self):
-        self.write("data/pins.yaml", {"LISTED": SPOTS, "NOVID": SPOTS[:2], "GONE": SPOTS[:2]})
-        self.write("data/media.yaml", {**MEDIA, "GONE": {"error": "not_found"}})
-        self.write("data/tags.yaml", {**TAGS, "GONE": {"cities": ["Fixture Town"]}})
-        self.write(".cache/saves.json", {"saves": [save("LISTED"), save("NOVID"), save("GONE")]})
+        self.write("data/pins.yaml", {"LISTED": SPOTS, "NOVID": SPOTS[:2], "GONE": SPOTS[:2], "NOSHOW": SPOTS[:2]})
+        self.write("data/media.yaml", {**MEDIA, "GONE": {"error": "not_found"},
+                                       "NOSHOW": {"kind": "reel", "thumb": "NOSHOW/thumb.jpg", "video_error": "not_found"}})
+        self.write("data/tags.yaml", {**TAGS, "GONE": {"cities": ["Fixture Town"]}, "NOSHOW": {"cities": ["Fixture Town"]}})
+        self.write(".cache/saves.json", {"saves": [save(c) for c in ("LISTED", "NOVID", "GONE", "NOSHOW")]})
         self.assertIn("1 reels naming 2 spots have no video yet", self.run_stills("--need-video"))
         with open(self.path(".cache/stills/need-video.txt")) as fh:
-            self.assertEqual(fh.read(), "NOVID\n")   # GONE was not found last time, so it is not asked for again
+            self.assertEqual(fh.read(), "NOVID\n")   # GONE and NOSHOW failed last time, so they are not asked for again
         self.write("data/pins.yaml", PINS)   # one spot: its cover is already its picture
         self.run_stills("--need-video")
         with open(self.path(".cache/stills/need-video.txt")) as fh:

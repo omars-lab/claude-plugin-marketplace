@@ -26,9 +26,14 @@ How the moment is picked
   The frames read-frames took (the first, then one per scene change) and the words read on each.
   The spot's moment is the first frame where the words the caption used for it (`said`), its
   OpenStreetMap name or its `lookup` are on screen, letters and digits in order (the same test the
-  frame merge uses). A spot whose name is never on screen gets `how: not_on_screen` and no files:
-  the hub shows the reel's cover for it, and a person can set `t:` (seconds) on the entry by hand,
-  marked `by: hand`, to cut it there on the next run.
+  frame merge uses). Road-trip reels often put only the area on screen ("Stop 2. Big Sur") and leave
+  its viewpoints to the caption: a spot whose own name never shows takes the first frame showing its
+  area (`near`, never a whole state or country), gets `how: area` and `area: <name>`, and shares that
+  one still and clip with the other spots of the area. Only when the reel shows two or more of its
+  areas at different times, and never a frame naming several (a title card, a map): one area on
+  screen is what the whole reel is about, so it marks no part of it. A spot with neither gets
+  `how: not_on_screen` and no files: the hub shows the reel's cover for it, and a person can set
+  `t:` (seconds) on the entry by hand, marked `by: hand`, to cut it there on the next run.
 
 Every ffmpeg and img2webp call has a timeout.
 """
@@ -82,6 +87,29 @@ def moment(e, info):
     return None
 
 
+def area_of(e, places):
+    """The area a spot sits in (`near`), when it is smaller than a state; else None."""
+    near = e.get("near")
+    if not isinstance(near, str) or not near.strip():
+        return None
+    return None if (places.get(near) or {}).get("kind") in ("state", "country") else near
+
+
+def area_moments(spots, info, places):
+    """{area: (frame, seconds)} for a reel that moves through its areas one after another: the first
+    frame naming that area and no other of the reel's areas (a title card or map naming several is
+    skipped). Empty unless two or more areas show at different times; one area on screen is the
+    whole reel, not a part of it."""
+    areas = sorted({a for a in (area_of(e, places) for e in spots if isinstance(e, dict)) if a})
+    found = {}
+    for f in sorted(info.get("frames") or [], key=lambda f: f.get("t") or 0):
+        seen = rpl.frame_words(f)
+        named = [a for a in areas if rpl.on_screen(a, seen)]
+        if len(named) == 1 and named[0] not in found:
+            found[named[0]] = (f["n"], float(f["t"]))
+    return found if len({t for _, t in found.values()}) >= 2 else {}
+
+
 def cut_still(video, t, path):
     rc, _, _ = rf.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{t:.2f}", "-i", video,
                        "-frames:v", "1", "-vf", f"scale={STILL_WIDTH}:-2", "-q:v", "3", path], TIMEOUT)
@@ -113,7 +141,7 @@ def files_there(code, entry):
     return all(os.path.isfile(os.path.join(rpl.media_dir(), entry[k])) for k in ("still", "clip") if entry.get(k))
 
 
-def do_post(code, spots, video, old, redo):
+def do_post(code, spots, video, old, redo, places=None):
     """The stills.yaml entries for one reel's spots."""
     info = rf.frame_info(code)
     if info is None:
@@ -123,36 +151,52 @@ def do_post(code, spots, video, old, redo):
         return [], 0
     length = info.get("seconds")
     before = {key_of(e): e for e in old or [] if isinstance(e, dict)}
-    out, cut, used = [], 0, set()
+    out, cut, used, done = [], 0, set(), {}   # done: an area's still, cut once and shared this run
+    by_area = area_moments(spots, info, places or {})
     for e in spots:
         if not isinstance(e, dict) or not isinstance(e.get("name"), str):
             continue
         prev = before.get(key_of(e)) or {}
+        area = None
         if prev.get("by") == "hand" and isinstance(prev.get("t"), (int, float)):
             found = (prev.get("frame"), float(prev["t"]))
         else:
             found = moment(e, info)
+            if found is None:
+                area = area_of(e, places or {})
+                found = by_area.get(area)
+                area = area if found else None
         row = {"name": e["name"], "said": e.get("said") or e["name"]}
         if found is None:
             out.append({**row, "how": "not_on_screen"})
             continue
         n, t = found
-        name = slug(e["name"])
-        while name in used:   # two spots with one name in one reel
-            name += "-2"
-        used.add(name)
-        row.update({"frame": n, "t": round(t, 2), "how": "hand" if prev.get("by") == "hand" else "on_screen",
+        if area:
+            name = "area-" + slug(area)
+        else:
+            name = slug(e["name"])
+            while name in used:   # two spots with one name in one reel
+                name += "-2"
+            used.add(name)
+        how = "hand" if prev.get("by") == "hand" else "area" if area else "on_screen"
+        row.update({"frame": n, "t": round(t, 2), "how": how, **({"area": area} if area else {}),
                     "still": f"{code}/spots/still-{name}.jpg", "clip": f"{code}/spots/clip-{name}.webp"})
         if prev.get("by") == "hand":
             row["by"] = "hand"
+        if row["still"] in done:   # another spot of this area already cut it
+            out.append(row if done[row["still"]] else {**{k: row[k] for k in ("name", "said", "frame", "t")},
+                                                       "how": "cut_failed"})
+            continue
         same = prev.get("still") == row["still"] and prev.get("t") == row["t"]
         if same and not redo and files_there(code, row):
+            done[row["still"]] = True
             out.append(row)
             continue
         folder = os.path.join(rpl.media_dir(), code, "spots")
         os.makedirs(folder, exist_ok=True)
         ok = cut_still(video, t, os.path.join(rpl.media_dir(), row["still"]))
         ok = cut_clip(video, t, os.path.join(rpl.media_dir(), row["clip"]), length) and ok
+        done[row["still"]] = ok
         if not ok:
             log("stills_cut_failed", shortcode=code, spot=name)
             out.append({**{k: row[k] for k in ("name", "said", "frame", "t")}, "how": "cut_failed"})
@@ -164,10 +208,12 @@ def do_post(code, spots, video, old, redo):
 
 def need_video(saves, tags, media, pins, pilot):
     """The reels whose spots would all share one cover: 2 or more spots, and no video yet."""
+    def asked(m):   # a video, or an error (gone, login wall, no video): not tried again
+        return any(k in m for k in ("video", "error", "video_error"))
+
     codes = [s["code"] for s in saves
              if len(pins.get(s["code"]) or []) >= 2 and (media.get(s["code"]) or {}).get("kind", s.get("kind")) == "reel"
-             and not (media.get(s["code"]) or {}).get("video") and not (media.get(s["code"]) or {}).get("error")
-             and in_pilot(s, tags.get(s["code"]), pilot)]   # an error (gone, login wall) is not tried again
+             and not asked(media.get(s["code"]) or {}) and in_pilot(s, tags.get(s["code"]), pilot)]
     path = cache(NEED_VIDEO)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
@@ -203,24 +249,28 @@ def main(argv=None):
     if args.need_video:
         return need_video(saves, tags, media, pins, pilot)
     stills = load_yaml(STILLS)
-    reels = cut = shown = hidden = 0
+    places = load_yaml(os.path.join("data", "places.yaml")).get("places") or {}
+    reels = cut = shown = by_area = hidden = 0
     for s in saves:
         code = s["code"]
         video = (media.get(code) or {}).get("video")
         if not video or not pins.get(code) or not in_pilot(s, tags.get(code), pilot):
             continue
         log("stills_post", shortcode=code, spots=len(pins[code]))
-        rows, n = do_post(code, pins[code], os.path.join(rpl.media_dir(), video), stills.get(code), args.redo)
+        rows, n = do_post(code, pins[code], os.path.join(rpl.media_dir(), video), stills.get(code), args.redo, places)
         if rows:
             stills[code] = rows
         reels += 1
         cut += n
         shown += sum(1 for r in rows if r.get("still"))
+        by_area += sum(1 for r in rows if r.get("how") == "area")
         hidden += sum(1 for r in rows if r.get("how") == "not_on_screen")
     rpl.write_yaml(STILLS, stills)
-    log("stills", scope=args.pilot or "all", reels=reels, cut=cut, with_still=shown, not_on_screen=hidden)
-    print(f"{reels} reels with a video: {shown} spots have a still and a clip ({cut} cut this run), "
-          f"{hidden} never show their name on screen (the hub shows the reel's cover for those)")
+    log("stills", scope=args.pilot or "all", reels=reels, cut=cut, with_still=shown, by_area=by_area,
+        not_on_screen=hidden)
+    print(f"{reels} reels with a video: {shown} spots have a still and a clip ({cut} cut this run; "
+          f"{by_area} from the moment their area is on screen), "
+          f"{hidden} never show their name or area on screen (the hub shows the reel's cover for those)")
     print(os.path.join(home(), STILLS))
     return 0
 

@@ -19,8 +19,8 @@ Reads   $INSTAGRAM_HOME/.cache/saves.json          caption, creator, link, saved
         $INSTAGRAM_HOME/data/media.yaml            each post's thumbnail (optional, the same way)
         $INSTAGRAM_MEDIA_DIR/<code>/thumb.jpg      the thumbnails themselves
         $INSTAGRAM_HOME/data/stills.yaml           a still and a 3 s clip per spot a reel names, cut
-                                                   where its name is on screen (extract-stills;
-                                                   optional, the same way)
+                                                   where its name, or else its area, is on screen
+                                                   (extract-stills; optional, the same way)
 Writes  OUT/index.html                             the map, the list of places, a search box
         OUT/places/<slug>.html                     one page per place
         OUT/posts/<code>.html                      one page per post
@@ -49,7 +49,9 @@ The menus over the map
   outdoors"), plus any `purposes` the tagger gave it; a post that names only towns has none yet.
 
 A spot with a still shows it in place of the post's cover: on the spot's page, in its map popup, and
-in the post page's row of places, where the clip plays on hover or with its Play button.
+in the post page's row of places, where the clip plays on hover or with its Play button. Spots cut at
+their area's moment (`how: area`) share that one picture: the post page shows it once, titled with
+the area, and lists its spots under it.
 
 Spots are grouped across posts by their OpenStreetMap id, else by name and area. A spot with the
 same name as its area (a park and its waterfall) is shown on the area's page.
@@ -279,7 +281,9 @@ class Hub:
         def shot(key, name):
             r = cut.get(name.strip().lower())
             if r and all(x["key"] != key for x in shots):
-                shots.append({"key": key, "name": name, "t": number(r.get("t")),
+                area = r.get("area") if r.get("how") == "area" and isinstance(r.get("area"), str) else None
+                area = (self.p.resolve(area) or area) if area else None
+                shots.append({"key": key, "name": name, "t": number(r.get("t")), "area": area,
                               "still_src": os.path.join(media_dir, r["still"]),
                               "clip_src": os.path.join(media_dir, r["clip"]) if isinstance(r.get("clip"), str) else None,
                               "still": None, "clip": None})
@@ -519,7 +523,8 @@ def at(t):
 def still_html(post, x, cls, up=True):
     pre = "../" if up else ""
     clip = f' data-clip="{pre}{esc(x["clip"])}"' if x["clip"] else ""
-    alt = f'{x["name"]}, {at(x["t"])} into the reel' if x["t"] is not None else x["name"]
+    when = f', {at(x["t"])} into the reel' if x["t"] is not None else ""
+    alt = f'The {x["area"]} part of the reel{when}' if x.get("area") else x["name"] + when
     return f'<img class="{cls}" src="{pre}{esc(x["still"])}"{clip} alt="{esc(alt)}" loading="lazy">'
 
 
@@ -617,15 +622,30 @@ def post_page(hub, post):
     credit = f"from @{esc(post['user'])}'s {esc(post['kind'])}" if post["user"] else f"from the {esc(post['kind'])}"
     gallery = ""
     if shots:
-        gallery = (f'<section><h2>The places in the video ({len(shots)})</h2>'
-                   '<p class="muted hint">Each picture is the moment the place\'s name is on screen. Hover, or press '
-                   'Play, for 3 seconds of the video.</p><div class="shots">'
-                   + "".join(f'<figure class="shotc"><a href="{place_href(hub.places[x["key"]])}">'
-                             f'{still_html(post, x, "shot")}</a><figcaption><a href="{place_href(hub.places[x["key"]])}">'
-                             f'{esc(hub.places[x["key"]]["name"])}</a><span class="muted">'
-                             + (f'{at(x["t"])} · ' if x["t"] is not None else "") + f'{credit}</span>'
-                             + ('<button class="play" type="button" aria-pressed="false">Play 3 s</button>' if x["clip"] else "")
-                             + '</figcaption></figure>' for x in shots) + '</div></section>')
+        # Spots shown by their area's moment share one picture: one figure for the area, its spots under it.
+        figures = []
+        for x in shots:
+            same = next((f for f in figures if x.get("area") and f[0]["still"] == x["still"]), None)
+            same.append(x) if same else figures.append([x])
+
+        def figure(group):
+            x = group[0]
+            link = lambda k: f'<a href="{place_href(hub.places[k])}">{esc(hub.places[k]["name"])}</a>'
+            area = hub.places.get(x["area"]) if x.get("area") else None
+            first = place_href(area) if area else place_href(hub.places[x["key"]])
+            title = (link(x["area"]) if area else f'<b>{esc(x["area"])}</b>') if x.get("area") else link(x["key"])
+            spots = ('<span class="muted">' + ("Spot" if len(group) == 1 else "Spots") + " here: "
+                     + ", ".join(link(g["key"]) for g in group) + "</span>") if x.get("area") else ""
+            return (f'<figure class="shotc"><a href="{first}">{still_html(post, x, "shot")}</a><figcaption>{title}'
+                    f'<span class="muted">' + (f'{at(x["t"])} · ' if x["t"] is not None else "") + f'{credit}</span>'
+                    + spots + ('<button class="play" type="button" aria-pressed="false">Play 3 s</button>' if x["clip"] else "")
+                    + '</figcaption></figure>')
+        by_area = any(x.get("area") for x in shots)
+        gallery = (f'<section><h2>The places in the video ({len(figures)})</h2>'
+                   '<p class="muted hint">Each picture is the moment the place\'s name is on screen'
+                   + (", or, for spots the video doesn't name, the moment their area is" if by_area else "")
+                   + '. Hover, or press Play, for 3 seconds of the video.</p><div class="shots">'
+                   + "".join(figure(g) for g in figures) + '</div></section>')
     content = (f'<main class="page"><nav class="top"><a href="../index.html">&larr; The map</a></nav>'
                f'<header><h1>{esc(who)}</h1><p class="sub">A saved {esc(post["kind"])}'
                + (f' · saved {esc(post["saved"])}' if post["saved"] else "") + '</p></header>'
@@ -994,6 +1014,7 @@ ul.inline{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px
 .shotc figcaption{display:grid;gap:2px;font-size:.9rem;min-width:0;overflow-wrap:anywhere}
 .shotc figcaption a{font-weight:700}
 .shotc figcaption .muted{font-size:.8rem}
+.shotc figcaption .muted a{font-weight:400}
 .play{justify-self:start;margin-top:2px;font:700 .8rem var(--body);padding:4px 12px;border-radius:999px;cursor:pointer;
   border:1px solid var(--accent);background:transparent;color:var(--accent)}
 .play[aria-pressed="true"]{background:var(--accent);color:var(--card)}

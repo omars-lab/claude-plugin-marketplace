@@ -379,6 +379,17 @@ class Video(Home):
         self.assertIn("kind=file_streak", self.log_lines("rate_limited")[0])
         self.assertNotIn("video", self.media().get("REELA", {}))
 
+    def test_a_reel_instagram_will_not_serve_keeps_its_thumbnail(self):
+        self.run_main(args=("--pilot", "fixture", "--limit", "1"))   # REELA's thumbnail first
+        thumb = dict(self.media()["REELA"])
+        empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
+        with open(self.codes, "w") as fh:
+            fh.write("REELA\nREELB\n")
+        self.run_main({"REELA": empty}, args=("--video", self.codes))
+        self.assertEqual(self.media()["REELA"], {**thumb, "video_error": "not_found"})
+        self.run_main(args=("--video", self.codes))
+        self.assertEqual(self.ydl.calls, [])   # neither is asked for again
+
     def test_pick_video(self):
         url, w, h = fetch_media.pick_video({"formats": [{"url": "a", "width": 360, "height": 640}]})
         self.assertEqual((url, w, h), ("a", 360, 640))   # nothing big enough: the largest there is

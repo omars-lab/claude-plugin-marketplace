@@ -16,7 +16,8 @@ Writes  $INSTAGRAM_MEDIA_DIR/<code>/thumb.jpg       about 600 px wide (iCloud; n
         $INSTAGRAM_HOME/data/media.yaml             <code>: {thumb: <code>/thumb.jpg, kind, fetched: <date>}
                                                     or <code>: {error: private|login_wall|not_found|no_image};
                                                     --video adds video, cover, video_size, sound, video_fetched
-                                                    (or video_error: no_video|not_a_reel)
+                                                    (or video_error: no_video|not_a_reel|not_found|...,
+                                                    beside the thumbnail it already had)
         $INSTAGRAM_HOME/.cache/logs/fetch-media.log one ev= line per event
         $INSTAGRAM_HOME/.cache/fetch-media.lock     held while a run goes; a second run refuses
         $INSTAGRAM_HOME/.cache/fetch-media.cooldown.json   written on a stop; runs refuse until it ends
@@ -568,11 +569,11 @@ class Run:
             log("post_bad", shortcode=code, reason=err or "unknown", msg=msg[:200])
             self.bad += 1
             self.empty_streak = 0
-            return {"error": err} if err else None
+            return self.failed(code, err) if err else None
         if self.watcher.stop:
             raise Stop(*self.watcher.stop)
         if self.pending_empty:   # the empty answer before this one was that post, not a block
-            self.media[self.pending_empty] = {"error": "not_found"}
+            self.media[self.pending_empty] = self.failed(self.pending_empty, "not_found")
             self.pending_empty = None
         self.empty_streak = 0
         self.watch_rules(code, self.watcher.watch)
@@ -611,6 +612,13 @@ class Run:
         log("post_ok", shortcode=code, kind=kind, bytes=os.path.getsize(dst), secs=round(time.time() - t0, 1),
             ig_requests=self.watcher.ig, path="page")
         return {"thumb": f"{code}/thumb.jpg", "kind": kind, "fetched": now().date().isoformat()}
+
+    def failed(self, code, err):
+        """The entry for a post Instagram would not serve. A --video run keeps what media.yaml already has
+        (the thumbnail stays on its pages) and notes the error beside it, so the reel is not asked for again."""
+        if self.video:
+            return {**(self.media.get(code) or {}), "video_error": err}
+        return {"error": err}
 
     def fetch_video(self, code, info, t0):
         """--video: the reel's video and its full cover, added to its media.yaml entry."""
