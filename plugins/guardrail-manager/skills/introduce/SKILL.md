@@ -68,7 +68,8 @@ Guardrail Manager: advisory hooks for the mistakes tests never catch.
 - Restates the branch before a git commit or push while that is true
 - Reminds about a review step the transcript shows this session skipped
 - Denies git commands that resolve a conflict with -X ours/theirs, -s ours, checkout --ours/--theirs
-- The reminders are silent until a repo opts in; the conflict guard is on by default; every hook has a selftest
+- Says when a checkout is set to bare or its hooks folder points outside the repo, and denies setting either
+- The reminders are silent until a repo opts in; both git guards are on by default; every hook has a selftest
 ```
 
 ### Step 2: Ask What They Need
@@ -115,11 +116,12 @@ guardrail-manager (this plugin)
   examples/
     ├── concurrent-session.conf
     ├── policy-review.conf
-    └── git-conflicts.conf          — opt-out only; the guard needs no conf to run
+    ├── git-conflicts.conf          — opt-out only; the guard needs no conf to run
+    └── git-settings.conf           — opt-out only, same as above
 ```
 
 ## Requirements
 
 - Python 3 (standard library only).
-- Conf files live in `<repo>/.claude/hooks/`. `concurrent-session.conf` and `git-conflicts.conf`
-  also honour a global fallback at `~/.claude/hooks/<name>`.
+- Conf files live in `<repo>/.claude/hooks/`. `concurrent-session.conf`, `git-conflicts.conf` and
+  `git-settings.conf` also honour a global fallback at `~/.claude/hooks/<name>`.
