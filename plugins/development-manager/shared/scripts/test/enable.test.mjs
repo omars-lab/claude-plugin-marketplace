@@ -93,6 +93,49 @@ test("enable sets up comments and answering, merges settings, and runs twice the
   }
 });
 
+test("--behind keeps the command in config.json and makes a target with no quoting", () => {
+  const { repo, cleanup } = tempRepo({ comments: false });
+  try {
+    seed(repo);
+    const cmd = `python3 -m http.server {port} --bind 127.0.0.1 --directory "site"`;
+    const r = enable(["--behind", cmd, "--port", "8766"], repo);
+    assert.equal(r.code, 0, r.stderr);
+    const config = JSON.parse(readFileSync(join(repo, ".page-comments", "config.json"), "utf8"));
+    assert.deepEqual(config.serve, { behind: cmd, port: 8766 });
+    assert.match(readFileSync(join(repo, "Makefile"), "utf8"), /\ncomments:.*\n\t@\.page-comments\/run serve --port 8766\n/);
+    assert.match(r.stdout, /Start it:\s+make comments/);
+    assert.equal(enable(["--behind", cmd, "--root", "site"], repo).code, 2, "one mode at a time");
+  } finally {
+    cleanup();
+  }
+});
+
+test("a repo whose own serve runs the comment server gets no make comments, and loses an old one", () => {
+  const { repo, cleanup } = tempRepo({ comments: false });
+  try {
+    seed(repo);
+    assert.equal(enable(["--root", "site"], repo).code, 0);
+    assert.match(readFileSync(join(repo, "Makefile"), "utf8"), /page-comments:begin/);
+    // The repo moves the comment server into its own serve target.
+    const own = ".PHONY: serve\nserve:\n\t@.page-comments/run serve --port $(or $(PORT),8765) --behind 'python3 -m http.server {port} --bind 127.0.0.1'\n";
+    writeFileSync(join(repo, "Makefile"), own + readFileSync(join(repo, "Makefile"), "utf8").slice(MAKEFILE.length));
+    const r = enable(["--behind", "python3 -m http.server {port} --bind 127.0.0.1", "--port", "8765"], repo);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(readFileSync(join(repo, "Makefile"), "utf8"), own, "the marked block is gone; the repo's serve is untouched");
+    assert.match(r.stdout, /make serve already starts the comment server/);
+    assert.match(r.stdout, /Start it:\s+make serve/);
+    const install = JSON.parse(readFileSync(join(repo, ".page-comments", "install.json"), "utf8"));
+    assert.ok(!install.changes.some((c) => c.kind === "make"), "nothing for undo to take out of the Makefile");
+    assert.match(readFileSync(join(repo, "CLAUDE.md"), "utf8"), /or the make target that runs it/);
+    const u = enable(["--undo"], repo);
+    assert.equal(u.code, 0, u.stderr);
+    assert.equal(readFileSync(join(repo, "Makefile"), "utf8"), own);
+    assert.match(u.stdout, /careful: make serve still runs \.page-comments\/run serve/);
+  } finally {
+    cleanup();
+  }
+});
+
 test("undo puts every file back byte for byte", () => {
   const { repo, cleanup } = tempRepo({ comments: false });
   try {
@@ -172,6 +215,22 @@ test("check proves the loop and leaves no test thread behind", async () => {
     const threads = spawnSync("ls", [join(repo, ".page-comments", "threads")], { encoding: "utf8" }).stdout.trim();
     assert.equal(threads, "", "only the hidden .gitkeep is left");
     assert.ok(!existsSync(join(repo, ".page-comments", ".state", "server.json")), "the check server leaves no server record");
+  } finally {
+    cleanup();
+  }
+});
+
+test("check proves the loop with --behind, starting the page server and stopping it", async () => {
+  const { repo, cleanup } = tempRepo({ comments: false });
+  try {
+    seed(repo);
+    const port = await firstFreePort(20750);
+    const cmd = `${JSON.stringify(process.execPath)} -e "require('http').createServer((q,s)=>{s.writeHead(200,{'content-type':'text/html'});s.end('<html><body>Hi</body></html>')}).listen(+process.env.PORT,'127.0.0.1')"`;
+    assert.equal(enable(["--behind", cmd, "--port", String(port)], repo).code, 0);
+    const r = enable(["--check"], repo);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /ok\s+pages get the comment bar/);
+    assert.match(r.stdout, /The loop works/);
   } finally {
     cleanup();
   }

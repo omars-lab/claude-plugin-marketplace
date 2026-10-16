@@ -20,7 +20,7 @@ The list of changes is kept in `.page-comments/install.json`.
 | Where | What | Why |
 |---|---|---|
 | `.page-comments/` | `threads/` (one file per comment thread), `config.json`, `.gitattributes`, `.gitignore`, and the `run` launcher | Comments are saved here and tracked in git like any other file. `config.json` also says where screenshots go (`shotsDir`). |
-| `Makefile` | A `comments` target between `# page-comments:begin` and `# page-comments:end` | One command starts the comment server. If the repo has no Makefile, none is made; the report gives the command instead. |
+| `Makefile` | A `comments` target between `# page-comments:begin` and `# page-comments:end` | One command starts the comment server. If the repo has no Makefile, none is made; the report gives the command instead. If one of the repo's own targets (like `serve`) already runs `.page-comments/run serve`, no `comments` target is added, and an old one is taken out: that target is the one command. |
 | `.claude/settings.json` | `"development-manager@<marketplace>": true` under `enabledPlugins`, merged into what is there | Every session opened in this repo, on any machine with the plugin installed, gets the answering skill and the watcher. The skill is not copied into the repo, so there is only one version of it. |
 | `CLAUDE.md` | A short "Page comments" section between `<!-- page-comments:begin -->` and `<!-- page-comments:end -->` | It tells Claude: when the watcher prints a comment, follow `development-manager:answer-page-comments`. |
 | `post-commit` git hook | A small hook in the repo's own hooks folder (`.git/hooks/`, or the `core.hooksPath` folder when that is inside `.git/` or ignored by git). A post-commit hook that was already there is renamed to `post-commit.page-comments-prev` and still runs first, with its exit status kept | After each commit it notes which commit took in the uncommitted work a comment was made on, by adding one line to that comment's thread file. It never changes the commit and never stops it. When the hooks folder is committed to the repo (like `.githooks/`), shared with other repos, or hooks are off, it is skipped and the report says why |
@@ -52,6 +52,7 @@ When a session starts or resumes in a repo with comments waiting on Claude, the 
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/enable.mjs --detect` | Finds how the repo serves its pages, and the mode that fits | First, before enabling | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --detect --repo <repo>` |
+| `scripts/enable.mjs --behind '<cmd>'` | Enables, with the comment server starting the repo's own server behind it on a spare port, and stopping it on exit. `{port}` in the command (or `$PORT`) is that port. The command is kept in `config.json`, so `.page-comments/run serve` with no mode runs it | The repo has a dev server and Omar wants one command and one address: the pages, with comments, where he always opens them. Then change the repo's `serve` recipe to `.page-comments/run serve --port <its port> --behind '<its command, with {port}>'` and re-run enable so it drops the separate `comments` target | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --repo <repo> --behind '<cmd with {port}>' --port <port>` |
 | `scripts/enable.mjs --target <url>` | Enables, with the comment server in front of the repo's own server | The repo has a dev server (make target, npm script, Python server) | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --repo <repo> --target http://127.0.0.1:<port>` |
 | `scripts/enable.mjs --root <dir>` | Enables, with the comment server serving a folder of pages itself | Plain HTML, no server | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --repo <repo> --root <dir>` |
 | `scripts/enable.mjs --check` | Proves the loop: the setting, the CLAUDE.md note, the watcher, and a test comment it can see; with `--vite`, a test comment on the Vite dev server's own port too | Right after enabling, and whenever comments seem not to arrive | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --check --repo <repo>` |
@@ -99,7 +100,8 @@ TaskCreate({ subject: "Start listening in this session", description: "Start the
        question: "How are this repo's pages served?",
        header: "Pages",
        options: [
-         { label: "A dev server already runs (recommended when there is one)", description: "The comment server sits in front of it, so the site's own API and live reload keep working. You start both." },
+         { label: "The repo's serve starts both (recommended when there is a dev server)", description: "make serve starts the comment server, and the comment server starts the site's own server behind it (--behind). One command, one address, comments always there. Changes the repo's serve recipe." },
+         { label: "A dev server already runs, in front of it", description: "The comment server sits in front of a running server on its own port (--target). The site's API and live reload keep working. You start both, and open the comment port." },
          { label: "A plain folder of HTML", description: "The comment server serves the folder itself. Simplest, but no site API." }
        ],
        multiSelect: false
@@ -107,10 +109,12 @@ TaskCreate({ subject: "Start listening in this session", description: "Start the
    })
    ```
 
-3. **Enable.** Run enable with `--target <url>` or `--root <dir>`.
+3. **Enable.** Run enable with `--behind '<cmd>'`, `--target <url>` or `--root <dir>`.
+   With `--behind`, the comment server takes the port Omar already opens (the repo's own `serve` port), and the site's server moves to a spare one behind it.
+   A server that listens on the network for a phone (like `--lan`) cannot go behind it, since the comment server only listens on `127.0.0.1`; keep that case on the plain command.
    The comment server takes the first free port from 8766 up, unless `--port` says otherwise; a re-run keeps the port it saved.
    When a port it was given is already in use, or the target is another repo's server, the report has a `careful:` line saying which process holds it and what to run instead.
-   If `make comments` later finds its port taken, it says who holds it and names a free port, with no stack trace.
+   If the comment server later finds its port taken, it says who holds it and names a free port, with no stack trace.
    The author name for page comments defaults to the first word of the git user name; pass `--author` to change it.
 
 4. **Check.** Run `--check`.
@@ -135,7 +139,7 @@ TaskCreate({ subject: "Start listening in this session", description: "Start the
 
 6. **Report in plain words.** Say:
    - which mode was used and why;
-   - the command to start the comment server (`make comments`, or the printed command);
+   - the command to start the comment server (`make serve` when the repo's serve runs it, `make comments`, or the printed command);
    - the URL to open, and that C starts a comment;
    - what the check showed, including the install note if there was one;
    - where screenshots go, and the privacy line if enable printed one;
@@ -157,7 +161,7 @@ Tailscale tells the server who is on the other end, and only logins on the repo'
    It serves the comment server's port (8766 unless `--port` said otherwise) as its own HTTPS port, so any other `tailscale serve` entry on the Mac is left alone.
    If that port already serves something else, it stops and changes nothing.
    The allow list starts with the login signed in on this Mac, and comments from it carry the repo's author name.
-2. **The comment server must be running** on the Mac (`make comments`) for the phone to load the page.
+2. **The comment server must be running** on the Mac (`make serve` or `make comments`, whichever the report named) for the phone to load the page.
    A server that was already running picks up the phone setting by itself.
 3. **Report in plain words.** Say:
    - the address to open on the phone, `https://<mac>.<tailnet>.ts.net:<port>/`, as enable printed it;

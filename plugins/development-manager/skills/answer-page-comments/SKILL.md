@@ -47,7 +47,7 @@ Below, `pc` means `node "${CLAUDE_PLUGIN_ROOT}/shared/scripts/page-comments.mjs"
 | `pc resolve <id> "note"` | Closes a thread | Only when the close rule above allows |
 | `pc dismiss <id> "note"` | Closes a thread with no change, such as a duplicate | Only when Omar said so, or it is an `[enable check]` leftover |
 | `pc stats` | Counts per page | For the final report |
-| `pc serve --target <url>` or `--root <dir>` | The comment server | If it is not running and Omar is commenting |
+| `pc serve --target <url>`, `--root <dir>` or `--behind '<cmd>'` | The comment server. `--behind` starts the repo's own page server on a spare port behind it and stops it on exit. With no mode, it uses the one in `config.json` | If it is not running and Omar is commenting |
 | `pc serve --api-only [--rotate-token]` | The comment server for the Tampermonkey userscript: only the comment API. `--rotate-token` makes a new repo token and writes the userscript again; Omar then re-imports it | The repo was enabled with `--userscript`; rotate if the token may have leaked |
 | `pc watch --exclude-author claude --replay` | Prints one line per new comment, reply or picture | Start with the Monitor tool when the plugin's own watcher is not running |
 | `pc restamp` | Notes which commit took in the uncommitted work a comment was made on | Never by hand; the post-commit hook that enable installs runs it after each commit |
@@ -69,7 +69,7 @@ Add one task per thread once the list is loaded, so nothing is skipped.
 1. **Start.**
    Run `pc list --open --waiting claude` for the backlog.
    Refresh the launcher's plugin path: write `${CLAUDE_PLUGIN_ROOT}` into `.page-comments/.state/plugin-root`.
-   If the comment server is not running and Omar is commenting, start it in the background (`make comments`, or `pc serve`) and say on which port.
+   If the comment server is not running and Omar is commenting, start it in the background (`make serve` when the repo's serve runs it, `make comments`, or `pc serve`) and say on which port.
    If no watcher is running in this session, start `pc watch --exclude-author claude --replay` with the Monitor tool.
    Skip threads whose first message starts with `[enable check]`; they are leftovers from the setup check. Dismiss them.
 

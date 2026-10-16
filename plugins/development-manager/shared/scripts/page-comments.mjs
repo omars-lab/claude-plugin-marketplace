@@ -16,8 +16,14 @@ import { isPng, saveShot, shotFileState, shotPath, SHOT_MAX } from "./lib/shots.
 const HELP = `page-comments: comments on pages served on this machine.
 
 Commands:
-  serve --target <url> | --root <dir> | --api-only [--port n] [--rotate-token]
-                                                   Run the comment server on 127.0.0.1.
+  serve --target <url> | --root <dir> | --behind '<command>' | --api-only
+        [--port n] [--rotate-token]                Run the comment server on 127.0.0.1.
+                                                   --behind starts the repo's own page server
+                                                   on a spare port behind it ({port} in the
+                                                   command, and PORT, say which) and stops it
+                                                   on exit, so one command serves the pages
+                                                   with comments. With no mode flag, serve
+                                                   uses the one in .page-comments/config.json.
                                                    --api-only answers only the comment API,
                                                    for the userscript; --rotate-token makes
                                                    a new repo token and writes the userscript again
@@ -45,7 +51,7 @@ from the current folder to the git root, looking for .page-comments/.
 
 Exit codes: 0 ok, 2 bad usage, 3 not found, 4 the write did not land.`;
 
-const VALUE_FLAGS = new Set(["repo", "target", "root", "port", "state", "page", "waiting", "author", "commit", "exclude-author", "heartbeat", "interval", "timeout", "host", "file"]);
+const VALUE_FLAGS = new Set(["repo", "target", "root", "port", "state", "page", "waiting", "author", "commit", "exclude-author", "heartbeat", "interval", "timeout", "host", "file", "behind"]);
 const BOOL_FLAGS = new Set(["open", "json", "replay", "once", "reopen", "help", "throwaway", "api-only", "rotate-token"]);
 
 export function parseArgs(argv) {
@@ -392,14 +398,31 @@ async function cmdWait(flags) {
 
 async function cmdServe(flags) {
   const store = needStore(flags);
-  if ([flags.target, flags.root, flags["api-only"]].filter(Boolean).length !== 1) throw usage("serve needs exactly one of --target <url>, --root <dir> or --api-only");
+  const { readConfig } = await import("./lib/repo.mjs");
+  const modes = [flags.target, flags.root, flags.behind, flags["api-only"]].filter(Boolean).length;
+  if (modes > 1) throw usage("serve takes one of --target <url>, --root <dir>, --behind '<command>' or --api-only");
+  const saved = (readConfig(store).serve || {});
+  if (modes === 0) {
+    // No mode on the command line: use the one enable saved in config.json.
+    const m = ["target", "root", "behind"].find((k) => typeof saved[k] === "string" && saved[k]);
+    if (!m) throw usage("serve needs one of --target <url>, --root <dir>, --behind '<command>' or --api-only (config.json names none)");
+    flags[m] = saved[m];
+    if (flags.port === undefined && saved.port !== undefined) flags.port = String(saved.port);
+  }
   const port = flags.port === undefined ? 8766 : Number(flags.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw usage("--port takes a port number");
   if (flags.target && !/^https?:\/\//.test(flags.target)) throw usage("--target takes a URL, like http://127.0.0.1:8765");
+  if (flags.behind !== undefined && !String(flags.behind).trim()) throw usage("--behind takes the command that starts the page server");
+  // --behind: the page server goes on a spare port, and the comment server proxies to it.
+  let backPort = null;
+  if (flags.behind) {
+    const { freePort } = await import("./lib/behind.mjs");
+    backPort = await freePort();
+    flags.target = `http://127.0.0.1:${backPort}`;
+  }
   // The userscript (design section 9): --rotate-token makes a new repo token;
   // either way a listed origin with no token yet (a fresh clone) gets one.
   const { readRepoToken, rotateToken, userscriptOrigins, writeUserscript } = await import("./lib/userscript.mjs");
-  const { readConfig } = await import("./lib/repo.mjs");
   const listed = userscriptOrigins(readConfig(store)).length > 0;
   if (flags["rotate-token"] || (listed && !readRepoToken(store))) {
     const u = flags["rotate-token"] ? rotateToken(store) : writeUserscript(store);
@@ -431,12 +454,39 @@ async function cmdServe(flags) {
     }
     throw new CliError(1, lines.join("\n  "));
   }
-  out(`Comment server on ${srv.url}  (${flags.target ? `in front of ${flags.target}` : flags.root ? `serving ${flags.root}` : "the comment API only, for the userscript"})`);
+  // The comment server holds its port first, so a busy port fails before the page server starts.
+  let behind = null;
+  if (flags.behind) {
+    const { startBehind } = await import("./lib/behind.mjs");
+    try {
+      behind = await startBehind(flags.behind, { cwd: store.repo, port: backPort });
+    } catch (err) {
+      await srv.close();
+      throw new CliError(err.exitCode || 1, err.message);
+    }
+  }
+  const front = flags.behind ? `in front of the page server on port ${backPort}` : flags.target ? `in front of ${flags.target}` : flags.root ? `serving ${flags.root}` : "the comment API only, for the userscript";
+  out(`Comment server on ${srv.url}  (${front})`);
   out(`Press C on a page${flags["api-only"] ? " the userscript runs on" : ""} to comment. Stop with Ctrl-C.`);
   return new Promise((resolveDone) => {
-    const quit = () => srv.close().then(() => resolveDone(0));
-    process.once("SIGTERM", quit);
-    process.once("SIGINT", quit);
+    let quitting = false;
+    const quit = async (code) => {
+      if (quitting) return;
+      quitting = true;
+      if (behind) {
+        const { stopBehind } = await import("./lib/behind.mjs");
+        await stopBehind(behind);
+      }
+      await srv.close();
+      resolveDone(code);
+    };
+    process.once("SIGTERM", () => quit(0));
+    process.once("SIGINT", () => quit(0));
+    // The page server stopping on its own (a crash, its own Ctrl-C) ends the comment server too.
+    if (behind) behind.exited.then((code) => {
+      if (!quitting) process.stderr.write(`page-comments: the page server stopped (exit ${code}), so the comment server stops too.\n`);
+      quit(code);
+    });
   });
 }
 
