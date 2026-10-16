@@ -18,7 +18,8 @@ Reads   $INSTAGRAM_HOME/.cache/saves.json          caption, creator, link, saved
                                                    quietly until resolve-post-location has run)
         $INSTAGRAM_HOME/data/pins-review.yaml      spots OpenStreetMap did not place (optional)
         $INSTAGRAM_HOME/data/media.yaml            each post's thumbnail (optional, the same way)
-        $INSTAGRAM_MEDIA_DIR/<code>/thumb.jpg      the thumbnails themselves
+        $INSTAGRAM_MEDIA_DIR/<code>/thumb.jpg      the thumbnails themselves (cover.jpg when a reel was
+                                                   saved only as a video)
         $INSTAGRAM_HOME/data/stills.yaml           a still and a 3 s clip per spot a reel names, cut
                                                    where its name, or else its area, is on screen
                                                    (extract-stills; optional, the same way)
@@ -406,9 +407,10 @@ class Hub:
                 if up and all(p[0] != up for p in pins):
                     pins.append((up, self.places[up]["lat"], self.places[up]["lon"], "wide"))
 
-        thumb_src = None
-        if isinstance(media, dict) and isinstance(media.get("thumb"), str):
-            thumb_src = os.path.join(media_dir, media["thumb"])
+        thumb_src = None   # a reel saved only as a video (for its stills) has a cover and no thumbnail
+        if isinstance(media, dict):
+            pic = next((media[k] for k in ("thumb", "cover") if isinstance(media.get(k), str)), None)
+            thumb_src = os.path.join(media_dir, pic) if pic else None
         owner = s["owner"]
         self.posts.append({
             "code": code, "file": file, "url": s.get("url") or f"https://www.instagram.com/p/{code}/",

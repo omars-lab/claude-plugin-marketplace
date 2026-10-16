@@ -306,6 +306,15 @@ class Hub(unittest.TestCase):
         self.assertEqual(thumbs["TOWN1"], "thumbs/TOWN1.jpg")
         self.assertIsNone(thumbs["STATE1"])     # listed, but the file is not there
 
+    def test_a_reel_saved_only_as_a_video_shows_its_cover(self):
+        self.write("data/media.yaml", {**MEDIA, "STATE1": {"cover": "STATE1/cover.jpg", "video": "STATE1/video.mp4"}})
+        os.makedirs(os.path.join(self.media, "STATE1"))
+        with open(os.path.join(self.media, "STATE1", "cover.jpg"), "wb") as fh:
+            fh.write(b"\xff\xd8 not really a jpeg")
+        self.build("--pilot", "fixture", "--no-previews")
+        self.assertIn('src="../thumbs/STATE1.jpg"', self.page("posts/STATE1.html"))
+        self.assertEqual({p["c"]: p["th"] for p in self.data()["posts"]}["STATE1"], "thumbs/STATE1.jpg")
+
     def test_a_spot_with_a_still_shows_it_instead_of_the_cover(self):
         rows = {"PARK1": [{"name": "Example Falls", "said": "Example Falls trail", "frame": 2, "t": 67.3,
                            "how": "on_screen", "still": "PARK1/spots/still-example-falls.jpg",
