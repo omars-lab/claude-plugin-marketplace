@@ -138,7 +138,7 @@ Also confirm the Screenshots root:
 - header: "Screenshots folder"
 - question: "Which folder is your Screenshots root?"
 - options:
-  - `~/Library/CloudStorage/OneDrive-ServiceNow/📸 Screenshots` (label: "Default OneDrive location")
+  - the `📸 Screenshots` folder in the OneDrive folder under `~/Library/CloudStorage/` (found with `ls -d ~/Library/CloudStorage/OneDrive-*/"📸 Screenshots"`) (label: "Default OneDrive location")
   - `Other (enter path)`
 
 ### Step 2 (Task 1): Scan with Timestamps
@@ -148,7 +148,7 @@ Mark Task 1 as in_progress.
 ```bash
 # Locate the installed scripts directory (version-agnostic)
 SCRIPTS=$(find "$HOME/.claude/plugins/cache" -path "*/screenshot-manager/*/skills/suggest-groupings/scripts" -type d | head -1)
-SCREENSHOTS_ROOT="$HOME/Library/CloudStorage/OneDrive-ServiceNow/📸 Screenshots"
+SCREENSHOTS_ROOT=$(ls -d "$HOME"/Library/CloudStorage/OneDrive-*/"📸 Screenshots" | head -1)   # or the path confirmed in Step 1
 ```
 
 **Screenshots + Desktop** (adjust flags to match scope confirmed in Step 1):
