@@ -781,7 +781,7 @@ def merge(saves, tags, places, fetcher=None, frames=False):
           f"{'show' if frames else 'name'} no spot, "
           f"{counts['unanswered']} saves with no usable answer; {pending} batches still waiting for their agent")
     if fixed:
-        print(f"{fixed} review entries found with their lookup text and moved to the pins")
+        print(f"{fixed} review entries a person fixed (ok: true, or found with their lookup) moved to the pins")
     if dropped:
         print(f"{dropped} pins marked drop: true moved to review, and stay out of the pins")
     return 0

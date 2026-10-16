@@ -348,7 +348,7 @@ class Merge(Home):
                 e["lookup"] = "Far Away Tower, Fixture Town"
         self.write("data/pins-review.yaml", review)
         out = self.run_script("--merge")
-        self.assertIn("1 review entries found", out)
+        self.assertIn("1 review entries a person fixed", out)
         p = self.spot("data/pins.yaml", "TOWNA", "Far Away Tower")
         self.assertEqual((p["name"], p["asked"]), ("Near Tower", "Far Away Tower, Fixture Town"))
         self.assertNotIn("Far Away Tower", [e["said"] for e in self.read("data/pins-review.yaml")["TOWNA"]])
@@ -361,7 +361,7 @@ class Merge(Home):
                 if e["said"] == "Example Museum":
                     e["ok"] = True                                     # a person says the find is right
             self.write("data/pins-review.yaml", review)
-            self.assertIn("1 review entries found", self.run_script("--merge"))
+            self.assertIn("1 review entries a person fixed", self.run_script("--merge"))
             p = self.spot("data/pins.yaml", "LISTA", "Example Museum")
             self.assertEqual((p["name"], p["osm"], p["by"]), ("Example Baguette", "node/21", "hand"))
             self.assertNotIn("why", p)
