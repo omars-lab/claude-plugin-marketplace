@@ -88,6 +88,7 @@ sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared",
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, "extract-stills", "scripts"))
 
 import google_places  # noqa: E402
+gp = google_places
 from home import cache  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
@@ -223,6 +224,8 @@ class Hub:
         self.posts = []       # in-scope saves, newest first, with their places and pins
         self.no_pin = set()   # places with no lat/lon
         self.p = places
+        self.where = gp.where_words(places)   # town words a handle-made name ends in
+        self.same = {}        # what makes two spots one place → that place's key
         self.topic_label = {k: (v or {}).get("label") or k for k, v in (topics or {}).items()}
         self.purposes = {k: v for k, v in (purposes or PURPOSES).items() if isinstance(v, dict)}
         self.purpose_of = {kind: k for k, v in self.purposes.items() for kind in v.get("kinds") or []}
@@ -273,11 +276,33 @@ class Hub:
                 self._area(up)
         return self.places[name]
 
+    def _same_as(self, e, name, near):
+        """What makes two spots one place under two names, else None. A spot pinned where OpenStreetMap
+        found a place whose name ours starts with is that place ("Example Cafe USA" at Example Cafe's
+        address). A spot shown at its town is its name without the town words at its end, joined up
+        ("Example Cafe ETX" and "Examplecafe Fixture Town")."""
+        lat, lon = number(e.get("lat")), number(e.get("lon"))
+        if lat is not None and lon is not None and not e.get("placed"):   # placed: at its town's middle
+            theirs = gp.words(e["found"].split(",")[0]) if isinstance(e.get("found"), str) else []
+            mine = gp.words(name)
+            if gp.enough(theirs) and mine[:len(theirs)] == theirs:
+                return ("at", "".join(theirs), round(lat, 4), round(lon, 4))
+            return None
+        core = gp.core_name(name, self.where)
+        return ("town", core, (near or "").lower()) if len(core) >= 4 else None
+
     def _spot(self, e, near):
         name = e["name"].strip()
         key = f"osm:{e['osm']}" if isinstance(e.get("osm"), str) and e["osm"] else \
             f"spot:{name.lower()}|{(near or '').lower()}"
+        same = self._same_as(e, name, near)
+        if key not in self.places and same in self.same:   # one place another post calls by another name
+            key = self.same[same]
+            if len(name) < len(self.places[key]["name"]):
+                self.places[key]["name"] = name   # the plainest of its names
         if key not in self.places:
+            if same:
+                self.same[same] = key
             lat, lon = number(e.get("lat")), number(e.get("lon"))
             if lat is None or lon is None:
                 lat = lon = None

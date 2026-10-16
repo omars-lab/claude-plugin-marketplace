@@ -43,6 +43,10 @@ answers. **No script calls a model**, and there is no API key: this session star
      OpenStreetMap stores as a single point comes back with a made-up box (a whole degree either
      way for a region), so that box is ignored; a park or region with no outline reaches 50 km
      from its pin instead.
+     A city that sprawls past 25 km (its suburbs, an airport, a space centre) gets a `box_km:` in
+     `config/places.yaml`; that width is then its reach here too, and Google's search box in
+     find-google-ids. A spot held back as "38 km from Example Town" is searched again at the next
+     merge once its town's reach covers that distance; one still out of reach is left alone.
    - **Another of the save's areas.** When the spot is found but out of reach, or found under a
      different name, it is tried again near each other area of the save within 60 km of what was
      found, and pinned for the first area where it passes every check. The agent may pick the

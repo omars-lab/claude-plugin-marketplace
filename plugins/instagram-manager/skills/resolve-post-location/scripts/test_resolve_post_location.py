@@ -228,6 +228,21 @@ class Merge(Home):
         ridge = self.spot("data/pins-review.yaml", "PARKA", "Distant Ridge Loop")
         self.assertEqual(ridge["why"], "56 km from Fixture Park")
 
+    def test_a_sprawling_city_reaches_as_far_as_its_own_width(self):
+        """A city's suburbs sit past a town's 25 km. config/places.yaml's `box_km` says how far the city
+        reaches, and a spot held back for its distance is tried again once that covers it."""
+        self.locate()
+        self.assertEqual(self.spot("data/pins-review.yaml", "TOWNA", "Far Away Tower")["why"],
+                         "40 km from Fixture Town")
+        self.write("config/places.yaml", {"places": {"Fixture Town": {"names": ["Fixture Town"], "box_km": 45}}})
+        self.run_script("--merge")
+        tower = self.spot("data/pins.yaml", "TOWNA", "Far Away Tower")
+        self.assertEqual((tower["name"], tower["osm"]), ("Far Away Tower", "node/13"))
+        self.assertNotIn("Far Away Tower", [e["said"] for e in self.read("data/pins-review.yaml").get("TOWNA", [])])
+        self.write("config/places.yaml", {"places": {"Fixture Town": {"names": ["Fixture Town"], "box_km": 30}}})
+        self.assertFalse(rpl.now_in_reach({"why": "40 km from Fixture Town", "near": "Fixture Town", "km": 40.2},
+                                          rpl.load_places()))   # not wide enough: not searched again each merge
+
     def test_a_region_stored_as_a_point_reaches_50_km_not_its_made_up_box(self):
         """OpenStreetMap gives a region it keeps as one point a box a degree either side. That box
         is not the region's edge: a lodge 62 km off, inside it, goes to review."""

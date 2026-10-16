@@ -215,7 +215,7 @@ def main(argv=None, fetcher=None):
     with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
         by_code = {s["code"]: s for s in json.load(fh)["saves"]}
     tags = load_yaml(rpl.TAGS)
-    places = load_yaml(rpl.PLACES).get("places") or {}
+    places = rpl.load_places()
     if args.prepare:
         return prepare(checks, by_code, tags, places)
     was, wrong_was, _ = score(checks, before(checks))

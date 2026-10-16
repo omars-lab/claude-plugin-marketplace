@@ -429,7 +429,7 @@ def main(argv=None):
     with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
         saves = json.load(fh)["saves"]
     tags, media = load_yaml(rpl.TAGS), load_yaml(MEDIA)
-    places = load_yaml(rpl.PLACES).get("places") or {}
+    places = rpl.load_places()
     if args.stuck:
         if not (args.pilot or args.all):
             ap.error("--stuck needs --pilot NAME or --all")

@@ -46,6 +46,14 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   caption's own words for the place (highlighted), the post's topics, and links to the post's page
   and to Instagram. A reel's small picture turns into a short flipbook while it is on screen (see
   "Lists of many posts" below).
+
+  One place that posts call by several names still gets one page, under the shortest name:
+  - spots pinned at one position whose names start with the name OpenStreetMap found there
+    ("Example Roastery USA" and "Example Roastery Uptown" at Example Roastery's address);
+  - spots shown at their town whose names are the same once the town words at the end are taken
+    off and the words joined up ("Example Cafe TX" and "Examplecafe Fixture Town").
+
+  Two shops at one mall's position stay two pages: neither name starts with the mall's.
 - **`posts/<code>.html`: one page per post.** The thumbnail, the full caption, the creator, the
   date it was saved, its topics and collections, a link to every place it names (each with a
   Google Maps link), and the Instagram link; a post that names one place also gets an "Open in

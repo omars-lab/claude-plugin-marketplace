@@ -115,17 +115,7 @@ def where(e, places, box_km):
     return {"lat": d["lat"], "lon": d["lon"]}, half, f"inside {half:g} km of {town} (no pin of our own)"
 
 
-def where_words(places):
-    """The word runs that only say where a spot is: every listed place's name, each place's hashtags
-    in config/places.yaml ("etx") and the state codes. same_name drops them from the end of our
-    name when the whole name does not match."""
-    out = {(c,) for c in gp.STATE_CODES}
-    for name in places.known:
-        out.add(tuple(gp.words(name)))
-    for v in places.config.values():
-        for h in (v.get("hashtags") or []) if isinstance(v, dict) else []:
-            out.add(tuple(gp.words(h)))
-    return {w for w in out if w}
+where_words = gp.where_words
 
 
 def stale_keys(kept, saves, tags, pins, placed):

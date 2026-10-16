@@ -177,6 +177,25 @@ def trimmed(mine, where):
     return mine
 
 
+def where_words(places):
+    """The word runs that only say where a spot is: every listed place's name, each place's hashtags
+    in config/places.yaml ("etx") and the state codes. same_name drops them from the end of our
+    name when the whole name does not match. places: a places.Places."""
+    out = {(c,) for c in STATE_CODES}
+    for name in places.known:
+        out.add(tuple(words(name)))
+    for v in places.config.values():
+        for h in (v.get("hashtags") or []) if isinstance(v, dict) else []:
+            out.add(tuple(words(h)))
+    return {w for w in out if w}
+
+
+def core_name(name, where=()):
+    """Our name with the place words at its end taken off, joined up: "Example Cafe ETX" and
+    "Examplecafe Fixture Town" are both "examplecafe". Two names a handle gives one place."""
+    return "".join(trimmed(words(name), where))
+
+
 def run_together(mine, theirs):
     """Our words, joined up, are a run of Google's words joined up: a handle like "Examplecafe" is
     Google's "Example Cafe"."""

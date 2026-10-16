@@ -235,6 +235,35 @@ class Hub(unittest.TestCase):
         self.assertNotIn("query_place_id", deli)
         self.assertIn("a chain: every branch near Fixture Town, any will do", deli)
 
+    def test_one_place_under_several_names_gets_one_page(self):
+        found = "Example Roastery, 5, Long Road, Fixture Town, Fixture State"
+        at = {"near": "Fixture Town", "lat": 10.51, "lon": 20.51, "kind": "address", "found": found}
+        mall = "Example Mall, 9, Mall Road, Fixture Town, Fixture State"
+        self.write("data/pins.yaml", {**PINS,
+            "TOWN1": [{**at, "name": "Example Roastery", "kind": "cafe", "osm": "node/202"},
+                      {"name": "Ice Shop", "near": "Fixture Town", "lat": 10.52, "lon": 20.52, "found": mall},
+                      {"name": "Tea Shop", "near": "Fixture Town", "lat": 10.52, "lon": 20.52, "found": mall}],
+            "STATE1": [{**at, "name": "Example Roastery USA"}],
+            "VILL1": [{**at, "name": "Example Roastery Uptown"}]})
+        self.write("data/pins-review.yaml", {
+            "STATE1": [{"said": "@examplecafe.tx", "name": "Example Cafe TX", "asked": "Example Cafe TX", "near": "Fixture Town",
+                        "why": "not found near Fixture Town"}],
+            "VILL1": [{"said": "@examplecafefixturetown", "name": "Examplecafe Fixture Town", "asked": "Examplecafe Fixture Town",
+                       "near": "Fixture Town", "why": "not found near Fixture Town"}]})
+        self.build("--pilot", "fixture")
+        slugs = os.listdir(os.path.join(self.out, "places"))
+        roastery = [s for s in slugs if s.startswith("example-roastery")]
+        self.assertEqual(roastery, ["example-roastery.html"])       # its own name and two longer ones
+        page = self.page("places/example-roastery.html")
+        for code in ("TOWN1", "STATE1", "VILL1"):
+            self.assertIn(f"../posts/{code}.html", page)
+        cafe = [s for s in slugs if s.startswith("example") and "cafe" in s]
+        self.assertEqual(len(cafe), 1, cafe)                       # two handles, one cafe
+        self.assertIn("../posts/VILL1.html", self.page(f"places/{cafe[0]}"))
+        self.assertIn("../posts/STATE1.html", self.page(f"places/{cafe[0]}"))
+        self.assertIn("ice-shop.html", slugs)                      # two shops at one mall stay two
+        self.assertIn("tea-shop.html", slugs)
+
     def test_spot_page_groups_posts_by_osm_id_and_marks_the_words(self):
         self.build("--pilot", "fixture")
         spot = self.page("places/example-falls.html")

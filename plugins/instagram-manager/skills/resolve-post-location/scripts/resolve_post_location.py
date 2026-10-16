@@ -230,11 +230,31 @@ def union(a, b):
 # --- areas ---------------------------------------------------------------------------------------
 
 def exact_area(name, places):
-    """{name, kind, lat, lon} for a place more exact than a state or country with a pin, else None."""
+    """{name, kind, lat, lon} for a place more exact than a state or country with a pin, else None.
+    A sprawling city's own width (`box_km`) comes along as `reach_km`."""
     p = places.get(name)
     if not isinstance(p, dict) or p.get("kind") not in EXACT or p.get("lat") is None or p.get("lon") is None:
         return None
-    return {"name": name, "kind": p["kind"], "lat": p["lat"], "lon": p["lon"]}
+    out = {"name": name, "kind": p["kind"], "lat": p["lat"], "lon": p["lon"]}
+    if isinstance(p.get("box_km"), (int, float)):
+        out["reach_km"] = float(p["box_km"])
+    return out
+
+
+def with_widths(places, config):
+    """data/places.yaml's places, each with the `box_km` its config/places.yaml entry sets: how far a
+    sprawling city reaches from its middle ("Example City: 35 km out to its suburbs")."""
+    out = dict(places)
+    for name, c in (config or {}).items():
+        if isinstance(c, dict) and isinstance(c.get("box_km"), (int, float)) and isinstance(out.get(name), dict):
+            out[name] = {**out[name], "box_km": c["box_km"]}
+    return out
+
+
+def load_places():
+    """The looked-up places, with each sprawling city's own width."""
+    return with_widths(load_yaml(PLACES).get("places") or {},
+                       load_yaml(os.path.join("config", "places.yaml")).get("places"))
 
 
 def areas_of(tag, places):
@@ -247,7 +267,7 @@ class Reach:
     def __init__(self, area, places, fetcher=None):
         self.area = area
         self.box = None
-        self.radius = TOWN_KM
+        self.radius = max(TOWN_KM, area.get("reach_km") or 0.0)   # a sprawling city sets its own
         if area["kind"] in BOXED:
             own = self.area_box(places.get(area["name"]) or {}, fetcher)
             if own:
@@ -707,10 +727,24 @@ def move_branch_pins(pins, review):
     return moved
 
 
+FAR = re.compile(r"^\d+ km from ")
+
+
+def now_in_reach(e, places):
+    """A review entry held back only for its distance, which its area's own width (`box_km`, a
+    sprawling city's) now covers: "31 km from Example City" when the city reaches 35 km."""
+    if not (isinstance(e, dict) and FAR.match(str(e.get("why") or "")) and isinstance(e.get("near"), str)
+            and isinstance(e.get("km"), (int, float))):
+        return False
+    area = exact_area(e["near"], places)
+    return bool(area and area.get("reach_km") and e["km"] <= area["reach_km"])
+
+
 def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
     """Review entries a person marked `ok: true` move to pins as found. Ones a person gave a `lookup:`
     are searched again; found ones move to pins. So is, once, one whose address has a suite or unit,
-    looked up before street_only() dropped it, and one found by name but not at its address."""
+    looked up before street_only() dropped it, one found by name but not at its address, and one
+    held back for its distance that its city's own width now covers."""
     moved = 0
     for code, entries in list(review.items()):
         if not isinstance(entries, list):
@@ -730,7 +764,7 @@ def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
                     and street_only(e["address"]) != " ".join(e["address"].split()))
             branch = (isinstance(e, dict) and ANOTHER_BRANCH.match(str(e.get("why") or ""))
                       and not e.get("address_tried"))
-            if not ((by_person or unit or branch) and not e.get("drop")
+            if not ((by_person or unit or branch or now_in_reach(e, places)) and not e.get("drop")
                     and isinstance(e.get("said"), str) and isinstance(e.get("near"), str)):
                 keep.append(e)
                 continue
@@ -954,7 +988,7 @@ def main(argv=None, fetcher=None):
     with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
         saves = json.load(fh)["saves"]
     tags = load_yaml(TAGS)
-    places = load_yaml(PLACES).get("places") or {}
+    places = load_places()
     if args.merge:
         return merge(saves, tags, places, fetcher, args.frames)
     pilot = None
