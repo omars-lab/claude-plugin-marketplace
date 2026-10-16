@@ -6,9 +6,6 @@ screenshot or session removed here stays in the backup.
     archive/                      copies of linked sessions        → <dest>/archive/
     <shotsDir>/page-comments/<hub> comment screenshots (page comments' shotsDir, or
                                    .page-comments/shots when that is the fallback) → <dest>/shots/
-    hub.json "screenshots"         the original technique screenshots → <dest>/screenshots/
-                                   (each Mac adds its own; techniques.json is left out, because
-                                   every Mac has its own and the last one sent would win)
 
 Settings in hub.json: "backup": {"host": "<ssh alias>", "dest": "<folder there; relative = home>"}
 
@@ -54,25 +51,17 @@ def main() -> int:
         raise SystemExit('No "backup": {"host", "dest"} in hub.json')
 
     probe = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", host,
-                            f"mkdir -p {shlex.quote(dest)}/archive {shlex.quote(dest)}/shots "
-                            f"{shlex.quote(dest)}/screenshots && echo ok"],
+                            f"mkdir -p {shlex.quote(dest)}/archive {shlex.quote(dest)}/shots && echo ok"],
                            capture_output=True, text=True)
     if probe.returncode != 0 or "ok" not in probe.stdout:
         raise SystemExit(f"Can't reach {host}: {(probe.stderr or probe.stdout).strip().splitlines()[-1:] or ['no output']}")
 
     folders = []
-    screenshots = lib.screenshots_dir(root)
-    for name, src in (("archive", lib.archive_dir(root).parent), ("shots", shots_dir(root)),
-                      ("screenshots", screenshots if screenshots != root else None)):
-        if src is None:
-            folders.append({"name": name, "skipped": 'no "screenshots" folder in hub.json'})
-            continue
+    for name, src in (("archive", lib.archive_dir(root).parent), ("shots", shots_dir(root))):
         if not src.exists():
             folders.append({"name": name, "skipped": f"{src} doesn't exist yet"})
             continue
         cmd = ["rsync", "-a", "--itemize-changes", "--exclude", ".DS_Store"]  # never --delete
-        if name == "screenshots":  # only the originals: not the per-Mac manifest, built pages or zips
-            cmd += ["--exclude", "techniques.json", "--exclude", "pages/", "--exclude", "*.zip"]
         if args.dry_run:
             cmd.append("--dry-run")
         cmd += [f"{src}/", f"{host}:{remote_path(dest.rstrip('/') + '/' + name + '/')}"]

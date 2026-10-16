@@ -232,7 +232,7 @@
       "name": "technique-manager",
       "source": "./plugins/technique-manager",
       "description": "Turn screenshots of Claude techniques into Claude-style HTML pages built from one shared React component library, then package them into a gallery and an offline zip and sync the shareable content to another Mac",
-      "version": "1.2.3",
+      "version": "1.2.2",
       "category": "productivity",
       "keywords": [
         "claude-code",

@@ -87,13 +87,12 @@ Commit everything except `.cache/` and `archive/`, which are ignored, and push t
 
 ## Backup and the session hook
 
-Git holds the specs and threads. Three private folders it doesn't hold are copied to the upstream machine by rsync instead:
+Git holds the specs and threads. Two private folders it doesn't hold are copied to the upstream machine by rsync instead:
 - `archive/`, the session copies;
-- the comment screenshots: `<shotsDir>/page-comments/<hub>/`, or `.page-comments/shots/` when that is the fallback;
-- the original technique screenshots, from hub.json `"screenshots"`. Each Mac adds its own into the same folder. `techniques.json` stays behind, because each Mac keeps its own and the last one sent would replace the others.
+- the comment screenshots: `<shotsDir>/page-comments/<hub>/`, or `.page-comments/shots/` when that is the fallback.
 
 ```bash
-make backup      # → <host>:<dest>/archive, /shots and /screenshots, from hub.json "backup"
+make backup      # → <host>:<dest>/archive and /shots, from hub.json "backup"
 ```
 
 **It only adds and updates.** There is no `--delete`, so a file removed here stays in the backup.

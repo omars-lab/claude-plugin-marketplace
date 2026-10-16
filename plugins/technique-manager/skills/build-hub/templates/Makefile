@@ -12,7 +12,7 @@ help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | sed 's/:.*## /\t/' | expand -t 12
 
 archive: ## Copy linked sessions into archive/ before Claude Code deletes them
-	@$(PY) $(TM)/build-hub/scripts/archive_sessions.py --root . | $(PY) -c 'import json,sys;d=json.load(sys.stdin);print("archived",len(d["archived"]),"new,",d["already"],"kept,",len(d.get("elsewhere",[])),"on another Mac,",len(d["missing"]),"missing")'
+	@$(PY) $(TM)/build-hub/scripts/archive_sessions.py --root . | $(PY) -c 'import json,sys;d=json.load(sys.stdin);print("archived",len(d["archived"]),"new,",d["already"],"kept,",len(d["missing"]),"missing")'
 
 hub: archive ## Render every technique and build the hub site (SLUG=… for one)
 	@mkdir -p .cache
@@ -22,7 +22,7 @@ hub: archive ## Render every technique and build the hub site (SLUG=… for one)
 serve: hub ## The hub with page comments, at http://localhost:$(PORT)/
 	.page-comments/run serve --root .cache/hub --port $(PORT)
 
-backup: ## Copy archive/, comment screenshots and technique screenshots to the upstream machine (adds only, never deletes)
+backup: ## Copy archive/ and comment screenshots to the upstream machine (adds only, never deletes)
 	@$(PY) $(TM)/build-hub/scripts/backup_hub.py --root . --text
 
 context: ## Fetch pre-context for one technique: make context SLUG=…

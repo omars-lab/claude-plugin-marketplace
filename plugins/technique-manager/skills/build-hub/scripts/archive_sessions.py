@@ -3,14 +3,10 @@
 original (cleanupPeriodDays, 30 by default). Records the copy in the spec as
 source.session.archived (a path relative to the root). Re-runs copy only what is new.
 
-A session whose spec already says it was archived, but which has neither a copy here nor its
-original, was archived on another Mac (and `make backup` there sends it upstream): it counts
-as "elsewhere", not "missing".
-
 Usage:
     python3 archive_sessions.py [--root R]
 
-Output (JSON): {"archived": [slug...], "already": N, "elsewhere": [slug...], "missing": [{"slug", "path"}], "dir"}
+Output (JSON): {"archived": [slug...], "already": N, "missing": [{"slug", "path"}], "dir"}
 """
 import argparse
 import json
@@ -29,7 +25,7 @@ def main() -> int:
     root = lib.find_root(args.root)
     archive = lib.archive_dir(root)
     archive.mkdir(parents=True, exist_ok=True)
-    out = {"archived": [], "already": 0, "elsewhere": [], "missing": [], "dir": str(archive)}
+    out = {"archived": [], "already": 0, "missing": [], "dir": str(archive)}
     for path in lib.spec_paths(root):
         spec = json.loads(path.read_text(encoding="utf-8"))
         session = (spec.get("source") or {}).get("session")
@@ -42,9 +38,6 @@ def main() -> int:
         elif Path(session["path"]).exists():
             shutil.copy2(session["path"], dest)
             out["archived"].append(spec["slug"])
-        elif session.get("archived"):
-            out["elsewhere"].append(spec["slug"])
-            continue
         else:
             out["missing"].append({"slug": spec["slug"], "path": session["path"]})
             continue
