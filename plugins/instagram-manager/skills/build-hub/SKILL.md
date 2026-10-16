@@ -112,9 +112,12 @@ A pin's **colour** says how exact it is: a spot the post names, a spot at its to
 or region, or only a state or country. The **icon** inside says what kind of place it is: food,
 coffee, a beach, a waterfall, a trail, a place to stay and so on (`ICONS` in `build_hub.py`, 20
 kinds). The icon comes from the OpenStreetMap kind. If the kind says nothing, a spot's name words
-decide it ("Example Cafe" gets coffee). If that fails too, the post's purpose decides when every
-post naming it is tagged eat or stay. Anything left gets "other spot". The legend above the map
-has one row for colour and one for icon, and lists only the icons on the map, each with its count.
+decide it ("Example Cafe" gets coffee; a tea, juice or dessert bar is not a bar). If that fails
+too, the post's purpose decides when every post naming it is tagged eat or stay. Anything left
+gets "other spot". The legend above the map has one row for colour and one for icon, and lists
+only the icons on the map, bars and wineries last. Each icon's number counts the pins in the
+map's view, recounted after every pan, zoom, menu change or search; an icon with none in view
+dims.
 On a phone, each legend row is one line that scrolls sideways. The small maps on place and post
 pages use the same icons.
 
