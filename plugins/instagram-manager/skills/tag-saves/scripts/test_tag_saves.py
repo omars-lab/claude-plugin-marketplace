@@ -283,6 +283,16 @@ class TagSaves(Home):
         self.run_tag("--prepare", "--all")
         self.assertEqual(len(self.batches()), 1)
 
+    def test_a_new_round_waits_for_answers_not_merged_yet(self):
+        out = self.run_tag("--prepare", "--all")
+        self.agent(out.split())
+        with self.assertRaises(SystemExit) as stop:
+            self.run_tag("--prepare", "--all")
+        self.assertIn("make tag-merge", str(stop.exception))
+        self.assertEqual(len(glob.glob(os.path.join(self.tmp.name, ".cache", "batches", "tag", "*.answers.json"))), 1)
+        self.run_tag("--merge")
+        self.run_tag("--prepare", "--all")  # once merged, a new round starts
+
 
 class PlacesAndMoves(Home):
     def test_a_city_brings_the_state_it_sits_in(self):

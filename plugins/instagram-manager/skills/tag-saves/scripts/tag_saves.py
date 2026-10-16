@@ -377,6 +377,11 @@ def print_moves(saves, moves):
 
 
 def prepare(args, saves, topics_known, purposes_known, collections, places, compiled, pilot, tags, moves):
+    waiting = sorted(glob.glob(os.path.join(batch_dir(), "batch-[0-9][0-9][0-9].answers.json")))
+    if waiting and not args.rules_only:  # a new round clears the folder, and these answers with it
+        log("tag_prepare_refused", answers_waiting=len(waiting))
+        sys.exit(f"{len(waiting)} answers files are not merged yet ({', '.join(os.path.basename(w) for w in waiting)}). "
+                 "Run the merge first (make tag-merge), then start the new round.")
     settle_moves({s["code"]: s for s in saves}, tags, moves, collections, places)
     todo, kept = [], 0
     for s in saves:

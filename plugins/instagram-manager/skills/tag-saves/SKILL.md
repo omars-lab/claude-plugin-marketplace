@@ -154,7 +154,7 @@ data/moves.yaml                              <code>: {collections, not: [...], q
 
 `source` is `model` (an agent tagged it) or `rules` (collection tags only: `--rules-only`, or no
 usable answer yet). `by: hand` marks an entry a person fixed (see "Fixing by hand"). `hints` are the place matches. `tags.yaml` is sorted by code, so a rerun with
-no changes leaves git clean. A new `--prepare` removes the last round's batch files.
+no changes leaves git clean. A new `--prepare` removes the last round's batch files, so it stops while any answers are not merged yet and says to run `--merge` first (`--rules-only` still runs).
 
 ## Batch review
 
