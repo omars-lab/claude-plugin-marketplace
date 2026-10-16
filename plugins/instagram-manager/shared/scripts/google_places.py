@@ -239,7 +239,8 @@ def apply(pins, google):
             g = kept(google, e) if isinstance(e, dict) and isinstance(e.get("name"), str) else None
             if g:
                 e["map"] = maps_link(g["query"], g["id"])
-                e["google_id"], e["google_by"] = g["id"], g.get("by") or "hand"
+                by = g.get("by") or "hand"
+                e["google_id"], e["google_by"] = g["id"], "auto-address" if by == "auto" and g.get("at_address") else by
                 n += 1
     return n
 

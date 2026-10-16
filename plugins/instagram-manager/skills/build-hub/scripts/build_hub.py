@@ -607,6 +607,7 @@ def place_page(hub, place):
             f'<span class="muted">{len(hub.places[k]["posts"])}</span></li>' for k in place["inside"]) + "</ul>"))
     where = [f'<a href="{esc(place["map"])}" target="_blank" rel="noopener">Google Maps</a>'
              + {"auto": ' <span class="muted">(this place, matched by its name: check it)</span>',
+                "auto-address": ' <span class="muted">(this place: its name and the caption\'s address both match)</span>',
                 "claude": ' <span class="muted">(this place, picked by Claude from Google\'s list: check it)</span>',
                 "hand": ' <span class="muted">(this place)</span>'}.get(place.get("google_by"), "")
              + (' <span class="muted">(a chain: every branch near '
@@ -621,15 +622,15 @@ def place_page(hub, place):
     rows.append(("On a map", " · ".join(where)))
     if place["lat"] is None:
         rows.append(("Pin", '<span class="muted">not looked up yet, so it is not on the map</span>'))
-    elif place.get("placed") and place.get("osm_note"):
-        rows.append(("Pin", f'<span class="muted">at {esc(place["parent"])}: OpenStreetMap {esc(place["osm_note"])}, '
-                            'so Google Maps searches for it by name</span>'))
     elif place.get("placed"):
-        rows.append(("Pin", f'<span class="muted">at {esc(place["parent"])}: OpenStreetMap does not list it, '
-                            'so Google Maps searches for it by name</span>'))
+        google = ("; the Google Maps link opens the place itself" if place.get("google_by")
+                  else ", so Google Maps searches for it by name")
+        osm = esc(place["osm_note"]) if place.get("osm_note") else "does not list it"
+        rows.append(("Pin", f'<span class="muted">at {esc(place["parent"])}: OpenStreetMap {osm}{google}</span>'))
     points = []
     if place["lat"] is not None:
-        points.append([place["lat"], place["lon"], place["name"], "", "spot" if place["spot"] else "here"])
+        points.append([place["lat"], place["lon"], place["name"], "",
+                       "placed" if place.get("placed") else "spot" if place["spot"] else "here"])
     for k in place["inside"]:
         q = hub.places[k]
         if q["lat"] is not None:
@@ -744,7 +745,8 @@ function popup(pin){
   var th=(p.sp&&p.sp[pin[3]])||p.th;if(th){var img=el('img');img.src=th;img.alt='';box.appendChild(img)}
   box.appendChild(el('p','pwho',p.u?'@'+p.u:'Unknown creator'));
   var where=el('p','pwhere');where.appendChild(link(pl.s,pl.n));box.appendChild(where);
-  if(pl.x)box.appendChild(el('p','pnote','Pinned at the town: OpenStreetMap could not place it. Google Maps searches for it by name.'));
+  if(pl.x)box.appendChild(el('p','pnote','Pinned at the town: OpenStreetMap could not place it. '+
+    (/[?&]query_place_id=/.test(pl.m)?'Google Maps opens the place itself.':'Google Maps searches for it by name.')));
   if(p.t)box.appendChild(el('p','ptext',p.t));
   var ln=el('p','plinks');ln.appendChild(link(p.f,'Post page'));ln.appendChild(link(p.i,'Open on Instagram',true));
   ln.appendChild(link(pl.m,'Open in Google Maps',true));

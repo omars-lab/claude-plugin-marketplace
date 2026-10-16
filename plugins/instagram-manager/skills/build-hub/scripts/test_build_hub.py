@@ -205,6 +205,23 @@ class Hub(unittest.TestCase):
         self.assertNotIn("matched by its name", deli)                   # a person chose it
         self.assertIn("query_place_id=ChIJexampleFalls", json.dumps(self.data()))   # the map's link too
 
+    def test_a_google_id_found_at_the_captions_address_says_so(self):
+        self.write("data/pins-review.yaml", {
+            "TOWN1": [{"said": "Example Deli", "near": "Fixture Town", "why": "not found near Fixture Town",
+                       "asked": "Example Deli", "address": "1 Example Rd"}]})
+        self.write("data/google.yaml", {
+            "spot:example-deli@fixture-town": {"query": "Example Deli, 1 Example Rd", "verdict": "match",
+                                               "id": "ChIJexampleDeli", "by": "auto", "at_address": True,
+                                               "date": "2026-01-02"}})
+        self.build("--pilot", "fixture")
+        deli = self.page("places/example-deli.html")
+        self.assertIn("query_place_id=ChIJexampleDeli", deli)
+        self.assertIn("its name and the caption's address both match", deli)
+        self.assertNotIn("check it", deli)
+        self.assertIn("the Google Maps link opens the place itself", deli)   # not "searches for it by name"
+        self.assertNotIn("searches for it by name", deli)
+        self.assertIn('"Example Deli","","placed"]', deli)        # its small map draws the at-the-town ring
+
     def test_a_chain_keeps_its_search_link_for_every_branch(self):
         self.write("data/pins-review.yaml", {
             "TOWN1": [{"said": "Example Deli", "near": "Fixture Town", "why": "not found near Fixture Town",
