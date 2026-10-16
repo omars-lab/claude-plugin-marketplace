@@ -14,6 +14,12 @@ Usage:
     # OCR explicit files:
     python3 batch_ocr.py --files file1.png file2.png
 
+    # OCR the files listed in a text file (one path per line), writing the JSON to a file:
+    python3 batch_ocr.py --list to_read.txt --out ocr.json
+
+--out writes the JSON there instead of printing it, and progress goes to stderr as
+ev=ocr_progress lines, so a long run can be watched with grep.
+
 Output:
     JSON: {
         "<path>": {"text": "...", "error": null},
@@ -27,6 +33,7 @@ import json
 import os
 import sys
 import unicodedata
+from datetime import datetime, timezone
 from pathlib import Path
 
 EXTS = {".png", ".jpg", ".jpeg", ".heic"}
@@ -55,6 +62,13 @@ def collect_files(args: list[str]) -> list[Path]:
             i += 1
             d = Path(unicodedata.normalize("NFC", os.path.expanduser(args[i])))
             paths.extend(sorted(f for f in d.iterdir() if f.suffix.lower() in EXTS))
+        elif arg == "--list":
+            i += 1
+            for line in Path(os.path.expanduser(args[i])).read_text().splitlines():
+                if line.strip():
+                    paths.append(Path(unicodedata.normalize("NFC", line.strip())))
+        elif arg == "--out":
+            i += 1
         elif arg == "--files":
             i += 1
             while i < len(args) and not args[i].startswith("--"):
@@ -101,15 +115,22 @@ def main():
         print(json.dumps({"error": "No image files found for the given inputs."}))
         sys.exit(1)
 
+    out = Path(os.path.expanduser(args[args.index("--out") + 1])) if "--out" in args else None
     results: dict = {}
-    for f in files:
+    for n, f in enumerate(files, 1):
         if not f.exists():
             results[str(f)] = {"text": None, "error": f"File not found: {f}"}
             continue
         text, error = extract_text(f)
         results[str(f)] = {"text": text, "error": error}
+        if n % 25 == 0 or n == len(files):
+            print(f"{datetime.now(timezone.utc).isoformat(timespec='seconds')} pid={os.getpid()} "
+                  f"ev=ocr_progress done={n} of={len(files)}", file=sys.stderr)
 
-    print(json.dumps(results, indent=2, ensure_ascii=False))
+    if out:
+        out.write_text(json.dumps(results, indent=2, ensure_ascii=False))
+    else:
+        print(json.dumps(results, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":

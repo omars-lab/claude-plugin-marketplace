@@ -22,7 +22,7 @@ Screenshot Manager — 6 skills for your Screenshots folder.
 
 I can help with:
 - Organizing Desktop screenshots into NotePlan plan-named subdirs with meeting-note cross-references (organize-by-plan)
-- Moving Desktop screenshots and project folders into one iCloud folder per git repo, grouped by company (organize-by-project)
+- Moving Desktop screenshots and project folders into one iCloud folder per git repo, grouped by company, and keeping a fingerprint.md in each folder so new screenshots file themselves (organize-by-project)
 - Finding misplaced files and importing Desktop screenshots using OCR + date proximity (suggest-groupings)
 - Prefixing directories with their earliest screenshot date for chronological sorting (sort-dirs)
 - Extracting URLs from browser screenshots (extract-urls)
@@ -31,18 +31,17 @@ I can help with:
 
 ### Step 2: Ask What They Want to Do
 
-Use `AskUserQuestion`:
+Use `AskUserQuestion` (at most 4 options, so related skills share one):
 ```
 What would you like to do?
 
-- Organize Desktop screenshots by active NotePlan plans (organize-by-plan)
-- File the Desktop into one folder per git repo in iCloud (organize-by-project)
-- Find misplaced files / import from Desktop (suggest-groupings)
-- Sort directories by date (sort-dirs)
-- Extract URLs from browser screenshots (extract-urls)
-- Pick Claude technique screenshots from the Desktop (suggest-techniques)
+- File my Desktop screenshots and folders (organize-by-project, organize-by-plan, suggest-techniques)
+- Tidy a Screenshots folder I already have (suggest-groupings, sort-dirs)
+- Pull web addresses out of screenshots (extract-urls)
 - Learn about all skills
 ```
+
+If they pick the first, ask one follow-up: one folder per git repo (organize-by-project), by NotePlan plan (organize-by-plan), or just the Claude technique shots (suggest-techniques).
 
 ### Step 3: Present Relevant Skills
 
@@ -74,9 +73,13 @@ Based on their selection, explain the relevant skills with usage examples.
 
 **Invocation:** `/screenshot-manager:organize-by-project`
 
-**What it does:** Lists every git repo under `~/Workspace/git*` as a project, then moves Desktop screenshots and Desktop folders (including the ones in `Debugging/` and `Developing/`) into `CloudDesktop/projects/<company>/<project>/` in iCloud. A screenshot is placed by a project's name on screen (repo name or a hand-written alias); the rest get a look at the image itself. Company-wide material goes in the company's own folder. You approve a plan table first, and every move batch has an undo.
+**What it does:** Lists every git repo under `~/Workspace/git*` as a project, then moves Desktop screenshots and Desktop folders into `CloudDesktop/projects/<company>/<project>/` in iCloud. A screenshot is placed by a project's name on screen (repo name or a hand-written alias); the rest get a look at the image itself. Company-wide material goes in the company's own folder. You approve a plan table first, and every move batch has an undo.
 
-**Keeps back:** folders with key or secret files, screenshots it can't place, and folders with no matching repo, all listed for you.
+**Looks inside folders:** a folder whose name matches no repo is not skipped. Its screenshots are read: a folder where one project's name dominates moves whole, a folder where only some shots name a project gives up just those, and a folder with no names gets a few sample images checked. Folders of folders (`Debugging/`, `Developing/` and any like them) are matched one subfolder at a time.
+
+**Remembers each folder in `fingerprint.md`:** every folder with 3 or more screenshots gets a `fingerprint.md` listing the sites, paths and words its screenshots show, with dates, plus a **Guidance** section. When a screenshot is unclear, it reads the Guidance first, asks you if that doesn't settle it, and writes your answer into Guidance, so the next run already knows. A site or path that only one folder has is a hint for new screenshots, never a decision on its own.
+
+**Keeps back:** folders with key or secret files (or named for keys), screenshots it can't place, and folders that aren't project work, all listed for you.
 
 **When to use:** Your Desktop mixes screenshots and folders from many projects and you want each project's material in one place, next to the code it belongs to.
 

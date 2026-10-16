@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Plan, make and undo the moves from the Desktop into the projects folder.
 
-    # 0. Batch: split the screenshots the name match could not place into batch files,
-    #    one per image-check agent. Each agent writes vision_answers_<n>.json.
+    # 0. Batch: split the screenshots the name match could not place, plus a few from each
+    #    folder the look inside left undecided, into batch files, one per image-check agent.
+    #    Each agent writes vision_answers_<n>.json.
     python3 move_to_projects.py batch --root "<projects root>" --shots shots.json \
-        --size 40 --out-dir <work dir>
+        [--inside inside.json] [--fingerprints fingerprints.json] --size 40 [--start N] \
+        --out-dir <work dir>
 
     # 1. Plan: read the matches, print the table, write the plan. Moves nothing.
     python3 move_to_projects.py plan --root "<projects root>" --shots shots.json \
-        --folders folders.json [--vision vision_answers_0.json ...] --out plan.json
+        --folders folders.json [--inside inside.json] [--vision vision_answers_0.json ...] \
+        --out plan.json
 
     # 2. Apply: write the undo list to <root>/.moves/<UTC time>.json FIRST, then move.
     python3 move_to_projects.py apply --plan plan.json [--only shots|folders]
@@ -23,7 +26,10 @@ Layout (chosen 2026-10-16): grouped by company.
 org is "personal" for ~/Workspace/git, else the git-<org> folder's name.
 
 A screenshot's project comes from the image check (--vision) when there is one, else from
-the name match. "none" and "unsure" stay on the Desktop. An unsure screenshot taken within
+the name match. "none" and "unsure" stay on the Desktop, except that a "none" shot showing a
+site only one Desktop folder's fingerprint has goes into that folder.
+A folder the look inside left undecided moves whole when at least 3 of its sampled shots
+(or all, if fewer) are called for one project and none for another. An unsure screenshot taken within
 --burst seconds of a decided one takes that one's project.
 
 Never moved: a folder with key or secret files in it (listed, for you to sort by hand),
@@ -67,16 +73,24 @@ def batch(a) -> None:
     plist = [{k: p[k] for k in ("name", "org", "title", "active")} for p in projects]
     plist += [{"name": o, "org": o, "title": f"{o}: work on the company as a whole (no single repo)",
                "active": True} for o in sorted({p["org"] for p in projects}) if o != "personal"]
-    todo = [s for s in json.loads(a.shots.read_text()) if s["status"] != "matched"]
+    todo = [{"file": s["file"], "candidates": s.get("candidates", [])}
+            for s in (json.loads(a.shots.read_text()) if a.shots else []) if s["status"] != "matched"]
+    # A folder no name placed sends a few of its screenshots; the answers decide the folder.
+    for g in json.loads(a.inside.read_text()) if a.inside else []:
+        todo += [{"file": f, "candidates": [], "folder": g["folder"]} for f in g.get("sample", [])]
+    # What each folder's fingerprint says (top sites, the user's guidance), so the checker can
+    # see what already belongs where. Only folders with a project or with guidance.
+    folders = [{"folder": f["folder"], "project": f["project"],
+                "sites": sorted(f["sites"], key=f["sites"].get, reverse=True)[:5], "guidance": f["guidance"]}
+               for fp in a.fingerprints or [] for f in json.loads(fp.read_text()) if f["project"] or f["guidance"]]
     a.out_dir.mkdir(parents=True, exist_ok=True)
-    n = 0
-    for n, i in enumerate(range(0, len(todo), a.size)):
+    n = a.start
+    for n, i in enumerate(range(0, len(todo), a.size), start=a.start):
         part = todo[i: i + a.size]
         f = a.out_dir / f"vision_batch_{n}.json"
-        f.write_text(json.dumps({"projects": plist, "shots": [{"file": s["file"], "candidates": s.get("candidates", [])}
-                                                               for s in part]}, indent=1, ensure_ascii=False))
+        f.write_text(json.dumps({"projects": plist, "folders": folders, "shots": part}, indent=1, ensure_ascii=False))
         print(f"{f}  {len(part)} shots")
-    print(f"{len(todo)} shots in {n + 1 if todo else 0} batches; answers go to vision_answers_<n>.json")
+    print(f"{len(todo)} shots in batches {a.start}..{n}; answers go to vision_answers_<n>.json")
 
 
 def plan(a) -> None:
@@ -118,30 +132,71 @@ def plan(a) -> None:
     for d in decided:
         src = Path(d["file"])
         dest = home(d["project"])
+        if dest is None and d["project"] == "none" and d.get("suggest_folder"):
+            # Not project work, and a site only one Desktop folder's fingerprint has shows on
+            # it (match_projects.py --fingerprints): file it there, next to its kind.
+            folder = Path(d["suggest_folder"])
+            dst = free_name(folder / src.name, taken)
+            taken.add(str(dst))
+            moves.append({"kind": "shot", "project": "", "place": str(folder), "src": str(src), "dst": str(dst),
+                          "why": f"{d['why']}; fingerprint: {', '.join(d.get('suggest_why', []))}"})
+            continue
         if dest is None:
             held.append({"src": str(src), "reason": d["project"], "why": d["why"]})
             continue
         dst = free_name(dest / "screenshots" / src.name, taken)
         taken.add(str(dst))
         moves.append({"kind": "shot", "project": d["project"], "src": str(src), "dst": str(dst), "why": d["why"]})
-    for f in json.loads(a.folders.read_text()) if a.folders else []:
-        dest = home(f["project"]) if f["project"] else None
-        if dest is None or f["kind"] == "unclear":
-            continue
+    def move_folder(f: dict, project: str, why: str) -> None:
         src = Path(f["folder"])
         if f.get("secrets"):
             held.append({"src": str(src), "reason": "has key/secret files", "why": ", ".join(f["secrets"][:3])})
-            continue
-        dst = free_name(dest / src.name, taken)
+            return
+        dst = free_name(home(project) / src.name, taken)
         taken.add(str(dst))
-        moves.append({"kind": "folder", "project": f["project"], "src": str(src), "dst": str(dst),
-                      "why": f["why"], "files": f["files"], "non_images": f["non_images"]})
+        moves.append({"kind": "folder", "project": project, "src": str(src), "dst": str(dst),
+                      "why": why, "files": f["files"], "non_images": f["non_images"]})
+
+    for f in json.loads(a.folders.read_text()) if a.folders else []:
+        if f["project"] and f["kind"] != "unclear" and home(f["project"]):
+            move_folder(f, f["project"], f["why"])
+    # Folders placed by what their screenshots show (match_projects.py inside).
+    for g in json.loads(a.inside.read_text()) if a.inside else []:
+        src = Path(g["folder"])
+        if g["verdict"] == "whole" and home(g["project"]):
+            move_folder(g, g["project"], g["why"])
+        elif g["verdict"] == "split":
+            # Only the shots that name a project move, under the folder's name so it still
+            # reads as one set at the destination. A container's loose shots go to screenshots/.
+            for m in g["moves"]:
+                if not home(m["project"]):
+                    continue
+                f = Path(m["file"])
+                sub = Path("screenshots") / f.name if g["loose"] else Path(src.name) / f.relative_to(src)
+                dst = free_name(home(m["project"]) / sub, taken)
+                taken.add(str(dst))
+                moves.append({"kind": "shot", "project": m["project"], "src": str(f), "dst": str(dst),
+                              "why": "name on screen: " + ", ".join(m["why"])})
+        elif g["verdict"] == "undecided":
+            answers = [vision[key(f)]["project"] for f in g["sample"] if key(f) in vision]
+            named = {p for p in answers if p not in ("none", "unsure")}
+            need = min(3, len(g["sample"]))
+            if len(named) == 1 and answers.count(next(iter(named))) >= need and home(next(iter(named))):
+                p = next(iter(named))
+                move_folder(g, p, f"image check: {answers.count(p)} of {len(answers)} sampled shots show {p}")
+            elif answers and all(p == "none" for p in answers):
+                held.append({"src": str(src), "reason": "folder: not project work",
+                             "why": f"image check: all {len(answers)} sampled shots"})
+            else:
+                held.append({"src": str(src), "reason": "folder: undecided",
+                             "why": "image check: " + (", ".join(answers) or "not checked yet")})
     out = {"root": str(root), "planned": datetime.now(timezone.utc).isoformat(timespec="seconds"),
            "moves": moves, "held": held}
     a.out.write_text(json.dumps(out, indent=2, ensure_ascii=False))
     by: dict[str, list[int]] = {}
     for m in moves:
-        rel = str(Path(m["dst"]).parent.relative_to(root)).removesuffix("/screenshots")
+        rel = (str(home(m["project"]).relative_to(root)) if m["project"]
+               else "Desktop: " + str(Path(m["place"]).relative_to(Path.home() / "Desktop")))
         c = by.setdefault(rel, [0, 0, 0])
         if m["kind"] == "shot":
             c[0] += 1
@@ -151,10 +206,13 @@ def plan(a) -> None:
     print(f"{'destination':42} {'shots':>5} {'folders':>7} {'files in them':>13}")
     for rel, (s, n, f) in sorted(by.items()):
         print(f"{rel:42} {s:5} {n:7} {f:13}")
-    print(f"\n{len(moves)} moves planned; {len(held)} left on the Desktop "
-          f"({sum(1 for h in held if h['reason'] == 'none')} not project work, "
-          f"{sum(1 for h in held if h['reason'] == 'unsure')} unsure, "
-          f"{sum(1 for h in held if h['reason'] == 'has key/secret files')} folders with keys)")
+    reasons: dict[str, int] = {}
+    for h in held:
+        r = {"none": "screenshots: not project work", "unsure": "screenshots: unsure"}.get(h["reason"], h["reason"])
+        reasons[r] = reasons.get(r, 0) + 1
+    print(f"\n{len(moves)} moves planned; {len(held)} left on the Desktop:")
+    for r, n in sorted(reasons.items()):
+        print(f"  {n:4}  {r}")
     print(f"plan written to {a.out}", file=sys.stderr)
 
 
@@ -226,13 +284,17 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("batch")
     p.add_argument("--root", type=Path, required=True, help="the projects folder")
-    p.add_argument("--shots", type=Path, required=True, help="match_projects.py shots --out")
+    p.add_argument("--shots", type=Path, help="match_projects.py shots --out")
+    p.add_argument("--inside", type=Path, help="match_projects.py inside --out (sample shots of undecided folders)")
     p.add_argument("--size", type=int, default=40, help="shots per image-check agent")
+    p.add_argument("--start", type=int, default=0, help="first batch number, to keep earlier batches")
+    p.add_argument("--fingerprints", type=Path, action="append", help="fingerprint.py index --out")
     p.add_argument("--out-dir", type=Path, required=True)
     p = sub.add_parser("plan")
     p.add_argument("--root", type=Path, required=True, help="the projects folder")
     p.add_argument("--shots", type=Path, help="match_projects.py shots --out")
     p.add_argument("--folders", type=Path, help="match_projects.py folders --out")
+    p.add_argument("--inside", type=Path, help="match_projects.py inside --out")
     p.add_argument("--vision", type=Path, action="append", help="image-check answers (repeatable)")
     p.add_argument("--burst", type=int, default=120)
     p.add_argument("--out", type=Path, required=True)
