@@ -233,8 +233,12 @@ test("paths are stored with ~, and names and pointers are checked", () => {
   assert.equal(shotName("after", "9c41d0e2b7d3a41c"), "after-9c41d0e2b7d3.png");
   assert.throws(() => shotName("after", "not-a-sha"));
   assert.throws(() => shotName("after"));
-  for (const n of ["comment.png", "after-9c41d0e.png", "after-9c41d0e2b7d3.png"]) assert.ok(isShotName(n), n);
-  for (const n of ["../comment.png", "comment.PNG", "after-.png", "after-9c41d0e2b7d3a.png", "x.png", "comment.png/"]) assert.ok(!isShotName(n), n);
+  assert.equal(shotName("after", "9c41d0e2b7d3a41c", 2), "after-9c41d0e2b7d3-2.png");
+  assert.equal(shotName("comment", undefined, 3), "comment-3.png");
+  for (const n of ["comment.png", "after-9c41d0e.png", "after-9c41d0e2b7d3.png", "after-9c41d0e-2.png", "comment-99.png"]) assert.ok(isShotName(n), n);
+  for (const n of ["../comment.png", "comment.PNG", "after-.png", "after-9c41d0e2b7d3a.png", "x.png", "comment.png/", "comment-1.png", "comment-100.png", "after-9c41d0e-02.png"]) {
+    assert.ok(!isShotName(n), n);
+  }
   const store = { repo: "/r", dir: "/r/.page-comments" };
   for (const icloud of ["/abs/t_abc123/comment.png", "a/../t_abc123/comment.png", "a//t_abc123/comment.png", "comment.png", "a/t_abc123/evil.sh", "a/nope/comment.png", "a\\t_abc123/comment.png"]) {
     assert.equal(shotPath(store, { icloud }), null, icloud);
@@ -265,6 +269,19 @@ test("the command line: shot attaches an after picture, show prints where pictur
     assert.match(r.stdout, new RegExp(`after picture attached, sha ${sha12(PNG)}`));
     const s = readThread(store, id).shots[0];
     assert.deepEqual([s.role, s.author, s.commit, s.sha], ["after", "claude", "9c41d0e2b7d3a41c09e2", sha12(PNG)]);
+
+    // A second, different picture on the same commit keeps the first one.
+    const pic2 = join(repo, "after2.png");
+    const PNG2 = Buffer.concat([PNG, Buffer.from("second")]);
+    writeFileSync(pic2, PNG2);
+    assert.equal(cli(["shot", id, "--file", pic2, "--commit", "9c41d0e2b7d3a41c09e2", ...base]).code, 0);
+    assert.deepEqual(readFileSync(want), PNG, "the first picture is unchanged");
+    assert.deepEqual(readFileSync(want.replace(/\.png$/, "-2.png")), PNG2);
+    // The same picture again reuses its own file rather than making a third.
+    assert.equal(cli(["shot", id, "--file", pic2, "--commit", "9c41d0e2b7d3a41c09e2", ...base]).code, 0);
+    const shots = readThread(store, id).shots;
+    assert.deepEqual(shots.map((x) => x.icloud.split("/").pop()), ["after-9c41d0e2b7d3.png", "after-9c41d0e2b7d3-2.png", "after-9c41d0e2b7d3-2.png"]);
+    for (const x of shots) assert.equal(sha12(readFileSync(shotPath(store, x))), x.sha, "each event's sha matches its file");
 
     recordShotError(store, id, { role: "comment", reason: "the capture library did not load", author: "sam" });
     const text = cli(["show", id, ...base]);

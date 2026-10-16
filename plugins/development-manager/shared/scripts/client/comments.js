@@ -748,6 +748,44 @@
   }
 
   /**
+   * The library copies a `::before`/`::after` rule's text as a plain string, so
+   * `content: open-quote` (a <q>'s quote marks) is drawn as the words
+   * "open-quote". Swap those keywords in the copied rules for the marks the
+   * page's `quotes` setting gives, and drop the no-open/no-close ones.
+   */
+  function fixQuoteMarks(svg, el) {
+    var open, close;
+    function esc(s) {
+      return s.replace(/[\\']/g, "\\$&");
+    }
+    var styles = svg.querySelectorAll("style");
+    for (var i = 0; i < styles.length; i++) {
+      var css = styles[i].textContent;
+      if (css.indexOf("-quote") < 0) continue;
+      if (open === undefined) {
+        // The marks a <q> in the element (or the element itself) is set to draw.
+        var from = el.matches("q") ? el : el.querySelector("q") || el;
+        var marks = [];
+        (getComputedStyle(from).quotes || "").replace(/"((?:[^"\\]|\\.)*)"/g, function (_, m) {
+          marks.push(m.replace(/\\(.)/g, "$1"));
+        });
+        open = marks.length >= 2 ? marks[0] : "“";
+        close = marks.length >= 2 ? marks[1] : "”";
+      }
+      styles[i].textContent = css.replace(/content: '([^']*)';/g, function (all, text) {
+        return (
+          "content: '" +
+          text
+            .replace(/\bno-(open|close)-quote\b/g, "")
+            .replace(/\bopen-quote\b/g, esc(open))
+            .replace(/\bclose-quote\b/g, esc(close)) +
+          "';"
+        );
+      });
+    }
+  }
+
+  /**
    * Draw `el` to a PNG Blob: 16 px of background around it, at most 600 CSS px
    * wide, at up to twice the pixel density. Iframes and this bar are left out.
    * A node inside an SVG is drawn with its whole diagram, then cropped to it.
@@ -771,6 +809,9 @@
           timeout: SHOT_MS,
           filter: function (n) {
             return n !== host && n.nodeName !== "IFRAME";
+          },
+          onCreateForeignObjectSvg: function (svg) {
+            fixQuoteMarks(svg, el);
           },
         });
       })

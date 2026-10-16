@@ -3,7 +3,9 @@
 // A picture lives outside git. By default it goes to iCloud Drive, under
 //   <shot folder>/page-comments/<repo>/<thread-id>/comment.png
 //   <shot folder>/page-comments/<repo>/<thread-id>/after-<commit>.png
-// and the thread file keeps only a `shot` event that points at it. The pointer
+// and the thread file keeps only a `shot` event that points at it. A second,
+// different picture of the same kind and commit gets `-2`, `-3`...
+// (`after-<commit>-2.png`), so it never replaces one a `shot` event points at. The pointer
 // is relative to the iCloud Drive root, so it reads the same on the Mac and
 // the phone. When the shot folder is not inside iCloud Drive, or iCloud Drive
 // is not on this Mac, pictures go to `.page-comments/shots/<thread-id>/`
@@ -27,7 +29,8 @@ import { appendEvent, isThreadId } from "./store.mjs";
 export const SHOT_MAX = 8 * 1024 * 1024;
 export const ROLES = ["comment", "after"];
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const NAME_RE = /^(comment|after-[0-9a-f]{7,12})\.png$/;
+const NAME_RE = /^(comment|after-[0-9a-f]{7,12})(-[2-9]|-[1-9][0-9])?\.png$/;
+const SHOT_COPIES = 99; // pictures of one role and commit on one thread
 const COMMIT_RE = /^[0-9a-f]{7,40}$/;
 
 // ---- Paths ------------------------------------------------------------------------
@@ -134,10 +137,14 @@ export function repoName(repo) {
   return basename(repo);
 }
 
-/** The file name a shot is saved under. The server and command line pick it, never the page. */
-export function shotName(role, commit) {
-  if (role === "comment") return "comment.png";
-  if (role === "after" && typeof commit === "string" && COMMIT_RE.test(commit)) return `after-${commit.slice(0, 12)}.png`;
+/**
+ * The file name a shot is saved under. The server and command line pick it, never the page.
+ * `n` (2 and up) numbers a second, third... picture of the same role and commit on one thread.
+ */
+export function shotName(role, commit, n = 1) {
+  const suffix = Number.isInteger(n) && n >= 2 && n <= SHOT_COPIES ? `-${n}` : "";
+  if (role === "comment") return `comment${suffix}.png`;
+  if (role === "after" && typeof commit === "string" && COMMIT_RE.test(commit)) return `after-${commit.slice(0, 12)}${suffix}.png`;
   throw new Error("an after shot needs the commit it was taken against (7 to 40 hex characters)");
 }
 
@@ -198,10 +205,12 @@ export function saveShot(store, id, buf, { role, commit, author }, env = process
   if (!ROLES.includes(role)) throw new Error(`role is comment or after, not ${role}`);
   if (!isPng(buf)) throw new Error("not a PNG picture");
   if (buf.length > SHOT_MAX) throw new Error(`the picture is over ${SHOT_MAX / 1024 / 1024} MB`);
-  const name = shotName(role, commit);
+  shotName(role, commit); // throws on a bad commit before anything is written
   const target = shotTarget(store, env);
   const folder = join(target.base, id);
   mkdirSync(folder, { recursive: true });
+  const sha = shortSha(buf);
+  const name = freeShotName(folder, role, commit, sha);
   // Written under a hidden name, then renamed, so iCloud never copies half a file.
   const tmp = join(folder, `.${name}.${process.pid}.tmp`);
   writeFileSync(tmp, buf);
@@ -209,9 +218,24 @@ export function saveShot(store, id, buf, { role, commit, author }, env = process
   const event = { ev: "shot", role, author };
   if (target.kind === "icloud") event.icloud = relative(icloudRoot(env), join(folder, name)).split(sep).join("/");
   else event.local = relative(store.dir, join(folder, name)).split(sep).join("/");
-  event.sha = shortSha(buf);
+  event.sha = sha;
   if (role === "after") event.commit = commit;
   return appendEvent(store, id, event);
+}
+
+/**
+ * The first name in `folder` that is free, or that already holds this same
+ * picture. A name iCloud has not downloaded yet counts as taken.
+ */
+function freeShotName(folder, role, commit, sha) {
+  for (let n = 1; n <= SHOT_COPIES; n++) {
+    const name = shotName(role, commit, n);
+    const full = join(folder, name);
+    const state = shotFileState(full);
+    if (state === "missing") return name;
+    if (state === "ok" && shortSha(readFileSync(full)) === sha) return name;
+  }
+  throw new Error(`this thread already has ${SHOT_COPIES} pictures of that kind`);
 }
 
 /** A capture that failed: a `shot` event with the reason instead of a pointer. */
