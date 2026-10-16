@@ -40,6 +40,9 @@ What the merge checks, per spot
      up once, inside 60 km of its pin; when none is found, 25 km of its pin is the reach.)
      Nothing found, or found only out of reach: review, with why ("not found near Example Town",
      "38 km from Example Town").
+  5. The name found matches the name asked: they share a word of their own and differ only by
+     place words ("state", "park"), one business kind ("coffee") or the area's name. If not: review
+     ("found Example Baguette, a different name"). A person's `lookup:` skips this check.
 
 Fixing a review entry
   Add `lookup: "Other Name"` to the entry: the next --merge searches that instead of what the caption
@@ -59,8 +62,10 @@ import glob
 import json
 import math
 import os
+import re
 import sys
 import time
+import unicodedata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared", "scripts"))
@@ -205,6 +210,57 @@ def search_text(spot):
     return said
 
 
+FILLER = {"the", "a", "an", "and", "of", "at", "in", "on", "by"}
+
+
+def stem(word):
+    """"meadows" and "meadow" as one word; "pass" left alone."""
+    return word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word
+
+
+def name_words(text):
+    """A name's words: lower case, no accents, no punctuation, filler words or bracketed part, plurals
+    as singular."""
+    text = unicodedata.normalize("NFKD", str(text).lower().replace("’", "").replace("'", ""))
+    text = re.sub(r"\(.*?\)", " ", "".join(c for c in text if not unicodedata.combining(c)))
+    return {stem(w) for w in re.findall(r"[a-z0-9]+", text)} - FILLER
+
+
+def area_words(area):
+    """The area's words, and its initials when it has two or more: "la" for Los Angeles."""
+    words = re.findall(r"[a-z0-9]+", str(area).lower())
+    return name_words(area) | ({"".join(w[0] for w in words)} if len(words) > 1 else set())
+
+
+# Words either name may have that the other lacks, and still be the same place.
+PLACE_WORDS = {stem(w) for w in """state national regional county city park beach trail trailhead creek
+falls lake river bay cove point island peak mount mt mountain canyon valley spring hot pier harbor harbour
+bridge historic historical memorial monument reserve preserve forest wilderness recreation area garden
+botanical vista viewpoint overlook lookout fire campground meadow dune sand flat lighthouse light station
+steps street st avenue ave road parking north south east west upper lower old association""".split()}
+# Kinds of business: one name may add one ("Example" and "Example Coffee"), but two names with different
+# kinds ("Example Cafe" and "Example Bakery") are two places.
+KIND_WORDS = {stem(w) for w in """coffee co company cafe restaurant bakery eatery kitchen bar ramen craft
+hotel inn lodge store shop market creamery food hall sandwiches""".split()}
+
+
+def same_name(asked, found, area=""):
+    """True when the two names share a word of their own, and differ only by place words, business
+    kinds or the area's name: "Example Point" and "Example Point State Park", "Example LA" and
+    "Example" (near Los Angeles). "Example Bakery" and "Example Baguette" are not, nor are "Example
+    Mission" and "Mission Ranch Example": OpenStreetMap's nearest answer to a name it does not know is
+    often a different place."""
+    a, f = name_words(asked), name_words(found)
+    if a and a == f:
+        return True
+    if not (a & f) - PLACE_WORDS - KIND_WORDS:  # "Example Beach" near Example shares "example"
+        return False
+    free = PLACE_WORDS | area_words(area)
+    if not all(w in free or w in KIND_WORDS or any(c.isdigit() for c in w) for w in a ^ f):
+        return False
+    return not ((a - f) & KIND_WORDS and (f - a) & KIND_WORDS)
+
+
 def resolve(spot, caption, areas, places, reaches, fetcher=None):
     """("pin" or "review", entry) for one spot. areas: the names the spot's `near` may be."""
     said, near = spot["said"], spot["near"]
@@ -237,6 +293,9 @@ def resolve(spot, caption, areas, places, reaches, fetcher=None):
     found["map"] = geocode.maps_link(hit["name"], near)
     if not good:
         return "review", {**base, "why": f"{km:.0f} km from {near}", "asked": asked, **found, **keep}
+    if not by_person and not same_name(asked, found["name"], near):
+        return "review", {**base, "why": f"found {found['name']}, a different name", "asked": asked,
+                          **found, **keep}
     pin = {"name": found.pop("name"), **base, **found}
     if asked != said:
         pin["asked"] = asked

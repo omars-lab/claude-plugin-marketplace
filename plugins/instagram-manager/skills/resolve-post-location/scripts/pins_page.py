@@ -178,7 +178,7 @@ q { display: inline-block; background: var(--quote-bg); padding: .05rem .4rem; b
 <body>
 <header class="top">
   <h1>Spot Pins</h1>
-  <p class="lede">{{LEDE}} Green pins checked out; orange ones were found, but too far from the save's area.</p>
+  <p class="lede">{{LEDE}} Green pins checked out; orange ones were found, but too far from the save's area or under a different name.</p>
 </header>
 <div class="desk">
   <div id="map" role="region" aria-label="Map of the spot pins"></div>

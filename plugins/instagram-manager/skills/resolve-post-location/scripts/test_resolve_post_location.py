@@ -218,6 +218,32 @@ class Merge(Home):
         ridge = self.spot("data/pins-review.yaml", "PARKA", "Distant Ridge Loop")
         self.assertEqual(ridge["why"], "56 km from Fixture Park")
 
+    def test_the_name_check(self):
+        with mock.patch.dict(OSM, {"Example Museum": [hit("Example Baguette", 39.99, -120.004, "bakery", 21)],
+                                   "Example Gardens": [hit("The Example Gardens (East)", 40.003, -119.99,
+                                                           "garden", 18)]}):
+            self.locate()
+        wrong = self.spot("data/pins-review.yaml", "LISTA", "Example Museum")
+        self.assertEqual(wrong["why"], "found Example Baguette, a different name")
+        self.assertEqual(wrong["osm"], "node/21")                               # kept, for a person to judge
+        self.assertEqual(self.spot("data/pins.yaml", "LISTA", "Example Gardens")["osm"], "node/18")
+        self.assertTrue(rpl.same_name("Example Point", "Example Point State Park"))
+        self.assertTrue(rpl.same_name("Example's Diner", "Examples Diner"))
+        self.assertTrue(rpl.same_name("Example Pier", "Example Pier Fixture Town", "Fixture Town"))
+        self.assertTrue(rpl.same_name("Exampleo FT", "Exampleo", "Fixture Town"))     # the area's initials
+        self.assertTrue(rpl.same_name("Example Meadows", "Example Meadow"))
+        self.assertTrue(rpl.same_name("Á Exámple", "A Example"))
+        self.assertTrue(rpl.same_name("Example Lighthouse", "Example Light Station"))
+        self.assertTrue(rpl.same_name("Exampleo", "Exampleo Coffee Co."))
+        self.assertTrue(rpl.same_name("Example Trail", "Example Trail #1X01"))
+        self.assertTrue(rpl.same_name("Fixture Beach", "Fixture Beach", "Fixture"))    # a match, named for its area
+        self.assertTrue(rpl.same_name("Fixture Creamery", "Fixture County Creamery", "Fixture"))
+        self.assertFalse(rpl.same_name("Example Mission", "Mission Ranch Example"))   # "ranch" is not a place word
+        self.assertFalse(rpl.same_name("Example Bakery", "Example Baguette"))
+        self.assertFalse(rpl.same_name("Exampleo Cafe", "Exampleo Bakery"))         # two kinds of business
+        self.assertFalse(rpl.same_name("State Park", "Example State Park"))         # no word of its own shared
+        self.assertFalse(rpl.same_name("The", "Example"))                       # no words left on one side
+
     def test_a_spot_outside_the_saves_areas_goes_to_review(self):
         self.locate()
         e = self.spot("data/pins-review.yaml", "TOWNA", "Made Up Spot")

@@ -368,7 +368,15 @@ def thumb_html(post, up=True, cls="thumb"):
     return f'<span class="{cls} ph" aria-hidden="true">{esc(post["kind"])}</span>'
 
 
+# OpenStreetMap types that say what a road or building is, not what the place is: a bridge on a main
+# road comes back as "primary". These show as "Spot".
+NOT_A_KIND = {"yes", "primary", "secondary", "tertiary", "trunk", "motorway", "residential", "unclassified",
+              "service", "road", "footway", "house", "building"}
+
+
 def kind_word(p):
+    if p["kind"] in NOT_A_KIND:
+        return "Spot"
     return {"city": "Town or city", "park": "Park", "region": "Region", "state": "State", "country": "Country",
             "other": "Place", "place": "Place"}.get(p["kind"], str(p["kind"]).replace("_", " ").capitalize())
 
