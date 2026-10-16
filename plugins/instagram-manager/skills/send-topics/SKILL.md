@@ -17,8 +17,8 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
   `data/places.yaml` (Example Town → Example State). A trip planner reads only the area it plans.
   A road trip across two states is in both files, each with only its spots there.
 - **`out/<topic>.yaml`** for every other topic, even one with no saves yet, so a reading repo can
-  count on the file being there. Their `items` stay empty until a splitter for non-place topics
-  exists; for now they list the saves.
+  count on the file being there. Each save's `items` are the things **split-saves** found in its
+  caption under that topic (`data/items.yaml`); `[]` until it has read the save.
 
 Every file starts with `topic`, `area` (travel only), `feeds`, `scope` (which saves are in it:
 the pilot only, or every tagged save) and `count`, then `saves`, sorted by code.
@@ -47,6 +47,15 @@ A travel item is a spot:
   t: 4.9                         # seconds into the reel
   still_from: name               # or area: the moment its area was on screen
   area: Example Park             # only with still_from: area; spots of one area share the files
+```
+
+Any other topic's item is what the caption names, from split-saves:
+
+```yaml
+- topic: recipes-coffee          # the file's topic
+  kind: dish                     # dish; subject or technique; idea or product; note
+  name: Example lemon loaf       # a short name
+  quote: my easy lemon loaf      # the caption's own words, checked word for word
 ```
 
 `exact: false` spots are the venues OpenStreetMap is thin on (small restaurants, cafés), from
@@ -90,10 +99,10 @@ No caption and no collection names go in, only the short quotes the data repo al
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/send_topics.py` | Writes `out/travel/<area>.yaml` and `out/<topic>.yaml` from the data files | After tagging, spots or stills change, before another repo's intake runs | `python3 scripts/send_topics.py --pilot <name>` (or `--all`; `--out DIR` for another folder) |
-| `scripts/test_send_topics.py` | Offline tests on an invented data repo: a file per state, a road trip split across two, a spot OpenStreetMap lacks, a kept Google id (and one whose search text changed), an area still, `also_in`, a non-travel save left out and logged, empty topic files, the pilot's scope, two pilots adding up in one topic file (and a save leaving it), a pilot leaving an `--all` file alone, the same bytes on a rerun, stale files removed | After any change to the script | `python3 scripts/test_send_topics.py` |
+| `scripts/test_send_topics.py` | Offline tests on an invented data repo: a file per state, a road trip split across two, a spot OpenStreetMap lacks, a kept Google id (and one whose search text changed), an area still, `also_in`, a non-travel save left out and logged, non-travel items from split-saves, empty topic files, the pilot's scope, two pilots adding up in one topic file (and a save leaving it), a pilot leaving an `--all` file alone, the same bytes on a rerun, stale files removed | After any change to the script | `python3 scripts/test_send_topics.py` |
 
 ## What it can't do yet
 
-- **Items for topics with no place.** A recipe's dishes or a design post's ideas need a splitter.
-  Until then those files list the saves with `items: []`.
+- **One item across several saves.** The same dish named in three posts is three items, one per
+  save; nothing merges them yet.
 - **Writing into the other repos.** Each repo's intake reads `out/` and records what it took.

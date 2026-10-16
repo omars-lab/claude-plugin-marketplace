@@ -82,7 +82,7 @@ class Waiting(unittest.TestCase):
             for name in ("batch-001.answers.json", "batch-002.answers.json", "batch-003.answers.merged.json",
                          "batch-004.json"):
                 open(os.path.join(d, "tag", name), "w").close()
-            self.assertEqual(dp.waiting_answers(d), {"tag": 2, "locate": 0, "frames": 0})
+            self.assertEqual(dp.waiting_answers(d), {"tag": 2, "locate": 0, "frames": 0, "split": 0})
 
             stuck = os.path.join(d, "stuck.txt")
             with open(stuck, "w") as fh:
@@ -108,7 +108,7 @@ class Page(unittest.TestCase):
         k = gp.spot_key(CAFE)
         rows = dp.google_rows({k: {"query": gp.query_for(CAFE), "ids": ["idA", "idB"]}}, {}, spots)
         check = [("H1", {"said": "Example <Hall>", "near": "Fixture Town", "why": "near Far City"})]
-        page, counts = dp.build(rows, check, [], {"M1": {}}, {"tag": 3, "locate": 0, "frames": 0}, 2,
+        page, counts = dp.build(rows, check, [], {"M1": {}}, {"tag": 3, "locate": 0, "frames": 0, "split": 0}, 2,
                                 [{"label": "Example link", "url": "https://example.com", "note": ""}],
                                 {"CAFE1": save("CAFE1")}, {})
         self.assertEqual(counts, {"google": 1, "check": 1, "moves": 1, "merge": 3, "fetch": 1, "links": 1})

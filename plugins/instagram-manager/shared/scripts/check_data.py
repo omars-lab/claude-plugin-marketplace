@@ -18,6 +18,9 @@ Checks, each one only when its file exists:
                            start with the name OpenStreetMap found there are one place ("Example
                            Roastery USA" at Example Roastery). Shops that really share a building (a
                            food hall, a mall) each get the same `building:` value and pass.
+  data/items.yaml          code → {topics[], items[{topic, kind, name, quote}]} from split-saves: codes
+                           in the export, each item's topic known and not travel, a name and a kind,
+                           and with .cache/saves.json present, its quote in the caption word for word
   (a known place is a city in collections.yaml or a key in config/ or data/places.yaml)
 
 Prints one ev= line per problem and exits 1 if there is any.
@@ -33,6 +36,7 @@ import yaml  # noqa: E402
 from home import cache, home  # noqa: E402
 from log import log  # noqa: E402
 from purposes import load as load_purposes  # noqa: E402
+from quote import quote_ok  # noqa: E402
 
 
 _OVERRIDES = {}
@@ -76,6 +80,31 @@ def shared_spots(pins):
     return out
 
 
+def item_problems(items, known=(), captions=None):
+    """[(code, {why, ...})]: what is wrong in data/items.yaml. `known` is the topic list (empty: not
+    checked); `captions` maps code → caption (None: codes and quotes not checked)."""
+    out = []
+    if not isinstance(items, dict):
+        return [("", {"msg": "needs a map of code → {topics, items}"})]
+    for code, e in items.items():
+        if captions is not None and code not in captions:
+            out.append((code, {"msg": "not a save in the export"}))
+        if not isinstance(e, dict) or not isinstance(e.get("items"), list) \
+                or not isinstance(e.get("topics", []), list):
+            out.append((code, {"msg": "needs {topics: [...], items: [...]}"}))
+            continue
+        for n, it in enumerate(e["items"]):
+            if not isinstance(it, dict) or not all(isinstance(it.get(k), str) and it[k].strip()
+                                                    for k in ("topic", "kind", "name", "quote")):
+                out.append((code, {"item": n, "msg": "an item needs topic, kind, name and quote"}))
+                continue
+            if it["topic"] == "travel" or (known and it["topic"] not in known):
+                out.append((code, {"item": n, "topic": it["topic"], "msg": "not a known topic other than travel"}))
+            if captions is not None and code in captions and not quote_ok(it["quote"], captions[code]):
+                out.append((code, {"item": n, "msg": "quote is not in the caption"}))
+    return out
+
+
 def problems(overrides=None, quiet=False):
     """Every problem as {ev, ...}. `overrides` maps a file ("data/tags.yaml") to data not yet
     written, so a change can be checked before it is saved; `quiet` skips the log lines."""
@@ -107,12 +136,13 @@ def _problems(quiet):
                     bad("check_fail", file="config/topics.yaml", topic=t, msg="needs a label")
 
     exported = None
-    codes = None
+    codes = captions = None
     if os.path.exists(cache("saves.json")):
         with open(cache("saves.json"), encoding="utf-8") as fh:
             saved = json.load(fh)
         exported = {c["name"] for c in saved["collections"]}
         codes = {s["code"] for s in saved["saves"]}
+        captions = {s["code"]: s.get("caption") or "" for s in saved["saves"]}
 
     places = load("config/places.yaml")
     places_known = set()
@@ -187,6 +217,11 @@ def _problems(quiet):
         for name in (m or {}).get("to") or []:
             if mapping and name not in mapping:
                 bad("check_fail", file="data/moves.yaml", code=code, collection=name, msg="move to a collection with no entry")
+
+    items = load("data/items.yaml")
+    if items is not None:
+        for code, why in item_problems(items, known, captions):
+            bad("check_fail", file="data/items.yaml", code=code, **why)
 
     for where, names in shared_spots(load("data/pins.yaml")):
         bad("check_fail", file="data/pins.yaml", at=where, spots="|".join(names),

@@ -41,7 +41,7 @@ class Api(unittest.TestCase):
         for rel, data in (("config/topics.yaml", fx.TOPICS), ("config/collections.yaml", fx.COLLECTIONS),
                           ("data/places.yaml", fx.PLACES), ("data/tags.yaml", fx.TAGS), ("data/pins.yaml", fx.PINS),
                           ("data/pins-review.yaml", REVIEW), ("data/media.yaml", fx.MEDIA),
-                          ("data/stills.yaml", fx.STILLS)):
+                          ("data/stills.yaml", fx.STILLS), ("data/items.yaml", fx.ITEMS)):
             self.write(rel, data)
         self.write(".cache/saves.json", {"saves": fx.SAVES, "collections": [{"name": n} for n in fx.COLLECTIONS["collections"]]})
         self.write(".cache/google-to-pick.json", {"osm:way/7": {"query": "Example Cove Beach, Fixture Town",
@@ -148,6 +148,12 @@ class Api(unittest.TestCase):
         self.assertEqual(sorted(i["name"] for i in s["items"]), ["Example Bluff", "Example Pier", "Example Point"])
         self.assertNotIn("also_in", s)
         self.get("/v1/saves/NOPE1", 404)
+
+    def test_a_topic_save_has_its_split_items(self):
+        soup = self.get("/v1/topics/recipes")["saves"]
+        self.assertEqual([i["kind"] for s in soup if s["code"] == "SOUP1" for i in s["items"]], ["dish", "dish"])
+        both = self.get("/v1/saves/BOTH1")["items"]
+        self.assertIn({"topic": "recipes", "kind": "dish", "name": "Example picnic salad", "quote": "picnic salad"}, both)
 
     def test_save_filters_and_paging(self):
         self.assertEqual({s["code"] for s in self.get("/v1/saves?topic=recipes&area=fixture-state")["saves"]}, {"BOTH1"})

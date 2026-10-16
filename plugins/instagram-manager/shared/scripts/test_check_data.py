@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Offline tests for check_data.py's spot check: two different spots on one map point."""
+"""Offline tests for check_data.py: two different spots on one map point, and split-saves' items."""
 
 import os
 import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from check_data import shared_spots  # noqa: E402
+from check_data import item_problems, shared_spots  # noqa: E402
 
 
 def spot(name, lat=10.0, lon=20.0, osm=None, found=None, **kw):
@@ -39,6 +39,36 @@ class SharedSpots(unittest.TestCase):
         pins = {"A1": [spot("Example Grill")], "B2": [spot("Sample Noodles", lat=10.01)],
                 "C3": [{"name": "Unplaced Cafe"}]}
         self.assertEqual(shared_spots(pins), [])
+
+
+class Items(unittest.TestCase):
+    KNOWN = {"travel", "recipes", "crafts"}
+    CAPTIONS = {"SOUP1": "My “lentil soup”   and a quick flatbread", "EMPTY1": ""}
+
+    def why(self, items):
+        return [w["msg"] for _, w in item_problems(items, self.KNOWN, self.CAPTIONS)]
+
+    def test_good_items_pass(self):
+        items = {"SOUP1": {"topics": ["recipes"], "items": [
+                     {"topic": "recipes", "kind": "dish", "name": "Lentil soup", "quote": 'my "lentil soup" and'}]},
+                 "EMPTY1": {"topics": ["recipes"], "items": []}}
+        self.assertEqual(self.why(items), [])
+
+    def test_bad_quote_topic_shape_and_code(self):
+        items = {"SOUP1": {"topics": ["recipes"], "items": [
+                     {"topic": "recipes", "kind": "dish", "name": "Lentil stew", "quote": "lentil stew"},
+                     {"topic": "travel", "kind": "dish", "name": "Soup", "quote": "lentil soup"},
+                     {"topic": "recipes", "kind": "dish", "name": "", "quote": "lentil soup"}]},
+                 "NOPE1": {"topics": [], "items": []},
+                 "EMPTY1": ["not", "a", "map"]}
+        self.assertEqual(sorted(self.why(items)), sorted([
+            "quote is not in the caption", "not a known topic other than travel",
+            "an item needs topic, kind, name and quote", "not a save in the export",
+            "needs {topics: [...], items: [...]}"]))
+
+    def test_without_the_export_quotes_are_not_checked(self):
+        items = {"SOUP1": {"items": [{"topic": "recipes", "kind": "dish", "name": "X", "quote": "not there"}]}}
+        self.assertEqual(item_problems(items, self.KNOWN, None), [])
 
 
 if __name__ == "__main__":

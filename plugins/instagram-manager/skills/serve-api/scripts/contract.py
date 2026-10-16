@@ -7,7 +7,7 @@ against these, so a field added there and not here fails the test instead of sli
 consumers. The JSON Schema files in ../schema/ are written from these models (`api.py --schema`).
 """
 
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -43,6 +43,16 @@ class Spot(Strict):
     area: Optional[str] = Field(None, description="The area the still shows, when still_from is area.")
 
 
+class Item(Strict):
+    """One thing a save that is not travel names, from split-saves: a dish, a technique, a tip."""
+    topic: str = Field(description="The topic it is listed under, one of the save's topics.")
+    kind: str = Field(description="What sort of thing it is, set by its topic: dish (recipes); subject or "
+                                  "technique (design); idea or product (business, 3D prints); note (any "
+                                  "other topic). Not OpenStreetMap's kind.")
+    name: str = Field(description="A short name for it.")
+    quote: str = Field(description="The caption's own words for it, checked word for word.")
+
+
 class Save(Strict):
     """One saved post, as one file lists it."""
     code: str = Field(description="Instagram's post code.")
@@ -56,7 +66,9 @@ class Save(Strict):
     thumb: Optional[str] = Field(None, description="Its thumbnail, a path in the media folder.")
     also_in: Optional[List[str]] = Field(None, description="The other files it is in: topics, and "
                                                            "travel/<area> for other areas.")
-    items: List[Spot] = Field(description="Its spots in this file's area (travel); empty for other topics.")
+    items: List[Union[Spot, Item]] = Field(description="Travel: its spots in this file's area. Any other "
+                                                        "topic: the things its caption names under that "
+                                                        "topic (empty until split-saves reads it).")
 
 
 class TopicFile(Strict):
@@ -81,7 +93,9 @@ class SaveAll(Strict):
     places: Optional[List[str]] = None
     thumb: Optional[str] = None
     files: List[str] = Field(description="Every file it is in: travel/<area> and topics.")
-    items: List[Spot]
+    items: List[Union[Spot, Item]] = Field(description="Every file's items together: the spots of each "
+                                                        "travel area and the things its caption names "
+                                                        "under its other topics, in file order.")
 
 
 class SpotAt(Spot):
@@ -201,6 +215,6 @@ class Decisions(Strict):
     elsewhere: List[Link]
 
 
-SCHEMAS = {"spot": Spot, "save": Save, "topic-file": TopicFile, "save-all": SaveAll, "spot-at": SpotAt,
+SCHEMAS = {"spot": Spot, "item": Item, "save": Save, "topic-file": TopicFile, "save-all": SaveAll, "spot-at": SpotAt,
            "file-summary": FileSummary, "tags-in": TagsIn, "review-in": ReviewIn, "google-in": GoogleIn,
            "decisions": Decisions, "health": Health}

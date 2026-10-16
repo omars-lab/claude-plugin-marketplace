@@ -75,6 +75,15 @@ STILLS = {
               for n in ("Example Point", "Example Bluff")]
              + [{"name": "Example Pier", "said": "Example Pier", "how": "not_on_screen"}],
 }
+ITEMS = {  # from split-saves
+    "SOUP1": {"topics": ["recipes"], "items": [
+        {"topic": "recipes", "kind": "dish", "name": "Example lentil soup", "quote": "my lentil soup"},
+        {"topic": "recipes", "kind": "dish", "name": "Example flatbread", "quote": "quick flatbread"},
+        {"topic": "crafts", "kind": "note", "name": "Not this save's topic", "quote": "words"}]},
+    "BOTH1": {"topics": ["recipes"], "items": [
+        {"topic": "recipes", "kind": "dish", "name": "Example picnic salad", "quote": "picnic salad"}]},
+    "SOUP2": {"topics": ["recipes"], "items": []},
+}
 
 
 class Send(unittest.TestCase):
@@ -84,7 +93,7 @@ class Send(unittest.TestCase):
         for rel, data in (("config/topics.yaml", TOPICS), ("config/collections.yaml", COLLECTIONS),
                           ("data/places.yaml", PLACES), ("data/tags.yaml", TAGS), ("data/pins.yaml", PINS),
                           ("data/pins-review.yaml", REVIEW), ("data/media.yaml", MEDIA),
-                          ("data/stills.yaml", STILLS)):
+                          ("data/stills.yaml", STILLS), ("data/items.yaml", ITEMS)):
             self.write(rel, data)
         self.write(".cache/saves.json", {"saves": SAVES})
         self.env = os.environ.get("INSTAGRAM_HOME")
@@ -176,6 +185,18 @@ class Send(unittest.TestCase):
         cafe = self.saves("recipes.yaml")["CAFE1"]
         self.assertEqual(cafe["items"], [])
         self.assertIn("ev=send_travel_no_place code=NONE1", err)
+
+    def test_non_travel_items_from_split_saves(self):
+        self.send("--all")
+        recipes = self.saves("recipes.yaml")
+        self.assertEqual(recipes["SOUP1"]["items"],
+                         [{"topic": "recipes", "kind": "dish", "name": "Example lentil soup", "quote": "my lentil soup"},
+                          {"topic": "recipes", "kind": "dish", "name": "Example flatbread", "quote": "quick flatbread"}])
+        self.assertEqual([i["name"] for i in recipes["BOTH1"]["items"]], ["Example picnic salad"])
+        self.assertEqual(recipes["SOUP2"]["items"], [])
+        self.assertNotIn("Example picnic salad",
+                         [i["name"] for i in self.saves("travel/fixture-state.yaml")["BOTH1"]["items"]])
+        self.assertEqual(self.doc("crafts.yaml")["saves"], [])  # an item never brings a save into another topic
 
     def test_every_topic_gets_a_file(self):
         self.send("--all")

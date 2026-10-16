@@ -2,6 +2,40 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "save-all.schema.json",
   "$defs": {
+    "Item": {
+      "additionalProperties": false,
+      "description": "One thing a save that is not travel names, from split-saves: a dish, a technique, a tip.",
+      "properties": {
+        "topic": {
+          "description": "The topic it is listed under, one of the save's topics.",
+          "title": "Topic",
+          "type": "string"
+        },
+        "kind": {
+          "description": "What sort of thing it is, set by its topic: dish (recipes); subject or technique (design); idea or product (business, 3D prints); note (any other topic). Not OpenStreetMap's kind.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "description": "A short name for it.",
+          "title": "Name",
+          "type": "string"
+        },
+        "quote": {
+          "description": "The caption's own words for it, checked word for word.",
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic",
+        "kind",
+        "name",
+        "quote"
+      ],
+      "title": "Item",
+      "type": "object"
+    },
     "Spot": {
       "additionalProperties": false,
       "description": "One place a save names: a beach, a café, a trailhead.",
@@ -319,8 +353,16 @@
       "type": "array"
     },
     "items": {
+      "description": "Every file's items together: the spots of each travel area and the things its caption names under its other topics, in file order.",
       "items": {
-        "$ref": "#/$defs/Spot"
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Spot"
+          },
+          {
+            "$ref": "#/$defs/Item"
+          }
+        ]
       },
       "title": "Items",
       "type": "array"

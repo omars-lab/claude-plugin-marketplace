@@ -19,6 +19,7 @@ that feeds your other projects.
 | **Route** | `manage-saves` | Pick the next step: import, tag, spots, media, stills, hub, send |
 | **Import** | `import-saves` | Read the saved posts and collections out of your export zip, in memory |
 | **Tag** | `tag-saves` | Topics, purposes and places per save: collection rules, then `save-tagger` agents on batches |
+| **Items** | `split-saves` | The dishes, techniques, ideas and tips a non-travel caption names, each with its exact words, from `save-splitter` agents |
 | **Spots** | `resolve-post-location` | The beaches, cafés and trailheads a caption names, looked up on OpenStreetMap near their town |
 | **Media** | `fetch-media` | A thumbnail per post, or a reel's video, slowly and logged out |
 | **Spots** | `read-frames` | Frames from a reel's video and the words on them, for places shown only on screen |
@@ -28,10 +29,10 @@ that feeds your other projects.
 | **Send** | `send-topics` | The files other repos read: one per state or country for travel, one per other topic |
 | **Send** | `serve-api` | The same data as a local web API in Docker, with Swagger and JSON Schema, and the hub's decisions as writes |
 
-## Agents (3)
+## Agents (4)
 
-`save-tagger` (topics, purposes, places), `post-locator` (the spots a caption names) and
-`frame-reader` (the spots a video shows) each read one batch file and write its answers (Haiku).
+`save-tagger` (topics, purposes, places), `save-splitter` (the things a non-travel caption names),
+`post-locator` (the spots a caption names) and `frame-reader` (the spots a video shows) each read one batch file and write its answers (Haiku).
 No script calls a model: the Claude Code session starts the agents, on the plan it is logged in
 with. No API key.
 

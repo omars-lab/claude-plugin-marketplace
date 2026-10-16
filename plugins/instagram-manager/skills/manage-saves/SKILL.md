@@ -25,14 +25,15 @@ that is missing is the next step:
 | reels in `data/no-spot.yaml` or placed only at their town, with no `from: video` pins | **read-frames** (videos through **fetch-media** `--video`) |
 | a `data/stills.yaml` entry for each spot of a reel with a video | **extract-stills** (`make stills`) |
 | a `data/google.yaml` entry for each spot (a place id, or `none`) | **find-google-ids** (`make google-ids`) |
-| `data/items/` for non-travel topics | split-saves *(coming)*; for travel the items are the spots |
+| a `data/items.yaml` entry for each save with a topic other than travel | **split-saves** (`make split-prepare`, agents, `make split-merge`); for travel the items are the spots |
 | `out/travel/<area>.yaml` and `out/<topic>.yaml`, newer than the data they come from | **send-topics** (`make send-topics`) |
 
 A newer export zip than the one `saves.json` came from also means: run **import-saves** again,
 then tag the new saves.
 
-Open review lists are work too: `data/tags-review.yaml` (tag-saves) and `data/pins-review.yaml`
-(resolve-post-location) each say why an entry is there and how to fix it by hand.
+Open review lists are work too: `data/tags-review.yaml` (tag-saves), `data/pins-review.yaml`
+(resolve-post-location) and `data/items-review.yaml` (split-saves) each say why an entry is there
+and how to fix it by hand.
 
 ## Step 2: Ask only when it forks
 
@@ -61,6 +62,7 @@ For more than one step, add a task per step with `TaskCreate` and mark each done
 | "download the thumbnails" / "get the videos" | `fetch-media` |
 | "every café shows the same picture" / "a still per place" | `extract-stills` |
 | "the Google Maps link opens the city" / "which places have shut?" | `find-google-ids` |
+| "split my recipes into dishes" / "what does each design or business post name?" | `split-saves` |
 | "show me the map" / "rebuild the hub" | `build-hub` |
 | "send travel to the trip planner" / "what does this topic send?" | `send-topics` |
 | "an API other hubs can read" / "start the data API" / "the API's schema" | `serve-api` |

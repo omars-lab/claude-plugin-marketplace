@@ -47,7 +47,8 @@ from places import load_yaml  # noqa: E402
 TO_PICK = "google-to-pick.json"   # written by find-google-ids' google_ids.py
 BATCH_KINDS = (("tag", "the tags agents read off captions", "make tag-merge"),
                ("locate", "the spots agents found in captions", "make locate-merge"),
-               ("frames", "the spots agents read off videos", "make frames-merge"))
+               ("frames", "the spots agents read off videos", "make frames-merge"),
+               ("split", "the items agents split out of captions", "make split-merge"))
 
 esc = html.escape
 

@@ -17,10 +17,12 @@ Reads   $INSTAGRAM_HOME/.cache/saves.json          link, creator, date saved
         $INSTAGRAM_HOME/data/pins-review.yaml      spots OpenStreetMap did not list (optional)
         $INSTAGRAM_HOME/data/media.yaml            each save's thumbnail (optional)
         $INSTAGRAM_HOME/data/stills.yaml           a still and a clip per spot (optional)
+        $INSTAGRAM_HOME/data/items.yaml            the things each non-travel save names (optional;
+                                                   from split-saves)
 Writes  $INSTAGRAM_HOME/out/travel/<area>.yaml     the travel saves naming a place in that state or
                                                    country, each with its spots there
-        $INSTAGRAM_HOME/out/<topic>.yaml           every other topic's saves (items come later, from
-                                                   a splitter; for now each save's `items` is empty)
+        $INSTAGRAM_HOME/out/<topic>.yaml           every other topic's saves, each with its items
+                                                   under that topic (empty until split-saves reads it)
 
 What a save carries
   code, url, creator, saved_at, kind, topics, purposes, the places it is tagged with (the most exact
@@ -29,6 +31,8 @@ What a save carries
   kind, id and lat/lon, a Google Maps link, and its still and clip when it has them. A spot
   OpenStreetMap does not list (many small restaurants) still comes, with `exact: false`, no lat/lon,
   and a map link that searches its name in its town; that is the same set of spots the hub shows.
+  For any other topic the items are what split-saves found in the caption under that topic: each
+  with `topic`, `kind` (dish, technique, idea, note…), a short `name` and the caption's `quote`.
   No caption goes in: only the short quotes the data repo already keeps.
 
 Travel means tagged `travel`. A save that names a place but is tagged only with another topic (a
@@ -92,8 +96,9 @@ def item(e, still):
 
 
 class Sender:
-    def __init__(self, saves, tags, places, pins, placed, media, stills, topics):
+    def __init__(self, saves, tags, places, pins, placed, media, stills, topics, items=None):
         self.places, self.topics = places, topics or {}
+        self.items = items or {}  # code → {topics, items: [{topic, kind, name, quote}]}, from split-saves
         self.files = {}          # out path → {"topic", "area", "saves": {code: entry}}
         self.not_travel, self.no_place, self.lost = [], [], []
         for t in self.topics:   # every topic gets its file, even with no saves yet
@@ -152,6 +157,9 @@ class Sender:
                            "items": spots_here})
         elif areas or items:
             self.not_travel.append(code)
+        split = self.items.get(code)
+        split = [i for i in (split.get("items") or [] if isinstance(split, dict) else [])
+                 if isinstance(i, dict) and text(i.get("name")) and text(i.get("quote"))]
         for t in topics:
             if t == "travel":
                 continue
@@ -159,7 +167,8 @@ class Sender:
             also = [x for x in topics if x not in (t, "travel")] + (travel_in or [x for x in topics if x == "travel"])
             self._put(t + ".yaml", t, None, code,
                       {**base, "places": self._exact(areas) or None, "thumb": thumb, "also_in": also or None,
-                       "items": []})
+                       "items": [{k: i.get(k) for k in ("topic", "kind", "name", "quote")}
+                                 for i in split if i.get("topic") == t]})
 
     def _exact(self, areas):
         """The places no other of them sits inside: a town, not its state."""
@@ -263,7 +272,8 @@ def load(pilot_name=None):
     gp.apply(placed, google)
     sender = Sender(saves, tags, places, pins, placed,
                     load_yaml(os.path.join("data", "media.yaml")), stills,
-                    load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {})
+                    load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {},
+                    load_yaml(os.path.join("data", "items.yaml")))
     return sender, places, saves, pilot
 
 
@@ -308,7 +318,8 @@ def main(argv=None):
         n_still = sum(1 for e in f["saves"].values() for i in e.get("items") or [] if i.get("still"))
         log("send", file=rel, saves=len(f["saves"]), items=n_items, stills=n_still)
         parts.append(f"{os.path.splitext(rel)[0]} {len(f['saves'])} saves"
-                     + (f", {n_items} spots ({n_still} with a still)" if f["topic"] == "travel" else ""))
+                     + (f", {n_items} spots ({n_still} with a still)" if f["topic"] == "travel"
+                        else f", {n_items} items" if n_items else ""))
     print(f"wrote {len(written)} files in {out_dir}: " + "; ".join(parts))
     if removed:
         print(f"removed {len(removed)} no longer written: {', '.join(removed)}")
