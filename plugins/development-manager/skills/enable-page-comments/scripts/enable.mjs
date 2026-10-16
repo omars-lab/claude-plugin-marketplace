@@ -55,8 +55,9 @@
 // Exit codes: 0 ok, 1 a check failed, 2 bad usage, 3 not found.
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
+import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { contractHome, expandHome, shotsSetting, shotTarget } from "../../../shared/scripts/lib/shots.mjs";
@@ -902,11 +903,27 @@ function runCli(args, repo) {
 /** Is the plugin installed and on, as seen from inside the repo? */
 function pluginVisible(repo, pluginId) {
   if (process.env.PAGE_COMMENTS_SKIP_CLAUDE === "1") return { known: false, why: "PAGE_COMMENTS_SKIP_CLAUDE=1 is set, so only the settings file was checked" };
-  const r = spawnSync("claude", ["plugin", "list", "--json"], { cwd: repo, encoding: "utf8", timeout: 60000 });
+  // The list goes to a file, not a pipe: through a pipe, claude exits before the
+  // pipe is drained and the JSON stops at 8 KB once many plugins are installed.
+  const tmp = mkdtempSync(join(tmpdir(), "pc-plugins-"));
+  const file = join(tmp, "list.json");
+  const fd = openSync(file, "w");
+  let r;
+  let text = "";
+  try {
+    r = spawnSync("claude", ["plugin", "list", "--json"], { cwd: repo, stdio: ["ignore", fd, "ignore"], timeout: 60000 });
+  } finally {
+    closeSync(fd);
+  }
+  try {
+    text = readFileSync(file, "utf8");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
   if (r.error || r.status !== 0) return { known: false, why: "the claude command did not answer, so only the settings file was checked" };
   let list;
   try {
-    list = JSON.parse(r.stdout);
+    list = JSON.parse(text);
   } catch {
     return { known: false, why: "claude plugin list gave no JSON, so only the settings file was checked" };
   }

@@ -177,6 +177,32 @@ test("check proves the loop and leaves no test thread behind", async () => {
   }
 });
 
+test("check reads a long plugin list in full, even from a claude that exits before its output drains", async () => {
+  const { repo, cleanup } = tempRepo({ comments: false });
+  const bin = mkdtempSync(join(tmpdir(), "pc-fake-claude-"));
+  try {
+    seed(repo);
+    const port = await firstFreePort(20750);
+    assert.equal(enable(["--root", "site", "--port", String(port)], repo).code, 0);
+    // A stand-in claude: a list well past 8 KB, written and then exit() at once,
+    // which cuts the output short when it goes to a pipe.
+    const list = Array.from({ length: 200 }, (_, i) => ({ id: `other-${i}@somewhere`, version: "1.0.0", scope: "user", enabled: true, installPath: "/plugins/cache/somewhere/other/1.0.0" }));
+    list.push({ id: ID, version: "9.9.9", scope: "user", enabled: true });
+    writeFileSync(join(bin, "list.json"), JSON.stringify(list, null, 2));
+    writeFileSync(join(bin, "claude"), `#!${process.execPath}\nprocess.stdout.write(require("fs").readFileSync(${JSON.stringify(join(bin, "list.json"))}, "utf8"));\nprocess.exit(0);\n`);
+    chmodSync(join(bin, "claude"), 0o755);
+    const r = spawnSync(process.execPath, [ENABLE, "--check", "--repo", repo], {
+      encoding: "utf8",
+      timeout: 60000,
+      env: { ...process.env, PAGE_COMMENTS_SKIP_CLAUDE: "", PATH: `${bin}:${process.env.PATH}` },
+    });
+    assert.match(r.stdout, new RegExp(`ok\\s+Claude Code sees ${ID.replace(/[.@-]/g, "\\$&")} as on in this repo: version 9\\.9\\.9`), r.stdout);
+  } finally {
+    rmSync(bin, { recursive: true, force: true });
+    cleanup();
+  }
+});
+
 test("check fails when the CLAUDE.md note is gone", () => {
   const { repo, cleanup } = tempRepo({ comments: false });
   try {
