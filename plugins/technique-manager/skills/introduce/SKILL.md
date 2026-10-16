@@ -31,6 +31,8 @@ Every page, the gallery and the catalog render from **one React component librar
                                          block, sessions archived; the place to pick each post's focus
 /technique-manager:manage-hub            day to day in the hub: what's waiting, answer comments, fetch
                                          back stories, serve, sync, the background comment responder
+/technique-manager:search-transcripts    find sessions on the studio by their words, copy them to a temp
+                                         folder here, read short snippets around each match
 ```
 
 ## How to Introduce Yourself
@@ -38,12 +40,14 @@ Every page, the gallery and the catalog render from **one React component librar
 ### Step 1: Welcome
 
 ```
-Technique Manager: 7 skills that turn Claude technique screenshots into pages.
+Technique Manager: 9 skills that turn Claude technique screenshots into pages and posts.
 
 - recreate-technique: one screenshot (or a group of them) becomes a Claude-style HTML page
 - validate-pages: a headless browser checks every page renders the right content
 - package-gallery: all pages become a gallery and an offline zip
 - sync-studio: the shareable content is added to the studio folder (via iCloud Drive or SSH)
+- build-hub / manage-hub: a private hub to pick each post's focus by commenting on the pages
+- research-backstory / search-transcripts: what led to a technique, from its session here or on the studio
 Picking screenshots happens first, in /screenshot-manager:suggest-techniques.
 ```
 
@@ -103,6 +107,11 @@ The entry point once a hub exists. It routes:
 - back stories to `research-backstory`;
 - rebuild, serve, backup and sync to the hub's `make` targets;
 - the background responder to `make responder-on`, `responder-off` and `responder-status`. The responder answers comments while no session is open (macOS, launchd).
+
+### `search-transcripts`
+**Invocation:** `/technique-manager:search-transcripts` (or a hub comment such as "find the transcript"; `make transcripts GREP="…"` in the hub)
+
+Searches the Claude Code transcripts on another Mac (the studio by default) over SSH, in one call: its `~/.claude/projects` and the hub's backed-up sessions. It copies only the matching sessions into a temporary folder here, newest first and up to a size limit, and cuts a short snippet around each match (who said it, when, in which folder). The copies never go into the hub or a post, and are deleted after.
 
 ### `research-backstory`
 **Invocation:** `/technique-manager:research-backstory <slug>` (or a hub comment such as "fetch what led here")

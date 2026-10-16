@@ -29,6 +29,7 @@ The page path (`/internal/<slug>.html`) gives the slug.
 | The focus line | a new wording, "the real focus is …" | Set `focus.line`, `focus.confirmed: true`, `focus.source: "comment"` |
 | The suggestion | "yes", "use this" | Copy the suggestion into `focus.line` or `backstory`, confirmed |
 | Anything | "fetch the PR / what led here / the hook file" | `make context SLUG=…` with that source, then reply with what it found |
+| Anything | "find the transcript", "search the studio for …", "what else did I say about …" | `make transcripts GREP="<distinctive words>"` (add `SINCE=<the spec's taken date>` if common). Reply with how many sessions match and the 1–2 snippets that matter, in your own words; delete the temp folder after. Never quote a copied session into the spec, notes or post |
 | Any text | "don't show this", "rename X" | Add a replacement (per-spec; shared if it says "everywhere"), re-scan, re-render |
 | Card or page | "drafting" / "ready" / "posted at <url>" | Set `status` (and `post.published`) |
 | The page | "trim the post" / "show it all" | Set `post.trim` |

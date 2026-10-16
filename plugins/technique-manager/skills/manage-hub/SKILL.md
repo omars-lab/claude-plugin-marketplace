@@ -12,6 +12,7 @@ This skill only routes. It reads the request, picks a row below, and follows tha
 | "what's waiting", "what needs me", "where are we" | `make hub`, then summarize `.cache/hub/waiting.html`'s sections (the build prints their counts) and `make status` |
 | A watcher line (`ev=thread_new`), the session-start "comments waiting" line, "answer the comments", "go through my notes on the pages" | `development-manager:answer-page-comments`, using the routing table in the hub's `CLAUDE.md` for which edit each comment asks for |
 | "fetch what led here", "get the PR", "find the back story", a technique with no context | `research-backstory` |
+| "find the transcript", "search the studio for …", a technique whose session isn't on this Mac | `search-transcripts` (in the hub: `make transcripts GREP="…"`) |
 | "this is the point", "trim the post", "posted at <url>" said in the terminal, not on a page | The hub `CLAUDE.md` routing table, then `make hub SLUG=<slug>` |
 | "rebuild", "serve the hub", "open the hub", "comment on the pages" | `make hub` or `make serve` (see `build-hub` Step 3 and 4) |
 | "back up", "sync to the studio" | `make backup`, `make sync` (`build-hub`: Backup and the session hook) |

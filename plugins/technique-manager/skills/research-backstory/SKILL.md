@@ -40,6 +40,7 @@ python3 "$RB/scripts/fetch_context.py" --spec <slug> --sources git         # onl
 - **Session:** the hub's archived copy first (`source.session.archived`), then the original.
 - **Excerpts:** every one is cut to 600 characters (`--max-chars`), so the whole output stays readable in one pass.
 - **Notes:** a missing session or folder becomes a line in `notes`, not an error.
+- **Session on another Mac:** when `notes` says the session is missing here (or the spec has no session), search the studio's transcripts with `/technique-manager:search-transcripts` (`make transcripts GREP="…"` in the hub) using words from the spec's prompt blocks, and write Step 2 from its snippets.
 
 ## Step 2: Write `context/<slug>.md`
 

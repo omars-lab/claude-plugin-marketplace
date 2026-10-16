@@ -1,10 +1,12 @@
 # Technique hub: specs, context, notes and page-comment threads for Claude techniques.
 # Built by technique-manager's build-hub skill. The site goes to .cache/hub/ (not tracked).
-TM   := {{TM}}
+# The plugin's skills: the marketplace checkout when this Mac has one, else the newest
+# installed copy of the plugin. TM=… on the command line overrides both.
+TM   ?= $(firstword $(wildcard {{TM}}) $(shell ls -d $(HOME)/.claude/plugins/cache/*/technique-manager/*/skills 2>/dev/null | sort -V | tail -1))
 PORT ?= 8790
 PY   ?= python3
 
-.PHONY: help hub serve archive backup context sync status responder-on responder-off responder-status
+.PHONY: help hub serve archive backup context sync status transcripts responder-on responder-off responder-status
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | sed 's/:.*## /\t/' | expand -t 12
@@ -26,6 +28,13 @@ backup: ## Copy archive/ and comment screenshots to the upstream machine (adds o
 context: ## Fetch pre-context for one technique: make context SLUG=…
 	@test -n "$(SLUG)" || (echo "usage: make context SLUG=<slug>"; exit 1)
 	$(PY) $(TM)/research-backstory/scripts/fetch_context.py --root . --spec $(SLUG)
+
+transcripts: ## Find sessions on the studio by their words, copy them to a temp folder, show snippets: make transcripts GREP="…" [SINCE=YYYY-MM-DD]
+	@test -n "$(GREP)" || (echo 'usage: make transcripts GREP="<words>" [SINCE=YYYY-MM-DD]'; exit 1)
+	@mkdir -p .cache
+	@$(PY) $(TM)/search-transcripts/scripts/remote_sessions.py fetch --root . --grep "$(GREP)" $(if $(SINCE),--since $(SINCE)) > .cache/transcripts.json
+	@$(PY) -c 'import json;d=json.load(open(".cache/transcripts.json"));print("%s: copied %d matching sessions into %s, skipped %d over the size limit" % (d["host"], len(d["files"]), d["out"], len(d["skipped"])))'
+	@$(PY) $(TM)/search-transcripts/scripts/remote_sessions.py snippets --grep "$(GREP)" "$$($(PY) -c 'import json;print(json.load(open(".cache/transcripts.json"))["out"])')"
 
 sync: hub ## Send the post-safe content to the studio
 	$(PY) $(TM)/sync-studio/scripts/sync_studio.py --root .
