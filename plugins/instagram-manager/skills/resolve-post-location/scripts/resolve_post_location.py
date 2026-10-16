@@ -728,6 +728,37 @@ def move_branch_pins(pins, review):
 
 
 FAR = re.compile(r"^\d+ km from ")
+STREET_ONLY = re.compile(r"^only the street was found near ")
+
+
+def box_key(box):
+    """A search box as Nominatim's viewbox text, the way the lookup cache keys it."""
+    return geocode.near_params(".", box)["viewbox"]
+
+
+def street_box_changed(e, places, reaches, fetcher):
+    """The search box for a review entry that found only the street, when it is not the box the
+    address was last searched in (None otherwise): a city given its own width (`box_km`) since then
+    may now find the house. An entry with no box noted was searched before boxes were noted."""
+    if not (isinstance(e, dict) and STREET_ONLY.match(str(e.get("why") or ""))
+            and isinstance(e.get("near"), str) and isinstance(e.get("address"), str)):
+        return None
+    area = exact_area(e["near"], places)
+    if area is None:
+        return None
+    if e["near"] not in reaches:
+        reaches[e["near"]] = Reach(area, places, fetcher)
+    key = box_key(reaches[e["near"]].search)
+    return key if e.get("searched_in") != key else None
+
+
+def same_spot(a, b):
+    """Two pins for one post at one place: the same words near the same area, or two address pins
+    at the same point (a reel's sign and its caption's fuller name for one shop)."""
+    if a.get("said") == b.get("said") and a.get("near") == b.get("near"):
+        return True
+    return (a.get("kind") == b.get("kind") == "address"
+            and (a.get("lat"), a.get("lon")) == (b.get("lat"), b.get("lon")))
 
 
 def now_in_reach(e, places):
@@ -764,7 +795,8 @@ def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
                     and street_only(e["address"]) != " ".join(e["address"].split()))
             branch = (isinstance(e, dict) and ANOTHER_BRANCH.match(str(e.get("why") or ""))
                       and not e.get("address_tried"))
-            if not ((by_person or unit or branch or now_in_reach(e, places)) and not e.get("drop")
+            street = street_box_changed(e, places, reaches, fetcher)
+            if not ((by_person or unit or branch or street or now_in_reach(e, places)) and not e.get("drop")
                     and isinstance(e.get("said"), str) and isinstance(e.get("near"), str)):
                 keep.append(e)
                 continue
@@ -777,10 +809,12 @@ def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
                 if by_person:
                     new["lookup"] = e["lookup"]  # still a person's fix once pinned, so a re-read keeps it
                 pins.setdefault(code, [])
-                if not any(p["said"] == new["said"] and p["near"] == new["near"] for p in pins[code]):
+                if not any(same_spot(p, new) for p in pins[code]):
                     pins[code].append(new)
                 moved += 1
                 log("locate_review_fixed", code=code, said=new["said"])
+            elif street and not (by_person or unit or branch):
+                keep.append({**e, "searched_in": street})   # still only the street; not again in this box
             else:
                 if unit and not by_person:
                     new["street_tried"] = True   # tried without the unit; not again each merge

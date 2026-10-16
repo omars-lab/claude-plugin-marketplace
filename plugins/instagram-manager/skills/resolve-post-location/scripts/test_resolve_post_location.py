@@ -395,6 +395,29 @@ class Merge(Home):
         self.assertFalse(rpl.at_the_house("Example Street, 12345, Fixture Town", "12 Example St"))   # a postcode
         self.assertTrue(rpl.at_the_house("Example Street", "Example St"))   # no house number to match
 
+    def test_an_address_found_only_as_its_street_is_searched_again_once_its_city_is_wider(self):
+        """The house sat outside the city's old search box. Once `box_km` widens it, the address is
+        searched again, once per box. A reel's pin at the same house is not doubled."""
+        self.write(".cache/saves.json", {"saves": [save("VENUA", "Example Grill 📍12 Example St, Fixture Town")]})
+        self.write("data/pins.yaml", {"VENUA": [
+            {"name": "Grill", "said": "GRILL", "near": "Fixture Town", "kind": "address", "lat": 40.6, "lon": -120.0,
+             "address": "12 Example St, Fixture Town", "found": "12, Fixture County, Fixture State", "from": "video"}]})
+        self.write("data/pins-review.yaml", {"VENUA": [
+            {"said": "Example Grill", "near": "Fixture Town", "name": "Example Grill",
+             "address": "12 Example St, Fixture Town", "street_tried": True,
+             "why": "only the street was found near Fixture Town, not the house"}]})
+        with mock.patch.dict(OSM, {"12 Example St, Fixture Town": [hit("12", 40.6, -120.0, "house", 24)]}):   # 67 km
+            self.run_script("--merge")
+            held = self.spot("data/pins-review.yaml", "VENUA", "Example Grill")
+            self.assertTrue(held["searched_in"])
+            asked = len(self.asked)
+            self.run_script("--merge")
+            self.assertEqual(len(self.asked), asked)   # the same box: not searched again
+            self.write("config/places.yaml", {"places": {"Fixture Town": {"names": ["Fixture Town"], "box_km": 70}}})
+            self.run_script("--merge")
+        self.assertEqual([p["said"] for p in self.read("data/pins.yaml")["VENUA"]], ["GRILL"])
+        self.assertNotIn("VENUA", self.read("data/pins-review.yaml"))
+
     def test_a_name_found_away_from_the_captions_address_is_another_branch(self):
         """A name like a chain's finds a branch across town: the caption's address wins, and with no
         address found the spot goes to review rather than sit on the other branch."""

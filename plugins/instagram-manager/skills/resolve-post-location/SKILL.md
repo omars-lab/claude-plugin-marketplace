@@ -63,7 +63,10 @@ answers. **No script calls a model**, and there is no API key: this session star
      A hit must carry the address's house number: OpenStreetMap sometimes knows only the road,
      and a long road's point can be kilometres from the venue. An address pin made before this
      check whose find has no house number moves to review at the next merge ("only the street
-     was found"); a person's pin stays.
+     was found"); a person's pin stays. Such an entry is searched again whenever its town's
+     search box changes (a new `box_km` can bring the house inside it), once per box: the box it
+     was last searched in is kept as `searched_in`. When it is then found where the post already
+     has an address pin (a reel's sign read off the video), it is not pinned twice.
    - **An address, when the name is found somewhere else.** A name like a chain's can find
      another branch across town. When the caption gives an address with a house number and the
      name's find does not carry that number, the address is looked up too, and wins if found. If
