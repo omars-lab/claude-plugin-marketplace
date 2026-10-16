@@ -9,8 +9,10 @@
 The list comes from three files in the data repo:
   config/collections.yaml   each collection's cities
   config/places.yaml        hand-written: names and hashtags to look for; optional `in:` (the place
-                            it sits in) and `lookup:` (what to ask OpenStreetMap, when the name alone
-                            is ambiguous); and a top-level `aliases:` map, name → listed place,
+                            it sits in), `lookup:` (what to ask OpenStreetMap, when the name alone
+                            is ambiguous), `box_km:` (how far a sprawling city reaches) and `kind:`
+                            (a town OpenStreetMap files as a state or province; the locate merge
+                            reads both); and a top-level `aliases:` map, name → listed place,
                             for the names a lookup gets wrong ("East Example" → "Example City")
   data/places.yaml          written by add_places.py from OpenStreetMap: per place its kind, `in`,
                             lat, lon, the name OpenStreetMap found and a Google Maps link; plus

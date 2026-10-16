@@ -245,11 +245,17 @@ def exact_area(name, places):
 
 def with_widths(places, config):
     """data/places.yaml's places, each with the `box_km` its config/places.yaml entry sets: how far a
-    sprawling city reaches from its middle ("Example City: 35 km out to its suburbs")."""
+    sprawling city reaches from its middle ("Example City: 35 km out to its suburbs"). A hand-written
+    `kind:` wins over the looked-up one: a capital OpenStreetMap files as its municipality ("state")
+    or a town it files as its province ("other") is a city to search near."""
     out = dict(places)
     for name, c in (config or {}).items():
-        if isinstance(c, dict) and isinstance(c.get("box_km"), (int, float)) and isinstance(out.get(name), dict):
+        if not isinstance(c, dict) or not isinstance(out.get(name), dict):
+            continue
+        if isinstance(c.get("box_km"), (int, float)):
             out[name] = {**out[name], "box_km": c["box_km"]}
+        if isinstance(c.get("kind"), str) and c["kind"].strip():
+            out[name] = {**out[name], "kind": c["kind"].strip()}
     return out
 
 
@@ -773,11 +779,20 @@ def now_in_reach(e, places):
     return bool(area and area.get("reach_km") and e["km"] <= area["reach_km"])
 
 
+def now_exact(e, places):
+    """A review entry held back because its area had no pin or was a state, which now has one, or
+    which config/places.yaml's `kind:` now calls a city."""
+    return bool(isinstance(e, dict) and isinstance(e.get("near"), str)
+                and str(e.get("why") or "") == f"{e['near']} has no pin, or is a state or country"
+                and exact_area(e["near"], places))
+
+
 def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
     """Review entries a person marked `ok: true` move to pins as found. Ones a person gave a `lookup:`
     are searched again; found ones move to pins. So is, once, one whose address has a suite or unit,
-    looked up before street_only() dropped it, one found by name but not at its address, and one
-    held back for its distance that its city's own width now covers."""
+    looked up before street_only() dropped it, one found by name but not at its address, one
+    held back for its distance that its city's own width now covers, and one whose area had no pin
+    or was a state and now is a city (a `kind:` in config/places.yaml)."""
     moved = 0
     for code, entries in list(review.items()):
         if not isinstance(entries, list):
@@ -798,7 +813,8 @@ def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
             branch = (isinstance(e, dict) and ANOTHER_BRANCH.match(str(e.get("why") or ""))
                       and not e.get("address_tried"))
             street = street_box_changed(e, places, reaches, fetcher)
-            if not ((by_person or unit or branch or street or now_in_reach(e, places)) and not e.get("drop")
+            if not ((by_person or unit or branch or street or now_in_reach(e, places) or now_exact(e, places))
+                    and not e.get("drop")
                     and isinstance(e.get("said"), str) and isinstance(e.get("near"), str)):
                 keep.append(e)
                 continue

@@ -244,6 +244,29 @@ class Merge(Home):
         self.assertFalse(rpl.now_in_reach({"why": "40 km from Fixture Town", "near": "Fixture Town", "km": 40.2},
                                           rpl.load_places()))   # not wide enough: not searched again each merge
 
+    def test_a_capital_filed_as_a_state_is_searched_near_once_config_calls_it_a_city(self):
+        """OpenStreetMap can file a capital as its municipality ("state"). Its spots go to review as
+        having no town to search near; a `kind: city` in config/places.yaml brings them back."""
+        places = {"places": {**PLACES["places"], "Fixture Capital": {
+            "kind": "state", "in": "Fixture State", "lat": 39.0, "lon": -119.0, "found": "Fixture Capital"}}}
+        self.write("data/places.yaml", places)
+        self.write("data/tags.yaml", {"CAPA": {"topics": ["travel"], "cities": ["Fixture Capital"], "source": "model"}})
+        self.write(".cache/saves.json", {"saves": [save("CAPA", "Sunset at the Example Corniche")]})
+        osm = {"Example Corniche": [hit("Example Corniche", 39.02, -119.0, "promenade", 40)]}
+        with mock.patch.dict(OSM, osm):
+            self.write("config/places.yaml", {"places": {"Fixture Capital": {"kind": "city"}}})
+            paths = self.run_script("--prepare", "--all").split()
+            self.write("config/places.yaml", {"places": {}})
+            self.agent(paths, {"CAPA": [{"said": "Example Corniche", "near": "Fixture Capital"}]})
+            self.run_script("--merge")
+            self.assertEqual(self.spot("data/pins-review.yaml", "CAPA", "Example Corniche")["why"],
+                             "Fixture Capital has no pin, or is a state or country")
+            self.write("config/places.yaml", {"places": {"Fixture Capital": {"kind": "city"}}})
+            self.run_script("--merge")
+        p = self.spot("data/pins.yaml", "CAPA", "Example Corniche")
+        self.assertEqual((p["near"], p["osm"]), ("Fixture Capital", "node/40"))
+        self.assertNotIn("CAPA", self.read("data/pins-review.yaml"))
+
     def test_a_region_stored_as_a_point_reaches_50_km_not_its_made_up_box(self):
         """OpenStreetMap gives a region it keeps as one point a box a degree either side. That box
         is not the region's edge: a lodge 62 km off, inside it, goes to review."""

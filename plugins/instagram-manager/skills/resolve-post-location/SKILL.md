@@ -47,6 +47,11 @@ answers. **No script calls a model**, and there is no API key: this session star
      `config/places.yaml`; that width is then its reach here too, and Google's search box in
      find-google-ids. A spot held back as "38 km from Example Town" is searched again at the next
      merge once its town's reach covers that distance; one still out of reach is left alone.
+   - **A town OpenStreetMap files as something bigger.** A capital can come back as its
+     municipality (`kind: state`) and a town as its province (`kind: other`), and then nothing is
+     searched near it: its spots go to review as "Example Capital has no pin, or is a state or
+     country". Give it `kind: city` in `config/places.yaml`; that wins over the looked-up kind, and
+     those review entries are searched again at the next merge.
    - **Another of the save's areas.** When the spot is found but out of reach, or found under a
      different name, it is tried again near each other area of the save within 60 km of what was
      found, and pinned for the first area where it passes every check. The agent may pick the
