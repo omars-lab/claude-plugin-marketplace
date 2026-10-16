@@ -40,11 +40,17 @@ account never touch disk. Works with the HTML export (current) and the older JSO
    make import EXPORT=~/Downloads/instagram-example.zip
    # the same by hand: python3 <plugin>/skills/import-saves/scripts/import_saved.py --from-zip <the zip>
    ```
-   With no `EXPORT=`, `make import` takes the newest `~/Downloads/instagram-*.zip`. It writes `$INSTAGRAM_HOME/.cache/saves.json` and `$INSTAGRAM_HOME/.cache/never-public.txt`, and
-   ends with one line like:
+   With no `EXPORT=`, `make import` takes the newest `~/Downloads/instagram-*.zip`. Run by hand
+   with no zip at all, the script imports nothing: it only lists the collections from the last
+   import. It writes `$INSTAGRAM_HOME/.cache/saves.json` and `$INSTAGRAM_HOME/.cache/never-public.txt`, and
+   ends with a log line and the same in plain words:
    ```
    ev=import saves=1200 only_in_collection=2 collections=14 collection_links=310 saves_in_a_collection=300 reels=900 posts=290 tv=10 no_caption=25
+   Imported 1200 saved posts, plus 2 found only in a collection, so 1202 in all, and 14 collections. 'Trips' appears twice because 2 collections share that name.
    ```
+   `never-public.txt` lists the account, collection names, creators' handles and post codes. It
+   is only for people who share code: a pre-commit check reads it and stops any of those names
+   reaching a public repo. Someone who only uses their own data can ignore it.
 4. **Check the counts** against what Instagram shows (Saved → All posts, and the collection
    count). `only_in_collection` counts posts that sit in a collection but not in the saved list;
    they are kept, with no save time.

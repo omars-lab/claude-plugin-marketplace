@@ -81,6 +81,10 @@ characters; a save is never split across batches. Change it with `--batch-saves`
   first full run (6,000 saves, haiku) an agent's context grew by about 0.83 tokens per caption
   character over a 57,000-token start, so batches of about 75,000 characters stay under 120,000
   tokens. 80,000-character batches went just over and still missed nothing.
+- **How much work the whole library is.** Only saves that are not travel are split, and the last
+  line of `--prepare` says how many wait in all. At 40 a batch, 1,000 of them is about 25 batches,
+  so 7 waves of 4 agents. Cap a round with `SPLIT_LIMIT=400` (about 10 batches, 3 waves), merge,
+  check, then the next round. The pilot needs no cap.
 
 ## Steps
 

@@ -9,6 +9,11 @@ Each topic in `config/topics.yaml` names the repos it feeds (`feeds:`). This ski
 repos read, into the data repo's `out/` folder, in git. Each repo's own intake decides what to take
 from it; this skill never writes into another repo. No model is called and nothing is fetched.
 
+**Skip this step if no other project reads your saves.** The map and the hub pages do not need
+it. `feeds:` is only a note of who reads each file, for example `feeds: [trip-planner]` on travel
+when a trip-planning repo picks up `out/travel/`; a topic nobody reads has `feeds: []`, and
+nothing breaks either way.
+
 Track the run with `TaskCreate`: one task per step below, each marked done as it finishes.
 
 ## What it writes

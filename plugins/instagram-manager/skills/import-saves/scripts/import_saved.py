@@ -465,7 +465,27 @@ def write_import(a):
         saves_in_a_collection=sum(1 for s in listed if s["collections"]),
         reels=kinds.get("reel", 0), posts=kinds.get("post", 0), tv=kinds.get("tv", 0),
         no_caption=sum(1 for s in saves if not (s["caption"] or "").strip()))
+    print(summary(listed, saves, cols, a.out, a.never_public))
     return 0
+
+
+def summary(listed, saves, cols, out, never_public_path):
+    """The import in plain words, so a newcomer need not decode the log line (trial finding)."""
+    extra = len(saves) - len(listed)
+    text = f"Imported {len(listed)} saved posts"
+    if extra:
+        text += f", plus {extra} found only in a collection, so {len(saves)} in all"
+    text += f", and {len(cols)} collections."
+    names = {}
+    for c in cols:
+        names[c["name"]] = names.get(c["name"], 0) + 1
+    for name, n in sorted(names.items()):
+        if n > 1:
+            times = "twice" if n == 2 else f"{n} times"
+            text += f" '{name}' appears {times} because {n} collections share that name."
+    return (text + f"\nWrote {out}.\n{never_public_path} lists your account, collection names, "
+            "creators and post codes, so a check before each commit can stop them reaching anything "
+            "public; you only need it if you share code (see SKILL.md).")
 
 
 def main(argv=None):
@@ -504,6 +524,9 @@ def main(argv=None):
                     seen.add(code)
                     print(by_code[code]["url"])
         return 0
+    if not a.collection:
+        print(f"No export given, so this lists the collections from {a.saved}; "
+              "pass the export zip to import again.", file=sys.stderr)
     print("%5d  %s" % (len(data["saves"]), "All saved"))
     for c in sorted(data["collections"], key=lambda c: (-len(c["codes"]), c["name"])):
         print("%5d  %s" % (len(c["codes"]), c["name"]))

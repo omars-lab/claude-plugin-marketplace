@@ -7,12 +7,17 @@ description: Fetch one small JPEG thumbnail per saved Instagram post, or with --
 
 Gets one thumbnail per save: a reel's cover, a photo post's image, or a carousel's first slide. Each
 is a JPEG about 600 px wide at `$INSTAGRAM_MEDIA_DIR/<code>/thumb.jpg` (an iCloud folder, never
-git). `data/media.yaml` in the data repo points at it:
+git). `data/media.yaml` in the data repo (your data folder, `$INSTAGRAM_HOME`, the one
+`setup_home.py` made) points at it:
 
 ```yaml
 EXAMPLE123: {thumb: EXAMPLE123/thumb.jpg, kind: reel, fetched: 2026-01-01}
 EXAMPLE456: {error: private}
 ```
+
+**How long it takes.** A run of 100 posts takes about an hour and three quarters, and the rules
+below allow 3 runs a day, so about 300 thumbnails a day: a library of 1,000 saves takes about four
+days of runs, 8,000 about a month. The map works without thumbnails; they only add pictures.
 
 A post already in `media.yaml`, fetched or not, is skipped next time. The errors are `private`
 (only followers can see it), `login_wall` (an age-limited post that needs a login), `not_found`
@@ -50,8 +55,8 @@ Log lines added: `ev=video_start`, `ev=video_done bytes=... size=... sound=...`,
 
 ## How a thumbnail is fetched, and why this way
 
-The pacing research (`docs/research/instagram-fetch-pacing/consolidated.md` in the data repo)
-plans for downloading each post's smallest video. The hub only needs one image per post, so this
+The pacing research (`docs/research/instagram-fetch-pacing/consolidated.md`, in the plugin
+author's own data repo; the rules below are what it settled on, so you do not need it) plans for downloading each post's smallest video. The hub only needs one image per post, so this
 skill asks yt-dlp to **read** the post without downloading anything:
 `extract_info(url, download=False)`.
 
@@ -154,7 +159,9 @@ A timed-out post is left for a later run.
 1. **Check the inputs.** `.cache/saves.json` exists (else run **import-saves**). `data/tags.yaml`
    is used, if present, so a pilot also takes saves tagged with its places. Track the run with
    `TaskCreate`.
-2. **Use a python3 that has yt-dlp and PyYAML.** `python3 -c "import yt_dlp, yaml"`.
+2. **Use a python3 that has yt-dlp and PyYAML.** `python3 -c "import yt_dlp, yaml"`. If that
+   fails, install both for that python3: `python3 -m pip install --user yt-dlp pyyaml` (a
+   `brew install yt-dlp` gives the command only, which this script cannot import).
 3. **Run the pilot first,** 5 posts, in the background, and watch the log:
    ```bash
    python3 <plugin>/skills/fetch-media/scripts/fetch_media.py --pilot <name> --limit 5
@@ -164,7 +171,7 @@ A timed-out post is left for a later run.
 5. **On a stop, stop.** Do not retry. Report what `ev=rate_limited` says.
 6. **Commit `data/media.yaml`** in the data repo. Never a thumbnail: they stay in iCloud.
 7. **Go wider** only after the user has seen the trial. That is a change of scope, so ask with
-   `AskUserQuestion`. The options: the rest of the pilot in one run (about 80 minutes, and the log
+   `AskUserQuestion`. The options: the rest of the pilot in one run (up to 100 posts, about 1¾ hours, and the log
    shows whether the pace holds), or another short trial first (slower, but less exposed if the
    first one showed warnings).
 

@@ -153,6 +153,17 @@ class HtmlExport(unittest.TestCase):
         self.assertEqual(data["account"], "fixture.account")
         self.assertEqual(data["format"], "html")
 
+    def test_the_import_ends_with_a_summary_in_plain_words(self):
+        code, out, err = run(["--from-zip", html_zip(self.d), "--out", self.out, "--never-public", self.np])
+        self.assertEqual(code, 0, err)
+        self.assertIn("Imported 4 saved posts, plus 1 found only in a collection, so 5 in all, and 4 collections.", out)
+        self.assertIn("'Fixture Town' appears twice because 2 collections share that name.", out)
+        self.assertIn(f"{self.np} lists your account", out)
+        code, out, err = run(["--list", "--saved", self.out])
+        self.assertEqual(code, 0, err)
+        self.assertIn("No export given, so this lists the collections", err)
+        self.assertIn("All saved", out)
+
     def test_caption_is_verbatim_with_entities_decoded(self):
         _, saves, _ = self.load()
         self.assertEqual(saves["FXa1Reel001"]["caption"],

@@ -287,7 +287,9 @@ def main(argv=None):
     log("pins_page", saves_with_pins=len(pins), saves_in_review=len(review), markers=n,
         previews=sum(1 for v in shown.values() if v.get("poster")),
         flipbooks=sum(1 for v in shown.values() if v.get("anim")), out=out)
-    print(out)
+    # Trial finding: the bare path gave no hint that this page is where the pins get checked.
+    print(f"Open this to check where each save landed ({len(pins)} saves with pins, "
+          f"{len(review)} waiting for a look); a wrong pin is fixed in data/pins.yaml:\n  {out}")
     return 0
 
 
