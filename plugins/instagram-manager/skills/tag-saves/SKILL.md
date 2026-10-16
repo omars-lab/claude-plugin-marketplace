@@ -170,10 +170,16 @@ An invented pilot, "coast": collections "Weekend Trips" → travel and "Example 
 are listed for Example State in `places.yaml`, so the save comes into the pilot and the agent
 tags it travel / Example State. The report flags it as "found outside the collections".
 
-## Known gap
+## Known gaps
 
 A pilot only looks at its collections and at saves with a place match. A save about the place
 whose caption names nothing on the list is missed until `--all` runs.
+
+A venue saved in a collection for another topic (a sweets shop in a business collection) can come
+back with that topic and its town, but no `travel`. send-topics logs it as
+`ev=send_place_not_travel`; read those and add `travel` by hand when it is a place to go. A place
+named only as an event's venue (a giveaway at a café abroad) is not a trip: clear its `cities` by
+hand instead.
 
 ## Scripts — when to use each
 

@@ -18,9 +18,12 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
     person: "matched by its name: check it" (`by: auto`) or "picked by Claude from Google's list:
     check it" (`by: claude`).
 
-  Above the map is a row of menus: **State**, **National attraction**, **Purpose** and **Topic**.
-  Each option shows how many posts it holds once the other menus and the search are applied, most
-  posts first.
+  Above the map is a row of menus: **State or country**, **National attraction**, **Purpose** and
+  **Topic**. Each option shows how many posts it holds once the other menus and the search are
+  applied, most posts first.
+  - A post sits under the widest place above each of its places: the state for a US town, the
+    country for a town abroad (Example Port → Example Land). A place with no state or country above it is left
+    out of this menu, so give a new town abroad its country in `data/places.yaml`.
   - A national attraction is a park or spot whose name, or the name OpenStreetMap found for it, says
     National Park, Seashore, Monument and so on. Picking one (or a state) keeps only the pins and
     places inside it, so a road-trip post that names a park shows just its park pins.
@@ -158,4 +161,4 @@ State, and a spot from `data/pins.yaml`, Example Falls, near Example Bay. The bu
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/build_hub.py` | Writes the site to `.cache/hub/`: the map, one page per place, one page per post, the thumbnails, and each post's small picture and flipbook | After tagging, finding spots or fetching thumbnails, to see the result | `python3 scripts/build_hub.py --pilot <name>` (or `--all`; `--out DIR` for another folder; `--no-previews` to skip the small pictures) |
-| `scripts/test_build_hub.py` | Offline tests on an invented data repo: which saves go in, where the pins go, spot pages, links up and down, thumbnails, small pictures and flipbooks on the lists (and `--no-previews`), a kept Google id opening its exact place, and captions that try to break the page | After any change to the build script | `python3 scripts/test_build_hub.py` |
+| `scripts/test_build_hub.py` | Offline tests on an invented data repo: which saves go in, where the pins go, the "State or country" menu (a town abroad under its country), spot pages, links up and down, thumbnails, small pictures and flipbooks on the lists (and `--no-previews`), a kept Google id opening its exact place, and captions that try to break the page | After any change to the build script | `python3 scripts/test_build_hub.py` |

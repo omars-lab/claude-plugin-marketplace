@@ -84,6 +84,22 @@ replaces an entry with `lookup:`, `ok: true`, `drop: true` or `by: hand`, and th
 `said` are left out for that save, whatever area it files them under this time. Deleting a wrong
 pin is not a fix, because the next re-read finds it again; mark it `drop: true` instead.
 
+## Venues abroad
+
+Outside the US, OpenStreetMap has the sights (a citadel, a national park) but few of the cafés,
+sweets shops and huts a post names, above all those known only by an Instagram handle. In the
+first trial abroad, most such venues stayed in review as "not found". Don't chase them
+with `lookup:` one by one:
+
+- **Leave them in review.** The hub shows them as dashed pins at their town, and **find-google-ids**
+  searches them by name in a box round that town. Its pick gives the exact Google Maps link even
+  though the venue has no pin of its own. That covers most of the gap.
+- **Check the handle the agent wrote.** Agents misspell handles ("Example Tidei" for a handle
+  that reads Example Tide), and the lookup then finds nothing. Fix it with a `lookup:` of the right name.
+- **A namesake in a neighbouring country.** A lake or sea shared by two countries can be found on
+  the wrong shore, tens of kilometres off. Leave it in review rather than `ok: true` unless the
+  caption says that side.
+
 ## A spot in the wrong area
 
 The agent must file each spot under one of the save's own areas. A road-trip reel saved under one

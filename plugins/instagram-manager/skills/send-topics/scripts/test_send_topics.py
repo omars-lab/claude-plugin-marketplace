@@ -20,8 +20,10 @@ import yaml  # noqa: E402
 
 TOPICS = {"topics": {"travel": {"feeds": ["example-trips"]}, "recipes": {"feeds": ["example-kitchen"]},
                      "crafts": {"feeds": []}}}
-COLLECTIONS = {"collections": {"Fixture Trips": {"topics": ["travel"], "cities": ["Fixture State"]}},
-               "pilots": {"fixture": {"collections": ["Fixture Trips"], "cities": ["Fixture State"]}}}
+COLLECTIONS = {"collections": {"Fixture Trips": {"topics": ["travel"], "cities": ["Fixture State"]},
+                               "Fixture Kitchen": {"topics": ["recipes"]}},
+               "pilots": {"fixture": {"collections": ["Fixture Trips"], "cities": ["Fixture State"]},
+                          "kitchen": {"collections": ["Fixture Kitchen"], "cities": []}}}
 PLACES = {"places": {
     "Fixture State": {"kind": "state", "lat": 10.0, "lon": 20.0},
     "Fixture Town": {"kind": "city", "in": "Fixture State", "lat": 10.5, "lon": 20.5},
@@ -38,13 +40,16 @@ def save(code, collections=(), user="example_creator"):
             "collections": list(collections)}
 
 
-SAVES = [save("TRIP1", ["Fixture Trips"]), save("ROAD1"), save("CAFE1"), save("BOTH1"), save("NONE1", ["Fixture Trips"])]
+SAVES = [save("TRIP1", ["Fixture Trips"]), save("ROAD1"), save("CAFE1"), save("BOTH1"), save("NONE1", ["Fixture Trips"]),
+         save("SOUP1", ["Fixture Kitchen"]), save("SOUP2", ["Fixture Kitchen", "Fixture Trips"])]
 TAGS = {
     "TRIP1": {"topics": ["travel"], "cities": ["Fixture State", "Fixture Town"], "purposes": ["eat"]},
     "ROAD1": {"topics": ["travel"], "cities": ["Fixture State", "Fixture Coast", "Other State", "Other Town"]},   # crosses into another state
     "CAFE1": {"topics": ["recipes"], "cities": ["Fixture Town"]},                  # names a place, not travel
     "BOTH1": {"topics": ["travel", "recipes"], "cities": ["Fixture State", "Fixture Town"]},
     "NONE1": {"topics": ["travel"], "cities": []},
+    "SOUP1": {"topics": ["recipes"], "cities": []},
+    "SOUP2": {"topics": ["recipes"], "cities": []},
 }
 PINS = {
     "TRIP1": [{"name": "Example Cove Beach", "said": "the cove beach", "near": "Fixture Town", "kind": "beach",
@@ -183,6 +188,25 @@ class Send(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.root, "out", "travel", "other-state.yaml")))
         self.assertIn("pilot fixture", self.doc("travel/fixture-state.yaml")["scope"])
         self.assertEqual(sorted(self.saves("travel/fixture-state.yaml")), ["BOTH1", "ROAD1", "TRIP1"])
+
+    def test_pilots_add_up_in_a_shared_topic_file(self):
+        self.send("--pilot", "fixture")
+        self.assertEqual(sorted(self.saves("recipes.yaml")), ["BOTH1", "SOUP2"])
+        self.send("--pilot", "kitchen")
+        self.assertEqual(sorted(self.saves("recipes.yaml")), ["BOTH1", "SOUP1", "SOUP2"])   # fixture's kept
+        self.assertTrue(self.doc("recipes.yaml")["scope"].startswith("pilots fixture, kitchen:"))
+        self.assertEqual(self.doc("recipes.yaml")["count"], 3)
+        tags = {**TAGS, "SOUP2": {"topics": ["crafts"], "cities": []}}
+        self.write("data/tags.yaml", tags)
+        self.send("--pilot", "kitchen")
+        self.assertEqual(sorted(self.saves("recipes.yaml")), ["BOTH1", "SOUP1"])   # its own save that left goes
+        self.assertEqual(sorted(self.saves("crafts.yaml")), ["SOUP2"])
+
+    def test_pilot_leaves_an_all_file_alone(self):
+        self.send("--all")
+        before = self.read("recipes.yaml")
+        self.send("--pilot", "kitchen")
+        self.assertEqual(self.read("recipes.yaml"), before)
 
     def test_rerun_gives_the_same_bytes(self):
         self.send("--all")

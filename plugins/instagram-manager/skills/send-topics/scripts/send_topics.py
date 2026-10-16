@@ -3,7 +3,9 @@
 country, so a trip planner reads only the area it plans. Each repo's own intake takes what it wants
 from them. No model is called and nothing is fetched.
 
-    send_topics.py --pilot NAME   the pilot's saves; travel only for the pilot's own areas
+    send_topics.py --pilot NAME   the pilot's saves; travel only for the pilot's own areas. A file
+                                  another pilot already wrote keeps that pilot's saves: only this
+                                  pilot's are replaced, so pilots add up instead of wiping each other
     send_topics.py --all          every tagged save; files no longer written are removed
 
 Reads   $INSTAGRAM_HOME/.cache/saves.json          link, creator, date saved
@@ -40,6 +42,7 @@ the same data writes the same bytes.
 
 import argparse
 import os
+import re
 import sys
 
 import yaml
@@ -178,12 +181,47 @@ class Sender:
         return HEADER + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=10_000)
 
 
-def write_all(sender, out_dir, keep, scope, prune):
+PILOTS = re.compile(r"^pilots? ([^:]+):")
+
+
+def merge_old(sender, path, rel, ours, pilot):
+    """A pilot run keeps what an earlier run wrote for the saves outside this pilot, and returns the
+    scope line naming every pilot now in the file. A save of this pilot that left the file stays out."""
+    names = [pilot]
+    try:
+        with open(path, encoding="utf-8") as fh:
+            old = yaml.safe_load(fh) or {}
+    except (OSError, yaml.YAMLError):
+        return names
+    m = PILOTS.match(str(old.get("scope") or ""))
+    if not m and old.get("saves"):
+        return None                       # an --all file: every save is in it, nothing to add up
+    names = sorted(set(names) | {n.strip() for n in (m.group(1).split(",") if m else [])})
+    f = sender.files[rel]
+    for e in old.get("saves") or []:
+        if isinstance(e, dict) and e.get("code") and e["code"] not in ours:
+            f["saves"].setdefault(e["code"], e)
+    return names
+
+
+def pilot_scope(names):
+    who = f"pilot {names[0]}" if len(names) == 1 else "pilots " + ", ".join(names)
+    return (f"{who}: only {'its' if len(names) == 1 else 'their'} saves are here; the rest are not tagged yet, and the other travel areas "
+            "named in also_in are not written yet")
+
+
+def write_all(sender, out_dir, keep, scope, prune, ours=None, pilot=None):
     written = []
     for rel in sorted(sender.files):
         if not keep(rel):
             continue
         path = os.path.join(out_dir, rel)
+        if pilot is not None:
+            names = merge_old(sender, path, rel, ours, pilot)
+            if names is None:
+                log("send_kept_full_file", file=rel, msg="written by --all; a pilot run leaves it alone")
+                continue
+            scope = pilot_scope(names)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(sender.document(rel, scope))
@@ -230,8 +268,7 @@ def main(argv=None):
 
     if pilot is not None:
         mine = {bh.slugify(top(places, places.resolve(c) or c)) for c in pilot.get("cities") or []}
-        scope = (f"pilot {args.pilot}: only its saves are here; the rest are not tagged yet, and the other "
-                 "travel areas named in also_in are not written yet")
+        scope = pilot_scope([args.pilot])
 
         def keep(rel):
             return not rel.startswith("travel/") or os.path.splitext(os.path.basename(rel))[0] in mine
@@ -241,7 +278,8 @@ def main(argv=None):
         def keep(rel):
             return True
     out_dir = os.path.abspath(args.out or os.path.join(home(), "out"))
-    written, removed = write_all(sender, out_dir, keep, scope, prune=pilot is None)
+    written, removed = write_all(sender, out_dir, keep, scope, prune=pilot is None,
+                                 ours={s["code"] for s in saves}, pilot=args.pilot)
 
     for code in sender.not_travel:
         log("send_place_not_travel", code=code, msg="names a place but is not tagged travel")

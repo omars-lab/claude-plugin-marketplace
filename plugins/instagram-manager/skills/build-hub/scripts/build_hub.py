@@ -409,17 +409,28 @@ class Hub:
             NATIONAL.search(place["name"]) or NATIONAL.search(place.get("found") or ""))
 
     def facets(self, post):
-        """The menu values a post falls under: its states, national parks, purposes and topics."""
+        """The menu values a post falls under: its states or countries, national parks, purposes and topics."""
         named = [self.places[k] for k in self.named(post)]
         purposes = [t for t in post["tagged_purposes"] if t in self.purposes]
         for p in named:
             k = self.purpose_of.get(p["kind"])
             if k and k not in purposes:
                 purposes.append(k)
-        return {"st": [p["key"] for p in named if p["kind"] == "state"],
+        return {"st": list(dict.fromkeys(a for a in map(self.top_area, named) if a)),
                 "np": [p["key"] for p in named if self.national(p)],
                 "pu": purposes or [NO_PURPOSE[0]],
                 "tp": list(post["topics"])}
+
+    def top_area(self, place):
+        """The widest state or country a place sits in (or is): the state in the US, where places have
+        no country above them, and the country elsewhere. The same rule as send-topics' area."""
+        top, key, seen = None, place["key"], set()
+        while key in self.places and key not in seen:
+            seen.add(key)
+            if self.places[key]["kind"] in WIDE:
+                top = key
+            key = self.places[key]["parent"]
+        return top
 
     def within(self, key, cities):
         """True when the place is one of `cities` or sits inside one."""
@@ -843,7 +854,7 @@ $('form').addEventListener('submit',function(e){e.preventDefault();search()});
 """
 
 
-MENUS = (("st", "State", "All states"), ("np", "National attraction", "All national parks and sites"),
+MENUS = (("st", "State or country", "All states and countries"), ("np", "National attraction", "All national parks and sites"),
          ("pu", "Purpose", "All purposes"), ("tp", "Topic", "All topics"))
 
 

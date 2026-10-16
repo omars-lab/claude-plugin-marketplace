@@ -372,9 +372,11 @@ class Hub(unittest.TestCase):
                              "Fixture Park": {**PLACES["places"]["Fixture Park"],
                                               "found": "Fixture National Park, Fixture State"},
                              "Other National Park": {"kind": "park", "in": "Fixture State", "lat": 12.0, "lon": 22.0},
-                             "Other State Park": {"kind": "park", "in": "Fixture State", "lat": 12.5, "lon": 22.5}},
+                             "Other State Park": {"kind": "park", "in": "Fixture State", "lat": 12.5, "lon": 22.5},
+                             "Faraway Port": {"kind": "city", "in": "Faraway Land", "lat": -40.5, "lon": 100.5}},
                   "aliases": PLACES["aliases"]}
         tags = {**TAGS, "STATE1": {"topics": ["travel"], "cities": ["Other National Park", "Other State Park"]},
+                "CaseA": {"topics": ["travel"], "cities": ["Faraway Port"]},
                 "TOWN1": {**TAGS["TOWN1"], "purposes": ["eat", "not-a-purpose"]}}
         self.write("data/places.yaml", places)
         self.write("data/tags.yaml", tags)
@@ -397,6 +399,9 @@ class Hub(unittest.TestCase):
         self.assertEqual(opts("VILL1", "pu"), ["Not worked out yet"])           # only a village
         self.assertEqual(opts("PARK1", "tp"), ["Kids", "Travel"])
         self.assertEqual(opts("NOTAG", "st"), [])
+        self.assertEqual(menus["st"]["n"], "State or country")
+        self.assertEqual(opts("STATE1", "st"), ["Fixture State"])               # only its parks: their state
+        self.assertEqual(opts("CaseA", "st"), ["Faraway Land"])                 # a town abroad: its country
         inside = {pl["n"]: [menus["np"]["o"][j][1] for j in pl["g"]["np"]] for pl in d["places"]}
         self.assertEqual(inside["Example Falls"], ["Fixture Park"])             # a spot sits in its park
         self.assertEqual(inside["Fixture Town"], [])
