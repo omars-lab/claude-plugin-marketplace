@@ -3,13 +3,20 @@
 
     fetch_media.py --pilot NAME --limit 5     the pilot's saves, at most 5 this run
     fetch_media.py --all --limit 100          every save, at most 100 this run
+    fetch_media.py --video CODES.txt          the reels listed (one code a line): their video and full
+                                              cover too, for reading names off the screen
 
 Reads   $INSTAGRAM_HOME/.cache/saves.json           (from import-saves)
         $INSTAGRAM_HOME/config/collections.yaml     the pilots
         $INSTAGRAM_HOME/data/tags.yaml              places, so a pilot also takes saves tagged with its places
 Writes  $INSTAGRAM_MEDIA_DIR/<code>/thumb.jpg       about 600 px wide (iCloud; never in git)
+        $INSTAGRAM_MEDIA_DIR/<code>/video.mp4       with --video: a reel's video, the smallest at least 540 px
+                                                    on its short side (on-screen text stays readable)
+        $INSTAGRAM_MEDIA_DIR/<code>/cover.jpg       with --video: the cover at full size, not cut square
         $INSTAGRAM_HOME/data/media.yaml             <code>: {thumb: <code>/thumb.jpg, kind, fetched: <date>}
-                                                    or <code>: {error: private|login_wall|not_found|no_image}
+                                                    or <code>: {error: private|login_wall|not_found|no_image};
+                                                    --video adds video, cover, video_size, sound, video_fetched
+                                                    (or video_error: no_video|not_a_reel)
         $INSTAGRAM_HOME/.cache/logs/fetch-media.log one ev= line per event
         $INSTAGRAM_HOME/.cache/fetch-media.lock     held while a run goes; a second run refuses
         $INSTAGRAM_HOME/.cache/fetch-media.cooldown.json   written on a stop; runs refuse until it ends
@@ -21,7 +28,14 @@ How a post is fetched
   page), plus 1 at the start of the run. The answer lists the post's images with their widths; the
   script takes the smallest one at least 600 px wide (a reel's cover, a photo post's image, a
   carousel's first slide) and downloads it from Instagram's image servers, not instagram.com. macOS
-  `sips` turns it into a JPEG 600 px wide. No video is downloaded.
+  `sips` turns it into a JPEG 600 px wide. No video is downloaded, except with --video.
+
+With --video
+  The same read of the post, so the same 2 instagram.com requests. Then the video file and the
+  widest cover come from Instagram's file servers, like the thumbnail. The video picked is a plain
+  mp4 (one that may carry sound, not a separate video or audio stream), the smallest whose short
+  side is at least 540 px, else the largest. ffprobe records whether it has sound. Three file
+  downloads failing in a row is a stop, as the research says. A post's thumbnail is kept.
 
 Never logged in
   No cookies, no login, no netrc, ever. yt-dlp gets ignoreconfig, so no config file can add them,
@@ -88,6 +102,10 @@ POST_DEADLINE = 180          # s for the whole extract_info of one post
 IMAGE_DEADLINE = 60          # s for one image download
 SIPS_TIMEOUT = 60
 THUMB_WIDTH = 600
+VIDEO_SHORT = 540            # px on the video's short side: enough to read on-screen text
+VIDEO_DEADLINE = 300         # s for one video download
+VIDEO_FAIL_STOP = 3          # file downloads failing in a row
+PROBE_TIMEOUT = 30
 COOLDOWN_HOURS = {1: 24, 2: 48, 3: 72}
 MAX_POSTS = 100              # posts in one run
 RUN_GAP = dt.timedelta(hours=2)   # from the end of one run to the start of the next
@@ -175,6 +193,27 @@ def pick(saves, pilot, tags, media, limit):
             continue
         todo.append(s)
     return (todo[:limit] if limit else todo), done
+
+
+def pick_codes(saves, codes, media, limit):
+    """With --video: the listed codes, in the list's order, whose video is not fetched yet."""
+    by_code = {s["code"]: s for s in saves}
+    todo, done = [], 0
+    for c in codes:
+        entry = media.get(c) or {}
+        if c not in by_code or "error" in entry:
+            continue
+        if "video" in entry or "video_error" in entry:
+            done += 1
+            continue
+        todo.append(by_code[c])
+    return (todo[:limit] if limit else todo), done
+
+
+def read_codes(path):
+    """Post codes from a text file, one a line; # starts a comment."""
+    with open(path, encoding="utf-8") as fh:
+        return [w for line in fh for w in line.split("#")[0].split()[:1]]
 
 
 # ---------------------------------------------------------------- the lock and the cooldown
@@ -362,6 +401,43 @@ def pick_image(info):
     return best["url"], best.get("width"), kind
 
 
+def pick_video(info):
+    """(url, width, height) of the video to keep, or None: a plain mp4 (not a separate video-only or
+    audio-only stream), the smallest whose short side is at least VIDEO_SHORT, else the largest."""
+    plain = [f for f in info.get("formats") or [] if f.get("url") and f.get("vcodec") != "none"
+             and f.get("acodec") != "none" and (f.get("ext") in (None, "mp4"))]
+    if not plain:
+        plain = [f for f in info.get("formats") or [] if f.get("url") and f.get("vcodec") != "none"]
+    if not plain:
+        return None
+    short = lambda f: min(f.get("width") or 0, f.get("height") or 0)  # noqa: E731
+    big = [f for f in plain if short(f) >= VIDEO_SHORT]
+    best = min(big, key=short) if big else max(plain, key=short)
+    return best["url"], best.get("width"), best.get("height")
+
+
+def pick_cover(info):
+    """(url, width) of the widest image: the cover at full size, before any square crop."""
+    if info.get("_type") == "playlist":
+        info = next((e for e in info.get("entries") or [] if e), {})
+    thumbs = [t for t in info.get("thumbnails") or [] if t.get("url")] or (
+        [{"url": info["thumbnail"]}] if info.get("thumbnail") else [])
+    if not thumbs:
+        return None, None
+    best = max(thumbs, key=lambda t: (t.get("width") or 0) * (t.get("height") or 1))
+    return best["url"], best.get("width")
+
+
+def has_sound(path):
+    """True if the file has an audio stream, False if not, None if ffprobe is missing or fails."""
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+                              "-of", "csv=p=0", path], capture_output=True, text=True, timeout=PROBE_TIMEOUT)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return bool(out.stdout.strip()) if out.returncode == 0 else None
+
+
 @contextlib.contextmanager
 def deadline(secs):
     """Raise Deadline if the block runs longer than secs (main thread only)."""
@@ -376,32 +452,40 @@ def deadline(secs):
         signal.signal(signal.SIGALRM, old)
 
 
-def download_image(ydl, url, path):
-    """The image's bytes into path, through the run's yt-dlp (same headers, no cookies of ours)."""
+def download_image(ydl, url, path, secs=IMAGE_DEADLINE):
+    """The file's bytes into path, through the run's yt-dlp (same headers, no cookies of ours)."""
     from yt_dlp.networking import Request
     req = Request(url, headers={"Referer": "https://www.instagram.com/"}, extensions={"timeout": SOCKET_TIMEOUT})
-    with deadline(IMAGE_DEADLINE):
+    size = 0
+    with deadline(secs):
         resp = ydl.urlopen(req)
-        data = resp.read()
-    with open(path, "wb") as fh:
-        fh.write(data)
-    return len(data)
+        with open(path, "wb") as fh:
+            while True:
+                block = resp.read(1 << 20)
+                if not block:
+                    break
+                fh.write(block)
+                size += len(block)
+    return size
 
 
-def to_jpeg(src, dst, width):
-    """src → a JPEG THUMB_WIDTH wide at dst (narrower images are kept at their size). macOS sips."""
+def to_jpeg(src, dst, width, max_width=THUMB_WIDTH):
+    """src → a JPEG max_width wide at dst (narrower images are kept at their size; max_width None
+    keeps every size). macOS sips."""
     cmd = ["sips", "-s", "format", "jpeg", "-s", "formatOptions", "80"]
-    if not width or width > THUMB_WIDTH:
-        cmd += ["--resampleWidth", str(THUMB_WIDTH)]
+    if max_width and (not width or width > max_width):
+        cmd += ["--resampleWidth", str(max_width)]
     subprocess.run(cmd + [src, "--out", dst], check=True, capture_output=True, timeout=SIPS_TIMEOUT)
 
 
 # ---------------------------------------------------------------- the run
 
 class Run:
-    def __init__(self, ydl, watcher, requests, media, sleep=time.sleep):
+    def __init__(self, ydl, watcher, requests, media, sleep=time.sleep, video=False):
         self.ydl, self.watcher, self.requests, self.media = ydl, watcher, requests, media
         self.sleep = sleep
+        self.video = video
+        self.file_fails = 0    # video downloads failing in a row
         self.started = time.time()
         self.ok = self.bad = 0
         self.empty_streak = 0
@@ -493,6 +577,8 @@ class Run:
         self.empty_streak = 0
         self.watch_rules(code, self.watcher.watch)
 
+        if self.video:
+            return self.fetch_video(code, info or {}, t0)
         img, width, kind = pick_image(info or {})
         if not img:
             log("post_bad", shortcode=code, reason="no_image", kind=kind)
@@ -526,12 +612,77 @@ class Run:
             ig_requests=self.watcher.ig, path="page")
         return {"thumb": f"{code}/thumb.jpg", "kind": kind, "fetched": now().date().isoformat()}
 
+    def fetch_video(self, code, info, t0):
+        """--video: the reel's video and its full cover, added to its media.yaml entry."""
+        entry = dict(self.media.get(code) or {})
+        _, _, kind = pick_image(info)
+        if kind != "reel":
+            log("post_bad", shortcode=code, reason="not_a_reel", kind=kind)
+            self.bad += 1
+            return {**entry, "video_error": "not_a_reel"}
+        picked = pick_video(info)
+        if not picked:
+            log("post_bad", shortcode=code, reason="no_video")
+            self.bad += 1
+            return {**entry, "video_error": "no_video"}
+        url, w, h = picked
+        folder = os.path.join(media_dir(), code)
+        os.makedirs(folder, exist_ok=True)
+        dst = os.path.join(folder, "video.mp4")
+        log("video_start", shortcode=code, size=f"{w or '?'}x{h or '?'}")
+        try:
+            size = download_image(self.ydl, url, dst + ".part", VIDEO_DEADLINE)
+        except Deadline:
+            log("video_timeout", shortcode=code, secs=VIDEO_DEADLINE)
+            return self.file_failed(code)
+        except Exception as e:  # noqa: BLE001 — the file server's failure, not instagram.com's
+            log("video_fail", shortcode=code, msg=str(e)[:200])
+            return self.file_failed(code)
+        if not size:
+            log("video_fail", shortcode=code, msg="empty file")
+            return self.file_failed(code)
+        os.replace(dst + ".part", dst)
+        self.file_fails = 0
+        sound = has_sound(dst)
+        log("video_done", shortcode=code, bytes=size, sound={True: "yes", False: "no"}.get(sound, "unknown"))
+        out = {**entry, "video": f"{code}/video.mp4", "video_fetched": now().date().isoformat()}
+        if w and h:
+            out["video_size"] = f"{w}x{h}"
+        if sound is not None:
+            out["sound"] = sound
+        cover, cw = pick_cover(info)
+        if cover:
+            with tempfile.TemporaryDirectory() as tmp:
+                raw = os.path.join(tmp, "image")
+                try:
+                    download_image(self.ydl, cover, raw)
+                    to_jpeg(raw, os.path.join(folder, "cover.jpg"), cw, max_width=None)
+                    out["cover"] = f"{code}/cover.jpg"
+                    log("cover_done", shortcode=code, width=cw or "?")
+                except Deadline:
+                    log("image_timeout", shortcode=code, secs=IMAGE_DEADLINE)
+                except Exception as e:  # noqa: BLE001 — the cover is a nice-to-have; the video is kept
+                    log("cover_fail", shortcode=code, msg=str(e)[:200])
+        self.ok += 1
+        log("post_ok", shortcode=code, kind="reel", bytes=size, secs=round(time.time() - t0, 1),
+            ig_requests=self.watcher.ig, path="video")
+        return out
+
+    def file_failed(self, code):
+        """A video download failed: leave the post for a later run; three in a row is a stop."""
+        self.file_fails += 1
+        if self.file_fails >= VIDEO_FAIL_STOP:
+            raise Stop("file_streak", f"{self.file_fails} video downloads failed in a row")
+        return None
+
 
 def main(argv=None, ydl_factory=None, sleep=time.sleep):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     scope = ap.add_mutually_exclusive_group(required=True)
     scope.add_argument("--pilot", help="a pilot name from config/collections.yaml")
     scope.add_argument("--all", action="store_true", help="every save")
+    scope.add_argument("--video", metavar="CODES.txt",
+                       help="a file of reel codes, one a line: fetch their video and full cover")
     ap.add_argument("--limit", type=int, default=5, help="at most this many posts this run (default 5)")
     ap.add_argument("--saved", default=None, help="saves.json (default: the data repo's .cache)")
     args = ap.parse_args(argv)
@@ -573,7 +724,10 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
             pilot = pilots[args.pilot]
         media = load_yaml(MEDIA)
         limit = 1 if test_only else min(args.limit, MAX_POSTS)
-        todo, done = pick(saves, pilot, load_yaml(os.path.join("data", "tags.yaml")), media, limit)
+        if args.video:
+            todo, done = pick_codes(saves, read_codes(args.video), media, limit)
+        else:
+            todo, done = pick(saves, pilot, load_yaml(os.path.join("data", "tags.yaml")), media, limit)
 
         if ydl_factory is None:
             try:
@@ -585,12 +739,12 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
         else:
             version = "fake"
         log("run_start", ytdlp=version, impersonate="no", sleep_req=SLEEP_REQUESTS, gap_min=GAP[0], gap_max=GAP[1],
-            cap=limit, scope=args.pilot or "all", todo=len(todo), skipped=done, test_only=test_only,
+            cap=limit, scope=args.pilot or ("video" if args.video else "all"), todo=len(todo), skipped=done, test_only=test_only,
             cooldown_until=(cd or {}).get("until") or "none", media_dir=media_dir())
 
         stopped, reason = "no", ""
         with ydl_factory(opts) as ydl:
-            run = Run(ydl, watcher, requests, media, sleep=sleep)
+            run = Run(ydl, watcher, requests, media, sleep=sleep, video=bool(args.video))
             for n, s in enumerate(todo, 1):
                 if n > 1:
                     if (n - 1) % LONG_EVERY == 0:
@@ -613,7 +767,7 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
                 if entry is not None:
                     media[s["code"]] = entry
                     write_yaml(MEDIA, media)   # after every post, so a stop loses nothing
-                    if test_only and "thumb" in entry:
+                    if test_only and ("video" in entry if args.video else "thumb" in entry):
                         log("recovered", shortcode=s["code"])
                         os.remove(cooldown_path())
             write_yaml(MEDIA, media)

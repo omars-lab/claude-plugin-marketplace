@@ -7,6 +7,8 @@ reading is done by the post-locator agent in batches; this script never calls a 
     resolve_post_location.py --prepare --all          the same for every save
     resolve_post_location.py --merge                  check the agents' answers, look the spots up,
                                                       write the pins
+    resolve_post_location.py --merge --frames         the same for the frame-reader's answers (spots
+                                                      read off a reel's video, from read_frames.py)
     options: --redo (read saves that already have an answer), --limit N, --batch-saves N, --batch-chars N
 
 Reads   $INSTAGRAM_HOME/.cache/saves.json            captions and creators (from import-saves)
@@ -21,6 +23,18 @@ Writes  $INSTAGRAM_HOME/data/pins.yaml               code → [{name, said, near
         $INSTAGRAM_HOME/.cache/batches/locate/       batch-NNN.json (in), batch-NNN.answers.json (out),
                                                      renamed .answers.merged.json once merged, and
                                                      merged.jsonl (one line per merged batch)
+        $INSTAGRAM_HOME/.cache/batches/frames/       the same, for --merge --frames
+
+Spots read off the video (--merge --frames)
+  The frame-reader looks at a reel's frames (read_frames.py) and names the spots on screen. Each one
+  goes through the same checks, with two changes:
+  - The quote check also accepts words tesseract read on the reel's frames
+    ($INSTAGRAM_MEDIA_DIR/<code>/frames/text.json, never the batch), letters and digits in order, so
+    OCR's odd spacing still matches. A name tesseract missed (a fancy font) goes to review, "not in
+    the caption or the video's text", for a person to look at the frame and add a `lookup:`.
+  - The spots are added to the save's pins and review entries, marked `from: video`, instead of
+    replacing them; a spot the save already has is left as it is. A save read from its video leaves
+    no-spot.yaml once a spot is found.
 
 Which saves go in
   A save goes in when it is tagged with at least one area more exact than a state or country: a
@@ -90,6 +104,8 @@ REVIEW = os.path.join("data", "pins-review.yaml")
 NO_SPOT = os.path.join("data", "no-spot.yaml")
 TAGS = os.path.join("data", "tags.yaml")
 PLACES = os.path.join("data", "places.yaml")
+DEFAULT_MEDIA_DIR = os.path.join("~", "Library", "Mobile Documents", "com~apple~CloudDocs", "CloudDesktop",
+                                 "data", "instagram")
 EXACT = {"city", "area", "park", "region"}  # more exact than a state or country
 BOXED = {"park", "region"}                   # reach is the area's own box, grown
 TOWN_KM = 25.0
@@ -101,8 +117,22 @@ BATCH_SAVES = 40
 BATCH_CHARS = 60000
 
 
-def batch_dir():
-    return cache("batches", "locate")
+def batch_dir(frames=False):
+    return cache("batches", "frames" if frames else "locate")
+
+
+def media_dir():
+    return os.path.abspath(os.path.expanduser(os.environ.get("INSTAGRAM_MEDIA_DIR") or DEFAULT_MEDIA_DIR))
+
+
+def video_text(code):
+    """Everything tesseract read on a reel's frames (read_frames.py), or ""."""
+    try:
+        with open(os.path.join(media_dir(), code, "frames", "text.json"), encoding="utf-8") as fh:
+            info = json.load(fh)
+    except (OSError, ValueError):
+        return ""
+    return "\n".join(f.get("text") or "" for f in info.get("frames") or [] if isinstance(f, dict))
 
 
 # --- files ---------------------------------------------------------------------------------------
@@ -280,12 +310,22 @@ def is_creator(said, creator):
     return bool(creator) and said.startswith("@") and said[1:].strip().lower() == creator.strip().lower()
 
 
+def squash(text):
+    return re.sub(r"[\W_]+", "", unicodedata.normalize("NFKC", str(text)).lower())
+
+
 def address_in(address, caption):
     """True when the caption gives this address, letters and digits in order: an address over several
     lines ("1 Example Rd\nExample Town") matches its lines joined with commas."""
-    squash = lambda t: re.sub(r"[\W_]+", "", unicodedata.normalize("NFKC", str(t)).lower())  # noqa: E731
     a = squash(address)
     return len(a) >= 6 and a in squash(caption)
+
+
+def on_screen(said, seen):
+    """True when tesseract read these words on the video, letters and digits in order ("EXAMPLE
+    CAFE" read as "EXAMPLECAFE" or "Example  Cafe")."""
+    a = squash(said.lstrip("@#"))
+    return bool(seen) and len(a) >= 4 and a in squash(seen)
 
 
 def coords_in(caption, lat, lon):
@@ -298,8 +338,10 @@ def venue_name(spot):
     return spot.get("name") or spot["said"].lstrip("@#").strip()
 
 
-def resolve(spot, caption, areas, places, reaches, fetcher=None, creator=""):
-    """("pin" or "review", entry) for one spot. areas: the names the spot's `near` may be.
+def resolve(spot, caption, areas, places, reaches, fetcher=None, creator="", seen=None):
+    """("pin" or "review", entry) for one spot. areas: the names the spot's `near` may be. seen: the
+    text read on the post's video (None for a caption answer), which the quote and address checks
+    also accept.
 
     The spot's name is looked up first. When the caption gives the spot's coordinates, they are the
     pin, if they fall within the area's reach. When the name is not found (most small restaurants
@@ -309,10 +351,12 @@ def resolve(spot, caption, areas, places, reaches, fetcher=None, creator=""):
     by_person = isinstance(spot.get("lookup"), str) and bool(spot["lookup"].strip())
     base = {"said": said, "near": near}
     keep = {k: spot[k] for k in ("lookup", "name", "address") if spot.get(k)}
-    if "address" in keep and not (by_person or address_in(keep["address"], caption)):
+    if "address" in keep and not (by_person or address_in(keep["address"], caption)
+                                  or (seen and address_in(keep["address"], seen))):
         del keep["address"]   # an address the caption doesn't give is a guess
-    if not by_person and not (quote_ok(said, caption) or is_creator(said, creator)):
-        return "review", {**base, "why": "quote not in caption", **keep}
+    if not by_person and not (quote_ok(said, caption) or is_creator(said, creator) or on_screen(said, seen)):
+        why = "quote not in caption" if seen is None else "not in the caption or the video's text"
+        return "review", {**base, "why": why, **keep}
     area = exact_area(near, places)
     if near not in areas or area is None:
         why = (f"near {near}, which is not one of the save's areas" if near not in areas
@@ -456,6 +500,8 @@ def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
             caption = (by_code.get(code) or {}).get("caption") or ""
             areas = [a["name"] for a in areas_of(tags.get(code), places)] + [e["near"]]  # a person may move it
             where, new = resolve(e, caption, areas, places, reaches, fetcher, creator_of(by_code.get(code)))
+            if e.get("from"):
+                new["from"] = e["from"]
             if where == "pin":
                 pins.setdefault(code, [])
                 if not any(p["said"] == new["said"] and p["near"] == new["near"] for p in pins[code]):
@@ -507,12 +553,12 @@ def clean_spots(answer):
     return out
 
 
-def merge(saves, tags, places, fetcher=None):
+def merge(saves, tags, places, fetcher=None, frames=False):
     by_code = {s["code"]: s for s in saves}
     pins, review, no_spot = load_yaml(PINS), load_yaml(REVIEW), load_yaml(NO_SPOT)
     reaches = {}
     fixed = recheck_review(by_code, tags, places, pins, review, reaches, fetcher)
-    out = batch_dir()
+    out = batch_dir(frames)
     counts = {"pins": 0, "review": 0, "no_spot": 0, "unanswered": 0}
     pending = before = 0
     for path in sorted(glob.glob(os.path.join(out, "batch-[0-9][0-9][0-9].json"))):
@@ -536,33 +582,46 @@ def merge(saves, tags, places, fetcher=None):
                 log("locate_unanswered", code=code, reason="bad_file" if bad else "no_answer")
                 continue
             caption = by_code[code].get("caption") or ""
+            seen = video_text(code) if frames else None
             areas = [a["name"] for a in rec["areas"]]
-            old = {(e.get("said"), e.get("near")): e for e in review.get(code) or [] if isinstance(e, dict)}
-            new_pins, new_review = [], []
+            key = lambda e: (e.get("said"), e.get("near"))  # noqa: E731
+            old = {key(e): e for e in review.get(code) or [] if isinstance(e, dict)}
+            pinned = {key(e) for e in pins.get(code) or [] if isinstance(e, dict)}
+            new_pins, new_review, redone = [], [], set()
             for spot in spots:
-                prior = old.get((spot["said"], spot["near"])) or {}
+                if frames and key(spot) in pinned:  # the caption already gave it
+                    continue
+                prior = old.get(key(spot)) or {}
+                redone.add(key(spot))
                 if prior.get("drop"):  # a person dropped it before: keep it dropped
                     new_review.append(prior)
                     continue
                 if prior.get("lookup"):  # a person's fix carries over a re-read
                     spot["lookup"] = prior["lookup"]
-                where, entry = resolve(spot, caption, areas, places, reaches, fetcher, creator_of(by_code[code]))
+                where, entry = resolve(spot, caption, areas, places, reaches, fetcher, creator_of(by_code[code]),
+                                       seen)
+                if frames:
+                    entry["from"] = "video"
                 (new_pins if where == "pin" else new_review).append(entry)
-            for d, v in ((pins, new_pins), (review, new_review)):  # a save's answer replaces its last one
+            got["pins"] += len(new_pins)
+            got["review"] += len(new_review)
+            if frames:  # spots read off the video add to what the caption gave
+                new_pins = (pins.get(code) or []) + new_pins
+                new_review = [e for e in review.get(code) or [] if key(e) not in redone] + new_review
+            for d, v in ((pins, new_pins), (review, new_review)):  # a caption answer replaces the last one
                 if v:
                     d[code] = v
                 else:
                     d.pop(code, None)
             if spots:
                 no_spot.pop(code, None)
-            else:
+            elif not frames:
                 no_spot[code] = {"areas": areas}
-                got["no_spot"] += 1
-            got["pins"] += len(new_pins)
-            got["review"] += len(new_review)
+            got["no_spot"] += not spots
         for k in counts:
             counts[k] += got[k]
-        log("locate_merge_batch", batch=batch["batch"], saves=len(batch["saves"]), **got)
+        log("locate_merge_batch", batch=batch["batch"], saves=len(batch["saves"]), source="video" if frames else "caption",
+            **got)
         with open(os.path.join(out, "merged.jsonl"), "a", encoding="utf-8") as fh:
             fh.write(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "batch": batch["batch"],
                                  "saves": len(batch["saves"]), **got, **({"error": bad} if bad else {})}) + "\n")
@@ -572,7 +631,8 @@ def merge(saves, tags, places, fetcher=None):
     write_yaml(NO_SPOT, no_spot)
     log("locate_merge", **counts, review_fixed=fixed, batches_waiting=pending, batches_merged_before=before,
         saves_with_pins=len(pins), saves_in_review=len(review), saves_no_spot=len(no_spot))
-    print(f"{counts['pins']} spots pinned, {counts['review']} for review, {counts['no_spot']} saves name no spot, "
+    print(f"{counts['pins']} spots pinned, {counts['review']} for review, {counts['no_spot']} saves "
+          f"{'show' if frames else 'name'} no spot, "
           f"{counts['unanswered']} saves with no usable answer; {pending} batches still waiting for their agent")
     if fixed:
         print(f"{fixed} review entries found with their lookup text and moved to the pins")
@@ -587,6 +647,7 @@ def main(argv=None, fetcher=None):
     scope = ap.add_mutually_exclusive_group()
     scope.add_argument("--pilot", help="a pilot name from config/collections.yaml")
     scope.add_argument("--all", action="store_true", help="every save")
+    ap.add_argument("--frames", action="store_true", help="with --merge: the frame-reader's answers")
     ap.add_argument("--redo", action="store_true", help="batch saves that already have an answer")
     ap.add_argument("--limit", type=int, default=0, help="at most this many saves this round (0 = no limit)")
     ap.add_argument("--batch-saves", type=int, default=BATCH_SAVES, help="most saves in one batch")
@@ -595,13 +656,15 @@ def main(argv=None, fetcher=None):
     args = ap.parse_args(argv)
     if args.prepare and not (args.pilot or args.all):
         ap.error("--prepare needs --pilot NAME or --all")
+    if args.frames and not args.merge:
+        ap.error("--frames goes with --merge; read_frames.py --prepare makes the frame batches")
 
     with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
         saves = json.load(fh)["saves"]
     tags = load_yaml(TAGS)
     places = load_yaml(PLACES).get("places") or {}
     if args.merge:
-        return merge(saves, tags, places, fetcher)
+        return merge(saves, tags, places, fetcher, args.frames)
     pilot = None
     if args.pilot:
         pilots = load_yaml(os.path.join("config", "collections.yaml")).get("pilots") or {}

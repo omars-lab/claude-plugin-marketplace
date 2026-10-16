@@ -42,7 +42,15 @@ TAGS = {"TAGGED": {"topics": ["travel"], "cities": ["Fixture State"]}}
 
 
 def reel(code):
-    return {"id": code, "formats": [{"url": "https://video.example/v.mp4"}],
+    return {"id": code, "formats": [{"url": "https://video.example/v.mp4"},
+                                    {"url": f"https://video.example/{code}-360.mp4", "ext": "mp4", "width": 360,
+                                     "height": 640},
+                                    {"url": f"https://video.example/{code}-720.mp4", "ext": "mp4", "width": 720,
+                                     "height": 1280},
+                                    {"url": f"https://video.example/{code}-1080.mp4", "ext": "mp4", "width": 1080,
+                                     "height": 1920},
+                                    {"url": f"https://video.example/{code}-dash.mp4", "ext": "mp4", "width": 540,
+                                     "height": 960, "acodec": "none"}],
             "thumbnails": [{"url": f"https://img.example/{code}-1080.jpg", "width": 1080},
                            {"url": f"https://img.example/{code}-640.jpg", "width": 640},
                            {"url": f"https://img.example/{code}-320.jpg", "width": 320}]}
@@ -93,13 +101,15 @@ class FakeYDL:
         return a
 
 
-def fake_image(_ydl, url, path):
+def fake_image(_ydl, url, path, _secs=None):
+    if "fail" in url:
+        raise FakeError("unable to download video data: HTTP Error 403")
     with open(path, "wb") as fh:
         fh.write(url.encode())
     return len(url)
 
 
-def fake_jpeg(src, dst, _width):
+def fake_jpeg(src, dst, _width, max_width=None):
     with open(src, "rb") as a, open(dst, "wb") as b:
         b.write(a.read())
 
@@ -328,6 +338,51 @@ class Pick(unittest.TestCase):
         self.assertEqual(fetch_media.stop_signal("error: [instagram] x: http error 403: forbidden"), "http_403")
         self.assertIsNone(fetch_media.stop_signal("error: unable to download video data: http error 403"))
         self.assertIsNone(fetch_media.stop_signal("there is no video in this post"))
+
+
+class Video(Home):
+    """--video: the listed reels' video and full cover, added to what media.yaml already has."""
+
+    def setUp(self):
+        super().setUp()
+        self.patches.append(mock.patch.object(fetch_media, "has_sound", lambda _p: True))
+        self.patches[-1].start()
+        self.codes = os.path.join(self.root, ".cache", "codes.txt")
+        with open(self.codes, "w") as fh:
+            fh.write("REELB  # a comment\nPHOTOC\nNOSUCH\nREELA\n")
+
+    def test_listed_reels_get_video_and_cover(self):
+        self.run_main(args=("--pilot", "fixture", "--limit", "1"))   # REELA's thumbnail first
+        rc = self.run_main({"PHOTOC": photo("PHOTOC")}, args=("--video", self.codes, "--limit", "5"))
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.ydl.calls, ["REELB", "PHOTOC", "REELA"])   # the list's order; unknown codes skipped
+        m = self.media()
+        today = fetch_media.now().date().isoformat()
+        self.assertEqual(m["REELA"], {"thumb": "REELA/thumb.jpg", "kind": "reel", "fetched": today,
+                                      "video": "REELA/video.mp4", "cover": "REELA/cover.jpg", "video_size": "720x1280",
+                                      "sound": True, "video_fetched": today})
+        self.assertEqual(m["PHOTOC"], {"video_error": "not_a_reel"})
+        with open(os.path.join(self.media_dir, "REELA", "video.mp4"), "rb") as fh:
+            self.assertIn(b"REELA-720", fh.read())   # the smallest at least 540 px across, with sound
+        with open(os.path.join(self.media_dir, "REELA", "cover.jpg"), "rb") as fh:
+            self.assertIn(b"REELA-1080", fh.read())   # the widest cover
+        self.run_main(args=("--video", self.codes))
+        self.assertEqual(self.ydl.calls, [])   # done ones are not asked for again
+
+    def test_three_failed_videos_stop(self):
+        failing = {c: {**reel(c), "formats": [{"url": f"https://video.example/{c}-fail.mp4"}]}
+                   for c in ("REELA", "REELB", "TAGGED")}
+        with open(self.codes, "w") as fh:
+            fh.write("REELA\nREELB\nTAGGED\n")
+        rc = self.run_main(failing, args=("--video", self.codes))
+        self.assertEqual(rc, 1)
+        self.assertIn("kind=file_streak", self.log_lines("rate_limited")[0])
+        self.assertNotIn("video", self.media().get("REELA", {}))
+
+    def test_pick_video(self):
+        url, w, h = fetch_media.pick_video({"formats": [{"url": "a", "width": 360, "height": 640}]})
+        self.assertEqual((url, w, h), ("a", 360, 640))   # nothing big enough: the largest there is
+        self.assertIsNone(fetch_media.pick_video({"formats": []}))
 
 
 if __name__ == "__main__":

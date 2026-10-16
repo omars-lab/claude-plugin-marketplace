@@ -1,6 +1,6 @@
 ---
 name: fetch-media
-description: Fetch one small JPEG thumbnail per saved Instagram post, logged out and slowly (a 6 s wait before each instagram.com request, 25-55 s between posts, a stop at the first 429 or login wall), into the iCloud media folder, with data/media.yaml pointing at each one. Use when the hub needs thumbnails, when someone asks to download images or covers for their saves, or to run the thumbnail trial on a pilot.
+description: Fetch one small JPEG thumbnail per saved Instagram post, or with --video a listed reel's smallest clear video and its full-size cover, logged out and slowly (a 6 s wait before each instagram.com request, 25-55 s between posts, a stop at the first 429 or login wall), into the iCloud media folder, with data/media.yaml pointing at each one. Use when the hub needs thumbnails, when someone asks to download images, covers or videos for their saves, or to get the videos read-frames reads.
 ---
 
 # Fetch Media
@@ -19,6 +19,35 @@ A post already in `media.yaml`, fetched or not, is skipped next time. The errors
 (Instagram sent nothing for it) and `no_image`. A run that stops on a block writes nothing for the
 post it stopped on, so that post is tried again later.
 
+## Videos, for reels whose place is only on screen (`--video`)
+
+`--video CODES.txt` fetches the reels listed in a file (one code a line, `#` starts a comment;
+**read-frames** writes it as `.cache/frames/stuck.txt`). It is a separate run under the same pacing
+and the same caps. For each listed reel it saves:
+
+- `<code>/video.mp4`: the smallest video that is at least 540 px on its short side, with sound, as
+  one file (Instagram's plain mp4 versions; split video-only streams only if there is no other).
+  A 30 s reel at that size is a few megabytes. 540 px is enough for a text reader to read a sign.
+- `<code>/cover.jpg`: the reel's cover at full size. The 600 px square thumbnail cuts off the
+  title band that often names the place; this one keeps it.
+
+`media.yaml` keeps the post's entry and adds `video`, `cover`, `video_size` (`720x1280`), `sound`
+(`yes`, `no` or `unknown`, from ffprobe) and `video_fetched`. A listed post that is not a reel gets
+`video_error: not_a_reel`; a reel with no video version gets `video_error: no_video`. Either one, or
+a `video`, means the post is done and is skipped next time.
+
+The file comes from Instagram's video servers, not instagram.com, so the requests to
+instagram.com are still 2 per post. The download has a 300 s deadline. A failed download from the
+video servers ("unable to download video data") is not a block on its own, but **3 in a row stop
+the run** (`ev=rate_limited kind=file_streak`), as the research says.
+
+```bash
+python3 <plugin>/skills/fetch-media/scripts/fetch_media.py --video .cache/frames/stuck.txt --limit 100
+```
+
+Log lines added: `ev=video_start`, `ev=video_done bytes=... size=... sound=...`, `ev=cover_done` /
+`ev=cover_fail`, and `ev=post_ok path=video`.
+
 ## How a thumbnail is fetched, and why this way
 
 The pacing research (`docs/research/instagram-fetch-pacing/consolidated.md` in the data repo)
@@ -30,7 +59,7 @@ That answer already lists the post's images with their widths (Instagram's `imag
 The script takes the smallest one at least 600 px wide and downloads it with the same yt-dlp
 object. macOS `sips` turns it into a 600 px JPEG. No image library is needed.
 
-- **No video download.** A reel's video is megabytes; its cover image is tens of kilobytes.
+- **No video download** (except with `--video`). A reel's video is megabytes; its cover image is tens of kilobytes.
 - **The image comes from Instagram's image servers, not instagram.com.** The requests to
   instagram.com are the same 2 per post as a full download would make, and the image adds none.
 - **Reels, photo posts and carousels go through one path.** `ignore_no_formats_error` lets a photo
@@ -144,4 +173,5 @@ A timed-out post is left for a later run.
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/fetch_media.py` | Fetches one 600 px JPEG thumbnail per save not yet in `media.yaml`, logged out and paced; stops at the first block | The thumbnail trial on a pilot, then runs of up to 100 posts | `python3 scripts/fetch_media.py --pilot <name> --limit 5` (or `--all --limit 100`) |
-| `scripts/test_fetch_media.py` | Offline tests with a fake yt-dlp: skipping done posts, the stop on a 429, the cookie refusal, the lock, the `media.yaml` shape | After any change to the fetcher | `python3 scripts/test_fetch_media.py` |
+| `scripts/fetch_media.py --video` | Fetches a listed reel's video (smallest at least 540 px) and full-size cover, same pacing | Reels whose place is only on screen, for **read-frames** | `python3 scripts/fetch_media.py --video <codes.txt> --limit 100` |
+| `scripts/test_fetch_media.py` | Offline tests with a fake yt-dlp: skipping done posts, the stop on a 429, the cookie refusal, the lock, the `media.yaml` shape, the video pick and the stop after 3 failed video downloads | After any change to the fetcher | `python3 scripts/test_fetch_media.py` |
