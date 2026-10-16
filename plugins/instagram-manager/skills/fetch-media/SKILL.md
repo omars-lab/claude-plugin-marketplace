@@ -172,6 +172,6 @@ A timed-out post is left for a later run.
 
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
-| `scripts/fetch_media.py` | Fetches one 600 px JPEG thumbnail per save not yet in `media.yaml`, logged out and paced; stops at the first block | The thumbnail trial on a pilot, then runs of up to 100 posts | `python3 scripts/fetch_media.py --pilot <name> --limit 5` (or `--all --limit 100`) |
+| `scripts/fetch_media.py` | Fetches one 600 px JPEG thumbnail per save not yet in `media.yaml`, logged out and paced; stops at the first block. Saves with a pin in `data/pins.yaml` (the ones on the hub's map) come first | The thumbnail trial on a pilot, then runs of up to 100 posts | `python3 scripts/fetch_media.py --pilot <name> --limit 5` (or `--all --limit 100`) |
 | `scripts/fetch_media.py --video` | Fetches a listed reel's video (smallest at least 540 px) and full-size cover, same pacing | Reels whose place is only on screen, for **read-frames** | `python3 scripts/fetch_media.py --video <codes.txt> --limit 100` |
 | `scripts/test_fetch_media.py` | Offline tests with a fake yt-dlp: skipping done posts, the stop on a 429, the cookie refusal, the lock, the `media.yaml` shape, the video pick and the stop after 3 failed video downloads | After any change to the fetcher | `python3 scripts/test_fetch_media.py` |

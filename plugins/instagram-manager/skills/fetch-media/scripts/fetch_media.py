@@ -183,8 +183,9 @@ def stamp(t):
 
 # ---------------------------------------------------------------- which saves
 
-def pick(saves, pilot, tags, media, limit):
-    """Saves still to fetch, in export order: (todo, already recorded in media.yaml)."""
+def pick(saves, pilot, tags, media, limit, first=()):
+    """Saves still to fetch, in export order, the codes in `first` (the saves on the hub's map)
+    ahead of the rest: (todo, already recorded in media.yaml)."""
     todo, done = [], 0
     for s in saves:
         if pilot is not None and not in_pilot(s, tags.get(s["code"]), pilot):
@@ -193,6 +194,8 @@ def pick(saves, pilot, tags, media, limit):
             done += 1
             continue
         todo.append(s)
+    first = set(first)
+    todo.sort(key=lambda s: s["code"] not in first)   # stable, so export order holds within each
     return (todo[:limit] if limit else todo), done
 
 
@@ -735,7 +738,8 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
         if args.video:
             todo, done = pick_codes(saves, read_codes(args.video), media, limit)
         else:
-            todo, done = pick(saves, pilot, load_yaml(os.path.join("data", "tags.yaml")), media, limit)
+            todo, done = pick(saves, pilot, load_yaml(os.path.join("data", "tags.yaml")), media, limit,
+                              first=load_yaml(os.path.join("data", "pins.yaml")))
 
         if ydl_factory is None:
             try:

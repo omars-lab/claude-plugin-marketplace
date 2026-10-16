@@ -339,6 +339,12 @@ class Pick(unittest.TestCase):
         self.assertIsNone(fetch_media.stop_signal("error: unable to download video data: http error 403"))
         self.assertIsNone(fetch_media.stop_signal("there is no video in this post"))
 
+    def test_saves_on_the_map_go_first(self):
+        saves = [{"code": c} for c in ("A1", "B2", "C3", "D4", "E5")]
+        todo, done = fetch_media.pick(saves, None, {}, {"A1": {}}, 3, first={"D4": [], "C3": []})
+        self.assertEqual([s["code"] for s in todo], ["C3", "D4", "B2"])   # export order within each
+        self.assertEqual(done, 1)
+
 
 class Video(Home):
     """--video: the listed reels' video and full cover, added to what media.yaml already has."""
