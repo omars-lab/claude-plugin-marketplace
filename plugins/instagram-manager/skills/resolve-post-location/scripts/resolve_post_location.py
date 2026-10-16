@@ -209,8 +209,9 @@ class Reach:
 
 def search_text(spot):
     """What to ask OpenStreetMap: a person's `lookup:` first; the agent's plain `name` only when the
-    caption said a handle or hashtag (`@examplecafe`); otherwise the caption's own words."""
-    said = spot["said"]
+    caption said a handle or hashtag (`@examplecafe`); otherwise the caption's own words, with styled
+    letters ("𝐁𝐞𝐚𝐜𝐡") made plain."""
+    said = unicodedata.normalize("NFKC", spot["said"])
     if isinstance(spot.get("lookup"), str) and spot["lookup"].strip():
         return spot["lookup"].strip()
     if said[:1] in "@#" and isinstance(spot.get("name"), str) and spot["name"].strip():

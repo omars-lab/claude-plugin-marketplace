@@ -267,6 +267,7 @@ class Merge(Home):
         other = self.spot("data/pins-review.yaml", "VENUA", "@otherbakery")
         self.assertEqual(other["why"], "quote not in caption")
         self.assertTrue(rpl.quote_ok("Example Trail", "📍 𝐄𝐱𝐚𝐦𝐩𝐥𝐞 𝐓𝐫𝐚𝐢𝐥"))   # bold letters are still letters
+        self.assertEqual(rpl.search_text({"said": "𝐄𝐱𝐚𝐦𝐩𝐥𝐞 𝐓𝐫𝐚𝐢𝐥"}), "Example Trail")
         self.assertTrue(rpl.address_in("12 Example St, Fixture Town", "📍12 Example St\nFixture Town FS"))
         self.assertFalse(rpl.address_in("14 Example St, Fixture Town", "📍12 Example St\nFixture Town FS"))
         self.assertFalse(rpl.coords_in("at 40.01234, -120.01234", 40.0123, -120.01234))
