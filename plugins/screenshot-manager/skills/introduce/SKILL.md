@@ -18,10 +18,11 @@ Screenshot Manager solves two common problems with topic-organized screenshot di
 ### Step 1: Welcome and Context
 
 ```
-Screenshot Manager — 5 skills for your Screenshots folder.
+Screenshot Manager — 6 skills for your Screenshots folder.
 
 I can help with:
 - Organizing Desktop screenshots into NotePlan plan-named subdirs with meeting-note cross-references (organize-by-plan)
+- Moving Desktop screenshots and project folders into one iCloud folder per git repo, grouped by company (organize-by-project)
 - Finding misplaced files and importing Desktop screenshots using OCR + date proximity (suggest-groupings)
 - Prefixing directories with their earliest screenshot date for chronological sorting (sort-dirs)
 - Extracting URLs from browser screenshots (extract-urls)
@@ -35,6 +36,7 @@ Use `AskUserQuestion`:
 What would you like to do?
 
 - Organize Desktop screenshots by active NotePlan plans (organize-by-plan)
+- File the Desktop into one folder per git repo in iCloud (organize-by-project)
 - Find misplaced files / import from Desktop (suggest-groupings)
 - Sort directories by date (sort-dirs)
 - Extract URLs from browser screenshots (extract-urls)
@@ -65,6 +67,18 @@ Based on their selection, explain the relevant skills with usage examples.
 **Requires:** `screenshot-ocr` conda env (auto-created if missing). NotePlan plans with frontmatter (`description`, `status`, `started`).
 
 **When to use:** You have Desktop screenshots piling up and want them cross-referenced with your active work plans and meeting notes in NotePlan.
+
+---
+
+### `organize-by-project` — File the Desktop by git repo
+
+**Invocation:** `/screenshot-manager:organize-by-project`
+
+**What it does:** Lists every git repo under `~/Workspace/git*` as a project, then moves Desktop screenshots and Desktop folders (including the ones in `Debugging/` and `Developing/`) into `CloudDesktop/projects/<company>/<project>/` in iCloud. A screenshot is placed by a project's name on screen (repo name or a hand-written alias); the rest get a look at the image itself. Company-wide material goes in the company's own folder. You approve a plan table first, and every move batch has an undo.
+
+**Keeps back:** folders with key or secret files, screenshots it can't place, and folders with no matching repo, all listed for you.
+
+**When to use:** Your Desktop mixes screenshots and folders from many projects and you want each project's material in one place, next to the code it belongs to.
 
 ---
 
@@ -163,6 +177,11 @@ suggest-groupings  →  fix misplaced files and import Desktop screenshots into 
 sort-dirs          →  prefix event dirs with dates for chronological sorting
 ```
 
+**Project organization (one folder per git repo):**
+```
+organize-by-project  →  Desktop screenshots + folders → iCloud CloudDesktop/projects/<company>/<project>/
+```
+
 **Technique curation (independent, feeds technique-manager):**
 ```
 suggest-techniques  →  Desktop → 📸 Screenshots of Techniques (+ techniques.json)
@@ -196,8 +215,10 @@ extract-urls  →  run any time on any screenshot dir or file to extract browser
 |---|---|
 | `organize-by-plan` | `~/Desktop/Screenshots/` (local Desktop) |
 | `suggest-groupings` + `sort-dirs` | `~/Library/CloudStorage/OneDrive-ServiceNow/📸 Screenshots` (OneDrive-synced) |
+| `organize-by-project` | `~/Library/Mobile Documents/com~apple~CloudDocs/CloudDesktop/projects/` (iCloud) |
+| `suggest-techniques` | `~/Desktop/📸 Screenshots of Techniques/` |
 
-Both skills confirm the path via `AskUserQuestion` before doing anything.
+Each skill confirms its path via `AskUserQuestion` before doing anything.
 
 ## Common Scenarios
 
@@ -209,6 +230,9 @@ Both skills confirm the path via `AskUserQuestion` before doing anything.
 
 **"I have Desktop screenshots to file by event/session context"**
 → `/screenshot-manager:suggest-groupings`
+
+**"My Desktop is full of screenshots and folders from different projects"**
+→ `/screenshot-manager:organize-by-project`
 
 **"Some screenshots seem to be in the wrong directory"**
 → `/screenshot-manager:suggest-groupings`
