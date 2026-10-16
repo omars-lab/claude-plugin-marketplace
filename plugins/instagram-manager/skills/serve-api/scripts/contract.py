@@ -112,7 +112,9 @@ class FileSummary(Strict):
     area: Optional[str] = None
     feeds: List[str]
     saves: int
-    spots: int
+    items: int = Field(description="Everything the file's saves name: a travel area's spots, or a topic's "
+                                   "dishes, ideas and tips.")
+    spots: int = Field(description="A travel area's spots (the same as items); 0 for any other topic.")
 
 
 class Page(Strict):

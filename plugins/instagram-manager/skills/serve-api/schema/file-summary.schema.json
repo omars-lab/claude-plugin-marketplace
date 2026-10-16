@@ -35,7 +35,13 @@
       "title": "Saves",
       "type": "integer"
     },
+    "items": {
+      "description": "Everything the file's saves name: a travel area's spots, or a topic's dishes, ideas and tips.",
+      "title": "Items",
+      "type": "integer"
+    },
     "spots": {
+      "description": "A travel area's spots (the same as items); 0 for any other topic.",
       "title": "Spots",
       "type": "integer"
     }
@@ -45,6 +51,7 @@
     "topic",
     "feeds",
     "saves",
+    "items",
     "spots"
   ],
   "title": "FileSummary",

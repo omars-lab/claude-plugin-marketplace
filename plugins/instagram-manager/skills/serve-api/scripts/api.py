@@ -259,8 +259,9 @@ def health():
 
 
 def summary(name, doc):
+    items = sum(len(s.get("items") or []) for s in doc["saves"])
     return {"file": name, "topic": doc["topic"], "area": doc.get("area"), "feeds": doc["feeds"],
-            "saves": doc["count"], "spots": sum(len(s.get("items") or []) for s in doc["saves"])}
+            "saves": doc["count"], "items": items, "spots": items if name.startswith("travel/") else 0}
 
 
 @app.get("/v1/areas", response_model=List[c.FileSummary], tags=["read"], **READ)
@@ -281,6 +282,7 @@ def area(area: str):
 
 @app.get("/v1/topics", response_model=List[c.FileSummary], tags=["read"], **READ)
 def topics():
+    """Every topic but travel, each with how many saves and how many things they name."""
     files = STORE.need()["files"]
     return [summary(n, files[n]) for n in sorted(files) if not n.startswith("travel/")]
 

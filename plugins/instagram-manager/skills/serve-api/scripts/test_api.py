@@ -137,6 +137,11 @@ class Api(unittest.TestCase):
     def test_areas_and_topics(self):
         self.assertEqual([a["file"] for a in self.get("/v1/areas")], ["travel/fixture-state", "travel/other-state"])
         self.assertEqual({t["file"] for t in self.get("/v1/topics")}, {"recipes", "crafts"})
+        recipes = next(t for t in self.get("/v1/topics") if t["file"] == "recipes")
+        self.assertGreaterEqual(recipes["items"], 2)                         # a topic's dishes are items,
+        self.assertEqual(recipes["spots"], 0)                                # never spots
+        area = self.get("/v1/areas")[0]
+        self.assertEqual(area["spots"], area["items"])
         self.get("/v1/areas/nowhere", 404)
         self.get("/v1/topics/travel/fixture-state", 404)
         self.assertEqual({s["code"] for s in self.get("/v1/topics/recipes")["saves"]},
