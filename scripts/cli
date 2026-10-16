@@ -338,6 +338,33 @@ json.dump(d, open(path, 'w'), indent=2)
 print()
 "
 
+  # Update the plugin's entry in marketplace.json too, so validate-plugin's
+  # "marketplace.json version matches plugin.json" holds. Only the version line
+  # inside this plugin's entry changes; the rest of the file keeps its layout.
+  local mp_json="$mp_root/.claude-plugin/marketplace.json"
+  local mp_changed=""
+  if [[ -f "$mp_json" ]]; then
+    mp_changed=$(python3 - "$mp_json" "$plugin" "$new_version" <<'PYEOF'
+import json, re, sys
+path, name, version = sys.argv[1:4]
+text = open(path).read()
+entry = next((p for p in json.loads(text).get("plugins", []) if p.get("name") == name), None)
+if not entry or "version" not in entry:
+    sys.exit(0)
+start = re.search(r'"name":\s*' + re.escape(json.dumps(name)), text)
+nxt = re.search(r'"name":\s*"', text[start.end():]) if start else None
+end = start.end() + nxt.start() if nxt else len(text)
+head, body, tail = text[:start.end()], text[start.end():end], text[end:]
+body, n = re.subn(r'("version":\s*)"[^"]*"', lambda m: m.group(1) + json.dumps(version), body, count=1)
+if n:
+    open(path, "w").write(head + body + tail)
+    print("yes")
+else:
+    print(f"WARNING: could not find the version line in {name}'s marketplace.json entry; set it to {version} by hand", file=sys.stderr)
+PYEOF
+)
+  fi
+
   # Update version-tracking.json with current HEAD
   local head_commit
   head_commit=$(git -C "$mp_root" rev-parse HEAD)
@@ -350,9 +377,11 @@ print()
 
   echo "✓ $plugin bumped to $new_version"
   echo "  versionCommit → $head_commit"
+  [[ -n "$mp_changed" ]] && echo "  marketplace.json entry → $new_version"
 
   if [[ "$do_commit" == "--commit" ]]; then
     git -C "$mp_root" add "$plugin_json" "$tracking_file"
+    [[ -n "$mp_changed" ]] && git -C "$mp_root" add "$mp_json"
     git -C "$mp_root" commit -m "chore: bump $plugin version $current_version → $new_version"
     echo "✓ Committed version bump"
   fi
