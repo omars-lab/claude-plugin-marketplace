@@ -4,10 +4,12 @@ Advisory hooks, gated by a conf file per repo, for two failure modes that keep r
 several Claude Code sessions sharing one checkout, and a review step that a session should
 have run but did not — plus two on-by-default guards: one denies any git command resolving a
 conflict with `-X ours/theirs`, `-s ours` or `checkout --ours/--theirs`; the other
-(`branch-sprawl-guard`) warns before you spawn a new branch or worktree once the checkout
-already carries a budget's worth of parallel work, so the reflex is to reconcile something to
-main rather than open another front. Opt out or retune it with
-`.claude/hooks/branch-sprawl.conf` (`ENABLED=0`, `MAX_WORKTREES=N`, `DECISION=ask|deny`).
+(`branch-sprawl-guard`) stops a `git worktree add` once the repo already has a budget's worth
+of working trees. If some of them are finished (nothing unsaved, work pushed, no other session in
+them) it denies with the commands to reuse or remove them, so the session cleans up by itself;
+only when every tree holds live work does it ask you. A new branch inside an existing tree passes.
+Opt out or retune it with `.claude/hooks/branch-sprawl.conf` (`ENABLED=0`, `MAX_WORKTREES=N`,
+`DECISION=ask|deny`, `IN_USE_MINUTES=N`).
 
 `merge-and-continue` is a Stop hook for repos where merging your own PRs is already
 approved: when the session's last message asks "shall I merge?" or reports a PR left open,
