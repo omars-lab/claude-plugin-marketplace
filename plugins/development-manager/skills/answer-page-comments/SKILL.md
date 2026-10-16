@@ -27,7 +27,10 @@ Never close:
 - a thread you only answered, such as a question;
 - a thread whose fix is not made, or is only in the backlog;
 - a thread whose fix waits for Omar's OK in the chat;
-- a thread Omar reopened, until a reply says what changed since.
+- a thread Omar reopened, until a reply says what changed since;
+- a thread that is asking someone (`Asking:` in `pc show`), until that person answers.
+
+**Never pass `--ask` with Omar's own reply.** `--ask <name>` marks a thread as waiting on that person; it is for a reply that puts a question to them, such as a hub agent asking Omar. The tag clears when that person replies, and the thread stays open while it is set.
 
 If the repo's `.page-comments/config.json` says `"resolve": "never"`, never close; Omar closes every thread himself.
 
@@ -40,10 +43,12 @@ Below, `pc` means `node "${CLAUDE_PLUGIN_ROOT}/shared/scripts/page-comments.mjs"
 | Command | What it does | When to reach for it |
 |---|---|---|
 | `pc list --open --waiting claude` | Open threads whose last word is not Claude's | At the start, for the backlog |
+| `pc list --open --asking <name>` | Open threads tagged as asking that person; the list line ends `asking <name>` | To see what is waiting on one person, such as Omar |
 | `pc show <id>` | The whole thread: page, viewport, where on the page, every message, and the path of each picture | Before acting on any thread |
 | `pc show <id> --json` | The same, with each picture's `path`, `sha`, `role` and `commit` as fields | When a script needs the picture's path |
 | `pc shot <id> --file <png> --commit <sha>` | Attaches an after picture taken against that commit; it shows in the thread on the page | After the fix is committed and checked, before the reply |
 | `pc reply <id> --author claude --commit <sha> "…"` | Adds Claude's reply. Exit 4 means it did not land; say so | After the fix is committed, or to answer a question |
+| `pc reply <id> --ask <person> "…"` | A reply that asks one person a question. The thread shows `Asking: <person>` (`asking` in `--json`, `ask=<person>` on the watcher's line) until that person replies | When a reply needs an answer from one named person; never on that person's own reply |
 | `pc resolve <id> "note"` | Closes a thread | Only when the close rule above allows |
 | `pc dismiss <id> "note"` | Closes a thread with no change, such as a duplicate | Only when Omar said so, or it is an `[enable check]` leftover |
 | `pc stats` | Counts per page | For the final report |
@@ -51,7 +56,8 @@ Below, `pc` means `node "${CLAUDE_PLUGIN_ROOT}/shared/scripts/page-comments.mjs"
 | `pc serve --api-only [--rotate-token]` | The comment server for the Tampermonkey userscript: only the comment API. `--rotate-token` makes a new repo token and writes the userscript again; Omar then re-imports it | The repo was enabled with `--userscript`; rotate if the token may have leaked |
 | `pc watch --exclude-author claude --replay` | Prints one line per new comment, reply or picture | Start with the Monitor tool when the plugin's own watcher is not running |
 | `pc restamp` | Notes which commit took in the uncommitted work a comment was made on | Never by hand; the post-commit hook that enable installs runs it after each commit |
-| MCP tools `list`, `show`, `stats`, `reply`, `resolve`, `dismiss`, `shot` | The same commands as tools, from the plugin's `page-comments` MCP server (`shared/scripts/mcp.mjs`, started from `.mcp.json`). Each takes an optional `repo`; `reply`, `resolve` and `dismiss` default the author to `claude` | When the tools are listed and shell commands are awkward; the rules for each command above still hold |
+| MCP tools `list`, `show`, `stats`, `reply`, `resolve`, `dismiss`, `shot` | The same commands as tools, from the plugin's `page-comments` MCP server (`shared/scripts/mcp.mjs`, started from `.mcp.json`). Each takes an optional `repo`; `reply`, `resolve` and `dismiss` default the author to `claude`. `list` takes `asking` and `reply` takes `ask`, as `--asking` and `--ask` above | When the tools are listed and shell commands are awkward; the rules for each command above still hold |
+| `X-Page-Comments-Author: <name>` header on an API call | Signs that call (a new comment, a reply, a status change, a picture) with an agent's own name instead of the repo's author. It works only from this Mac (not the phone or a userscript), only for a name listed in `config.json` under `"agents": {"<name>": "asks" or "answers"}`, and never for `claude` or the repo's author; anything else gets a 403. An `answers` agent counts as Claude's side for `--waiting` | When an agent, such as a hub reviewer, comments on a page as itself |
 | `pc notice` | One line saying how many threads wait on Claude, or nothing | Never by hand; the session-start hook runs it when a session opens in the repo |
 
 ## Task management

@@ -41,11 +41,12 @@ const TOOLS = {
     properties: {
       open: bool("Open threads only"),
       waiting: str('Only threads waiting on "claude" or on "human"'),
+      asking: str('Only open threads waiting on this person\'s answer, like "omar"'),
       page: str("Only threads on this page path, like /trips/"),
       repo: REPO,
     },
     required: [],
-    argv: (a) => ["list", "--json", ...flags(a, ["open", "waiting", "page", "repo"])],
+    argv: (a) => ["list", "--json", ...flags(a, ["open", "waiting", "asking", "page", "repo"])],
   },
   show: {
     description: "One thread in full, as JSON, with the file path of each picture on this machine.",
@@ -61,9 +62,16 @@ const TOOLS = {
   },
   reply: {
     description: "Reply to a thread. The page shows it straight away. Returns once the reply is written.",
-    properties: { id: ID, message: str("The reply"), author: AUTHOR, commit: COMMIT, repo: REPO },
+    properties: {
+      id: ID,
+      message: str("The reply"),
+      author: AUTHOR,
+      commit: COMMIT,
+      ask: str("The person this reply waits on, by their author name, like \"omar\". The thread asks them until they answer or it closes. Never set it on that person's own reply"),
+      repo: REPO,
+    },
     required: ["id", "message"],
-    argv: (a) => ["reply", ...flags(a, ["author", "commit", "repo"]), "--", a.id, a.message],
+    argv: (a) => ["reply", ...flags(a, ["author", "commit", "ask", "repo"]), "--", a.id, a.message],
   },
   resolve: {
     description: "Resolve a thread once it is answered or fixed, or reopen it.",

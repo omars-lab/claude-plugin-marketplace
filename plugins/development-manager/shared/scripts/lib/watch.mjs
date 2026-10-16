@@ -13,6 +13,8 @@
 // Not found: when the page reports that it can no longer find an open
 // comment's element, `ev=anchor_lost` is printed once. The page reports only
 // when the answer differs from what the thread file already says.
+//
+// A reply that asks someone (`reply --ask omar`) prints `ask=omar` on its line.
 
 import { existsSync, mkdirSync, readFileSync, renameSync, watch as fsWatch, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -30,7 +32,7 @@ export function takeSnapshot(store) {
       status: t.status,
       lost: !!t.lost,
       lostBy: t.lostBy || "",
-      messages: t.messages.map((m) => ({ author: m.author, ts: m.ts, body: m.body, edited: m.edited || "" })),
+      messages: t.messages.map((m) => ({ author: m.author, ts: m.ts, body: m.body, edited: m.edited || "", ...(m.ask ? { ask: m.ask } : {}) })),
       lastStatusBy: t.history.length ? t.history[t.history.length - 1].author : "",
       waiting: t.waiting,
       shots: t.shots.map((x) => shotLook(store, x)),
@@ -73,7 +75,7 @@ export function diffSnapshots(prev, next, { exclude = [] } = {}) {
     if (!old) {
       const first = t.messages[0] || { author: "", body: "" };
       out.push({ ev: "thread_new", page: t.page, thread: id, author: first.author, msg: first.body });
-      for (const m of t.messages.slice(1)) out.push({ ev: "message_new", page: t.page, thread: id, author: m.author, msg: m.body });
+      for (const m of t.messages.slice(1)) out.push({ ev: "message_new", page: t.page, thread: id, author: m.author, ask: m.ask || undefined, msg: m.body });
       if (t.status !== "open") out.push({ ev: STATUS_EV[t.status], page: t.page, thread: id, author: t.lastStatusBy, msg: last.body });
       for (const s of t.shots || []) out.push(shotEvent(t.page, id, s));
       // A thread that arrives already lost, such as one merged in from a branch.
@@ -88,7 +90,7 @@ export function diffSnapshots(prev, next, { exclude = [] } = {}) {
       // it `edited`. Two new messages can share an author and a second, so the
       // mark, not the time, is what tells an edit from a new message.
       const edited = !!m.edited && who.has(whoKey(m));
-      out.push({ ev: edited ? "message_edited" : "message_new", page: t.page, thread: id, author: m.author, msg: m.body });
+      out.push({ ev: edited ? "message_edited" : "message_new", page: t.page, thread: id, author: m.author, ask: m.ask || undefined, msg: m.body });
     }
     if (old.status !== t.status) {
       out.push({ ev: STATUS_EV[t.status], page: t.page, thread: id, author: t.lastStatusBy, msg: last.body });

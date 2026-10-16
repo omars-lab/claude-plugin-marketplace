@@ -8,7 +8,7 @@
 
 import { readFileSync } from "node:fs";
 import { storeFor } from "./lib/repo.mjs";
-import { addReply, isThreadId, publicThread, readAll, readThread, setStatus, cleanBody } from "./lib/store.mjs";
+import { addReply, cleanName, isThreadId, publicThread, readAll, readThread, setStatus, cleanBody } from "./lib/store.mjs";
 import { runWait, runWatch } from "./lib/watch.mjs";
 import { restamp } from "./lib/restamp.mjs";
 import { isPng, saveShot, shotFileState, shotPath, SHOT_MAX } from "./lib/shots.mjs";
@@ -31,9 +31,13 @@ Commands:
         [--heartbeat s] [--interval s]             Print one ev= line per change
   wait [--exclude-author name] [--timeout s] [--json]
                                                    Block until something new for Claude
-  list [--open] [--waiting <name>] [--page <path>] [--json]
+  list [--open] [--waiting <name>] [--asking <name>] [--page <path>] [--json]
+                                                   --asking: threads waiting on that person's answer
   show <id> [--json]                               The thread, with where its pictures are
-  reply <id> [--author claude] [--commit sha] "<text>"
+  reply <id> [--author claude] [--commit sha] [--ask <name>] "<text>"
+                                                   --ask names the person the reply waits on;
+                                                   the thread asks them until they write on it
+                                                   or it is closed
   shot <id> --file <png> --commit <sha> [--author claude]
                                                    Attach an "after" picture, taken
                                                    against that commit
@@ -51,7 +55,7 @@ from the current folder to the git root, looking for .page-comments/.
 
 Exit codes: 0 ok, 2 bad usage, 3 not found, 4 the write did not land.`;
 
-const VALUE_FLAGS = new Set(["repo", "target", "root", "port", "state", "page", "waiting", "author", "commit", "exclude-author", "heartbeat", "interval", "timeout", "host", "file", "behind"]);
+const VALUE_FLAGS = new Set(["repo", "target", "root", "port", "state", "page", "waiting", "asking", "ask", "author", "commit", "exclude-author", "heartbeat", "interval", "timeout", "host", "file", "behind"]);
 const BOOL_FLAGS = new Set(["open", "json", "replay", "once", "reopen", "help", "throwaway", "api-only", "rotate-token"]);
 
 export function parseArgs(argv) {
@@ -129,6 +133,7 @@ function filterThreads(threads, flags) {
     (t) =>
       (!flags.open || t.status === "open") &&
       (!flags.waiting || t.waiting === (flags.waiting === "claude" ? "claude" : "human")) &&
+      (!flags.asking || t.asking === flags.asking) &&
       (!flags.page || (t.page && t.page.path) === flags.page),
   );
 }
@@ -167,7 +172,7 @@ function cmdList(flags) {
     for (const t of ts) {
       const first = t.messages[0];
       const last = t.messages[t.messages.length - 1];
-      const waiting = t.waiting ? ` waiting on ${t.waiting}` : "";
+      const waiting = (t.waiting ? ` waiting on ${t.waiting}` : "") + (t.asking ? `, asking ${t.asking}` : "");
       const where = t.anchor.label ? ` on <${t.anchor.tag}> "${oneLine(t.anchor.label, 40)}"` : t.anchor.tag ? ` on <${t.anchor.tag}>` : "";
       out(`  ${t.id}  ${t.status}${waiting}${t.lost ? ", not found on the page" : ""}${where}`);
       out(`    ${first.author}: ${oneLine(first.body)}`);
@@ -198,6 +203,7 @@ function cmdShow(flags, pos) {
   }
   const a = t.anchor || {};
   out(`${t.id}  ${t.status}${t.waiting ? `, waiting on ${t.waiting}` : ""}`);
+  if (t.asking) out(`Asking:    ${t.asking}`);
   if (t.lost) out("Not found: the page last reported it could not find this comment's element.");
   out(`Page:      ${t.page.url || t.page.path}${t.page.title ? `  (${t.page.title})` : ""}`);
   if (t.viewport) {
@@ -226,7 +232,7 @@ function cmdShow(flags, pos) {
   }
   out("");
   for (const m of t.messages) {
-    out(`${m.author}, ${m.ts}${m.commit ? `, commit ${m.commit}` : ""}${m.edited ? " (edited)" : ""}:`);
+    out(`${m.author}, ${m.ts}${m.commit ? `, commit ${m.commit}` : ""}${m.ask ? `, asking ${m.ask}` : ""}${m.edited ? " (edited)" : ""}:`);
     for (const line of m.body.split("\n")) out(`  ${line}`);
   }
   for (const h of t.history) out(`[${h.status} by ${h.author}, ${h.ts}${h.note ? `: ${h.note}` : ""}]`);
@@ -244,15 +250,20 @@ function cmdReply(flags, pos) {
   const body = cleanBody(textArg(pos, 1));
   if (!body) throw usage('reply needs text: reply <id> "…" (up to 10,000 characters)');
   const author = flags.author || "claude";
+  let ask;
+  if (flags.ask !== undefined) {
+    ask = cleanName(flags.ask);
+    if (!ask || ask.toLowerCase() === "claude") throw usage("--ask takes the name of the person the reply waits on, like their author name (not claude)");
+  }
   try {
-    addReply(store, t.id, { author, body, commit: flags.commit });
+    addReply(store, t.id, { author, body, commit: flags.commit, ask });
   } catch (err) {
     throw notLanded(`the reply to ${t.id} did not land: ${err.code || err.message}`);
   }
   const after = readThread(store, t.id);
   const last = after && after.messages[after.messages.length - 1];
   if (!last || last.body !== body || last.author !== author) throw notLanded(`the reply to ${t.id} did not land`);
-  out(`${t.id} replied`);
+  out(`${t.id} replied${ask ? `, asking ${ask}` : ""}`);
   return 0;
 }
 

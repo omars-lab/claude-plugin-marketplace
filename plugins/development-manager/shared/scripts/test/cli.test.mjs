@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createThread, readThread, threadFile } from "../lib/store.mjs";
 import { SAMPLE, cli, tempRepo } from "./helpers.mjs";
@@ -112,6 +112,38 @@ test("--repo is optional: the repo is found from the working folder", () => {
     const r = cli(["list", "--json"], { cwd: join(repo, ".page-comments") });
     assert.equal(r.code, 0);
     assert.equal(JSON.parse(r.stdout).files.length, 1);
+  } finally {
+    cleanup();
+  }
+});
+
+test("reply --ask tags a person; list --asking finds the thread; show prints it", () => {
+  const { repo, store, cleanup } = tempRepo();
+  try {
+    writeFileSync(join(repo, ".page-comments", "config.json"), JSON.stringify({ author: "sam", agents: { "page-owner": "answers" } }));
+    const a = createThread(store, SAMPLE);
+    const b = createThread(store, SAMPLE);
+    const r = cli(["reply", a, "--author", "page-owner", "--ask", "sam", "Should it say minutes or miles?", "--repo", repo]);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /asking sam/);
+    const t = readThread(store, a);
+    assert.equal(t.asking, "sam");
+    assert.equal(t.waiting, "human", "page-owner answers, so the thread waits on a person");
+    const tagged = JSON.parse(cli(["list", "--open", "--asking", "sam", "--json", "--repo", repo]).stdout);
+    assert.deepEqual(tagged.files[0].threads.map((x) => x.id), [a]);
+    assert.equal(tagged.files[0].threads[0].asking, "sam");
+    assert.match(cli(["list", "--asking", "sam", "--repo", repo]).stdout, new RegExp(`${a} .*asking sam`));
+    assert.doesNotMatch(cli(["list", "--asking", "sam", "--repo", repo]).stdout, new RegExp(b));
+    assert.match(cli(["show", a, "--repo", repo]).stdout, /^Asking: +sam$/m);
+    assert.equal(JSON.parse(cli(["show", a, "--json", "--repo", repo]).stdout).asking, "sam");
+    assert.equal(JSON.parse(cli(["show", b, "--json", "--repo", repo]).stdout).asking, null);
+
+    assert.equal(cli(["reply", a, "--author", "sam", "Minutes.", "--repo", repo]).code, 0);
+    assert.equal(readThread(store, a).asking, null, "cleared once sam answers");
+    assert.match(cli(["list", "--asking", "sam", "--repo", repo]).stdout, /No threads match/);
+
+    assert.equal(cli(["reply", a, "--ask", "two words", "x", "--repo", repo]).code, 2);
+    assert.equal(cli(["reply", a, "--ask", "claude", "x", "--repo", repo]).code, 2);
   } finally {
     cleanup();
   }

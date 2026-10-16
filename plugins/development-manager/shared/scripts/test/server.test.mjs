@@ -414,3 +414,109 @@ test("phone: the setting is picked up without a restart, and socket upgrades are
     cleanup();
   }
 });
+
+// ---- Agents sign with their own names (hub review contract, section 1) -----------------
+// Invented names: "sam" is the repo's author, "page-checker" asks, "page-owner" answers.
+
+const AGENTS = { "page-checker": "asks", "page-owner": "answers" };
+
+test("agents: a listed agent signs every write on a local request; no header is the repo's author", async () => {
+  const { repo, store, cleanup } = tempRepo();
+  mkdirSync(join(repo, "site"));
+  writeFileSync(join(repo, "site", "index.html"), "<body>x</body>");
+  writeFileSync(join(repo, ".page-comments", "config.json"), JSON.stringify({ author: "sam", agents: AGENTS }));
+  const s = await startServer(store, { root: "site", port: 0 });
+  try {
+    const token = tokenOf((await call(s.port, { path: "/" })).text);
+    const as = (name) => writeHeaders(s.port, token, name ? { "x-page-comments-author": name } : {});
+    const post = (path, body, name) => call(s.port, { method: "POST", path: `/__page-comments/${path}`, headers: as(name), body });
+    const comment = { page: SAMPLE.page, viewport: SAMPLE.viewport, anchor: SAMPLE.anchor, body: "The walk time is missing." };
+
+    const made = await post("threads", comment, "page-checker");
+    assert.equal(made.status, 201, made.text);
+    const id = made.json.thread.id;
+    assert.equal(made.json.thread.messages[0].author, "page-checker");
+    assert.equal(made.json.thread.waiting, "claude", "an asks agent's comment waits on Claude");
+
+    const shot = await post(`threads/${id}/shot`, { error: "the capture failed in a test" }, "page-checker");
+    assert.equal(shot.status, 200, shot.text);
+    assert.equal(shot.json.thread.shots[0].author, "page-checker");
+
+    const answered = await post(`threads/${id}/replies`, { body: "Should it say minutes?", ask: "sam" }, "page-owner");
+    assert.equal(answered.json.thread.messages[1].author, "page-owner");
+    assert.equal(answered.json.thread.waiting, "human", "an answers agent's word waits on a person");
+    assert.equal(answered.json.thread.asking, "sam");
+    assert.equal((await post(`threads/${id}/replies`, { body: "x", ask: "not a name!" }, "page-owner")).status, 400);
+
+    const lost = await post(`threads/${id}/anchor`, { state: "lost" }, "page-checker");
+    assert.equal(lost.json.thread.lost, true);
+    const closed = await post(`threads/${id}/status`, { status: "resolved" }, "page-owner");
+    assert.equal(closed.json.thread.status, "resolved");
+    assert.equal(closed.json.thread.asking, null, "a closed thread asks no one");
+    const t = readAll(store)[0];
+    assert.equal(t.history[0].author, "page-owner");
+    assert.equal(t.lostBy, "page-checker");
+
+    const listed = await call(s.port, { path: "/__page-comments/threads", headers: { "x-page-comments-token": token, "x-page-comments-author": "page-checker" } });
+    assert.equal(listed.json.author, "page-checker", "the page shows 'you' for the agent");
+
+    // No header: exactly as before, the repo's author.
+    const plain = await post(`threads/${id}/replies`, { body: "Minutes, please." });
+    assert.equal(plain.json.thread.messages.at(-1).author, "sam");
+    const plainList = await call(s.port, { path: "/__page-comments/threads", headers: { "x-page-comments-token": token } });
+    assert.equal(plainList.json.author, "sam");
+  } finally {
+    await s.close();
+    cleanup();
+  }
+});
+
+test("agents: an unlisted name, the repo's author or claude in the header is refused, never signed as the author", async () => {
+  const { repo, store, cleanup } = tempRepo();
+  mkdirSync(join(repo, "site"));
+  writeFileSync(join(repo, "site", "index.html"), "<body>x</body>");
+  writeFileSync(join(repo, ".page-comments", "config.json"), JSON.stringify({ author: "sam", agents: { ...AGENTS, sam: "asks", claude: "answers" } }));
+  const s = await startServer(store, { root: "site", port: 0 });
+  try {
+    const token = tokenOf((await call(s.port, { path: "/" })).text);
+    const comment = { page: SAMPLE.page, anchor: SAMPLE.anchor, body: "x" };
+    for (const name of ["page-chekcer", "sam", "Sam", "claude", "", "two words"]) {
+      const r = await call(s.port, { method: "POST", path: "/__page-comments/threads", headers: writeHeaders(s.port, token, { "x-page-comments-author": name }), body: comment });
+      assert.equal(r.status, 403, `"${name}"`);
+      assert.match(r.json.error, /X-Page-Comments-Author|agents|not an agent/, `"${name}"`);
+      const get = await call(s.port, { path: "/__page-comments/threads", headers: { "x-page-comments-token": token, "x-page-comments-author": name } });
+      assert.equal(get.status, 403, `GET as "${name}"`);
+    }
+    assert.equal(readAll(store).length, 0, "nothing was written");
+    assert.match(readFileSync(join(repo, ".page-comments", ".state", "server.log"), "utf8"), /ev=reject reason=agent_reserved author=sam/);
+  } finally {
+    await s.close();
+    cleanup();
+  }
+});
+
+test("agents: the header is refused on the phone path, even for a listed agent", async () => {
+  const { store, s, repo, cleanup } = await phoneServer();
+  try {
+    writeFileSync(join(repo, ".page-comments", "config.json"), JSON.stringify({ author: "sam", agents: AGENTS, phone: { host: PHONE_HOST, port: s.port, logins: [PHONE_LOGIN] } }));
+    const token = tokenOf((await call(s.port, { path: "/", headers: viaTailscale(s.port) })).text);
+    const headers = viaTailscale(s.port, { origin: `https://${PHONE_HOST}:${s.port}`, "content-type": "application/json", "x-page-comments-token": token });
+    const comment = { page: SAMPLE.page, anchor: SAMPLE.anchor, body: "From the phone." };
+    const r = await call(s.port, { method: "POST", path: "/__page-comments/threads", headers: { ...headers, "x-page-comments-author": "page-checker" }, body: comment });
+    assert.equal(r.status, 403);
+    assert.match(r.json.error, /only from a page on this Mac/);
+    // A local Host with a Tailscale login header is not a plain local request either.
+    const local = await call(s.port, {
+      method: "POST",
+      path: "/__page-comments/threads",
+      headers: writeHeaders(s.port, token, { "tailscale-user-login": PHONE_LOGIN, "x-page-comments-author": "page-checker" }),
+      body: comment,
+    });
+    assert.equal(local.status, 403);
+    assert.equal(readAll(store).length, 0);
+    const ok = await call(s.port, { method: "POST", path: "/__page-comments/threads", headers, body: comment });
+    assert.equal(ok.status, 201, "the phone without the header works as before");
+  } finally {
+    await cleanup();
+  }
+});

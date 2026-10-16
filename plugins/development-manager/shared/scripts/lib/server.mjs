@@ -37,6 +37,12 @@
 // `userscript.origins` must carry the per-repo token from `.state/token`, not
 // the per-run one, and gets CORS headers naming that origin; any other origin
 // gets none, so the browser keeps refusing it.
+//
+// Agents (an agent that reviews pages, say) sign with their own names: a request
+// from this Mac's own page may carry X-Page-Comments-Author naming one of
+// config.json's `agents`. Any other name there (the repo's author, `claude`, a
+// typo), or the header on a phone or userscript request, is refused with 403,
+// never signed as the repo's author.
 
 import { createServer, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -46,7 +52,7 @@ import { createReadStream, readFileSync, rmSync, statSync, writeFileSync, mkdirS
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { paths, readConfig } from "./repo.mjs";
-import { addReply, ANCHOR_STATES, cleanAnchor, cleanBody, cleanPage, cleanViewport, createThread, isThreadId, publicThread, readAll, readThread, setAnchorState, setStatus, STATUSES } from "./store.mjs";
+import { addReply, agentsSetting, ANCHOR_STATES, cleanAnchor, cleanBody, cleanName, cleanPage, cleanViewport, createThread, isThreadId, publicThread, readAll, readThread, setAnchorState, setStatus, STATUSES } from "./store.mjs";
 import { hasCommentShot, isPng, isShotName, recordShotError, saveShot, shotFileState, shotPath, SHOT_MAX } from "./shots.mjs";
 import { gitStamp } from "./git.mjs";
 import { fileLogger, nowIso } from "./log.mjs";
@@ -239,7 +245,7 @@ export function createHandler(store, { token, log = () => {}, localHosts, mode =
   // config.json and the repo token are read again when they change, so
   // `enable --phone`, `enable --userscript` and a rotated token take effect
   // without a restart.
-  let config = { stamp: null, author: "me", phone: null, origins: new Set(), repoToken: null };
+  let config = { stamp: null, author: "me", phone: null, origins: new Set(), repoToken: null, agents: {} };
   function settings() {
     const stamp = `${stampOf(paths(store).config)}|${stampOf(tokenPath(store))}`;
     if (stamp !== config.stamp) {
@@ -250,6 +256,7 @@ export function createHandler(store, { token, log = () => {}, localHosts, mode =
         phone: phoneSetting(c),
         origins: new Set(userscriptOrigins(c)),
         repoToken: readRepoToken(store),
+        agents: agentsSetting(c),
       };
     }
     return config;
@@ -269,10 +276,30 @@ export function createHandler(store, { token, log = () => {}, localHosts, mode =
     return typeof o === "string" && o !== who.origin && settings().origins.has(o) ? o : null;
   }
 
+  /**
+   * Who signs this request: the repo's author (or the phone login's), or the
+   * agent named in X-Page-Comments-Author. Returns { author } or { error }.
+   */
+  function signer(req, who, cross) {
+    const raw = req.headers["x-page-comments-author"];
+    if (raw === undefined) return { author: who.author };
+    const s = settings();
+    const name = cleanName(Array.isArray(raw) ? raw[0] : raw);
+    const fail = (reason, error) => {
+      log("reject", { reason, author: name || "" });
+      return { error };
+    };
+    if (cross || who.via !== "local") return fail("agent_not_local", "X-Page-Comments-Author works only from a page on this Mac, not from the phone or the userscript");
+    if (!name) return fail("agent_unknown", "X-Page-Comments-Author needs a short plain name, like one in config.json's agents");
+    const low = name.toLowerCase();
+    if (low === "claude" || low === String(s.author).toLowerCase()) return fail("agent_reserved", `"${name}" cannot be signed through X-Page-Comments-Author; it is not an agent`);
+    if (!Object.hasOwn(s.agents, name)) return fail("agent_unknown", `"${name}" is not in config.json's agents, so it cannot sign comments`);
+    return { author: name };
+  }
+
   // ---- The comment API ------------------------------------------------------------
 
   async function api(req, res, path, who) {
-    const author = who.author;
     // A listed origin (the userscript) must bring the repo token; everyone else
     // the per-run one. Neither token works for the other.
     const cross = listedOrigin(req, who);
@@ -281,10 +308,14 @@ export function createHandler(store, { token, log = () => {}, localHosts, mode =
       if (cross) log("reject", { reason: "repo_token", origin: cross });
       return sendJson(res, 403, { error: "missing or wrong token" });
     }
+    const signed = signer(req, who, cross);
+    if (signed.error) return sendJson(res, 403, { error: signed.error });
+    const author = signed.author;
+    const agents = settings().agents;
     const url = new URL(req.url, "http://x");
     if (req.method === "GET" && path === "threads") {
       const page = url.searchParams.get("page");
-      const all = readAll(store);
+      const all = readAll(store, { agents });
       const version = storeVersion(all);
       if (url.searchParams.get("since") === version) return sendJson(res, 200, { version, changed: false });
       const threads = all.filter((t) => !page || t.page.path === page).map(publicThread);
@@ -330,8 +361,13 @@ export function createHandler(store, { token, log = () => {}, localHosts, mode =
     if (m[2] === "replies") {
       const text = cleanBody(body.body);
       if (!text) return sendJson(res, 400, { error: "a reply needs text, up to 10,000 characters" });
-      addReply(store, id, { author, body: text });
-      log("reply", { thread: id });
+      let ask;
+      if (body.ask !== undefined && body.ask !== null && body.ask !== "") {
+        ask = cleanName(body.ask);
+        if (!ask || ask.toLowerCase() === "claude") return sendJson(res, 400, { error: "ask names the person the reply waits on, as a short plain name like their author name" });
+      }
+      addReply(store, id, { author, body: text, ask });
+      log("reply", { thread: id, ...(ask ? { ask } : {}) });
     } else if (m[2] === "anchor") {
       // The page reports whether it found the element. Only a change from the
       // last report is written, so reloading the page adds nothing.

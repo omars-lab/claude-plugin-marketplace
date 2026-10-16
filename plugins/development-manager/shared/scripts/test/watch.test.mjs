@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, rmSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { addReply, appendEvent, createThread, setStatus } from "../lib/store.mjs";
-import { diffSnapshots, replayEvents, takeSnapshot } from "../lib/watch.mjs";
+import { diffSnapshots, formatEvent, replayEvents, takeSnapshot } from "../lib/watch.mjs";
 import { CLI, SAMPLE, cli, startChild, tempRepo, until } from "./helpers.mjs";
 
 const LINE = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ pid=\d+ ev=\w+ /;
@@ -143,6 +143,22 @@ test("wait reports what is already waiting first, then blocks for the next chang
     const quiet = cli(["wait", "--repo", repo, "--timeout", "0.3"]);
     assert.equal(quiet.code, 0);
     assert.equal(quiet.stdout, "");
+  } finally {
+    cleanup();
+  }
+});
+
+test("a reply that asks someone prints ask=<name> on its line", () => {
+  const { store, cleanup } = tempRepo();
+  try {
+    const id = createThread(store, SAMPLE);
+    const s1 = takeSnapshot(store);
+    addReply(store, id, { author: "page-owner", body: "Minutes or miles?", ask: "sam" });
+    addReply(store, id, { author: "claude", body: "Noted." });
+    const ev = diffSnapshots(s1, takeSnapshot(store));
+    assert.match(formatEvent(ev[0], false), / ev=message_new .*author=page-owner ask=sam msg=/);
+    assert.doesNotMatch(formatEvent(ev[1], false), /ask=/);
+    assert.equal(JSON.parse(formatEvent(ev[0], true)).ask, "sam");
   } finally {
     cleanup();
   }

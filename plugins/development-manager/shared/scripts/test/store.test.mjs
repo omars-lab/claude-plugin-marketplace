@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
-import { addReply, createThread, foldThread, publicThread, readAll, readThread, setStatus, threadFile, cleanAnchor, cleanBody } from "../lib/store.mjs";
+import { addReply, agentsSetting, createThread, foldThread, publicThread, readAll, readThread, setStatus, threadFile, cleanAnchor, cleanBody } from "../lib/store.mjs";
 import { findStore } from "../lib/repo.mjs";
 import { SAMPLE, tempRepo } from "./helpers.mjs";
 
@@ -16,7 +16,7 @@ test("a new thread is one line, read back in the shared shape", () => {
     assert.equal(first.v, 1);
     assert.equal(first.ev, "thread");
     const t = publicThread(readThread(store, id));
-    assert.deepEqual(Object.keys(t).sort(), ["anchor", "id", "messages", "page", "resolved", "rev", "status", "viewport", "waiting"]);
+    assert.deepEqual(Object.keys(t).sort(), ["anchor", "asking", "id", "messages", "page", "resolved", "rev", "status", "viewport", "waiting"]);
     assert.equal(t.status, "open");
     assert.equal(t.resolved, false);
     assert.equal(t.waiting, "claude");
@@ -127,5 +127,67 @@ test("the store is found from a subfolder, but not above the git root", () => {
   } finally {
     cleanup();
     outer.cleanup();
+  }
+});
+
+// ---- Agents and asking (hub review contract, sections 1 and 2) -------------------------
+// Invented names: "sam" is the repo's person, "page-checker" asks, "page-owner" answers.
+
+test("agentsSetting keeps asks/answers agents, never claude or the repo's author", () => {
+  assert.deepEqual(agentsSetting({}), {});
+  assert.deepEqual(agentsSetting({ agents: ["page-checker"] }), {});
+  assert.deepEqual(
+    agentsSetting({
+      author: "Sam",
+      agents: { "page-checker": "asks", "page-owner": "answers", sam: "answers", claude: "answers", "has space": "asks", "page-boss": "decides" },
+    }),
+    { "page-checker": "asks", "page-owner": "answers" },
+  );
+});
+
+test("waiting: an answers agent's last word waits on a person; an asks agent's on Claude", () => {
+  const { repo, store, cleanup } = tempRepo();
+  try {
+    writeFileSync(`${repo}/.page-comments/config.json`, JSON.stringify({ author: "sam", agents: { "page-checker": "asks", "page-owner": "answers" } }));
+    const id = createThread(store, { ...SAMPLE, author: "page-checker" });
+    assert.equal(readThread(store, id).waiting, "claude", "the asks agent's comment waits on Claude");
+    addReply(store, id, { author: "page-owner", body: "We will fix it." });
+    assert.equal(readThread(store, id).waiting, "human", "the answers agent is on Claude's side");
+    assert.equal(readAll(store)[0].waiting, "human", "readAll reads the agents too");
+    assert.equal(readThread(store, id, { agents: {} }).waiting, "claude", "with no agents, as before");
+    addReply(store, id, { author: "page-checker", body: "Thanks." });
+    assert.equal(readThread(store, id).waiting, "claude");
+  } finally {
+    cleanup();
+  }
+});
+
+test("asking: set by a reply's ask, cleared by that person's reply or by closing, replaced by a later ask", () => {
+  const { store, cleanup } = tempRepo();
+  try {
+    const id = createThread(store, SAMPLE);
+    assert.equal(readThread(store, id).asking, null);
+    addReply(store, id, { author: "page-owner", body: "Which day should it name?", ask: "sam" });
+    let t = readThread(store, id);
+    assert.equal(t.asking, "sam");
+    assert.equal(publicThread(t).asking, "sam");
+    assert.equal(t.messages[1].ask, "sam");
+    addReply(store, id, { author: "claude", body: "A note while we wait." });
+    assert.equal(readThread(store, id).asking, "sam", "someone else writing does not clear it");
+    addReply(store, id, { author: "sam", body: "Day 2." });
+    assert.equal(readThread(store, id).asking, null, "cleared when that person replies");
+
+    addReply(store, id, { author: "page-owner", body: "And the time?", ask: "sam" });
+    addReply(store, id, { author: "page-owner", body: "Actually, Lee knows.", ask: "lee" });
+    assert.equal(readThread(store, id).asking, "lee", "the latest ask wins");
+    addReply(store, id, { author: "sam", body: "Not mine to answer." });
+    assert.equal(readThread(store, id).asking, "lee", "only the person asked clears it");
+
+    setStatus(store, id, { author: "claude", status: "resolved" });
+    assert.equal(readThread(store, id).asking, null, "a closed thread asks no one");
+    setStatus(store, id, { author: "sam", status: "open" });
+    assert.equal(readThread(store, id).asking, "lee", "reopened, it asks again");
+  } finally {
+    cleanup();
   }
 });

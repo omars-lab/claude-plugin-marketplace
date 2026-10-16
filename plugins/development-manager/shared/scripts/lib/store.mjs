@@ -8,13 +8,44 @@
 import { randomBytes } from "node:crypto";
 import { appendFileSync, closeSync, mkdirSync, openSync, readdirSync, readFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
-import { paths } from "./repo.mjs";
+import { paths, readConfig } from "./repo.mjs";
 import { nowIso } from "./log.mjs";
 
 export const BODY_MAX = 10000;
 export const STATUSES = ["open", "resolved", "dismissed"];
 export const ANCHOR_STATES = ["lost", "found"];
+export const AGENT_ROLES = ["asks", "answers"];
 const ID_RE = /^t_[0-9a-f]{6,32}$/;
+const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
+
+/** A short plain name (an author, an agent, the person a reply asks), or null. */
+export function cleanName(v) {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return NAME_RE.test(s) ? s : null;
+}
+
+/**
+ * The `agents` block of config.json, cleaned: { <name>: "asks" | "answers" }.
+ * An agent signs its own comments (the server's X-Page-Comments-Author header).
+ * `asks` comments like a person; `answers` is on Claude's side, so a thread whose
+ * last word is theirs waits on a person. `claude` and the repo's own author are
+ * never agents, so neither can be borrowed through the header.
+ */
+export function agentsSetting(config) {
+  const out = {};
+  const a = config && config.agents;
+  if (!a || typeof a !== "object" || Array.isArray(a)) return out;
+  const author = config && typeof config.author === "string" ? config.author.trim().toLowerCase() : "";
+  for (const [k, role] of Object.entries(a)) {
+    const name = cleanName(k);
+    if (!name || !AGENT_ROLES.includes(role)) continue;
+    const low = name.toLowerCase();
+    if (low === "claude" || (author && low === author)) continue;
+    out[name] = role;
+  }
+  return out;
+}
 
 export function isThreadId(id) {
   return typeof id === "string" && ID_RE.test(id);
@@ -69,11 +100,13 @@ export function readEvents(store, id) {
 
 /**
  * Fold a thread's events into the shared thread shape (section 12 of the design):
- * { id, resolved, status, anchor, rev, messages, page, viewport, waiting, … }.
+ * { id, resolved, status, anchor, rev, messages, page, viewport, waiting, asking, … }.
  * Events are applied in time order, the opening line first, so lines merged in
  * from two branches (git's union merge) read the same either way round.
+ * `agents` is agentsSetting(config): an `answers` agent's last word, like
+ * Claude's, leaves the thread waiting on a person.
  */
-export function foldThread(id, events) {
+export function foldThread(id, events, { agents = {} } = {}) {
   const open = events.find((e) => e.ev === "thread");
   if (!open) return null;
   const rest = events
@@ -105,6 +138,8 @@ export function foldThread(id, events) {
     if (e.ev === "reply") {
       const m = { author: str(e.author), ts: str(e.ts), body: str(e.body) };
       if (e.commit) m.commit = str(e.commit);
+      const ask = cleanName(e.ask);
+      if (ask) m.ask = ask;
       t.messages.push(m);
     } else if (e.ev === "edit") {
       const m = t.messages[e.index];
@@ -128,7 +163,16 @@ export function foldThread(id, events) {
   }
   t.resolved = t.status !== "open";
   const last = t.messages[t.messages.length - 1];
-  t.waiting = t.status === "open" ? (last && last.author === "claude" ? "human" : "claude") : null;
+  const claudeSide = (a) => a === "claude" || (Object.hasOwn(agents, a) && agents[a] === "answers");
+  t.waiting = t.status === "open" ? (last && claudeSide(last.author) ? "human" : "claude") : null;
+  // Who the thread is asking: the latest reply that names someone, until that
+  // person writes on the thread. A closed thread asks no one.
+  let asking = null;
+  for (const m of t.messages) {
+    if (asking && m.author === asking) asking = null;
+    if (m.ask && m.ask !== m.author) asking = m.ask;
+  }
+  t.asking = t.status === "open" ? asking : null;
   return t;
 }
 
@@ -151,15 +195,21 @@ function foldShot(e) {
   return s;
 }
 
-export function readThread(store, id) {
-  const r = readEvents(store, id);
-  return r ? foldThread(id, r.events) : null;
+/** The agents the repo's config.json names, unless the caller already has them. */
+function agentsOf(store, opts) {
+  return opts && opts.agents ? opts.agents : agentsSetting(readConfig(store));
 }
 
-export function readAll(store) {
+export function readThread(store, id, opts) {
+  const r = readEvents(store, id);
+  return r ? foldThread(id, r.events, { agents: agentsOf(store, opts) }) : null;
+}
+
+export function readAll(store, opts) {
+  const agents = agentsOf(store, opts);
   const out = [];
   for (const id of threadIds(store)) {
-    const t = readThread(store, id);
+    const t = readThread(store, id, { agents });
     if (t) out.push(t);
   }
   return out;
@@ -177,6 +227,7 @@ export function publicThread(t) {
     viewport: t.viewport,
     messages: t.messages,
     waiting: t.waiting,
+    asking: t.asking === undefined ? null : t.asking,
   };
   if (t.history.length) out.history = t.history;
   if (t.shots && t.shots.length) out.shots = t.shots;
@@ -221,9 +272,11 @@ export function appendEvent(store, id, event) {
   return line;
 }
 
-export function addReply(store, id, { author, body, commit }) {
+/** A reply. `ask` names the person it waits on (see `asking` in foldThread). */
+export function addReply(store, id, { author, body, commit, ask }) {
   const e = { ev: "reply", author, body };
   if (commit) e.commit = commit;
+  if (ask) e.ask = ask;
   return appendEvent(store, id, e);
 }
 
