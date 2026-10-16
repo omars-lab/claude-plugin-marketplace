@@ -587,8 +587,6 @@ ICONS = (
      "M4 9h12v4a6 6 0 0 1-12 0zM16 10.5h1.5a2.5 2.5 0 0 1 0 5H15.5M8 3.5V6M12 3.5V6"),
     ("sweet", "Bakery & sweets", {"bakery", "pastry", "ice_cream", "chocolate", "confectionery", "dessert", "donut"},
      "M6.5 10a5.5 5.5 0 0 1 11 0zM6.5 10 12 21l5.5-11"),
-    ("drink", "Bar & winery", {"bar", "pub", "biergarten", "brewery", "winery", "wine", "beverages", "nightclub"},
-     "M5 4h14l-7 8zM12 12v8M8 20h8"),
     ("stay", "Stay", {"hotel", "motel", "guest_house", "hostel", "resort", "chalet", "apartment"},
      "M3 6v14M3 15h18v5M21 15v-2a3 3 0 0 0-3-3h-7v5M5.5 12.5a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0"),
     ("camp", "Camp", {"camp_site", "caravan_site", "picnic_site"},
@@ -621,6 +619,9 @@ ICONS = (
     ("shop", "Shop & market", {"mall", "retail", "supermarket", "marketplace", "toys", "department_store", "clothes",
                                "gift"},
      "M5 8h14l-1.2 13H6.2zM9 10V6.5a3 3 0 0 1 6 0V10"),
+    # Bars and wineries matter least to the hub's reader, so they come last in the legend.
+    ("drink", "Bar & winery", {"bar", "pub", "biergarten", "brewery", "winery", "wine", "beverages", "nightclub"},
+     "M5 4h14l-7 8zM12 12v8M8 20h8"),
     ("town", "Town or city", {"city", "town", "village", "hamlet", "locality", "suburb", "neighbourhood", "quarter"},
      "M3 21h18M5 21V11l5-3v13M10 21V4h9v17M13 8h3M13 12h3M13 16h3"),
     ("region", "Region, state or country", {"region", "state", "country", "administrative", "county"},
@@ -634,8 +635,10 @@ ICON_PATH = {g: path for g, _, _, path in ICONS}
 ICON_WORDS = [(g, re.compile(r"\b(" + words + r")\b", re.I)) for g, words in (
     ("eat", r"bbq|bar-?b-?q|barbecue|grill|kitchen|tacos?|taqueria|pizza|pizzeria|burgers?|diner|deli|sushi|ramen|"
             r"noodles?|restaurant|bistro|eatery|cantina|smokehouse|brisket|pho"),
-    ("coffee", r"coffee|caf[eé]|espresso|roasters?|roastery|tea ?house"),
-    ("sweet", r"bakery|bakehouse|p[aâ]tisserie|donuts?|doughnuts?|ice cream|gelato|creamery|desserts?|boba|chocolate"),
+    # A tea, juice or dessert "bar" is not a bar: these come before the drink words.
+    ("coffee", r"coffee|caf[eé]|espresso|roasters?|roastery|tea ?house|(?:tea|juice|smoothie|coffee|matcha) bar"),
+    ("sweet", r"bakery|bakehouse|p[aâ]tisserie|donuts?|doughnuts?|ice cream|gelato|creamery|desserts?|boba|chocolate|"
+              r"(?:dessert|cookie|cake|acai|açaí) bar"),
     ("drink", r"bar|brewery|brewing|winery|wines?|taproom|pub|cellars?|distillery|cocktails?"),
     ("stay", r"hotel|inn|motel|lodge|resort|cabins?|hostel|suites"),
     ("camp", r"campground|campsite|camping|rv park"),

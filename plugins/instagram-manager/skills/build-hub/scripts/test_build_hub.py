@@ -239,6 +239,16 @@ class Hub(unittest.TestCase):
         self.assertEqual(set(d["icons"]), {icon[d["places"][pin[3]]["n"]] for pin in d["pins"]})
         self.assertIn('"Example Falls","","spot","waterfall"]', self.page("places/example-falls.html"))
 
+    def test_a_tea_or_juice_bar_is_not_a_bar_and_bars_come_last(self):
+        def by_name(name):
+            return next((g for g, rx in build_hub.ICON_WORDS if rx.search(name)), None)
+        self.assertEqual(by_name("Example Tea Bar"), "coffee")
+        self.assertEqual(by_name("Sample Juice Bar"), "coffee")
+        self.assertEqual(by_name("Example Dessert Bar"), "sweet")
+        self.assertEqual(by_name("Example Wine Bar"), "drink")
+        order = [g for g, *_ in build_hub.ICONS]
+        self.assertEqual(order[order.index("drink") + 1:], ["town", "region", "spot"])
+
     def test_a_kept_google_id_opens_that_exact_place(self):
         self.write("data/pins-review.yaml", {
             "TOWN1": [{"said": "Example Deli", "near": "Fixture Town", "why": "not found near Fixture Town",

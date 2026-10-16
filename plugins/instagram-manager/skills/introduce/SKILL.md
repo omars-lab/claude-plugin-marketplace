@@ -127,7 +127,7 @@ instagram-manager
     ├── geocode.py     — OpenStreetMap lookups, cached, one a second
     ├── google_places.py — Google place search in a box, the name rule, links that carry a place id
     ├── places.py, pilot.py, purposes.py — the place list, pilot sets, purposes
-    └── check_data.py  — the data repo's config and data fit together (its make check)
+    └── check_data.py  — the data repo's config and data fit together, and no two spots share a map point by mistake (its make check)
 ```
 
 No script calls a model: scripts prepare batches and check answers, and the session starts the

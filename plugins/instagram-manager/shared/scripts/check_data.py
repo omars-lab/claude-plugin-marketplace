@@ -13,6 +13,11 @@ Checks, each one only when its file exists:
   data/tags.yaml           code → {topics[], cities[], purposes[]?}, topics, places and purposes known,
                            codes in the export
   data/moves.yaml          codes in the export, each `to` a collection with an entry
+  data/pins.yaml           no two different spots on one map point (the same OpenStreetMap thing, or
+                           within about 10 m): a spot given another's pin by mistake. Names that
+                           start with the name OpenStreetMap found there are one place ("Example
+                           Roastery USA" at Example Roastery). Shops that really share a building (a
+                           food hall, a mall) each get the same `building:` value and pass.
   (a known place is a city in collections.yaml or a key in config/ or data/places.yaml)
 
 Prints one ev= line per problem and exits 1 if there is any.
@@ -36,6 +41,34 @@ def load(rel):
         return None
     with open(path, encoding="utf-8") as fh:
         return yaml.safe_load(fh) or {}
+
+
+def _words(name):
+    return "".join(ch for ch in (name or "").lower() if ch.isalnum())
+
+
+def shared_spots(pins):
+    """[(where, [names])]: map points that hold two or more different spots, none in a shared building."""
+    groups = {}
+    for spots in (pins or {}).values():
+        for s in spots or []:
+            if not isinstance(s, dict) or s.get("lat") is None or s.get("lon") is None:
+                continue
+            for where in {s.get("osm"), f"{round(float(s['lat']), 4)},{round(float(s['lon']), 4)}"} - {None}:
+                groups.setdefault(where, []).append(s)
+    out, seen = [], set()
+    for where, spots in groups.items():
+        if len({s.get("building") for s in spots}) == 1 and spots[0].get("building"):
+            continue
+        names = {}
+        for s in spots:
+            found = _words((s.get("found") or "").split(",")[0])
+            own = _words(s.get("name"))
+            names.setdefault(found if found and own.startswith(found) else own, s.get("name"))
+        if len(names) > 1 and tuple(sorted(names.values())) not in seen:
+            seen.add(tuple(sorted(names.values())))
+            out.append((where, sorted(names.values())))
+    return out
 
 
 def check():
@@ -137,6 +170,10 @@ def check():
         for name in (m or {}).get("to") or []:
             if mapping and name not in mapping:
                 bad("check_fail", file="data/moves.yaml", code=code, collection=name, msg="move to a collection with no entry")
+
+    for where, names in shared_spots(load("data/pins.yaml")):
+        bad("check_fail", file="data/pins.yaml", at=where, spots="|".join(names),
+            msg="different spots on one map point: fix the wrong pin, or give each the same building: if they share one")
 
     log("check", home=home(), problems=len(problems))
     return 1 if problems else 0
