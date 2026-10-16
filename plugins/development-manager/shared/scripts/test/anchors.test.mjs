@@ -105,6 +105,32 @@ test("an element comment saves the element's text with 32 characters either side
   }
 });
 
+// ---- The outline: only the part of an element that shows ---------------------------------
+
+function visibleRect(rect, clips) {
+  const ctx = {};
+  runInNewContext(readFileSync(join(SCRIPTS, "client", "visible-rect.js"), "utf8"), { globalThis: ctx });
+  return JSON.parse(JSON.stringify(ctx.__pageCommentsRect.visibleRect(rect, clips)));
+}
+
+test("a picture wider than its sideways strip is outlined only where the strip shows it", () => {
+  // A card's strip, 345 wide at x 988; its second picture is 865 wide and starts at x 1170.
+  const strip = { left: 988, top: 300, right: 1333, bottom: 520, x: true, y: true };
+  assert.deepEqual(visibleRect({ left: 1170, top: 300, width: 865, height: 220 }, [strip]), { left: 1170, top: 300, width: 163, height: 220 });
+});
+
+test("a container that cuts only sideways leaves the height alone, and the tightest container wins", () => {
+  const sideways = { left: 0, top: 0, right: 100, bottom: 10, x: true, y: false };
+  const card = { left: 20, top: 0, right: 500, bottom: 500, x: true, y: true };
+  assert.deepEqual(visibleRect({ left: 10, top: 50, width: 200, height: 300 }, [sideways, card]), { left: 20, top: 50, width: 80, height: 300 });
+});
+
+test("an element scrolled fully out of its container keeps its own box, so the outline still shows what was picked", () => {
+  const strip = { left: 0, top: 0, right: 100, bottom: 100, x: true, y: true };
+  assert.deepEqual(visibleRect({ left: 200, top: 10, width: 50, height: 50 }, [strip]), { left: 200, top: 10, width: 50, height: 50 });
+  assert.deepEqual(visibleRect({ left: 5, top: 6, width: 7, height: 8 }, []), { left: 5, top: 6, width: 7, height: 8 });
+});
+
 // ---- The thread file: found/not found reports, and the landed commit ---------------------
 
 test("anchor reports and the landed commit fold into the thread shape", () => {
@@ -168,6 +194,7 @@ test("the server records a found/not found report only when it changes something
     const client = await call(s.port, { path: "/__page-comments/client.js" });
     assert.equal(client.status, 200);
     assert.ok(client.text.indexOf("__pageCommentsMatch = {") < client.text.indexOf("var MATCH = window.__pageCommentsMatch"), "the matcher is served ahead of the comment bar");
+    assert.ok(client.text.indexOf("__pageCommentsRect = {") < client.text.indexOf("var RECT = window.__pageCommentsRect"), "the outline's clipping is served ahead of the comment bar");
 
     assert.equal((await post("gone")).status, 400);
     const first = await post("lost");

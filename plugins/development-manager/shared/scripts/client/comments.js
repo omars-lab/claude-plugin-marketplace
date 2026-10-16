@@ -14,7 +14,8 @@
 // instead. The server's served client.js starts with files-link.js, which
 // defines window.__pageCommentsFiles (the Files app links on an iPhone),
 // then text-match.js, which defines window.__pageCommentsMatch (finding a
-// comment's text again after the page changed).
+// comment's text again after the page changed), then visible-rect.js, which
+// defines window.__pageCommentsRect (the part of an element that shows).
 //
 // Finding comments again (design section 4, phase 4): each load hashes every
 // found element and marks a thread "changed since this comment" when the hash
@@ -37,6 +38,7 @@
   var SHOT_MAX_W = 600; // CSS pixels: wider elements are scaled down
   var FILES = window.__pageCommentsFiles || null;
   var MATCH = window.__pageCommentsMatch || null;
+  var RECT = window.__pageCommentsRect || null;
   var SETTLE_MS = 2000; // a found/not found answer must hold this long before it is sent
   // A phone or tablet: no hover, no C key. Comment mode then picks on a tap and waits
   // for "Comment here", so a stray tap never opens a comment (design section 13).
@@ -537,8 +539,30 @@
     box.style.height = rect.height + "px";
   }
 
-  function showOutline(el) {
+  /** The containers above `el` that cut off what spills over, as boxes in window coordinates. */
+  function clipsAbove(el) {
+    var clips = [];
+    for (var p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+      var s = getComputedStyle(p);
+      var x = s.overflowX !== "visible";
+      var y = s.overflowY !== "visible";
+      if (!x && !y) continue;
+      var b = p.getBoundingClientRect();
+      var left = b.left + p.clientLeft;
+      var top = b.top + p.clientTop;
+      clips.push({ left: left, top: top, right: left + p.clientWidth, bottom: top + p.clientHeight, x: x, y: y });
+    }
+    return clips;
+  }
+
+  /** The element's box, cut to what shows: a picture in a sideways strip is outlined where it shows. */
+  function shownRect(el) {
     var r = el.getBoundingClientRect();
+    return RECT ? RECT.visibleRect(r, clipsAbove(el)) : r;
+  }
+
+  function showOutline(el) {
+    var r = shownRect(el);
     place(outline, r);
     outline.hidden = false;
     var label = labelOf(el);

@@ -415,9 +415,10 @@ export function createHandler(store, { token, log = () => {}, localHosts, mode =
   }
 
   // What the page loads from this server. client.js is the Files link helper
-  // and the text matcher, followed by the bar itself, so the bar is one request.
+  // the text matcher and the outline's clipping, followed by the bar itself, so
+  // the bar is one request.
   const CLIENT_FILES = {
-    "client.js": ["files-link.js", "text-match.js", "comments.js"],
+    "client.js": ["files-link.js", "text-match.js", "visible-rect.js", "comments.js"],
     "client.css": ["comments.css"],
     "vendor/modern-screenshot.js": ["vendor/modern-screenshot.js"],
   };
