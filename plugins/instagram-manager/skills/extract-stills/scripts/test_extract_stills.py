@@ -117,6 +117,22 @@ class Fixture(unittest.TestCase):
 
 
 class Stills(Fixture):
+    def setUp(self):
+        super().setUp()
+        # The extra frames read every half second: no real text reader runs here. A test that wants
+        # words on them sets self.dense_words, {frame number from 1: words}.
+        self.dense_words, self.dense_reads = {}, 0
+        self.old_readers = es.rf.vision, es.rf.ocr
+
+        def vision(paths):
+            self.dense_reads += 1
+            return {p: self.dense_words.get(int(re.search(r"(\d+)\.jpg$", p).group(1)), "") for p in paths}
+        es.rf.vision, es.rf.ocr = vision, lambda path: ""
+
+    def tearDown(self):
+        es.rf.vision, es.rf.ocr = self.old_readers
+        super().tearDown()
+
     def run_stills(self, *extra):
         with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()) as out:
             es.main(["--pilot", "fixture", *extra])
@@ -159,6 +175,25 @@ class Stills(Fixture):
         diner = next(r for r in self.read("data/stills.yaml")["LISTED"] if r["name"] == "Example Diner")
         self.assertEqual((diner["t"], diner["how"], diner["by"]), (1.0, "hand", "hand"))
         self.assertTrue(os.path.isfile(self.media(diner["still"])))
+
+    def test_a_hand_time_for_an_area_shares_one_picture(self):
+        self.run_stills()
+        rows = self.read("data/stills.yaml")
+        # A person saw the diner's and the lookout's town at 1 s.
+        rows["LISTED"] = [rows["LISTED"][0],
+                          {"name": "Example Diner", "said": "the diner", "t": 1.0, "by": "hand", "area": "Fixture Town"},
+                          {"name": "Example Lookout", "said": "Example Lookout", "t": 1.0, "by": "hand", "area": "Fixture Town"}]
+        self.write("data/stills.yaml", rows)
+        self.assertIn("(1 cut this run;", self.run_stills())   # one picture for the two
+        by = {r["name"]: r for r in self.read("data/stills.yaml")["LISTED"]}
+        for spot in ("Example Diner", "Example Lookout"):
+            self.assertEqual((by[spot]["how"], by[spot]["area"], by[spot]["still"]),
+                             ("hand", "Fixture Town", "LISTED/spots/still-area-fixture-town.jpg"))
+
+    def test_two_spots_with_one_name_are_not_cut_again(self):
+        self.write("data/pins.yaml", {"LISTED": [SPOTS[0], SPOTS[0]]})   # two branches of one café, say
+        self.assertIn("(2 cut this run;", self.run_stills())
+        self.assertIn("(0 cut this run;", self.run_stills())
 
     def test_a_clip_near_the_end_starts_earlier(self):
         self.write("text.json", {"video": "LISTED/video.mp4", "seconds": 6.0, "frames": [
@@ -204,6 +239,66 @@ class Stills(Fixture):
             base=self.media("LISTED", "frames"))
         self.run_stills()
         self.assertEqual(self.read("data/stills.yaml")["LISTED"][0]["how"], "not_on_screen")
+
+    def test_a_short_area_name_counts_only_after_the_full_one(self):
+        self.write("data/places.yaml", {"places": {**PLACES["places"],
+                                                   "Fixture Peaks National Park": {"kind": "park", "lat": 41, "lon": -121},
+                                                   "Fixture Glen National Park": {"kind": "park", "lat": 42, "lon": -122}}})
+        self.write("data/pins.yaml", {"LISTED": [{**SPOTS[1], "near": "Fixture Peaks National Park"},
+                                                 {**SPOTS[2], "said": "the lookout", "near": "Fixture Glen National Park"}]})
+        # The reel writes "Fixture Peaks" first, and the glen in full later; a frame with both is skipped.
+        frames = [{"n": 1, "t": 0.0, "file": "frame-01.jpg", "text": "Fixture Peaks & Fixture Glen"},
+                  {"n": 2, "t": 2.0, "file": "frame-02.jpg", "text": "Fixture Peaks"},
+                  {"n": 3, "t": 4.0, "file": "frame-03.jpg", "text": "Fixture Glen National Park"}]
+        self.write("text.json", {"video": "LISTED/video.mp4", "seconds": 6.0, "frames": frames, "sheets": []},
+                   base=self.media("LISTED", "frames"))
+        self.run_stills()
+        by = {r["name"]: r for r in self.read("data/stills.yaml")["LISTED"]}
+        self.assertEqual((by["Example Diner"]["area"], by["Example Diner"]["t"]), ("Fixture Peaks National Park", 2.0))
+        self.assertEqual((by["Example Lookout"]["area"], by["Example Lookout"]["t"]), ("Fixture Glen National Park", 4.0))
+
+    def test_a_spot_read_loosely_only_when_no_frame_has_its_name(self):
+        moment = lambda e, *texts: es.moment(e, {"frames": [{"n": i + 1, "t": float(i), "text": t}
+                                                             for i, t in enumerate(texts)]})
+        trail = {"name": "Example Grove Trail", "said": "Example Grove Trail"}
+        self.assertEqual(moment(trail, "Example Grove", "EXAMPLE GROVE TRAIL"), (2, 1.0))   # the full name wins
+        self.assertEqual(moment(trail, "intro", "Example Grove"), (2, 1.0))
+        self.assertIsNone(moment({"name": "Fern Trail"}, "Fern"))   # one word left is too little
+        self.assertIsNone(moment({"name": "Example Lookout Point"}, "Example"))
+        aquarium = {"name": "Example Bay Aquarium"}
+        self.assertEqual(moment(aquarium, "Exanple Bay Aquarium"), (1, 0.0))   # one letter misread
+        self.assertIsNone(moment(aquarium, "Exanple Bay Aquarlum"))             # two are too many
+        self.assertIsNone(moment({"name": "Fern Cafe"}, "Fern Cafo"))             # too short for a misread
+
+    def test_a_spot_missed_by_the_frames_is_found_on_a_frame_every_half_second(self):
+        self.dense_words = {4: "Example Diner"}   # the 4th extra frame, at 1.5 s
+        self.run_stills()
+        by = {r["name"]: r for r in self.read("data/stills.yaml")["LISTED"]}
+        self.assertEqual((by["Example Diner"]["t"], by["Example Diner"]["how"]), (1.5, "on_screen"))
+        self.assertNotIn("frame", by["Example Diner"])   # the extra frames have no number
+        # The spots read-frames' frames already show keep their moments.
+        self.assertEqual((by["Example Cove Beach"]["frame"], by["Example Cove Beach"]["t"]), (2, 2.0))
+        self.assertEqual((by["Example Lookout"]["frame"], by["Example Lookout"]["t"]), (3, 4.0))
+        with open(self.media("LISTED", "frames", "dense.json")) as fh:
+            dense = json.load(fh)
+        self.assertEqual([f["t"] for f in dense["frames"]][:3], [0.0, 0.5, 1.0])
+        self.assertNotIn("file", dense["frames"][0])   # only the words are kept
+        self.assertEqual(sorted(os.listdir(self.media("LISTED", "frames"))), ["dense.json", "text.json"])
+        self.assertIn("(0 cut this run;", self.run_stills())
+        self.assertEqual(self.dense_reads, 1)   # read once per video, then reused
+
+    def test_no_extra_frames_when_every_spot_is_on_the_frames(self):
+        self.write("data/pins.yaml", {"LISTED": [SPOTS[0], SPOTS[2]]})
+        self.run_stills()
+        self.assertEqual(self.dense_reads, 0)
+        self.assertFalse(os.path.exists(self.media("LISTED", "frames", "dense.json")))
+
+    def test_short_names(self):
+        self.assertEqual(es.short("Fixture Peaks National Park"), "Fixture Peaks")
+        self.assertEqual(es.short("Example Grove Trail", words=2), "Example Grove")
+        self.assertIsNone(es.short("Fern Trail", words=2))
+        self.assertIsNone(es.short("Big Example"))          # nothing to take off
+        self.assertIsNone(es.short("Elm State Park"))       # "Elm" is too short to stand alone
 
     def test_need_video_lists_the_reels_with_two_spots_and_no_video(self):
         self.write("data/pins.yaml", {"LISTED": SPOTS, "NOVID": SPOTS[:2], "GONE": SPOTS[:2], "NOSHOW": SPOTS[:2]})

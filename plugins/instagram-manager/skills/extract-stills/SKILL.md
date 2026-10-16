@@ -34,6 +34,14 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
      its `lookup` are on screen, in either text reader's words from read-frames' `text.json`
      (letters and digits in order, so odd OCR spacing still matches). A reel with no `text.json`
      gets one made with read-frames' own code;
+   - read-frames keeps at most 12 frames, so a fast reel (a new stop every second) loses whole
+     stops. When a spot is on none of those frames, the script reads one frame every half second
+     and looks again. It saves that reading in `<code>/frames/dense.json` with each frame's real
+     time in the video (not its half-second slot, which can be up to 0.25 s off and land on the
+     scene before) and reuses it until the video changes;
+   - only then does it match loosely: the name without the end words that only say what kind of place
+     it is ("State Park", "Trail", "Overlook"), or a name of 12 or more letters with one letter
+     misread ("Monferey Bay Aquarium"), on either set of frames;
    - a spot whose own name never shows takes the moment its area (`near`) is on screen, as road-trip
      reels do ("Stop 2. Big Sur", then its viewpoints only in the caption). It gets `how: area` and
      shares one `still-area-<slug>.jpg` with the area's other spots. Only when the reel shows two or
@@ -53,7 +61,11 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
    Write down any that show the wrong place.
 3. **Fix by hand.** A spot whose name never shows (`not_on_screen`), or a still from the wrong
    moment: watch the video, then set `t:` (seconds) on its entry in `data/stills.yaml` and add
-   `by: hand`. The next run cuts it there and keeps that time on every run after.
+   `by: hand`. The next run cuts it there and keeps that time on every run after. Several spots
+   seen in one shot (a park's trails on one title card) can share one picture: give each the same
+   `t:` and an `area:` naming the park, and they get one `still-area-<slug>.jpg` and sit under that
+   area on the post page. Leave a spot on the cover when no moment clearly shows it: a wrong
+   still is worse than the cover.
 4. **Build the hub** (**build-hub**, `make hub`). Each spot with a still shows it on its place page
    card and in its map popup, and the post page gets "The places in the video": one picture per
    spot (one per area for spots shown by their area) in the order they show in the video, each with
@@ -69,7 +81,7 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
 | `scripts/extract_stills.py --need-video` | Lists the reels naming 2 or more spots with no video yet; cuts nothing | Before asking to fetch videos for stills | `python3 scripts/extract_stills.py --need-video --pilot <name>` |
 | `scripts/previews.py` | A small picture (144 × 192, about 5 KB) per post, and for a post with a video a looping flipbook of 12 frames from the whole reel (about 50 KB), in `.cache/hub/previews/`; remade only when the source is newer | For pages that list many posts at once: the pins page and the hub call it themselves (and share its flipbook player, `player_js()`), so run it by hand only to try a post | `python3 scripts/previews.py CODE ...` (`--out DIR`, `--redo`) |
 | `scripts/heard.py` | A check, not a step: turns each reel's sound into words on this Mac (whisper.cpp) and looks for its spots' names among them; writes only to `.cache/whisper/` | Before counting on speech for a new set of reels. In the first trial, 18 of 19 reels were music or silent, and the one voice never said a name | `python3 scripts/heard.py [CODE ...]` (`--prompt`, `--model PATH`); needs `brew install whisper.cpp` and a model |
-| `scripts/test_extract_stills.py` | Offline tests on an invented data folder and an ffmpeg-made video: the moment picked, a spot never on screen, a road-trip spot taking its area's moment (and a title card, one area or a state not counting), a rerun cutting nothing, a hand time kept, a clip near the end, the need-video list; previews: a picture per post, a flipbook only with a video, nothing remade unless newer, codes differing by case | After any change to either script | `python3 scripts/test_extract_stills.py` |
+| `scripts/test_extract_stills.py` | Offline tests on an invented data folder and an ffmpeg-made video: the moment picked, a spot never on screen, a road-trip spot taking its area's moment (and a title card, one area or a state not counting), a rerun cutting nothing, a hand time kept, a clip near the end, a spot found only on the half-second frames (and those read once, then reused; none read when every spot is found), a hand time shared by an area, two spots with one name not cut again, the need-video list; previews: a picture per post, a flipbook only with a video, nothing remade unless newer, codes differing by case | After any change to either script | `python3 scripts/test_extract_stills.py` |
 
 In the data repo: `make stills` (`STILLS_REDO=1` to cut again), `make stills-need-video`, then
 `make media-video VIDEO_LIST=.cache/stills/need-video.txt MEDIA_LIMIT=<n>`.

@@ -297,7 +297,7 @@ class Hub:
         def shot(key, name):
             r = cut.get(name.strip().lower())
             if r and all(x["key"] != key for x in shots):
-                area = r.get("area") if r.get("how") == "area" and isinstance(r.get("area"), str) else None
+                area = r.get("area") if isinstance(r.get("area"), str) else None   # `how: area`, or a hand time set for the area
                 area = (self.p.resolve(area) or area) if area else None
                 shots.append({"key": key, "name": name, "t": number(r.get("t")), "area": area,
                               "still_src": os.path.join(media_dir, r["still"]),
