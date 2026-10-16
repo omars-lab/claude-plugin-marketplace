@@ -534,6 +534,16 @@ class Hub(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.out, "places", "gone-place.html")))
         self.assertIn('href="moves.html"', self.page("index.html"))
 
+    def test_a_first_build_writes_and_links_the_decisions_page(self):
+        self.write("data/tags-review.yaml", {"TOWN1": {"other_places": ["Example Cove"]}})
+        self.build("--pilot", "fixture")
+        self.assertIn('href="decisions.html"', self.page("index.html"))
+        decisions = self.page("decisions.html")
+        self.assertIn("Example Cove", decisions)        # the tags review is on it
+        self.assertIn("add_places.py", decisions)       # the plugin's command, not a make line
+        self.build("--pilot", "fixture", "--make")
+        self.assertIn("make places", self.page("decisions.html"))
+
     def test_captions_cannot_break_the_page(self):
         self.build("--pilot", "fixture")
         index = self.page("index.html")

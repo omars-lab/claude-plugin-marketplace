@@ -6,6 +6,8 @@ names, a page per place listing every saved post that names it, and a page per p
     build_hub.py --all            every save
     options: --out DIR            where to write (default $INSTAGRAM_HOME/.cache/hub)
              --no-previews        leave out the small pictures and flipbooks
+             --links FILE         decisions made outside the hub, for the decisions page
+             --make               the decisions page prints make lines, not the plugin's commands
 
 Reads   $INSTAGRAM_HOME/.cache/saves.json          caption, creator, link, saved date, collections
         $INSTAGRAM_HOME/config/topics.yaml         topic labels
@@ -28,6 +30,7 @@ Writes  OUT/index.html                             the map, the list of places, 
                                                    one with a pin; a Map menu switches between them
         OUT/places/<slug>.html                     one page per place
         OUT/posts/<code>.html                      one page per post
+        OUT/decisions.html                         everything waiting on you (decisions_page.py)
         OUT/thumbs/<code>.jpg                      copies of the thumbnails media.yaml lists
         OUT/stills/<code>/                         copies of the stills and clips stills.yaml lists
         OUT/previews/<code>.jpg, .webp             a small picture and a flipbook per post, for the lists
@@ -1445,6 +1448,10 @@ def main(argv=None):
     ap.add_argument("--out", default=None, help="where to write the site (default .cache/hub)")
     ap.add_argument("--saved", default=None, help="saves.json (default: the data repo's .cache)")
     ap.add_argument("--no-previews", action="store_true", help="leave out the small pictures and flipbooks")
+    ap.add_argument("--links", default=None,
+                    help="for the decisions page: a YAML list of {label, url, note} decided outside the hub")
+    ap.add_argument("--make", action="store_true",
+                    help="the decisions page prints the data repo's make lines instead of the plugin's commands")
     args = ap.parse_args(argv)
 
     pilots = load_yaml(os.path.join("config", "collections.yaml")).get("pilots") or {}
@@ -1475,6 +1482,11 @@ def main(argv=None):
 
     hub = Hub(scoped, tags, Places.load(), pins, media, topics, media_dir, purposes, stills)
     out = os.path.abspath(args.out or cache("hub"))
+    # The decisions page first, with the same scope, so the map always links an up-to-date one.
+    import decisions_page   # imports this module, so only here
+    decisions_page.main((["--pilot", args.pilot] if args.pilot else ["--all"])
+                        + ["--out", os.path.join(out, "decisions.html")]
+                        + (["--links", args.links] if args.links else []) + (["--make"] if args.make else []))
     title = f"Saved places: {args.pilot.replace('-', ' ').title()}" if args.pilot else "Saved places"
     thumbs = build(hub, out, title, (pilot or {}).get("cities") or (), not args.no_previews)
 

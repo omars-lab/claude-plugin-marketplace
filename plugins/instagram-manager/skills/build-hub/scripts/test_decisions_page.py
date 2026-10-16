@@ -111,7 +111,8 @@ class Page(unittest.TestCase):
         page, counts = dp.build(rows, check, [], {"M1": {}}, {"tag": 3, "locate": 0, "frames": 0, "split": 0}, 2,
                                 [{"label": "Example link", "url": "https://example.com", "note": ""}],
                                 {"CAFE1": save("CAFE1")}, {})
-        self.assertEqual(counts, {"google": 1, "check": 1, "moves": 1, "merge": 3, "fetch": 1, "links": 1})
+        self.assertEqual(counts, {"google": 1, "check": 1, "tags": 0, "items": 0, "moves": 1, "merge": 3,
+                                  "fetch": 1, "links": 1})
         self.assertIn("8 things wait on you.", page)
         self.assertIn('data-key="%s" data-id="idA"' % k, page)
         self.assertIn('value="chain" data-key="%s"> A chain: any branch near here' % k, page)
@@ -119,9 +120,49 @@ class Page(unittest.TestCase):
         self.assertIn(gp.maps_link(gp.query_for(CAFE), "idB").replace("&", "&amp;"), page)
         self.assertIn("Example &lt;Hall&gt;", page)          # escaped
         self.assertNotIn("<Hall>", page)
-        self.assertIn("make tag-merge", page)
+        self.assertIn("tag_saves.py --merge", page)            # the plugin's own command, not a make line
+        self.assertNotIn("make tag-merge", page)
+        self.assertIn('data-mode="plugin"', page)
         self.assertIn("2 reels still need their video", page)
         self.assertIn("https://www.instagram.com/p/CAFE1/", page)   # no post page in the hub: Instagram
+
+    def test_make_prints_the_data_repos_lines(self):
+        page, _ = dp.build([], [], [], {}, {"tag": 1}, 0, [], {}, {}, make=True)
+        self.assertIn("make tag-merge", page)
+        self.assertNotIn("tag_saves.py --merge", page)
+        self.assertIn("make locate-merge", page)
+        self.assertIn('data-mode="make"', page)
+        self.assertIn("Run it in the data repo", page)
+
+    def test_tags_and_items_review_count_as_waiting(self):
+        tags = dp.tag_review({
+            "T1": {"other_places": ["Example Cove, Fixture State"], "other_topics": ["kites"]},
+            "T2": {"other_topics": ["kites", "origami"]},
+            "T3": {"error": "no answer for this save"},
+            "T4": {"misfiled": {"error": "misfiled, but its quote is not in the caption", "not": ["Fixture State"]}},
+            "T5": "not a dict"})
+        errors, places, topics = tags
+        self.assertEqual([c for c, _ in errors], ["T3", "T4"])
+        self.assertEqual(places, {"Example Cove, Fixture State": ["T1"]})
+        self.assertEqual(topics, {"kites": ["T1", "T2"], "origami": ["T2"]})
+        items = dp.items_review({"I1": [{"why": "quote is not in the caption", "topic": "recipes", "kind": "dish",
+                                         "name": "Example Stew", "quote": "made up words"}], "I2": "not a list"})
+        self.assertEqual([c for c, _ in items], ["I1"])
+        page, counts = dp.build([], [], [], {}, {}, 0, [], {}, {}, tags, items)
+        # 2 errors, 1 place, 1 topic two saves suggested; origami (one save) is shown but not counted
+        self.assertEqual((counts["tags"], counts["items"]), (4, 1))
+        self.assertIn("5 things wait on you.", page)
+        self.assertIn("Example Cove, Fixture State", page)
+        self.assertIn("1 topic suggested by one save only (not counted)", page)
+        self.assertIn("add_places.py", page)
+        self.assertIn("Example Stew", page)
+
+    def test_town_only_spots_are_named_in_the_lede(self):
+        town = [("P1", {"said": "Example Bakery", "near": "Fixture Town", "why": "not found near Fixture Town"})]
+        page, counts = dp.build([], [], town, {}, {}, 0, [], {}, {})
+        self.assertEqual(sum(counts.values()), 0)
+        self.assertIn("Nothing needs a decision right now. 1 more spot is shown at its town only", page)
+        self.assertNotIn("Nothing waits on you", page)
 
     def test_post_links_use_the_hub_page_names(self):
         a, b, out = save("abcDEF", "first_creator"), save("ABCdef", "second_creator"), save("OUT1")
