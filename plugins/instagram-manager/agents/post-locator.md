@@ -15,17 +15,32 @@ You find the spots that saved Instagram posts name. You get the path of one batc
 2. **List the spots each caption names.** A spot is one specific thing to go to inside an area: a
    beach, a café, a restaurant, a bakery, a trailhead, a trail, a waterfall, a viewpoint, a
    bridge, a lighthouse, a museum, a campground, a hotel, a shop, a garden. Not a spot: the town,
-   park or region itself (it is already in `areas`), a state, a road you drive along, the creator,
-   or a brand.
+   park or region itself (it is already in `areas`), a state, a road you drive along, a brand sold
+   in many places, or a creator who only reviews or films places.
+   - **Restaurants, cafés, bars, bakeries and hotels count most.** A post about food or a stay is
+     only useful on the map if it opens the venue. Look hard for the venue's name: after 📍, in a
+     handle (`@examplediner`), in a hashtag, before an address, in a numbered list.
+   - **The creator can be the spot.** When the post is the venue's own ("our new menu", "come see
+     us", "we open at 8"), the venue is the creator: `said` is `@` plus the `creator` handle, and
+     `name` its plain words.
    - **Only spots the caption names.** If the caption does not name it, it is not a spot. Do not
-     guess from what you know about the area, from the hashtags alone, or from a photo you
-     cannot see. "the best beach in town" names no spot; "Example Cove Beach" does.
+     guess from what you know about the area or from a photo you cannot see. A hashtag that is
+     a venue's name (`#examplediner`) names it; a hashtag like `#foodie` does not. "the best beach in town" names no spot; "Example Cove Beach" does.
    - **`said` is copied exactly from the caption**: the same letters, spelling, capitals and
      accents, as short as it can be while still naming the spot. `"📍Example Cove Beach, Example
      Town"` gives `said: "Example Cove Beach"`. Never fix a typo, translate, or add words.
-   - **`near` is one of the save's `areas`**, its `name` copied exactly: the one the spot sits in.
-     When the caption puts the spot in a town or park that is not in `areas`, leave the spot out.
-     When you cannot tell which area it is in, pick the one the caption puts it next to.
+   - **`near` is one of the save's `areas`**, its `name` copied exactly: the one the spot sits in,
+     or the closest one when the spot sits just outside it (a state park by a town, a beach in the
+     next village). Use each area's `lat`/`lon` to tell which is closest. Do not leave a spot out
+     because its own town is not in `areas`: give the closest area, and the merge measures the
+     distance and sends anything too far for a person to check. When you cannot tell which area it
+     is in, pick the one the caption puts it next to.
+   - **An address or coordinates, when the caption gives them.** `address` is the street address
+     copied exactly from the caption (`"12 Example St, Example Town"`); `lat` and `lon` are numbers
+     copied exactly from the caption (`"Example Nook: 36.55644, -121.91886"` gives `"lat":
+     36.55644, "lon": -121.91886`). Many small restaurants are not on the free map the merge
+     searches, and the address or coordinates are how they still get a pin. Never make up an
+     address or coordinates, or take them from what you know.
    - **A handle or hashtag as the only name.** When the caption names the spot only as a handle or
      hashtag (`@examplecafe`, `#examplecovebeach`), `said` is the handle or hashtag as written,
      and `name` is its plain words from the same letters (`Example Cafe`, `Example Cove Beach`).
@@ -40,7 +55,9 @@ You find the spots that saved Instagram posts name. You get the path of one batc
    {"answers": {"<code>": [{"said": "Example Cove Beach", "near": "Example Town"},
                            {"said": "Example Falls Trail", "near": "Example National Park"}],
                 "<code>": [],
-                "<code>": [{"said": "@examplecafe", "near": "Example Town", "name": "Example Cafe"}]}}
+                "<code>": [{"said": "@examplecafe", "near": "Example Town", "name": "Example Cafe"},
+                           {"said": "Example Diner", "near": "Example Town",
+                            "address": "12 Example St, Example Town"}]}}
    ```
    Every code in the batch gets an answer, even if it is `[]`. Write no other file.
 4. **Reply with one line:** `wrote <N> answers to <answers path>`.

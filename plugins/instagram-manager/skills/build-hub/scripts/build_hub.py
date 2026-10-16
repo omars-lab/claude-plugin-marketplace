@@ -148,8 +148,9 @@ LOOKUP_MISSES = (re.compile(r"^not found near "), re.compile(r"^found .*, a diff
 
 def placed_spots(review):
     """code → the spots a post names that OpenStreetMap did not place, from pins-review.yaml. Each is
-    shown at its town's pin, and its Google Maps link searches the caption's name in that town, so
-    the post opens the venue rather than the town. A doubtful match's own lat/lon is never used."""
+    shown at its town's pin, and its Google Maps link searches the caption's name in that town (or
+    at the caption's street address, when it gives one), so the post opens the venue rather than
+    the town. A doubtful match's own lat/lon is never used."""
     out = {}
     for code, entries in (review or {}).items():
         for e in entries if isinstance(entries, list) else []:
@@ -163,7 +164,10 @@ def placed_spots(review):
             name = next((e[k] for k in ("lookup", "asked") if isinstance(e.get(k), str) and e[k].strip()), "")
             name = (name or said.lstrip("@#")).strip()
             if name:
-                out.setdefault(code, []).append({"name": name, "said": said, "near": e["near"], "placed": True})
+                spot = {"name": name, "said": said, "near": e["near"], "placed": True}
+                if isinstance(e.get("address"), str) and e["address"].strip():
+                    spot["map"] = maps_link(name, e["address"].strip())   # the caption's address
+                out.setdefault(code, []).append(spot)
     return out
 
 

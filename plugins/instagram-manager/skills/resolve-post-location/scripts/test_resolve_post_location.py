@@ -44,6 +44,7 @@ TAGS = {
     "WIDEA": {"topics": ["travel"], "cities": ["Fixture State"], "source": "model"},
     "NONEA": {"topics": ["travel"], "cities": ["Fixture Town"], "source": "model"},
     "LISTA": {"topics": ["travel"], "cities": ["Fixture Town"], "source": "model"},
+    "VENUA": {"topics": ["travel"], "cities": ["Fixture Town"], "source": "model"},
 }
 
 
@@ -59,6 +60,9 @@ SAVES = [
     save("WIDEA", "A road trip across the whole state"),          # only a state: never batched
     save("NONEA", "Golden hour in town, no words needed"),
     save("LISTA", "Three spots: Example Pier, Example Gardens, Example Museum"),
+    {**save("VENUA", "Lunch at Example Diner 📍12 Example St, Fixture Town FS 00000. Tea at Example Nook: "
+                     "40.01234, -120.01234. And thanks to our pastry chef!"),
+     "owner": {"username": "examplebakery", "name": "Example Bakery"}},
 ]
 ANSWERS = {
     "TOWNA": [{"said": "Example Cove Beach", "near": "Fixture Town"},
@@ -69,6 +73,10 @@ ANSWERS = {
     "PARKA": [{"said": "Example Falls Trail", "near": "Fixture Park"},
               {"said": "Distant Ridge Loop", "near": "Fixture Park"}],
     "NONEA": [],
+    "VENUA": [{"said": "Example Diner", "near": "Fixture Town", "address": "12 Example St, Fixture Town FS 00000"},
+              {"said": "Example Nook", "near": "Fixture Town", "lat": 40.01234, "lon": -120.01234},
+              {"said": "@examplebakery", "near": "Fixture Town", "name": "Example Bakery"},   # the creator itself
+              {"said": "@otherbakery", "near": "Fixture Town"}],                            # nowhere in the post
     "LISTA": [{"said": "Example Pier", "near": "Fixture Town"},
               {"said": "Example Gardens", "near": "Fixture Town"},
               {"said": "Example Museum", "near": "Fixture Town"}],
@@ -96,6 +104,7 @@ OSM = {
     "Example Gardens": [hit("Example Gardens", 40.003, -119.99, "garden", 18)],
     "Example Museum": [hit("Example Museum", 39.99, -120.004, "museum", 19)],
     "Far Away Tower, Fixture Town": [hit("Near Tower", 40.02, -120.0, "tower", 20)],
+    "12 Example St, Fixture Town FS 00000": [hit("12", 40.004, -120.003, "house", 22)],    # the name is not listed
 }
 
 
@@ -176,7 +185,7 @@ class Prepare(Home):
             batch = json.load(fh)
         self.assertTrue(batch["answers"].endswith("batch-001.answers.json"))
         codes = [r["code"] for r in batch["saves"]]
-        self.assertEqual(sorted(codes), ["LISTA", "NONEA", "PARKA", "TOWNA"])   # WIDEA has only a state
+        self.assertEqual(sorted(codes), ["LISTA", "NONEA", "PARKA", "TOWNA", "VENUA"])   # WIDEA has only a state
         town = next(r for r in batch["saves"] if r["code"] == "TOWNA")
         self.assertEqual(town["areas"], [{"name": "Fixture Town", "kind": "city", "lat": 40.0, "lon": -120.0}])
         self.assertEqual(town["creator"], "@example_creator (Example)")
@@ -243,6 +252,22 @@ class Merge(Home):
         self.assertFalse(rpl.same_name("Exampleo Cafe", "Exampleo Bakery"))         # two kinds of business
         self.assertFalse(rpl.same_name("State Park", "Example State Park"))         # no word of its own shared
         self.assertFalse(rpl.same_name("The", "Example"))                       # no words left on one side
+
+    def test_a_venue_openstreetmap_does_not_list_is_pinned_at_the_address_or_coordinates_the_caption_gives(self):
+        self.locate()
+        diner = self.spot("data/pins.yaml", "VENUA", "Example Diner")
+        self.assertEqual((diner["name"], diner["kind"], diner["lat"]), ("Example Diner", "address", 40.004))
+        self.assertNotIn("osm", diner)                       # the building's id is not the diner's
+        self.assertIn("query=Example+Diner%2C+12+Example+St", diner["map"])
+        nook = self.spot("data/pins.yaml", "VENUA", "Example Nook")
+        self.assertEqual((nook["lat"], nook["found"]), (40.01234, "the caption's coordinates"))
+        self.assertNotIn("Example Nook", [p["q"] for p in self.asked])   # no lookup needed
+        bakery = self.spot("data/pins-review.yaml", "VENUA", "@examplebakery")
+        self.assertEqual(bakery["why"], "not found near Fixture Town")   # the creator passes the quote check
+        other = self.spot("data/pins-review.yaml", "VENUA", "@otherbakery")
+        self.assertEqual(other["why"], "quote not in caption")
+        self.assertFalse(rpl.coords_in("at 40.01234, -120.01234", 40.0123, -120.01234))
+        self.assertTrue(rpl.coords_in("at 40.012340,-120.01234", 40.01234, -120.01234))
 
     def test_a_spot_outside_the_saves_areas_goes_to_review(self):
         self.locate()

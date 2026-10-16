@@ -149,6 +149,8 @@ class Hub(unittest.TestCase):
                       {"said": "Example Bakery", "asked": "Example Bakery", "near": "Fixture Town",
                        "why": "found Example Baguette, a different name", "name": "Example Baguette",
                        "lat": 50.0, "lon": 50.0},
+                      {"said": "Example Deli", "near": "Fixture Town", "why": "not found near Fixture Town",
+                       "asked": "Example Deli", "address": "1 Example Rd"},
                       {"said": "Gone Diner", "near": "Fixture Town", "why": "not found near Fixture Town", "drop": True},
                       {"said": "Made Up", "near": "Fixture Town", "why": "quote not in caption"}]})
         out = self.build("--pilot", "fixture")
@@ -157,10 +159,12 @@ class Hub(unittest.TestCase):
         town1 = [(names[pl], style, lat, lon) for lat, lon, post, pl, style, _ in d["pins"]
                  if d["posts"][post]["c"] == "TOWN1"]
         self.assertEqual(town1, [("Example Cafe", "placed", 10.5, 20.5),         # at the town, not the town itself
-                                 ("Example Bakery", "placed", 10.5, 20.5)])
+                                 ("Example Bakery", "placed", 10.5, 20.5),
+                                 ("Example Deli", "placed", 10.5, 20.5)])
         cafe = self.page("places/example-cafe.html")
         self.assertIn("google.com/maps/search/?api=1&amp;query=Example+Cafe%2C+Fixture+Town", cafe)
         self.assertIn("OpenStreetMap does not list it", cafe)
+        self.assertIn("query=Example+Deli%2C+1+Example+Rd", self.page("places/example-deli.html"))
         self.assertNotIn("Example Baguette", self.page("posts/TOWN1.html"))
         self.assertIn("eat or stay posts: 0 open a spot OpenStreetMap placed, 1 one it doesn't list", out)
 

@@ -21,10 +21,13 @@ answers. **No script calls a model**, and there is no API key: this session star
    with their kind and lat/lon.
 2. **Read.** A `post-locator` agent (Haiku, `agents/post-locator.md`) reads one batch. For each
    save it lists the spots the caption names. Each one has `said`, the caption's words copied
-   exactly, and `near`, the area it sits in. It does not guess: a spot the caption does not name
-   is not a spot. A post that names 13 places lists all 13. A post that names none gets `[]`.
+   exactly, and `near`, the area it sits in (or the closest one, for a spot just outside it). It
+   copies the caption's `address` or `lat`/`lon` for the spot when there are any. It does not
+   guess: a spot the caption does not name is not a spot. A post that names 13 places lists all
+   13. A post that names none gets `[]`. A venue's own post can name the creator as the spot.
 3. **Merge.** `--merge` checks each spot:
-   - `said` is in the caption word for word. If not, the spot goes to review.
+   - `said` is in the caption word for word, or is the creator's own handle. If not, the spot
+     goes to review. An `address` the caption does not give is dropped.
    - `near` is one of the save's areas. If not, the spot goes to review.
    - The spot is looked up on OpenStreetMap inside a box around its area (a "bounded" search:
      Nominatim's `viewbox` with `bounded=1`, through `shared/scripts/geocode.py`, cached, one
@@ -32,8 +35,14 @@ answers. **No script calls a model**, and there is no API key: this session star
      comes back, and a near miss comes back with its distance.
    - The first answer within the area's **reach** is kept. The reach is 25 km of the area's pin.
      A park or region also counts its own OpenStreetMap box grown by 10 km.
+   - **Coordinates in the caption** are the pin, with no lookup, if they fall within reach.
+   - **An address, when the name isn't found.** OpenStreetMap is thin on small restaurants and
+     cafés. When the name is not found and the caption gives the spot's address, the address is
+     looked up in the same box; the pin goes there, named for the venue (`kind: address`), and its
+     Google Maps link searches the name at that address.
    - Kept spots go to `data/pins.yaml`. The rest go to `data/pins-review.yaml` with `why`:
-     "not found near Example Town", "38 km from Example Town", "quote not in caption".
+     "not found near Example Town", "38 km from Example Town", "quote not in caption". The hub
+     still shows the lookup misses, as dashed pins at their town that search the venue by name.
    - Saves that name no spot go to `data/no-spot.yaml`, the "look at the video" list for when
      frames are read.
 4. **Look.** `pins_page.py` puts every pin on a map beside its quote. Every pin is a guess until a
@@ -105,8 +114,8 @@ The same as tag-saves:
 .cache/batches/locate/batch-001.answers.json    written by the agent: {"answers": {<code>: [{said, near, name?}], <code>: []}}
 .cache/batches/locate/batch-001.answers.merged.json   the same, renamed once merged
 .cache/batches/locate/merged.jsonl              one line per merged batch: saves, pins, review, no_spot, unanswered
-data/pins.yaml                                  <code>: [{name, said, near, kind, lat, lon, km, osm, wikidata?, found, map, asked?}]
-data/pins-review.yaml                           <code>: [{said, near, why, asked?, and what was found if anything; lookup?, drop?}]
+data/pins.yaml                                  <code>: [{name, said, near, kind, lat, lon, km, osm?, wikidata?, found, map, asked?, address?}]
+data/pins-review.yaml                           <code>: [{said, near, why, asked?, address?, and what was found if anything; lookup?, drop?}]
 data/no-spot.yaml                               <code>: {areas: [Example Town]}
 .cache/geocode.json                             every OpenStreetMap answer, misses too (bounded searches keyed by their box)
 ```

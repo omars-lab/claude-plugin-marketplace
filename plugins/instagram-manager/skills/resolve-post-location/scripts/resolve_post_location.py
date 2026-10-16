@@ -13,8 +13,8 @@ Reads   $INSTAGRAM_HOME/.cache/saves.json            captions and creators (from
         $INSTAGRAM_HOME/data/tags.yaml               each save's places (from tag-saves)
         $INSTAGRAM_HOME/data/places.yaml             each place's kind and lat/lon (from add_places.py)
         $INSTAGRAM_HOME/config/collections.yaml      the pilots
-Writes  $INSTAGRAM_HOME/data/pins.yaml               code → [{name, said, near, kind, lat, lon, km, osm,
-                                                     wikidata?, found, map}]: the spots that checked out
+Writes  $INSTAGRAM_HOME/data/pins.yaml               code → [{name, said, near, kind, lat, lon, km, osm?,
+                                                     wikidata?, found, map, address?}]: the spots that checked out
         $INSTAGRAM_HOME/data/pins-review.yaml        code → [{said, near, why, ...}]: spots for a person
         $INSTAGRAM_HOME/data/no-spot.yaml            code → {areas}: saves whose caption names no spot;
                                                      the "look at the video" list, for when frames are read
@@ -29,7 +29,8 @@ Which saves go in
   has an answer already (it is in pins, review or no-spot) is skipped unless --redo.
 
 What the merge checks, per spot
-  1. `said` is in the caption word for word (shared/scripts/quote.py). If not: review.
+  1. `said` is in the caption word for word (shared/scripts/quote.py), or is the creator's own
+     handle (a venue's own post). If not: review. An `address` not in the caption is dropped.
   2. `near` is one of the save's areas. If not: review.
   3. The spot is looked up on OpenStreetMap inside a box around its area (geocode.lookup_near:
      Nominatim's viewbox with bounded=1; cached, one request a second). The box is the area's
@@ -43,6 +44,11 @@ What the merge checks, per spot
   5. The name found matches the name asked: they share a word of their own and differ only by
      place words ("state", "park"), one business kind ("coffee") or the area's name. If not: review
      ("found Example Baguette, a different name"). A person's `lookup:` skips this check.
+  Two ways round a name OpenStreetMap does not list (most small restaurants):
+  - `lat`/`lon` that appear in the caption are the pin, with no lookup, if within reach.
+  - When the name is not found and the caption gives the spot's `address`, the address is looked
+    up in the same box. Found within reach: a pin at the address, named for the venue (kind
+    "address", no osm id, since the building's id is not the venue's).
 
 Fixing a review entry
   Add `lookup: "Other Name"` to the entry: the next --merge searches that instead of what the caption
@@ -66,6 +72,7 @@ import re
 import sys
 import time
 import unicodedata
+from urllib.parse import quote_plus
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared", "scripts"))
@@ -262,13 +269,40 @@ def same_name(asked, found, area=""):
     return not ((a - f) & KIND_WORDS and (f - a) & KIND_WORDS)
 
 
-def resolve(spot, caption, areas, places, reaches, fetcher=None):
-    """("pin" or "review", entry) for one spot. areas: the names the spot's `near` may be."""
+def creator_of(save):
+    owner = save.get("owner") if isinstance(save, dict) else None
+    return owner.get("username") or "" if isinstance(owner, dict) else ""
+
+
+def is_creator(said, creator):
+    """A business's own post names itself only as its handle: "@examplebakery" when it is the creator."""
+    return bool(creator) and said.startswith("@") and said[1:].strip().lower() == creator.strip().lower()
+
+
+def coords_in(caption, lat, lon):
+    """True when the caption gives these coordinates ("36.55644, -121.91886"), to 5 decimals."""
+    nums = [float(n) for n in re.findall(r"-?\d{1,3}\.\d{3,}", caption or "")]
+    return any(abs(n - lat) < 1e-5 for n in nums) and any(abs(n - lon) < 1e-5 for n in nums)
+
+
+def venue_name(spot):
+    return spot.get("name") or spot["said"].lstrip("@#").strip()
+
+
+def resolve(spot, caption, areas, places, reaches, fetcher=None, creator=""):
+    """("pin" or "review", entry) for one spot. areas: the names the spot's `near` may be.
+
+    The spot's name is looked up first. When the caption gives the spot's coordinates, they are the
+    pin, if they fall within the area's reach. When the name is not found (most small restaurants
+    are not on OpenStreetMap) and the caption gives the spot's street address, the address is looked
+    up instead: the pin is at the address, named for the venue."""
     said, near = spot["said"], spot["near"]
     by_person = isinstance(spot.get("lookup"), str) and bool(spot["lookup"].strip())
     base = {"said": said, "near": near}
-    keep = {k: spot[k] for k in ("lookup", "name") if spot.get(k)}
-    if not by_person and not quote_ok(said, caption):
+    keep = {k: spot[k] for k in ("lookup", "name", "address") if spot.get(k)}
+    if "address" in keep and not (by_person or quote_ok(keep["address"], caption)):
+        del keep["address"]   # an address the caption doesn't give is a guess
+    if not by_person and not (quote_ok(said, caption) or is_creator(said, creator)):
         return "review", {**base, "why": "quote not in caption", **keep}
     area = exact_area(near, places)
     if near not in areas or area is None:
@@ -278,6 +312,30 @@ def resolve(spot, caption, areas, places, reaches, fetcher=None):
     if near not in reaches:
         reaches[near] = Reach(area, places, fetcher)
     reach = reaches[near]
+    lat, lon = spot.get("lat"), spot.get("lon")
+    if isinstance(lat, float) and isinstance(lon, float) and coords_in(caption, lat, lon):
+        km = round(reach.km(lat, lon), 1)
+        if not reach.ok(lat, lon):
+            return "review", {**base, "why": f"{km:.0f} km from {near}", "lat": lat, "lon": lon, **keep}
+        return "pin", {"name": venue_name(spot), **base, "kind": "spot", "lat": lat, "lon": lon, "km": km,
+                       "found": "the caption's coordinates",
+                       "map": "https://www.google.com/maps/search/?api=1&query=" + quote_plus(f"{lat},{lon}")}
+    where, entry = lookup_name(spot, reach, near, base, keep, by_person, fetcher)
+    address = keep.get("address")
+    if where == "pin" or not address:
+        return where, entry
+    hits = geocode.lookup_near(address, reach.search, fetcher)
+    hit = next((h for h in hits if reach.ok(h["lat"], h["lon"])), None)
+    if hit is None:
+        return where, entry
+    name = venue_name(spot)
+    return "pin", {"name": name, **base, "kind": "address", "lat": hit["lat"], "lon": hit["lon"],
+                   "km": round(reach.km(hit["lat"], hit["lon"]), 1), "address": address,
+                   "found": hit.get("found"), "map": geocode.maps_link(name, address)}
+
+
+def lookup_name(spot, reach, near, base, keep, by_person, fetcher):
+    """The spot's name looked up near its area: ("pin" or "review", entry)."""
     asked = search_text(spot)
     hits = geocode.lookup_near(asked, reach.search, fetcher)
     good = [h for h in hits if reach.ok(h["lat"], h["lon"])]
@@ -298,8 +356,10 @@ def resolve(spot, caption, areas, places, reaches, fetcher=None):
         return "review", {**base, "why": f"found {found['name']}, a different name", "asked": asked,
                           **found, **keep}
     pin = {"name": found.pop("name"), **base, **found}
-    if asked != said:
+    if asked != base["said"]:
         pin["asked"] = asked
+    if keep.get("address"):
+        pin["address"] = keep["address"]
     return "pin", pin
 
 
@@ -386,7 +446,7 @@ def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
                 continue
             caption = (by_code.get(code) or {}).get("caption") or ""
             areas = [a["name"] for a in areas_of(tags.get(code), places)] + [e["near"]]  # a person may move it
-            where, new = resolve(e, caption, areas, places, reaches, fetcher)
+            where, new = resolve(e, caption, areas, places, reaches, fetcher, creator_of(by_code.get(code)))
             if where == "pin":
                 pins.setdefault(code, [])
                 if not any(p["said"] == new["said"] and p["near"] == new["near"] for p in pins[code]):
@@ -425,8 +485,13 @@ def clean_spots(answer):
                 and isinstance(s.get("near"), str) and s["near"].strip()):
             continue
         spot = {"said": s["said"].strip(), "near": s["near"].strip()}
-        if isinstance(s.get("name"), str) and s["name"].strip():
-            spot["name"] = s["name"].strip()
+        for k in ("name", "address"):
+            if isinstance(s.get(k), str) and s[k].strip():
+                spot[k] = s[k].strip()
+        try:
+            spot["lat"], spot["lon"] = float(s["lat"]), float(s["lon"])
+        except (KeyError, TypeError, ValueError):
+            spot.pop("lat", None)
         if (spot["said"].lower(), spot["near"]) not in seen:
             seen.add((spot["said"].lower(), spot["near"]))
             out.append(spot)
@@ -472,7 +537,7 @@ def merge(saves, tags, places, fetcher=None):
                     continue
                 if prior.get("lookup"):  # a person's fix carries over a re-read
                     spot["lookup"] = prior["lookup"]
-                where, entry = resolve(spot, caption, areas, places, reaches, fetcher)
+                where, entry = resolve(spot, caption, areas, places, reaches, fetcher, creator_of(by_code[code]))
                 (new_pins if where == "pin" else new_review).append(entry)
             for d, v in ((pins, new_pins), (review, new_review)):  # a save's answer replaces its last one
                 if v:
