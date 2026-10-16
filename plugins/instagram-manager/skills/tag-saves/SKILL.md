@@ -19,6 +19,9 @@ two places. The tags feed the split, media and hub steps.
    case) and hashtags. Every listed place, the looked-up ones in `data/places.yaml` too, also
    matches its name run together as a hashtag (`#examplefalls` → Example Falls), and a looked-up
    name of two words or more matches the caption (one-word names are too often plain words). A
+   town named like an everyday word (Example Spring, or a town called Orchard) is listed in
+   `places.yaml` with `common_word: true` and its own `hashtags` (`orchardes`); then `#orchard`
+   is not a hint for it. Check the one-word towns each time `make places` adds some. A
    match is only a hint: it brings the save into a pilot, and the agent is told about it. A
    sourdough post tagged with a beach town's hashtag stays a recipe. A tagged save that gains a
    hint it was not read with (the place was added since) is read once more, keeping its tags.
@@ -101,7 +104,9 @@ Each agent reads a whole batch, so many at once can hit the plan's usage limits.
 1. **Check the inputs.** `.cache/saves.json` exists (else run **import-saves**). `config/topics.yaml`,
    `config/collections.yaml` and `config/places.yaml` exist. Track the run with `TaskCreate`.
 2. **Prepare the pilot.** Each new step runs on a pilot first (`pilots:` in `collections.yaml`):
-   its collections, plus any save with a place match for its places.
+   its collections, plus any save with a place match for its places. A pilot for a city lists
+   its suburbs in `cities:` too (the listed towns within about 50 km): each suburb is a place of
+   its own, and a city does not hold them the way a state holds its towns.
    ```bash
    python3 <plugin>/skills/tag-saves/scripts/tag_saves.py --rules-only --pilot <name>   # how big is it?
    python3 <plugin>/skills/tag-saves/scripts/tag_saves.py --prepare --pilot <name>      # rule tags + batch files
@@ -122,7 +127,8 @@ Each agent reads a whole batch, so many at once can hit the plan's usage limits.
    It prints `merged <N> answers (<M> unusable); <K> batches still waiting for their agent`.
    When K is 0 the round is done.
 5. **Spot-check.** `--report --pilot <name>` prints the pilot as a table. Rows that need a look
-   come first: saves found outside the collections, and saves with 2 or more topics or places. Then
+   come first: saves found outside the collections, and saves with 2 or more topics or places (a
+   town and the state it sits in count as one place). Then
    it lists place matches the agent turned down. Read 20 rows against their captions, and show
    them to the user before going wider.
 6. **Fix the lists, not the tags.** A missed place goes in `places.yaml`. A topic or place

@@ -224,6 +224,13 @@ class TagSaves(Home):
         hints = tag_saves.place_hints(save("X", "Orchard pie, then lunch in fixture city"), compiled)
         self.assertEqual(hints, {"Fixture City"})
 
+    def test_a_town_named_like_an_everyday_word_is_a_hint_only_on_its_listed_hashtags(self):
+        self.write("data/places.yaml", {"places": {"Orchard": {"in": "Fixture State"}}})
+        self.write("config/places.yaml", {"places": {"Orchard": {"common_word": True, "hashtags": ["orchardfs"]}}})
+        compiled = tag_saves.compile_places(Places.load())
+        self.assertEqual(tag_saves.place_hints(save("X", "Blossom time", [], ["orchard"]), compiled), set())
+        self.assertEqual(tag_saves.place_hints(save("Y", "Blossom time", [], ["orchardfs"]), compiled), {"Orchard"})
+
     def test_answers_from_a_batch_that_did_not_ask_for_purposes_add_none(self):
         paths = self.run_tag("--prepare", "--pilot", "fixture").split()
         with open(paths[0]) as fh:
@@ -397,6 +404,14 @@ class PlacesAndMoves(Home):
         self.assertEqual(places.resolve("fixture city, Fixture State"), "Fixture City")
         food = {"fits":{"topics": ["recipes-coffee"], "cities": []}}
         self.assertEqual(tag_saves.suggest(food, colls, places, []), ["Food"])
+
+    def test_a_town_and_its_state_count_as_one_place_in_the_report(self):
+        places = Places({}, {}, {"places": {**NESTED["places"], "Fixture State": {"kind": "state"},
+                                             "Other City": {"kind": "city", "in": "Fixture State"}}})
+        self.assertEqual(tag_saves.most_specific(["Fixture City", "Fixture State"], places), ["Fixture City"])
+        self.assertEqual(tag_saves.most_specific(["Fixture City", "Fixture State", "Other City"], places),
+                         ["Fixture City", "Other City"])
+        self.assertEqual(tag_saves.most_specific(["Fixture State"], places), ["Fixture State"])
 
 
 def hit(name, addresstype, lat=1.0, **address):

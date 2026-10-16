@@ -153,7 +153,9 @@ def compile_places(places):
     (config/places.yaml) matches its names in the caption and its hashtags. Every place, looked-up
     ones and aliases too, also matches its name run together as a hashtag (#examplefalls), and a
     looked-up name of two words or more matches the caption. One-word looked-up names do not match
-    the caption: too many are also common words."""
+    the caption: too many are also common words. A hand-listed place marked `common_word: true` (a
+    town named like an everyday word) is not a hashtag on its own name either, only on the
+    `hashtags` it lists."""
     config, extra = places.config, {}
     for name in places.known:
         extra.setdefault(name, set()).add(name)
@@ -170,6 +172,8 @@ def compile_places(places):
         rx = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(n) for n in names) + r")(?!\w)", re.I) if names else None
         tags = {h.lower().lstrip("#") for h in p.get("hashtags") or []}
         tags |= {run_together(n) for n in extra.get(place, ()) | set(p.get("names") or [])} - {""}
+        if p.get("common_word"):
+            tags = {h.lower().lstrip("#") for h in p.get("hashtags") or []}
         out.append((place, rx, tags))
     return out
 
@@ -325,7 +329,13 @@ def entry(topics, cities, source, hints, purposes=None):
     return e
 
 
-def report(saves, tags, pilot, compiled):
+def most_specific(cities, places):
+    """The places that hold no other place in the list: a town and its state count as one."""
+    inside = {p for c in cities for p in places.chain(c)}
+    return [c for c in cities if c not in inside]
+
+
+def report(saves, tags, pilot, compiled, places):
     """The pilot's saves as a table, with what to spot-check called out."""
     rows, rejected = [], []
     pilot_colls, pilot_cities = set(pilot.get("collections") or []), set(pilot.get("cities") or [])
@@ -344,7 +354,7 @@ def report(saves, tags, pilot, compiled):
         notes = []
         if not in_coll:
             notes.append("found outside the collections")
-        if len(tag["topics"]) > 1 or len(tag["cities"]) > 1:
+        if len(tag["topics"]) > 1 or len(most_specific(tag["cities"], places)) > 1:
             notes.append("2+ topics or places")
         rows.append((s, tag, notes))
     print("| code | collections | topics | places | by | look at |")
@@ -563,7 +573,7 @@ def main(argv=None):
     moves = load_yaml(MOVES)
 
     if args.report:
-        report(saves, tags, pilot, compiled)
+        report(saves, tags, pilot, compiled, places)
         return 0
     if args.moves:
         return print_moves(saves, moves)
