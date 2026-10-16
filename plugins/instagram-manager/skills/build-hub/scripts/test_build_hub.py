@@ -235,6 +235,8 @@ class Hub(unittest.TestCase):
         page = self.page("index.html")
         self.assertIn("Colour: how exact", page)
         self.assertRegex(page, r'Waterfall <b class="n">2</b>')  # one pin per post that names it
+        self.assertIn('<span data-ic="waterfall">', page)          # the page recounts it for the pins in view
+        self.assertIn("map.on('moveend',inView)", page)
         self.assertNotIn("Lighthouse", page)                     # only the kinds on this map
         self.assertEqual(set(d["icons"]), {icon[d["places"][pin[3]]["n"]] for pin in d["pins"]})
         self.assertIn('"Example Falls","","spot","waterfall"]', self.page("places/example-falls.html"))

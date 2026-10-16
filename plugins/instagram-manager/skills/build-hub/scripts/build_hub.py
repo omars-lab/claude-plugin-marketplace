@@ -878,7 +878,7 @@ if(b)b.addEventListener('click',function(){set(!on)});});})();</script>"""
 
 MAP_JS = r"""
 (function(){
-var D=__DATA__, map, layer, marks=[];
+var D=__DATA__, map, layer, marks=[], shown=[];
 var $=function(s){return document.querySelector(s)};
 function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
 function link(href,text,out){var a=el('a',null,text);a.href=href;if(out){a.target='_blank';a.rel='noopener'}return a}
@@ -909,10 +909,19 @@ function cluster(c){var seen={},n=0;c.getAllChildMarkers().forEach(function(m){i
 function showPins(keep){
   layer.clearLayers();var on=[],fit=[];
   marks.forEach(function(m,i){if(!keep||keep(D.pins[i])){on.push(m);if(keep||D.pins[i][5])fit.push(m.getLatLng())}});
-  layer.addLayers(on);
+  layer.addLayers(on);shown=on;inView();
   if(!fit.length)fit=on.map(function(m){return m.getLatLng()});
   if(fit.length){map.fitBounds(L.latLngBounds(fit),{padding:[30,30],maxZoom:12})}
   return on.length;
+}
+
+// The icon counts in the legend: the pins shown that sit inside the map's view, recounted after each
+// pan or zoom. A loop over a few thousand pins, so it needs no index.
+function inView(){
+  var b=map.getBounds(),n={};
+  shown.forEach(function(m){if(b.contains(m.getLatLng()))n[m.ic]=(n[m.ic]||0)+1});
+  document.querySelectorAll('.legend [data-ic]').forEach(function(s){
+    var k=n[s.getAttribute('data-ic')]||0;s.querySelector('.n').textContent=k;s.classList.toggle('none',!k)});
 }
 
 function placesList(rows){
@@ -1002,11 +1011,12 @@ layer=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:45,iconCr
 D.pins.forEach(function(pin){
   var p=D.posts[pin[2]],pl=D.places[pin[3]];
   var m=L.marker([pin[0],pin[1]],{icon:icon(pin[4],pl.ic),title:(p.u?'@'+p.u:'')+' · '+pl.n,alt:pl.n,keyboard:true});
-  m.post=pin[2];
+  m.post=pin[2];m.ic=pl.ic;
   m.bindPopup(function(){return popup(pin)},{maxWidth:260,minWidth:200,autoPanPadding:[20,20]});
   marks.push(m);
 });
 map.addLayer(layer);
+map.on('moveend',inView);
 location.hash.slice(1).split('&').forEach(function(kv){
   var i=kv.indexOf('='),k=kv.slice(0,i),v=decodeURIComponent(kv.slice(i+1));if(i<0)return;
   if(k==='q')$('#q').value=v;
@@ -1093,13 +1103,14 @@ def index_page(hub, title, extra_links, home=(), area=None, maps=()):
         "pins": [[lat, lon, i, pidx[k], style, 1 if area or hub.within(k, set(home)) else 0]
                  for i, p in enumerate(posts) for k, lat, lon, style in p["pins"] if k in pidx],
     }
-    # The second legend row: each icon on the map, in ICONS order, with how many pins carry it.
+    # The second legend row: each icon on the map, in ICONS order, with how many pins carry it. The page
+    # recounts these for the pins in view as the map moves.
     n_icon = {}
     for pin in data["pins"]:
         g = data["places"][pin[3]]["ic"]
         n_icon[g] = n_icon.get(g, 0) + 1
     data["icons"] = {g: ICON_PATH[g] for g in n_icon}
-    kinds = "".join(f'<span><i class="kind">{glyph(g)}</i>{esc(ICON_LABEL[g])} <b class="n">{n_icon[g]}</b></span>'
+    kinds = "".join(f'<span data-ic="{g}"><i class="kind">{glyph(g)}</i>{esc(ICON_LABEL[g])} <b class="n">{n_icon[g]}</b></span>'
                     for g, *_ in ICONS if g in n_icon)
     pinned = sum(1 for p in posts if p["pins"])
     n_places = len({pin[3] for pin in data["pins"]})
@@ -1130,7 +1141,7 @@ def index_page(hub, title, extra_links, home=(), area=None, maps=()):
                '<span><i class="pin pin-placed"></i>a spot not on OpenStreetMap, at its town</span>'
                '<span><i class="pin pin-area"></i>a town, park or region</span>'
                '<span><i class="pin pin-wide"></i>only the state or country</span></div>'
-               + (f'<div class="lrow"><b class="lh">Icon: what kind</b>{kinds}</div>' if kinds else "") + '</div>'
+               + (f'<div class="lrow"><b class="lh">Icon: what kind, pins in view</b>{kinds}</div>' if kinds else "") + '</div>'
                '<div id="map"></div></div></div>')
     js = MAP_JS.replace("__DATA__", data_json(data)).replace("__TILES__", TILES).replace("__CREDIT__", CREDIT)
     flips = previews.player_js() if any(p["pa"] for p in posts) else ""   # before the map script, which uses it
@@ -1222,6 +1233,7 @@ input{flex:1;width:0;min-width:0;font:inherit;padding:9px 14px;border:1px solid 
   border:1.5px solid var(--line);background:var(--bg)}
 .legend .kind svg{width:12px;height:12px;fill:none;stroke:var(--fg);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .legend .n{font-weight:400;font-variant-numeric:tabular-nums;opacity:.75}
+.legend .none{opacity:.4}
 .said{margin:0;color:var(--muted)}
 #out h2{margin-top:6px}
 ol{list-style:none;margin:0;padding:0}
