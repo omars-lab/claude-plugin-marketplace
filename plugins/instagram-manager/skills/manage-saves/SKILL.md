@@ -1,6 +1,6 @@
 ---
 name: manage-saves
-description: Route Instagram saved-post work to the right step — import a new export, tag saves by topic and place, look up missing places, pin the spots a caption names, read places off reels' videos, fetch thumbnails or videos, cut a still and clip per spot, or build the hub map. Use when someone asks to "do something with my Instagram saves" without naming a step, or asks what to run next.
+description: Route Instagram saved-post work to the right step — import a new export, tag saves by topic and place, look up missing places, pin the spots a caption names, read places off reels' videos, fetch thumbnails or videos, cut a still and clip per spot, build the hub map, or write the files other repos read. Use when someone asks to "do something with my Instagram saves" without naming a step, or asks what to run next.
 ---
 
 # Manage Saves
@@ -25,7 +25,7 @@ that is missing is the next step:
 | reels in `data/no-spot.yaml` or placed only at their town, with no `from: video` pins | **read-frames** (videos through **fetch-media** `--video`) |
 | a `data/stills.yaml` entry for each spot of a reel with a video | **extract-stills** (`make stills`) |
 | `data/items/` for non-travel topics | split-saves *(coming)*; for travel the items are the spots |
-| `out/<topic>.yaml` | sending a topic to another repo *(coming)* |
+| `out/travel/<area>.yaml` and `out/<topic>.yaml`, newer than the data they come from | **send-topics** (`make send-topics`) |
 
 A newer export zip than the one `saves.json` came from also means: run **import-saves** again,
 then tag the new saves.
@@ -60,6 +60,7 @@ For more than one step, add a task per step with `TaskCreate` and mark each done
 | "download the thumbnails" / "get the videos" | `fetch-media` |
 | "every café shows the same picture" / "a still per place" | `extract-stills` |
 | "show me the map" / "rebuild the hub" | `build-hub` |
+| "send travel to the trip planner" / "what does this topic send?" | `send-topics` |
 | "what's next?" | this skill, Step 1 |
 
 ## Rules every step keeps

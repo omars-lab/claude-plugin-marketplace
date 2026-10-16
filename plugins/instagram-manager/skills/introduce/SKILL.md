@@ -34,11 +34,13 @@ The pipeline, in order:
 6. **extract-stills** — for reels with a video: a still and a 3-second clip for each spot, cut
    where its name is on screen, so each place shows its own picture instead of the reel's cover.
 7. **build-hub** — the private hub: a map, a page per place, a page per post.
-8. **split-saves** *(coming)* — the items a non-travel post names (a recipe, an idea), each with
+8. **send-topics** — the files other repos read: one per state or country for travel, each save
+   with its spots, and one per other topic.
+9. **split-saves** *(coming)* — the items a non-travel post names (a recipe, an idea), each with
    its quote. For travel, the items are the spots step 3 already finds.
 
 Skills available today: **introduce** (this skill), **manage-saves** (the router: works out which
-step comes next), and steps 1 to 7.
+step comes next), and steps 1 to 8.
 
 ## Where data lives
 
@@ -72,6 +74,7 @@ What would you like to do?
 - List my collections and their sizes       (import-saves --list)
 - Sort my saves by topic and place         (tag-saves)
 - Show my saves on a map                    (build-hub)
+- Send a topic to the project that uses it  (send-topics)
 - Just explain more
 ```
 
@@ -89,6 +92,7 @@ For a multi-step run, track each step with `TaskCreate` and mark it done as it f
 | Download thumbnails or videos | fetch-media | `/instagram-manager:fetch-media` |
 | A picture of each place a reel names | extract-stills | `/instagram-manager:extract-stills` |
 | Show my saves on a map | build-hub | `/instagram-manager:build-hub` |
+| Send travel saves to my trip planner | send-topics | `/instagram-manager:send-topics` |
 | What should I run next? | manage-saves | `/instagram-manager:manage-saves` |
 
 ## Plugin Map
@@ -103,7 +107,8 @@ instagram-manager
   ├── fetch-media            — thumbnails and videos → $INSTAGRAM_MEDIA_DIR, data/media.yaml
   ├── read-frames            — videos → frames and their words → frame-reader agents → data/pins.yaml
   ├── extract-stills         — videos + spots → a still and a clip per spot → data/stills.yaml
-  └── build-hub              — data/ → <data repo>/.cache/hub/ (map, place pages, post pages)
+  ├── build-hub              — data/ → <data repo>/.cache/hub/ (map, place pages, post pages)
+  └── send-topics            — data/ → <data repo>/out/travel/<area>.yaml, out/<topic>.yaml for other repos
 
   agents/ (Haiku, one batch file in, one answers file out)
     ├── save-tagger    — topics, purposes and places
