@@ -4,6 +4,10 @@
     lookup("Example Town, Example State")
       → {"name", "kind", "state", "country", "lat", "lon", "found"} or None
     maps_link("Example Town", "Example State")   # a Google Maps search link; needs no key
+    lookup_near("Example Beach", (south, west, north, east))
+      → every match inside that box: [{"name", "type", "lat", "lon", "found", "osm", "box",
+        "wikidata"?}], [] for none. Nominatim's viewbox + bounded=1, so nothing outside the box
+        comes back. For a spot (a beach, a café, a trailhead) near a known town or park.
 
 kind is what the place is, in our words: city (city, town, village, hamlet), area (a part of a
 city: suburb, neighbourhood), park (national park, nature reserve), region (a region, a county or
@@ -128,6 +132,64 @@ def lookup(query, fetcher=None):
     c[query] = shape(best(hits)) if hits else None
     _save()
     return c[query]
+
+
+def near_params(query, box):
+    """The Nominatim query for a name searched only inside a box: box is (south, west, north, east)
+    in degrees. Nominatim's viewbox is "west,north,east,south" (longitude first), and bounded=1
+    keeps every answer inside it. extratags=1 brings the Wikidata id when there is one."""
+    s, w, n, e = (round(float(x), 4) for x in box)
+    return {"q": query.strip(), "format": "jsonv2", "addressdetails": 1, "extratags": 1, "limit": 5,
+            "accept-language": "en", "viewbox": f"{w},{n},{e},{s}", "bounded": 1}
+
+
+def fetch_params(params):
+    """One paced request with these parameters: the same User-Agent and wait as fetch()."""
+    req = urllib.request.Request(f"{NOMINATIM}?{urllib.parse.urlencode(params)}", headers={"User-Agent": UA})
+    log("geocode_call", q=params.get("q"), box=params.get("viewbox"))
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            hits = json.load(r)
+    finally:
+        time.sleep(WAIT)  # after every request, misses and errors included
+    log("geocode_done", q=params.get("q"), hits=len(hits))
+    return hits
+
+
+def shape_near(hit):
+    """One hit from a bounded search: what it is, where, its box and its ids."""
+    out = {"name": hit.get("name") or (hit.get("display_name") or "").split(",")[0],
+           "type": hit.get("type"), "category": hit.get("category"),
+           "lat": round(float(hit["lat"]), 5), "lon": round(float(hit["lon"]), 5),
+           "found": hit.get("display_name"), "importance": hit.get("importance") or 0}
+    if hit.get("osm_type") and hit.get("osm_id"):
+        out["osm"] = f"{hit['osm_type']}/{hit['osm_id']}"
+    if hit.get("boundingbox"):
+        s, n, w, e = (round(float(x), 5) for x in hit["boundingbox"])  # Nominatim: south, north, west, east
+        out["box"] = [s, w, n, e]
+    wikidata = (hit.get("extratags") or {}).get("wikidata")
+    if wikidata:
+        out["wikidata"] = wikidata
+    return out
+
+
+def lookup_near(query, box, fetcher=None):
+    """Every match for a name inside a box (south, west, north, east), in Nominatim's order, or [].
+    Cached like lookup(), misses too, under a key that holds the box, so the same name near two
+    towns is asked twice. fetcher takes the query parameters; it is for tests."""
+    c = _load()
+    params = near_params(query, box)
+    key = f"near {params['viewbox']} {params['q']}"
+    if key in c:
+        return c[key]
+    try:
+        hits = (fetcher or fetch_params)(params)
+    except (urllib.error.URLError, TimeoutError, ValueError) as e:
+        log("geocode_fail", q=params["q"], msg=str(e)[:150])
+        return []  # not cached: a failed call is asked again next run
+    c[key] = [shape_near(h) for h in hits or []]
+    _save()
+    return c[key]
 
 
 def maps_link(name, parent=None):
