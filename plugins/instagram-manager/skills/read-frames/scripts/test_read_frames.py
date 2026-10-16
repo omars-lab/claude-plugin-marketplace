@@ -147,11 +147,14 @@ class Home(unittest.TestCase):
         subprocess.run(cmd, check=True, timeout=60)
         MEDIA[code]["video"] = f"{code}/video.mp4"
 
-    def fake_frames(self, code, texts):
-        """text.json as read_frames.py writes it, with invented words on screen."""
-        info = {"video": f"{code}/video.mp4", "seconds": 6.0,
-                "frames": [{"n": i + 1, "t": float(i), "file": f"frame-{i + 1:02d}.jpg", "text": t}
-                           for i, t in enumerate(texts)],
+    def fake_frames(self, code, texts, vision=None):
+        """text.json as read_frames.py writes it, with invented words on screen: `texts` what tesseract
+        read on each frame, `vision` what Apple Vision read."""
+        frames = [{"n": i + 1, "t": float(i), "file": f"frame-{i + 1:02d}.jpg", "text": t}
+                  for i, t in enumerate(texts)]
+        for f, v in zip(frames, vision or []):
+            f["vision"] = v
+        info = {"video": f"{code}/video.mp4", "seconds": 6.0, "frames": frames,
                 "sheets": [{"file": "sheet-1.jpg", "frames": list(range(1, len(texts) + 1))}]}
         self.write("text.json", info, base=self.media(code, "frames"))
 
@@ -188,7 +191,8 @@ class Prepare(Home):
         super().tearDown()
 
     def test_frames_sheets_and_batches(self):
-        with mock.patch.object(rf, "ocr", lambda path: "EXAMPLE TACO SHOP" if path.endswith("01.jpg") else ""):
+        with mock.patch.object(rf, "ocr", lambda path: "EXAMPLE TACO SHOP" if path.endswith("01.jpg") else ""), \
+                mock.patch.object(rf, "vision", lambda paths: {}):
             out = self.frames("--prepare")
         self.assertIn("2 reels in 1 batches", out)
         self.assertIn("1 listed reels have no video yet", out)       # EATTWN
@@ -214,6 +218,38 @@ class Prepare(Home):
         self.assertEqual(state["sheets"][0]["frames"], [1, 2, 3, 4, 5, 6])
         self.assertTrue(os.path.exists(state["sheets"][0]["path"]))
         self.assertFalse(recs["NOSPOT"]["state_only"])
+
+    def test_both_readers_go_into_text_json_and_the_batch(self):
+        seen = {"01.jpg": "Example Taco Shop\nOPEN DAILY", "02.jpg": "Fancy Script Bar"}
+        with mock.patch.object(rf, "ocr", lambda path: "EXAMPLE TACO SHOP" if path.endswith("01.jpg") else ""), \
+                mock.patch.object(rf, "vision", lambda paths: {p: seen.get(p[-6:], "") for p in paths}):
+            self.frames("--prepare")
+        with open(os.path.join(self.media("STATEO", "frames"), "text.json")) as fh:
+            first, second = json.load(fh)["frames"][:2]
+        self.assertEqual((first["text"], first["vision"]), ("EXAMPLE TACO SHOP", "Example Taco Shop\nOPEN DAILY"))
+        self.assertEqual((second["text"], second["vision"]), ("", "Fancy Script Bar"))
+        with open(self.path(".cache/batches/frames/batch-001.json")) as fh:
+            state = {r["code"]: r for r in json.load(fh)["saves"]}["STATEO"]
+        self.assertEqual(state["frame_text"], {"1": "EXAMPLE TACO SHOP\nExample Taco Shop\nOPEN DAILY",
+                                               "2": "Fancy Script Bar"})
+
+    def test_text_again_rereads_frames_already_made(self):
+        with mock.patch.object(rf, "ocr", lambda path: ""), mock.patch.object(rf, "vision", lambda paths: {}):
+            self.frames("--prepare")
+        with mock.patch.object(rf, "ocr", lambda path: "plain"), \
+                mock.patch.object(rf, "vision", lambda paths: {p: "Fancy Script Bar" for p in paths}), \
+                mock.patch.object(rf, "vision_reader", lambda: "vision_ocr"):
+            out = self.frames("--text")
+        self.assertIn("words read again on 2 reels' frames, with Apple Vision", out)
+        with open(os.path.join(self.media("NOSPOT", "frames"), "text.json")) as fh:
+            info = json.load(fh)
+        self.assertEqual({(f["text"], f["vision"]) for f in info["frames"]}, {("plain", "Fancy Script Bar")})
+        self.assertEqual(len(info["frames"]), 6)                     # the same frames, none made again
+
+    def test_no_vision_off_a_mac(self):
+        with mock.patch.object(rf.sys, "platform", "linux"):
+            self.assertIsNone(rf.vision_reader())
+            self.assertEqual(rf.vision(["frame-01.jpg"]), {})
 
     def test_ocr_of_a_missing_file_is_empty(self):
         self.assertEqual(rf.ocr(self.media("NOSPOT", "video.mp4") + ".missing"), "")
@@ -264,6 +300,18 @@ class MergeFrames(Home):
         self.assertEqual(review["EATVEN"], REVIEW["EATVEN"])                   # untouched
         self.assertNotIn("NOSPOT", self.read("data/no-spot.yaml"))              # it names a spot now, in review
         self.assertEqual(pins["SEEALL"], PINS["SEEALL"])
+
+    def test_a_name_only_apple_vision_read_passes(self):
+        self.fake_frames("NOSPOT", ["Exarnple Pomt", ""], vision=["EXAMPLE POINT\nLOOKOUT", ""])  # tesseract misread it
+        self.batch(1, {"NOSPOT": [{"said": "Example Point Lookout", "near": "Fixture Town", "frame": 1}]})
+        out = self.merge()
+        self.assertIn("1 spots pinned, 0 for review", out)
+        pin = self.read("data/pins.yaml")["NOSPOT"][0]
+        self.assertEqual((pin["name"], pin["from"]), ("Example Point Lookout", "video"))
+
+    def test_frame_words_joins_both_readers(self):
+        self.assertEqual(rpl.frame_words({"text": "A B C\nlunch", "vision": "lunch\nFancy Bar"}), "A B C\nlunch\nFancy Bar")
+        self.assertEqual(rpl.frame_words({"text": ""}), "")
 
     def test_a_person_fix_on_a_video_spot_pins_it(self):
         self.batch(1, {"NOSPOT": [{"said": "Example Point Lookout", "near": "Fixture Town"}]})

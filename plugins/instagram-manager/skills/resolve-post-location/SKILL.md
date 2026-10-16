@@ -33,6 +33,11 @@ answers. **No script calls a model**, and there is no API key: this session star
      Nominatim's `viewbox` with `bounded=1`, through `shared/scripts/geocode.py`, cached, one
      request a second). The box is the area's reach plus 25 km. A same-name place far away never
      comes back, and a near miss comes back with its distance.
+   - **A road is not a venue.** A road for cars is never the answer unless the name asked says it
+     is one ("Example Street", "Example Blvd", "Example Bridge": OpenStreetMap stores a bridge as
+     the road over it) or a person wrote the `lookup`. A taco stand's name often matches a street
+     nearby. Trails and walkways stay. With only a road found: "not found near Example Town (only a
+     street of that name)".
    - The first answer within the area's **reach** is kept. The reach is 25 km of the area's pin.
      A park or region also counts its own OpenStreetMap outline box, grown by 10 km. A place
      OpenStreetMap stores as a single point comes back with a made-up box (a whole degree either

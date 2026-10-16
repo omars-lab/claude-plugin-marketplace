@@ -289,6 +289,21 @@ class Merge(Home):
         self.assertFalse(rpl.same_name("State Park", "Example State Park"))         # no word of its own shared
         self.assertFalse(rpl.same_name("The", "Example"))                       # no words left on one side
 
+    def test_a_street_of_the_same_name_is_not_the_venue(self):
+        road = {**hit("Example Museum", 39.99, -120.004, "residential", 23, osm_type="way"), "category": "highway"}
+        with mock.patch.dict(OSM, {"Example Museum": [road]}):
+            self.locate()
+        entry = self.spot("data/pins-review.yaml", "LISTA", "Example Museum")
+        self.assertTrue(entry["why"].startswith("not found near "))         # the hub still opens it by name
+        self.assertTrue(entry["why"].endswith(" (only a street of that name)"))
+        road = {"category": "highway", "type": "residential"}
+        self.assertTrue(rpl.a_street(road, "Example Moro"))
+        self.assertFalse(rpl.a_street(road, "Example Street"))                 # the post means the street
+        self.assertFalse(rpl.a_street(road, "Example Blvd"))
+        self.assertFalse(rpl.a_street({"category": "highway", "type": "primary"}, "Example Bridge"))   # stored as the road over it
+        self.assertFalse(rpl.a_street({"category": "highway", "type": "path"}, "Example Falls"))   # a trail
+        self.assertFalse(rpl.a_street({"category": "amenity", "type": "restaurant"}, "Example Moro"))
+
     def test_a_venue_openstreetmap_does_not_list_is_pinned_at_the_address_or_coordinates_the_caption_gives(self):
         self.locate()
         diner = self.spot("data/pins.yaml", "VENUA", "Example Diner")

@@ -7,6 +7,8 @@ frame-reader agent in batches; this script never calls a model.
                                            for fetch_media.py --video
     read_frames.py --prepare               frames, their text and contact sheets for every listed reel
                                            whose video is fetched, then batch files for the agent
+    read_frames.py --text                  read the words again on frames already made (no new
+                                           frames, no batches), after a text reader changes
     options: --redo (frames again, even for reels that have them), --batch-saves N
 
     The answers are merged by resolve_post_location.py --merge --frames.
@@ -19,7 +21,9 @@ Reads   $INSTAGRAM_HOME/.cache/saves.json            captions and creators
 Writes  $INSTAGRAM_HOME/.cache/frames/stuck.txt      one code a line, with why, for fetch_media.py --video
         $INSTAGRAM_MEDIA_DIR/<code>/frames/          frame-NN.jpg (720 px wide), sheet-N.jpg (6 frames
                                                      each, for the agent to look at), text.json (what
-                                                     tesseract read on each frame, and when it shows)
+                                                     each text reader read on each frame, and when it
+                                                     shows: `text` tesseract, `vision` Apple Vision)
+        $INSTAGRAM_HOME/.cache/bin/vision_ocr         vision_ocr.swift, compiled on first use
         $INSTAGRAM_HOME/.cache/batches/frames/       batch-NNN.json (in), batch-NNN.answers.json (out)
 
 Which reels are stuck
@@ -32,10 +36,17 @@ Which reels are stuck
 How frames are picked (ffmpeg only)
   The first frame (where a title card usually is), then a frame at each scene change (ffmpeg's
   scene score above 0.3), at most 12, spread evenly when there are more. A reel with fewer than 6
-  gets frames at even times to make up 6. tesseract reads each frame (sparse-text mode, which suits
-  words laid over a picture). Six frames make one contact sheet, numbered in reading order.
+  gets frames at even times to make up 6. Six frames make one contact sheet, numbered in reading
+  order.
 
-Every call that can hang has a timeout: ffprobe, ffmpeg and tesseract.
+How the words are read
+  Two text readers read each frame. tesseract (sparse-text mode, which suits words laid over a
+  picture) reads plain print well but misses styled subtitles: outlined, yellow, bold over a busy
+  picture, and the names on an Instagram profile card. On a Mac, Apple Vision (macOS's own text
+  reader, vision_ocr.swift) reads those too. Both go into text.json; the merge accepts a name either
+  one read. Off a Mac, or when the Swift compiler is missing, only tesseract runs.
+
+Every call that can hang has a timeout: ffprobe, ffmpeg, tesseract, swiftc and the Vision reader.
 """
 
 import argparse
@@ -60,7 +71,7 @@ MEDIA = os.path.join("data", "media.yaml")
 MAX_FRAMES = 12
 MIN_FRAMES = 6
 SCENE = 0.3
-FRAME_WIDTH = 720       # px: what tesseract reads
+FRAME_WIDTH = 720       # px: what the text readers read
 SHEET_COLS, SHEET_ROWS = 3, 2
 SHEET_FRAME_WIDTH = 360
 BATCH_SAVES = 6         # each save brings 2 sheets: about 12 images an agent looks at
@@ -72,6 +83,9 @@ LOOKUP_MISSES = (re.compile(r"^not found near "), re.compile(r"^found .*, a diff
 PROBE_TIMEOUT = 30
 FFMPEG_TIMEOUT = 180
 OCR_TIMEOUT = 60
+VISION_SRC = os.path.join(HERE, "vision_ocr.swift")
+VISION_TIMEOUT = 300    # one call reads all of a reel's frames
+COMPILE_TIMEOUT = 600
 
 
 media_dir = rpl.media_dir
@@ -188,13 +202,63 @@ def sheet(folder, first, count, path):
     return rc == 0 and os.path.exists(path)
 
 
-def ocr(path):
-    """The words tesseract reads on a frame, one line each, lines with no word of 3 letters or digits dropped."""
-    rc, out, _ = run(["tesseract", path, "stdout", "--psm", "11"], OCR_TIMEOUT)
-    if rc != 0:
-        return ""
+def keep_lines(out):
+    """One line each, lines with no word of 3 letters or digits dropped."""
     lines = [re.sub(r"\s+", " ", ln).strip() for ln in out.splitlines()]
     return "\n".join(ln for ln in lines if re.search(r"\w{3,}", ln))
+
+
+def ocr(path):
+    """The words tesseract reads on a frame."""
+    rc, out, _ = run(["tesseract", path, "stdout", "--psm", "11"], OCR_TIMEOUT)
+    return keep_lines(out) if rc == 0 else ""
+
+
+def vision_reader():
+    """The compiled Apple Vision reader, compiling it when missing or older than its source; None off a
+    Mac or when it cannot be built."""
+    if sys.platform != "darwin" or not shutil.which("xcrun"):
+        return None
+    exe = cache("bin", "vision_ocr")
+    if os.path.exists(exe) and os.path.getmtime(exe) >= os.path.getmtime(VISION_SRC):
+        return exe
+    os.makedirs(os.path.dirname(exe), exist_ok=True)
+    rc, _, err = run(["xcrun", "--sdk", "macosx", "swiftc", "-O", "-o", exe, VISION_SRC], COMPILE_TIMEOUT)
+    if rc != 0 or not os.path.exists(exe):
+        log("vision_unbuilt", msg=err.strip().splitlines()[-1] if err.strip() else "swiftc failed")
+        return None
+    log("vision_built", exe=exe)
+    return exe
+
+
+def vision(paths):
+    """path → the words Apple Vision reads on that frame; {} when it is not available."""
+    exe = vision_reader()
+    if not exe or not paths:
+        return {}
+    rc, out, _ = run([exe] + list(paths), VISION_TIMEOUT)
+    if rc != 0:
+        return {}
+    found = {}
+    for line in out.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        found[row.get("file")] = keep_lines(row.get("text") or "")
+    return found
+
+
+def read_words(folder, frames):
+    """Fill each frame's `text` (tesseract) and `vision` (Apple Vision, when it runs)."""
+    paths = [os.path.join(folder, f["file"]) for f in frames]
+    seen = vision(paths)
+    for f, path in zip(frames, paths):
+        f["text"] = ocr(path)
+        if path in seen:
+            f["vision"] = seen[path]
+        else:
+            f.pop("vision", None)
 
 
 def make_frames(code, video):
@@ -213,8 +277,7 @@ def make_frames(code, video):
     if not frames:
         log("frames_none", shortcode=code)
         return None
-    for f in frames:
-        f["text"] = ocr(os.path.join(folder, f["file"]))
+    read_words(folder, frames)
     per = SHEET_COLS * SHEET_ROWS
     sheets = []
     for i in range(0, len(frames), per):
@@ -224,8 +287,19 @@ def make_frames(code, video):
     info = {"video": f"{code}/video.mp4", "seconds": length, "frames": frames, "sheets": sheets}
     rpl.write_json(os.path.join(folder, "text.json"), info)
     log("frames_done", shortcode=code, frames=len(frames), sheets=len(sheets),
-        words=sum(len(f["text"].split()) for f in frames))
+        words=sum(len(f["text"].split()) for f in frames),
+        vision_words=sum(len((f.get("vision") or "").split()) for f in frames))
     return info
+
+
+def retext(code, info):
+    """Read the words again on a reel's frames already made, and rewrite its text.json."""
+    folder = os.path.join(media_dir(), code, "frames")
+    frames = [f for f in info.get("frames") or [] if os.path.exists(os.path.join(folder, f["file"]))]
+    read_words(folder, frames)
+    rpl.write_json(os.path.join(folder, "text.json"), info)
+    log("frames_text", shortcode=code, frames=len(frames), words=sum(len(f["text"].split()) for f in frames),
+        vision_words=sum(len((f.get("vision") or "").split()) for f in frames))
 
 
 def frame_info(code):
@@ -256,7 +330,7 @@ def record(save, tag, places, info):
     cover = os.path.join(folder, "cover.jpg")
     if os.path.exists(cover):
         rec["cover"] = cover
-    rec["frame_text"] = {str(f["n"]): f["text"] for f in info["frames"] if f.get("text")}
+    rec["frame_text"] = {str(f["n"]): rpl.frame_words(f) for f in info["frames"] if rpl.frame_words(f)}
     return rec
 
 
@@ -319,11 +393,30 @@ def prepare(args, saves, tags, places, media):
     return 0
 
 
+def text_again():
+    listed = os.path.join(frames_dir(), "stuck.txt")
+    if not os.path.exists(listed):
+        sys.exit(f"no {listed}: run --stuck first")
+    if not shutil.which("tesseract"):
+        sys.exit("tesseract is not on PATH (brew install tesseract)")
+    reels = 0
+    for code in read_codes(listed):
+        info = frame_info(code)
+        if info:
+            retext(code, info)
+            reels += 1
+    have = "with Apple Vision" if vision_reader() else "tesseract only (no Apple Vision here)"
+    log("frames_text_done", reels=reels)
+    print(f"words read again on {reels} reels' frames, {have}")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     action = ap.add_mutually_exclusive_group(required=True)
     action.add_argument("--stuck", action="store_true", help="write the list of reels to read")
     action.add_argument("--prepare", action="store_true", help="frames, text, sheets and batch files")
+    action.add_argument("--text", action="store_true", help="read the words again on frames already made")
     scope = ap.add_mutually_exclusive_group()
     scope.add_argument("--pilot", help="a pilot name from config/collections.yaml")
     scope.add_argument("--all", action="store_true", help="every save")
@@ -331,6 +424,8 @@ def main(argv=None):
     ap.add_argument("--batch-saves", type=int, default=BATCH_SAVES, help="most saves in one batch")
     ap.add_argument("--saved", default=None, help="saves.json (default: the data repo's .cache)")
     args = ap.parse_args(argv)
+    if args.text:
+        return text_again()
     with open(args.saved or cache("saves.json"), encoding="utf-8") as fh:
         saves = json.load(fh)["saves"]
     tags, media = load_yaml(rpl.TAGS), load_yaml(MEDIA)

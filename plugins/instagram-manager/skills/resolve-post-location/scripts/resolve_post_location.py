@@ -28,10 +28,11 @@ Writes  $INSTAGRAM_HOME/data/pins.yaml               code → [{name, said, near
 Spots read off the video (--merge --frames)
   The frame-reader looks at a reel's frames (read_frames.py) and names the spots on screen. Each one
   goes through the same checks, with two changes:
-  - The quote check also accepts words tesseract read on the reel's frames
-    ($INSTAGRAM_MEDIA_DIR/<code>/frames/text.json, never the batch), letters and digits in order, so
-    OCR's odd spacing still matches. A name tesseract missed (a fancy font) goes to review, "not in
-    the caption or the video's text", for a person to look at the frame and add a `lookup:`.
+  - The quote check also accepts words either text reader (tesseract or Apple Vision) read on the
+    reel's frames ($INSTAGRAM_MEDIA_DIR/<code>/frames/text.json, never the batch), letters and digits
+    in order, so OCR's odd spacing still matches. A name both readers missed (a fancy font) goes to
+    review, "not in the caption or the video's text", for a person to look at the frame and add a
+    `lookup:`.
   - The spots are added to the save's pins and review entries, marked `from: video`, instead of
     replacing them; a spot the save already has is left as it is. A save read from its video leaves
     no-spot.yaml once a spot is found.
@@ -50,7 +51,11 @@ What the merge checks, per spot
      Nominatim's viewbox with bounded=1; cached, one request a second). The box is the area's
      reach plus 25 km, so a place of the same name far away never comes back, while a near miss
      does, with its distance, for a person to judge.
-  4. The first answer within the area's reach is kept: 25 km of the area's pin, or, for a park
+  4. A road for cars is never the answer unless the name asked says it is one ("Example Street",
+     "Example Blvd", "Example Bridge", since OpenStreetMap stores a bridge as the road over it) or a
+     person wrote the lookup; trails and walkways stay: a venue's name often matches a street nearby (a taco
+     stand called Example Moro and a road of that name). The first answer within the area's reach
+     is kept: 25 km of the area's pin, or, for a park
      or region, inside its own OpenStreetMap box grown by 10 km. (A park's or region's box is looked
      up once, inside 60 km of its pin, and only an outline counts: a way or relation. OpenStreetMap
      gives a place it stores as a single point a made-up box, a whole degree either side for a
@@ -131,14 +136,22 @@ def media_dir():
     return os.path.abspath(os.path.expanduser(os.environ.get("INSTAGRAM_MEDIA_DIR") or DEFAULT_MEDIA_DIR))
 
 
+def frame_words(frame):
+    """What both text readers read on one frame (read_frames.py): tesseract's lines, then Apple
+    Vision's lines tesseract did not have."""
+    lines = [ln for ln in (frame.get("text") or "").splitlines() if ln]
+    lines += [ln for ln in (frame.get("vision") or "").splitlines() if ln and ln not in lines]
+    return "\n".join(lines)
+
+
 def video_text(code):
-    """Everything tesseract read on a reel's frames (read_frames.py), or ""."""
+    """Everything the text readers read on a reel's frames (read_frames.py), or ""."""
     try:
         with open(os.path.join(media_dir(), code, "frames", "text.json"), encoding="utf-8") as fh:
             info = json.load(fh)
     except (OSError, ValueError):
         return ""
-    return "\n".join(f.get("text") or "" for f in info.get("frames") or [] if isinstance(f, dict))
+    return "\n".join(frame_words(f) for f in info.get("frames") or [] if isinstance(f, dict))
 
 
 # --- files ---------------------------------------------------------------------------------------
@@ -295,6 +308,22 @@ KIND_WORDS = {stem(w) for w in """coffee co company cafe restaurant bakery eater
 hotel inn lodge store shop market creamery food hall sandwiches""".split()}
 
 
+STREET_WORDS = {w for w in """street st avenue ave boulevard blvd road rd drive dr way lane ln highway hwy
+parkway pkwy place pl court ct alley row promenade terrace bridge tunnel pass causeway overpass route
+""".split()}   # a road's own words, and what a road carries: a bridge is often stored as the road over it
+
+
+# OpenStreetMap's road types for cars. Trails and walkways (path, footway, track, steps) are spots.
+ROADS = {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "service",
+         "living_street", "road", "pedestrian"}
+
+
+def a_street(hit, asked):
+    """True when the hit is a road and the name asked does not say it is one."""
+    return (hit.get("category") == "highway" and hit.get("type") in ROADS
+            and not STREET_WORDS & set(re.findall(r"[a-z]+", asked.lower())))
+
+
 def same_name(asked, found, area=""):
     """True when the two names share a word of their own, and differ only by place words, business
     kinds or the area's name: "Example Point" and "Example Point State Park", "Example LA" and
@@ -431,10 +460,13 @@ def lookup_name(spot, reach, near, base, keep, by_person, fetcher):
     """The spot's name looked up near its area: ("pin" or "review", entry)."""
     asked = search_text(spot)
     hits = geocode.lookup_near(asked, reach.search, fetcher)
+    streets = [] if by_person else [h for h in hits if a_street(h, asked)]
+    hits = [h for h in hits if h not in streets]
     good = [h for h in hits if reach.ok(h["lat"], h["lon"])]
     hit = (good or hits or [None])[0]
     if hit is None:
-        return "review", {**base, "why": f"not found near {near}", "asked": asked, **keep}
+        why = f"not found near {near}" + (" (only a street of that name)" if streets else "")
+        return "review", {**base, "why": why, "asked": asked, **keep}
     km = round(reach.km(hit["lat"], hit["lon"]), 1)
     found = {"name": hit["name"], "kind": hit.get("type") or hit.get("category") or "place",
              "lat": hit["lat"], "lon": hit["lon"], "km": km}

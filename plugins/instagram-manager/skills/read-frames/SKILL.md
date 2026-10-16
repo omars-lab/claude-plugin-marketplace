@@ -1,6 +1,6 @@
 ---
 name: read-frames
-description: Find where a saved Instagram reel was filmed from its video, for the reels whose caption names no spot, is tagged with only a state, or is a food or stay post that opens only its town. Lists those reels for fetch-media --video, takes frames at each scene change with ffmpeg, reads the words on them with tesseract, makes contact sheets, and runs frame-reader agents in batches whose spots go through the same checks as caption spots. Use when posts can't be placed from the caption, when someone asks to read venue names, signs or title cards off the videos, or to place reels tagged only with a state.
+description: Find where a saved Instagram reel was filmed from its video, for the reels whose caption names no spot, is tagged with only a state, or is a food or stay post that opens only its town. Lists those reels for fetch-media --video, takes frames at each scene change with ffmpeg, reads the words on them with tesseract and, on a Mac, Apple Vision, makes contact sheets, and runs frame-reader agents in batches whose spots go through the same checks as caption spots. Use when posts can't be placed from the caption, when someone asks to read venue names, signs or title cards off the videos, or to place reels tagged only with a state.
 ---
 
 # Read Frames
@@ -29,8 +29,12 @@ Every step runs in batches, and none of it calls a model from a script: the read
      scene change (ffmpeg's scene score above 0.3). At most 12, spread evenly when there are more;
      a reel with fewer than 6 gets frames at even times to make up 6, none within half a second of
      another.
-   - `text.json`: what tesseract read on each frame (sparse-text mode, which suits words laid over a
-     picture), and when each frame shows.
+   - `text.json`: what each text reader read on each frame, and when each frame shows. `text` is
+     tesseract's (sparse-text mode, which suits words laid over a picture). `vision` is Apple
+     Vision's, macOS's own text reader (`scripts/vision_ocr.swift`, compiled on first use into
+     `.cache/bin/vision_ocr`). tesseract misses styled subtitles (outlined, yellow, bold over a
+     busy picture) and the names on an Instagram profile card; Apple Vision reads them. Off a Mac
+     only tesseract runs.
    - `sheet-N.jpg`: 6 frames to a sheet, 3 across and 2 down, in reading order, 360 px a frame.
      This ffmpeg has no text filter, so the frames are not numbered on the sheet; the batch says
      which frames each sheet holds.
@@ -43,18 +47,23 @@ Every step runs in batches, and none of it calls a model from a script: the read
    `Follow <plugin>/agents/frame-reader.md exactly. Batch: <path>`.
 5. **Merge.** `resolve_post_location.py --merge --frames`. Each spot goes through the caption
    checks, with two changes:
-   - its words may be in the caption **or** in what tesseract read on the frames (letters and
+   - its words may be in the caption **or** in what either text reader read on the frames (letters and
      digits in order, so odd OCR spacing still matches). The text comes from `text.json`, never
      from the batch;
    - the spots **add** to the post's pins and review entries, marked `from: video`; a spot the
      caption already gave is left as it is.
 
-   A name the agent read that tesseract missed (a fancy font) goes to review as "not in the caption
+   A name the agent read that both readers missed (a script font) goes to review as "not in the caption
    or the video's text". Open the frame, and if the name is there, add `lookup: "<name>"` to the
    entry; the next merge searches it.
 6. **Look with your own eyes.** Open some frames and compare them to `text.json`, including the
    hard ones: script fonts, words over busy pictures, small text in a corner. Write down what
-   tesseract got wrong. Then open the pins on the hub.
+   each reader got wrong. Then open the pins on the hub.
+
+   When a text reader changes, `read_frames.py --text` reads the words again on the frames already
+   made (no new frames, no batches). To re-check answers merged before, rename their
+   `batch-NNN.answers.merged.json` back to `batch-NNN.answers.json` and merge again: a spot already
+   pinned is skipped, and a review entry is checked again.
 7. **Commit `data/pins.yaml`, `pins-review.yaml`, `no-spot.yaml` and `media.yaml`** in the data
    repo. Never a frame or a video: they stay in iCloud.
 
@@ -63,9 +72,11 @@ Every step runs in batches, and none of it calls a model from a script: the read
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/read_frames.py --stuck` | Lists the pilot's reels the caption can't place, with why | Before fetching videos | `python3 scripts/read_frames.py --stuck --pilot <name>` |
-| `scripts/read_frames.py --prepare` | Frames, tesseract text and contact sheets for each listed reel with a video, then batch files | After the videos land; again after more land | `python3 scripts/read_frames.py --prepare` (`--redo` to take frames again) |
+| `scripts/read_frames.py --prepare` | Frames, both readers' text and contact sheets for each listed reel with a video, then batch files | After the videos land; again after more land | `python3 scripts/read_frames.py --prepare` (`--redo` to take frames again) |
+| `scripts/read_frames.py --text` | Reads the words again on frames already made, with both readers; rewrites `text.json` | After a text reader changes, before merging again | `python3 scripts/read_frames.py --text` (`make frames-text`) |
+| `scripts/vision_ocr.swift` | Apple Vision's text on each image, one JSON line each; `read_frames.py` compiles and calls it | Never by hand, except to try it on one frame | `xcrun --sdk macosx swiftc -O -o vision_ocr scripts/vision_ocr.swift && ./vision_ocr <frame.jpg>` |
 | `../resolve-post-location/scripts/resolve_post_location.py --merge --frames` | Checks the agents' answers against the caption and the frame text, looks the spots up, adds them to the pins | After each wave of agents | `python3 ../resolve-post-location/scripts/resolve_post_location.py --merge --frames` |
-| `scripts/test_read_frames.py` | Offline tests on an invented data folder and an ffmpeg-made video: the stuck list, frame times, sheets, batches, and the merge adding video spots | After any change to either script | `python3 scripts/test_read_frames.py` |
+| `scripts/test_read_frames.py` | Offline tests on an invented data folder and an ffmpeg-made video: the stuck list, frame times, sheets, batches, both readers' text, `--text`, and the merge adding video spots | After any change to either script | `python3 scripts/test_read_frames.py` |
 
 In the data repo: `make frames-stuck`, `make media-video`, `make frames`, `make frames-merge`.
 

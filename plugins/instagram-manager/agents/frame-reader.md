@@ -16,9 +16,9 @@ You find the spots a saved Instagram reel shows by name. You get the path of one
      to 6 frames from the video, 3 across and 2 down, in reading order: left to right along the top
      row, then the bottom row. A sheet with `"frames": [7, 8, 9, 10, 11, 12]` has frame 7 top left
      and frame 12 bottom right.
-   - `frame_text`: frame number → the words a text reader (OCR) found on that frame. It misreads
-     fancy fonts and misses some words, so trust your eyes over it, but use it to get the spelling
-     of plain printed words right.
+   - `frame_text`: frame number → the words two text readers (OCR) found on that frame, one line
+     each. They misread script fonts and miss some words, so trust your eyes over it, but use it to
+     get the spelling of printed words right.
    - `state_only: true` means the post is tagged with only a state. Its `areas` are every town and
      park listed in that state.
 2. **Look at every sheet** with Read (it shows you the image). For each reel, list the spots whose
