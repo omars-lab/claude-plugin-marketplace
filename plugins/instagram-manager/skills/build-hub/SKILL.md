@@ -40,6 +40,15 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   date it was saved, its topics and collections, a link to every place it names (each with a
   Google Maps link), and the Instagram link; a post that names one place also gets an "Open in
   Google Maps" button.
+  A reel with spot stills (**extract-stills**) also gets "The places in the video": one picture per
+  spot, in the order they show in the video, each linking to the spot's page with its time in the
+  reel and a "Play 3 s" button that plays the clip.
+
+**Spot stills.** Where a spot has a still in `data/stills.yaml`, its place page card and its map
+popup show that still instead of the reel's cover. The clip plays while the pointer is on a
+picture, unless the viewer asks for reduced motion; then only the button plays it. Stills and clips
+are copied into `.cache/hub/stills/<code>/`. A spot whose files are missing falls back to the
+cover.
 
 Nothing on these pages is typed by hand: every build writes them fresh from the data. The pages
 hold captions, so they stay in `.cache/` and never go into git. The script makes no Instagram
@@ -89,6 +98,7 @@ somewhere far away are still there when you zoom out.
 | `data/pins.yaml` | spots, with the caption's words for them | fine: area pins only |
 | `data/pins-review.yaml` | spots OpenStreetMap did not place: dashed pins at their town | fine: no dashed pins |
 | `data/media.yaml` + `$INSTAGRAM_MEDIA_DIR` | thumbnails; copied into `.cache/hub/thumbs/` | fine: grey boxes |
+| `data/stills.yaml` + `$INSTAGRAM_MEDIA_DIR` | a still and clip per spot; copied into `.cache/hub/stills/` | fine: the reel's cover |
 
 Each build clears and rewrites `places/` and `posts/`. Other pages in the folder, like the moves
 page or the spot review page, are kept, and the map page links to them.
@@ -100,7 +110,7 @@ page or the spot review page, are kept, and the map page links to them.
    make hub                    # the pilot; PILOT= for every save
    ```
    It prints one line of counts: saves, how many have a pin, how many sit at a town, park or spot
-   rather than a whole state, place pages, spots and thumbnails. A second line is the **venue
+   rather than a whole state, place pages, spots, thumbnails and spot stills. A second line is the **venue
    check**: of the posts tagged `eat` or `stay`, how many open a spot OpenStreetMap placed, a spot
    pinned at its town, or only a town. The codes of the town-only ones are in the log
    (`ev=hub_venues town_only_codes=...`). Read their captions: either the caption names no venue

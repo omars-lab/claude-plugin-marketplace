@@ -1,6 +1,6 @@
 ---
 name: manage-saves
-description: Route Instagram saved-post work to the right step — import a new export, tag saves by topic and place, look up missing places, pin the spots a caption names, read places off reels' videos, fetch thumbnails or videos, or build the hub map. Use when someone asks to "do something with my Instagram saves" without naming a step, or asks what to run next.
+description: Route Instagram saved-post work to the right step — import a new export, tag saves by topic and place, look up missing places, pin the spots a caption names, read places off reels' videos, fetch thumbnails or videos, cut a still and clip per spot, or build the hub map. Use when someone asks to "do something with my Instagram saves" without naming a step, or asks what to run next.
 ---
 
 # Manage Saves
@@ -23,8 +23,8 @@ that is missing is the next step:
 | `data/media.yaml` (thumbnails) | **fetch-media** |
 | the hub build in `.cache/hub/` | **build-hub** |
 | reels in `data/no-spot.yaml` or placed only at their town, with no `from: video` pins | **read-frames** (videos through **fetch-media** `--video`) |
-| `data/items/` | split-saves *(coming)* |
-| stills and clips per item | extract-stills *(coming)* |
+| a `data/stills.yaml` entry for each spot of a reel with a video | **extract-stills** (`make stills`) |
+| `data/items/` for non-travel topics | split-saves *(coming)*; for travel the items are the spots |
 | `out/<topic>.yaml` | sending a topic to another repo *(coming)* |
 
 A newer export zip than the one `saves.json` came from also means: run **import-saves** again,
@@ -58,6 +58,7 @@ For more than one step, add a task per step with `TaskCreate` and mark each done
 | "this pin is wrong" / "fix the review list" | `resolve-post-location` ("Fixing by hand") |
 | "the place is only in the video" | `read-frames` |
 | "download the thumbnails" / "get the videos" | `fetch-media` |
+| "every café shows the same picture" / "a still per place" | `extract-stills` |
 | "show me the map" / "rebuild the hub" | `build-hub` |
 | "what's next?" | this skill, Step 1 |
 

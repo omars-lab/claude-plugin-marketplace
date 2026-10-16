@@ -18,10 +18,14 @@ Reads   $INSTAGRAM_HOME/.cache/saves.json          caption, creator, link, saved
         $INSTAGRAM_HOME/data/pins-review.yaml      spots OpenStreetMap did not place (optional)
         $INSTAGRAM_HOME/data/media.yaml            each post's thumbnail (optional, the same way)
         $INSTAGRAM_MEDIA_DIR/<code>/thumb.jpg      the thumbnails themselves
+        $INSTAGRAM_HOME/data/stills.yaml           a still and a 3 s clip per spot a reel names, cut
+                                                   where its name is on screen (extract-stills;
+                                                   optional, the same way)
 Writes  OUT/index.html                             the map, the list of places, a search box
         OUT/places/<slug>.html                     one page per place
         OUT/posts/<code>.html                      one page per post
         OUT/thumbs/<code>.jpg                      copies of the thumbnails media.yaml lists
+        OUT/stills/<code>/                         copies of the stills and clips stills.yaml lists
 Only places/ and posts/ are cleared on each build; other pages in OUT (the moves page, the pin
 review page) are left alone.
 
@@ -43,6 +47,9 @@ The menus over the map
   the name OpenStreetMap found for it, says National Park, Seashore, Monument and so on. A post's
   purpose comes from the kinds of place it names (a café is "Eat & drink", a park "Adventure &
   outdoors"), plus any `purposes` the tagger gave it; a post that names only towns has none yet.
+
+A spot with a still shows it in place of the post's cover: on the spot's page, in its map popup, and
+in the post page's row of places, where the clip plays on hover or with its Play button.
 
 Spots are grouped across posts by their OpenStreetMap id, else by name and area. A spot with the
 same name as its area (a park and its waterfall) is shown on the area's page.
@@ -186,7 +193,7 @@ def saved_on(save):
 class Hub:
     """Everything the pages show, worked out once from the data files."""
 
-    def __init__(self, saves, tags, places, pins, media, topics, media_dir, purposes=None):
+    def __init__(self, saves, tags, places, pins, media, topics, media_dir, purposes=None, stills=None):
         self.places = {}      # key → place: name, kind, lat, lon, map, parent, spot, posts[], said{}
         self.posts = []       # in-scope saves, newest first, with their places and pins
         self.no_pin = set()   # places with no lat/lon
@@ -200,9 +207,10 @@ class Hub:
         self.aliases = aliases
         saves = sorted(saves, key=lambda s: (s.get("saved_at") or "", s["code"]), reverse=True)
         files = self._files([s["code"] for s in saves])
+        stills = stills or {}
         for s in saves:
             self._add_post(s, tags.get(s["code"]) or {}, pins.get(s["code"]), media.get(s["code"]),
-                           files[s["code"]], media_dir)
+                           files[s["code"]], media_dir, stills.get(s["code"]))
         self._slugs()
         self.by_code = {p["code"]: p for p in self.posts}
         for p in self.places.values():
@@ -262,8 +270,19 @@ class Hub:
         if said and code not in place["said"]:
             place["said"][code] = said
 
-    def _add_post(self, s, tag, spots, media, file, media_dir):
+    def _add_post(self, s, tag, spots, media, file, media_dir, stills=None):
         code = s["code"]
+        cut = {r["name"].strip().lower(): r for r in stills if isinstance(r, dict) and isinstance(r.get("name"), str)
+               and isinstance(r.get("still"), str)} if isinstance(stills, list) else {}
+        shots = []   # a still per spot, in the order the post names them
+
+        def shot(key, name):
+            r = cut.get(name.strip().lower())
+            if r and all(x["key"] != key for x in shots):
+                shots.append({"key": key, "name": name, "t": number(r.get("t")),
+                              "still_src": os.path.join(media_dir, r["still"]),
+                              "clip_src": os.path.join(media_dir, r["clip"]) if isinstance(r.get("clip"), str) else None,
+                              "still": None, "clip": None})
         areas = []
         for c in tag.get("cities") or []:
             name = self.p.resolve(c) or c
@@ -295,6 +314,7 @@ class Hub:
                 e = {**e, "lat": self.places[near]["lat"], "lon": self.places[near]["lon"]}
             if near and e["name"].strip().lower() == near.lower():   # the spot is the area itself
                 self._name_post(self.places[near], code, said)
+                shot(near, e["name"])
                 lat, lon = number(e.get("lat")), number(e.get("lon"))
                 if lat is not None and lon is not None:
                     moved[near] = (lat, lon)
@@ -302,6 +322,7 @@ class Hub:
                 continue
             spot = self._spot(e, near)
             self._name_post(spot, code, said)
+            shot(spot["key"], e["name"])
             if spot["key"] not in spot_keys:
                 spot_keys.append(spot["key"])
 
@@ -337,7 +358,7 @@ class Hub:
             "caption": s["caption"], "saved": saved_on(s), "collections": s["collections"],
             "topics": [t for t in tag.get("topics") or [] if isinstance(t, str)],
             "exact": spot_keys + [a for a in leaves if a not in {self.places[k]["parent"] for k in spot_keys}],
-            "areas": areas, "pins": pins, "thumb_src": thumb_src, "thumb": None,
+            "areas": areas, "pins": pins, "thumb_src": thumb_src, "thumb": None, "shots": shots,
             "tagged_purposes": [t for t in tag.get("purposes") or [] if isinstance(t, str)]})
 
     def _slugs(self):
@@ -353,6 +374,11 @@ class Hub:
 
     def post(self, code):
         return self.by_code[code]
+
+    @staticmethod
+    def shot(post, key):
+        """The post's still of this place, when it has one copied into the site."""
+        return next((x for x in post["shots"] if x["key"] == key and x["still"]), None)
 
     def named(self, post):
         """Every place a post names, exact ones first, each once."""
@@ -485,13 +511,26 @@ def topic_chips(hub, topics):
     return "".join(f'<li>{esc(hub.topic_label.get(t, t))}</li>' for t in topics)
 
 
+def at(t):
+    """Seconds into a reel, as 0:07."""
+    return f"{int(t) // 60}:{int(t) % 60:02d}" if t is not None else ""
+
+
+def still_html(post, x, cls, up=True):
+    pre = "../" if up else ""
+    clip = f' data-clip="{pre}{esc(x["clip"])}"' if x["clip"] else ""
+    alt = f'{x["name"]}, {at(x["t"])} into the reel' if x["t"] is not None else x["name"]
+    return f'<img class="{cls}" src="{pre}{esc(x["still"])}"{clip} alt="{esc(alt)}" loading="lazy">'
+
+
 def card(hub, place, post):
+    x = hub.shot(post, place["key"])
     words = ([place["said"][post["code"]]] if post["code"] in place["said"] else []) + hub.words_for(place)
     text, found = excerpt(post["caption"], words)
     who = f'@{esc(post["user"])}' if post["user"] else "an unknown creator"
     label = "The caption says" if found else "The caption opens"
     return (f'<article class="card"><a class="tlink" href="{post_href(post)}" tabindex="-1" aria-hidden="true">'
-            f'{thumb_html(post)}</a><div class="cbody">'
+            f'{still_html(post, x, "thumb") if x else thumb_html(post)}</a><div class="cbody">'
             f'<p class="who"><a href="{post_href(post)}">{who}</a>'
             + (f' <span class="muted">· saved {esc(post["saved"])}</span>' if post["saved"] else "") + '</p>'
             f'<p class="said"><span class="label">{label}</span> {text}</p>'
@@ -542,7 +581,8 @@ def place_page(hub, place):
                + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows) + '</dl></div>'
                f'<section><h2>Saved posts that name it</h2><div class="cards">'
                + "".join(card(hub, place, p) for p in posts) + '</div></section></main>')
-    return shell(place["name"], content, LEAFLET if box else "", js)
+    clips = CLIP_JS if any(hub.shot(p, place["key"]) for p in posts) else ""
+    return shell(place["name"], content, LEAFLET if box else "", js + clips)
 
 
 def post_page(hub, post):
@@ -572,6 +612,20 @@ def post_page(hub, post):
     zoom = 9 if len(points) == 1 and hub.places[post["pins"][0][0]]["kind"] in ("region", "park") else 11
     box, js = mini_map(points, 6 if points and points[0][4] == "wide" else zoom)
     caption = esc(post["caption"]) if post["caption"].strip() else '<span class="muted">No caption.</span>'
+    # In the order they show in the video, not the order the caption lists them.
+    shots = sorted((x for x in post["shots"] if x["still"]), key=lambda x: x["t"] if x["t"] is not None else 1e9)
+    credit = f"from @{esc(post['user'])}'s {esc(post['kind'])}" if post["user"] else f"from the {esc(post['kind'])}"
+    gallery = ""
+    if shots:
+        gallery = (f'<section><h2>The places in the video ({len(shots)})</h2>'
+                   '<p class="muted hint">Each picture is the moment the place\'s name is on screen. Hover, or press '
+                   'Play, for 3 seconds of the video.</p><div class="shots">'
+                   + "".join(f'<figure class="shotc"><a href="{place_href(hub.places[x["key"]])}">'
+                             f'{still_html(post, x, "shot")}</a><figcaption><a href="{place_href(hub.places[x["key"]])}">'
+                             f'{esc(hub.places[x["key"]]["name"])}</a><span class="muted">'
+                             + (f'{at(x["t"])} · ' if x["t"] is not None else "") + f'{credit}</span>'
+                             + ('<button class="play" type="button" aria-pressed="false">Play 3 s</button>' if x["clip"] else "")
+                             + '</figcaption></figure>' for x in shots) + '</div></section>')
     content = (f'<main class="page"><nav class="top"><a href="../index.html">&larr; The map</a></nav>'
                f'<header><h1>{esc(who)}</h1><p class="sub">A saved {esc(post["kind"])}'
                + (f' · saved {esc(post["saved"])}' if post["saved"] else "") + '</p></header>'
@@ -582,8 +636,18 @@ def post_page(hub, post):
                + (f'<a class="button alt" href="{esc(exact[0]["map"])}" target="_blank" rel="noopener">'
                   f'Open in Google Maps</a>' if len(exact) == 1 else "") + '</p>'
                f'<dl>' + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows) + '</dl></div></div>'
-               f'{box}<section><h2>Caption</h2><p class="caption">{caption}</p></section></main>')
-    return shell(f"{who} · saved post", content, LEAFLET if box else "", js)
+               f'{gallery}{box}<section><h2>Caption</h2><p class="caption">{caption}</p></section></main>')
+    return shell(f"{who} · saved post", content, LEAFLET if box else "", js + (CLIP_JS if shots else ""))
+
+
+# A still turns into its clip while the pointer is on it, or while its Play button is pressed. With
+# reduced motion asked for, only the button plays it.
+CLIP_JS = """<script>(function(){var calm=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+document.querySelectorAll('img[data-clip]').forEach(function(img){var s=img.getAttribute('src'),c=img.getAttribute('data-clip'),
+f=img.closest('figure'),b=f&&f.querySelector('button.play'),on=false;
+function set(v){on=v;img.src=v?c:s;if(b){b.setAttribute('aria-pressed',String(v));b.textContent=v?'Stop':'Play 3 s'}}
+if(!calm){img.addEventListener('mouseenter',function(){set(true)});img.addEventListener('mouseleave',function(){set(false)})}
+if(b)b.addEventListener('click',function(){set(!on)});});})();</script>"""
 
 
 MAP_JS = r"""
@@ -596,7 +660,7 @@ function tidy(s){return String(s).toLowerCase().normalize('NFKD').replace(/[̀-�
 
 function popup(pin){
   var p=D.posts[pin[2]], pl=D.places[pin[3]], box=el('div','pop');
-  if(p.th){var img=el('img');img.src=p.th;img.alt='';box.appendChild(img)}
+  var th=(p.sp&&p.sp[pin[3]])||p.th;if(th){var img=el('img');img.src=th;img.alt='';box.appendChild(img)}
   box.appendChild(el('p','pwho',p.u?'@'+p.u:'Unknown creator'));
   var where=el('p','pwhere');where.appendChild(link(pl.s,pl.n));box.appendChild(where);
   if(pl.x)box.appendChild(el('p','pnote','Pinned at the town: OpenStreetMap does not list it. Google Maps searches for it by name.'));
@@ -773,7 +837,9 @@ def index_page(hub, title, extra_links, home=()):
                     **({"x": 1} if p.get("placed") else {})} for i, p in enumerate(places)],
         "posts": [{"c": p["code"], "u": p["user"], "f": post_href(p, up=False), "i": p["url"], "th": p["thumb"],
                    "t": short(p["caption"], POPUP_CHARS), "g": picks[i], "pl": [pidx[k] for k in hub.named(p)],
-                   "q": " ".join([p["user"], p["name"], p["caption"]] + [hub.places[k]["name"] for k in hub.named(p)])}
+                   "q": " ".join([p["user"], p["name"], p["caption"]] + [hub.places[k]["name"] for k in hub.named(p)]),
+                   **({"sp": {str(pidx[x["key"]]): x["still"] for x in p["shots"] if x["still"]}}
+                      if any(x["still"] for x in p["shots"]) else {})}
                    for i, p in enumerate(posts)],
         "facets": facets,
         "pins": [[lat, lon, i, pidx[k], style, 1 if hub.within(k, set(home)) else 0]
@@ -920,6 +986,17 @@ ul.inline{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px
 .gmap{font-size:.82rem;font-weight:400;color:var(--muted)}
 .button{display:inline-block;padding:9px 18px;border-radius:999px;background:var(--accent);color:var(--card);
   font-weight:700;text-decoration:none}
+.hint{margin:-.3rem 0 .7rem;font-size:.9rem}
+.shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,10.5rem),1fr));gap:12px}
+.shotc{margin:0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px;display:grid;gap:6px;
+  align-content:start;min-width:0}
+.shot{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:8px;display:block;background:var(--bg)}
+.shotc figcaption{display:grid;gap:2px;font-size:.9rem;min-width:0;overflow-wrap:anywhere}
+.shotc figcaption a{font-weight:700}
+.shotc figcaption .muted{font-size:.8rem}
+.play{justify-self:start;margin-top:2px;font:700 .8rem var(--body);padding:4px 12px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--accent);background:transparent;color:var(--accent)}
+.play[aria-pressed="true"]{background:var(--accent);color:var(--card)}
 .caption{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;max-width:70ch;background:var(--card);
   border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 @media (prefers-color-scheme:dark){.leaflet-tile-pane{filter:brightness(.82) contrast(1.05)}}
@@ -939,6 +1016,31 @@ ul.inline{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px
 """
 
 
+def copy_file(src, dest):
+    """Copy src to dest unless dest is already the same file. True when dest is there after."""
+    if os.path.isfile(src):
+        st = os.stat(src)
+        if not os.path.isfile(dest) or os.path.getsize(dest) != st.st_size or os.path.getmtime(dest) < st.st_mtime:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.copy2(src, dest)
+    return os.path.isfile(dest)
+
+
+def copy_stills(hub, out):
+    """Copy each spot's still and clip into OUT/stills/<post file>/, when the files are there.
+    Returns how many spots have a still."""
+    have = 0
+    for post in hub.posts:
+        for x in post["shots"]:
+            base = "stills/" + post["file"] + "/"
+            if copy_file(x["still_src"], os.path.join(out, base + os.path.basename(x["still_src"]))):
+                x["still"] = base + os.path.basename(x["still_src"])
+                have += 1
+                if x["clip_src"] and copy_file(x["clip_src"], os.path.join(out, base + os.path.basename(x["clip_src"]))):
+                    x["clip"] = base + os.path.basename(x["clip_src"])
+    return have
+
+
 def copy_thumbs(hub, out):
     """Copy each post's thumbnail into OUT/thumbs, when the file is there. Returns how many posts
     have one."""
@@ -949,12 +1051,7 @@ def copy_thumbs(hub, out):
         if not src:
             continue
         dest = os.path.join(folder, post["file"] + (os.path.splitext(src)[1].lower() or ".jpg"))
-        if os.path.isfile(src):
-            st = os.stat(src)
-            if not os.path.isfile(dest) or os.path.getsize(dest) != st.st_size or os.path.getmtime(dest) < st.st_mtime:
-                os.makedirs(folder, exist_ok=True)
-                shutil.copy2(src, dest)
-        if os.path.isfile(dest):
+        if copy_file(src, dest):
             post["thumb"] = "thumbs/" + os.path.basename(dest)
             have += 1
     return have
@@ -969,6 +1066,7 @@ def write(path, text):
 def build(hub, out, title, home=()):
     os.makedirs(out, exist_ok=True)
     thumbs = copy_thumbs(hub, out)
+    hub.stills = copy_stills(hub, out)
     for sub in ("places", "posts"):   # only our own folders: other pages live in OUT too
         shutil.rmtree(os.path.join(out, sub), ignore_errors=True)
     for place in hub.places.values():
@@ -1009,12 +1107,13 @@ def main(argv=None):
     pins = {c: (pins.get(c) if isinstance(pins.get(c), list) else []) + placed.get(c, [])
             for c in set(pins) | set(placed)}
     media = load_yaml(os.path.join("data", "media.yaml"))
+    stills = load_yaml(os.path.join("data", "stills.yaml"))
     topics = load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {}
     purposes = load_purposes()
     media_dir = os.path.expanduser(os.environ.get("INSTAGRAM_MEDIA_DIR") or MEDIA_DEFAULT)
     scoped = [s for s in saves if in_pilot(s, tags.get(s["code"]), pilot)]
 
-    hub = Hub(scoped, tags, Places.load(), pins, media, topics, media_dir, purposes)
+    hub = Hub(scoped, tags, Places.load(), pins, media, topics, media_dir, purposes, stills)
     out = os.path.abspath(args.out or cache("hub"))
     title = f"Saved places: {args.pilot.replace('-', ' ').title()}" if args.pilot else "Saved places"
     thumbs = build(hub, out, title, (pilot or {}).get("cities") or ())
@@ -1027,11 +1126,11 @@ def main(argv=None):
     if hub.no_pin:
         log("hub_no_pin", places=len(hub.no_pin), names=",".join(sorted(hub.no_pin))[:300])
     log("hub", scope=args.pilot or "all", saves=len(hub.posts), pinned=pinned, pins=n_pins,
-        posts_with_2plus_pins=multi, more_exact_than_state=exact, place_pages=len(hub.places), spots=spots, thumbs=thumbs, pins_file=bool(pins), media_file=bool(media),
+        posts_with_2plus_pins=multi, more_exact_than_state=exact, place_pages=len(hub.places), spots=spots, thumbs=thumbs, stills=hub.stills, pins_file=bool(pins), media_file=bool(media),
         out=out)
     print(f"{len(hub.posts)} saves: {pinned} on the map ({exact} at a town, park or spot) "
           f"with {n_pins} pins, one per place a post names ({multi} posts have 2 or more); "
-          f"{len(hub.places)} place pages ({spots} spots); {thumbs} thumbnails")
+          f"{len(hub.places)} place pages ({spots} spots); {thumbs} thumbnails; {hub.stills} spot stills")
     venues = venue_check(hub)
     log("hub_venues", **{k: len(v) for k, v in venues.items()}, town_only_codes=",".join(venues["town"]))
     print(f"eat or stay posts: {len(venues['spot'])} open a spot OpenStreetMap placed, {len(venues['placed'])} "

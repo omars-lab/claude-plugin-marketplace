@@ -210,6 +210,43 @@ class Hub(unittest.TestCase):
         self.assertEqual(thumbs["TOWN1"], "thumbs/TOWN1.jpg")
         self.assertIsNone(thumbs["STATE1"])     # listed, but the file is not there
 
+    def test_a_spot_with_a_still_shows_it_instead_of_the_cover(self):
+        rows = {"PARK1": [{"name": "Example Falls", "said": "Example Falls trail", "frame": 2, "t": 67.3,
+                           "how": "on_screen", "still": "PARK1/spots/still-example-falls.jpg",
+                           "clip": "PARK1/spots/clip-example-falls.webp"}],
+                # listed, but its files were never cut: the post keeps its cover
+                "PARK2": [{"name": "Example Falls", "said": "Example Falls", "frame": 1, "t": 0.0, "how": "on_screen",
+                           "still": "PARK2/spots/still-example-falls.jpg", "clip": "PARK2/spots/clip-example-falls.webp"}]}
+        self.write("data/stills.yaml", rows)
+        os.makedirs(os.path.join(self.media, "PARK1", "spots"))
+        for f in ("still-example-falls.jpg", "clip-example-falls.webp"):
+            with open(os.path.join(self.media, "PARK1", "spots", f), "wb") as fh:
+                fh.write(b"not really an image")
+        self.assertIn("1 spot stills", self.build("--pilot", "fixture"))
+        self.assertEqual(sorted(os.listdir(os.path.join(self.out, "stills", "PARK1"))),
+                         ["clip-example-falls.webp", "still-example-falls.jpg"])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "stills", "PARK2")))
+
+        spot = self.page("places/example-falls.html")
+        self.assertIn('src="../stills/PARK1/still-example-falls.jpg" data-clip="../stills/PARK1/clip-example-falls.webp"',
+                      spot)
+        self.assertIn('alt="Example Falls, 1:07 into the reel"', spot)
+        self.assertIn('class="thumb ph"', spot)          # PARK2's card: no still, no cover
+        self.assertIn("img[data-clip]", spot)            # the hover script is on the page
+
+        post = self.page("posts/PARK1.html")
+        self.assertIn("The places in the video (1)", post)
+        self.assertIn("1:07 · from @example_creator's reel", post)
+        self.assertIn('<button class="play" type="button" aria-pressed="false">Play 3 s</button>', post)
+        self.assertNotIn("The places in the video", self.page("posts/PARK2.html"))
+        self.assertNotIn("img[data-clip]", self.page("posts/PARK2.html"))
+
+        d = self.data()
+        posts = {p["c"]: p for p in d["posts"]}
+        falls = next(i for i, pl in enumerate(d["places"]) if pl["n"] == "Example Falls")
+        self.assertEqual(posts["PARK1"]["sp"], {str(falls): "stills/PARK1/still-example-falls.jpg"})   # the map popup
+        self.assertNotIn("sp", posts["PARK2"])
+
     def test_builds_without_pins_or_media(self):
         os.remove(os.path.join(self.root, "data", "pins.yaml"))
         os.remove(os.path.join(self.root, "data", "media.yaml"))

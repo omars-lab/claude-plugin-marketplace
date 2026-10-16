@@ -31,12 +31,14 @@ The pipeline, in order:
    out.
 5. **read-frames** — for reels whose place is only on screen: frames at each scene change, the
    words on them, and `frame-reader` agents naming the spots, checked like caption spots.
-6. **build-hub** — the private hub: a map, a page per place, a page per post.
-7. **split-saves** *(coming)* — the items a post names, each with its quote.
-8. **extract-stills** *(coming)* — the best still and a short clip per item.
+6. **extract-stills** — for reels with a video: a still and a 3-second clip for each spot, cut
+   where its name is on screen, so each place shows its own picture instead of the reel's cover.
+7. **build-hub** — the private hub: a map, a page per place, a page per post.
+8. **split-saves** *(coming)* — the items a non-travel post names (a recipe, an idea), each with
+   its quote. For travel, the items are the spots step 3 already finds.
 
 Skills available today: **introduce** (this skill), **manage-saves** (the router: works out which
-step comes next), and steps 1 to 6.
+step comes next), and steps 1 to 7.
 
 ## Where data lives
 
@@ -85,6 +87,7 @@ For a multi-step run, track each step with `TaskCreate` and mark it done as it f
 | Pin the restaurants and beaches a post names | resolve-post-location | `/instagram-manager:resolve-post-location` |
 | The place is only in the video | read-frames | `/instagram-manager:read-frames` |
 | Download thumbnails or videos | fetch-media | `/instagram-manager:fetch-media` |
+| A picture of each place a reel names | extract-stills | `/instagram-manager:extract-stills` |
 | Show my saves on a map | build-hub | `/instagram-manager:build-hub` |
 | What should I run next? | manage-saves | `/instagram-manager:manage-saves` |
 
@@ -99,6 +102,7 @@ instagram-manager
   ├── resolve-post-location  — tagged saves → post-locator agents → data/pins.yaml, data/pins-review.yaml
   ├── fetch-media            — thumbnails and videos → $INSTAGRAM_MEDIA_DIR, data/media.yaml
   ├── read-frames            — videos → frames and their words → frame-reader agents → data/pins.yaml
+  ├── extract-stills         — videos + spots → a still and a clip per spot → data/stills.yaml
   └── build-hub              — data/ → <data repo>/.cache/hub/ (map, place pages, post pages)
 
   agents/ (Haiku, one batch file in, one answers file out)
@@ -123,4 +127,5 @@ agents on the plan Claude Code is logged in with.
 - Python 3, plus PyYAML (the tagger and the data check).
 - Claude Code, for the agents.
 - For read-frames: ffmpeg and tesseract; on a Mac, Apple Vision reads the frames as well.
+- For extract-stills: ffmpeg and img2webp (`brew install ffmpeg webp`).
 - An Instagram data export, HTML or JSON.
