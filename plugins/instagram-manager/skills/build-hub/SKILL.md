@@ -136,10 +136,11 @@ page or the spot review page, are kept, and the map page links to them.
    (fine, the video may), or the locator missed one (fix **resolve-post-location**'s agent).
 2. **Look at it.** `make serve`, then open `http://localhost:8765/`. Check the map, one place
    page and one post page, on a wide window and a narrow one. If the data repo has page comments
-   on (development-manager's enable-page-comments, serving `.cache/hub` itself), `make comments`
-   serves the same pages with a Comment button at the address it prints, so the person can point
-   at a wrong pin or a bad still and Claude hears about it. Answers picked on the decisions page are
-   kept per address, so picks made on one address do not show on the other.
+   on (development-manager's enable-page-comments, serving `.cache/hub` itself), the pages carry a
+   Comment button, so the person can point at a wrong pin or a bad still and Claude hears about it.
+   The data repo's `make serve` can run the comment server itself (`.page-comments/run serve --root
+   .cache/hub --port $(PORT)`), so there is one address. With a separate `make comments` on another
+   port, note that answers picked on the decisions page are kept per address.
 3. **Fix the data, not the pages.** A pin in the wrong spot means its place in
    `data/places.yaml` is wrong (fix it there, or with the `lookup:` field and **tag-saves**'
    `add_places.py`). A missing spot comes from **resolve-post-location**. A missing thumbnail comes
