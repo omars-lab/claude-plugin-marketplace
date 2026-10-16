@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(PLUGIN, "shared", "scripts"))
 sys.path.insert(0, os.path.join(PLUGIN, "skills", "import-saves", "scripts"))
 sys.path.insert(0, os.path.join(PLUGIN, "skills", "fetch-media", "scripts"))
 import make_sandbox  # noqa: E402
+import review_doc  # noqa: E402
 import geocode  # noqa: E402
 import import_saved  # noqa: E402
 import fetch_media  # noqa: E402
@@ -159,6 +160,50 @@ class Sandbox(unittest.TestCase):
             home.need_topics({})
         self.assertIn("examples/config/topics.yaml", str(cm.exception.code))
         self.assertIsNone(home.need_topics({"travel": {}}))
+
+
+class ReviewDoc(unittest.TestCase):
+    """review_doc.py with --no-maps: no browser, no network."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = self.tmp.name
+        self.box, self.out, self.media = (os.path.join(t, d) for d in ("box", "out", "media"))
+        os.makedirs(os.path.join(self.box, "shots"))
+        for name in ("map.png", "topic.png"):
+            with open(os.path.join(self.box, "shots", name), "wb") as f:
+                f.write(b"\x89PNG\r\n\x1a\n")
+        with open(os.path.join(self.box, "review.md"), "w") as f:
+            f.write("# Review\n\n![the map, first look](shots/map.png)\n\n"
+                    "| # | Finding | Picture |\n|---|---|---|\n| F3 | No pins | shots/topic.png |\n\n"
+                    "Again: shots/map.png and shots/gone.png.\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_pictures_point_at_the_media_folder_and_named_ones_show_after_their_block(self):
+        quiet(review_doc.main, ["--sandbox", self.box, "--out", self.out, "--media", self.media, "--no-maps"])
+        with open(os.path.join(self.out, "review.md")) as f:
+            doc = f.read()
+        media_map = review_doc.file_url(os.path.join(self.media, "shots", "map.png"))
+        self.assertIn(f"![the map, first look]({media_map})", doc)
+        # A picture only named in a table row is shown once, after the table, labelled by its finding.
+        self.assertIn("![Finding F3: topic.png|700](" + review_doc.file_url(
+            os.path.join(self.media, "shots", "topic.png")) + ")", doc)
+        self.assertEqual(doc.count("|700]("), 1)
+        self.assertNotIn("](shots/", doc)
+        self.assertIn("shots/gone.png", doc)  # a missing picture stays as text
+        self.assertTrue(os.path.isfile(os.path.join(self.media, "shots", "topic.png")))
+        self.assertFalse(os.path.exists(os.path.join(self.out, "diary.md")))
+
+    def test_a_post_row_is_named_by_its_creator_and_places(self):
+        page = os.path.join(self.tmp.name, "DEMOa000001.html")
+        pins = [[1, 2, f"Cafe {n}"] for n in range(6)]
+        with open(page, "w") as f:
+            f.write(f"<h1>@example_<b>wanderer</b></h1><script>var d={json.dumps(pins)};</script>")
+        self.assertEqual(review_doc.page_name(page, "posts"),
+                         "DEMOa000001 by @example_wanderer: Cafe 0, Cafe 1, Cafe 2, Cafe 3 and 2 more")
+        self.assertEqual(review_doc.page_name(page, "places"), "@example_wanderer")
 
 
 if __name__ == "__main__":

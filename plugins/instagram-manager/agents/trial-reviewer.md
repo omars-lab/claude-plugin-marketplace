@@ -43,7 +43,10 @@ The tester follows one path. Walk the rest yourself, quickly:
 - Error messages: run two or three scripts with a missing input (no `saves.json`, no config) and
   read what they say. Does each one say what to do next?
 - The hub pages in the sandbox: take screenshots with `skills/new-user-trial/scripts/shot.mjs`
-  (it picks its own port) of any page the tester did not look at, and read them.
+  (it picks its own port) of any page the tester did not look at, and read them. Show each one
+  next to its finding as `![what it shows](shots/<name>.png)` on a line of its own, outside any
+  table (a picture in a table cell shows too small to read); `--clip <selector>` pictures one
+  part of a page.
 - The steps the tester marked "not tried": read their docs and judge whether a newcomer would
   know what they are agreeing to (time, pacing, network, what is touched).
 

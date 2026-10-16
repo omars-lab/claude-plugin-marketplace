@@ -45,7 +45,10 @@ quickly. You are not here to fix anything. Never edit a file in the plugin folde
    to start those agents, and how many batches a real 2,000-save export would make.
 6. **Never start a server** on ports 8765 to 8769 or 8780. To see a page, use
    `node <plugin>/skills/new-user-trial/scripts/shot.mjs --root <dir> --page <path> --out <sandbox>/shots/<name>.png --playwright <dir>`,
-   then read the PNG.
+   then read the PNG. Show it in the diary where it matters: `![what it shows](shots/<name>.png)`
+   on a line of its own, outside any table, so the person reading the diary sees it without
+   opening a file. Add `--clip <selector>` to picture one part of a page (`--clip "#mini"`, the
+   small map on a place or post page).
 7. **Pass the export zip by its path.** Commands that find "the newest export in ~/Downloads"
    would pick a real one; use the importer's `--from-zip <sandbox>/downloads/<zip>` instead, and
    note that the easy path would have read the wrong folder.
