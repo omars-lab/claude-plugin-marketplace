@@ -187,6 +187,27 @@ class Hub(unittest.TestCase):
         self.assertIn("query=Example+Wok%2C+30+Other+Rd", wok)
         self.assertIn("found one by that name elsewhere, not at the caption&#x27;s address", wok)
 
+    def test_each_pin_carries_an_icon_for_its_kind_and_the_legend_lists_them(self):
+        self.write("data/tags.yaml", {**TAGS, "TOWN1": {**TAGS["TOWN1"], "purposes": ["stay"]}})
+        self.write("data/pins-review.yaml", {
+            "TOWN1": [{"said": "@examplecafe", "name": "Example Cafe", "asked": "Example Cafe", "near": "Fixture Town",
+                       "why": "not found near Fixture Town"},
+                      {"said": "Number Nine", "name": "Number Nine", "asked": "Number Nine", "near": "Fixture Town",
+                       "why": "not found near Fixture Town"}]})
+        self.build("--pilot", "fixture")
+        d = self.data()
+        icon = {p["n"]: p["ic"] for p in d["places"]}
+        self.assertEqual(icon["Example Falls"], "waterfall")     # by its OpenStreetMap kind
+        self.assertEqual(icon["Example Cafe"], "coffee")         # no kind: by the words in its name
+        self.assertEqual(icon["Number Nine"], "stay")            # nor those: every post naming it is a stay
+        self.assertEqual(icon["Fixture State"], "region")
+        page = self.page("index.html")
+        self.assertIn("Colour: how exact", page)
+        self.assertRegex(page, r'Waterfall <b class="n">2</b>')  # one pin per post that names it
+        self.assertNotIn("Lighthouse", page)                     # only the kinds on this map
+        self.assertEqual(set(d["icons"]), {icon[d["places"][pin[3]]["n"]] for pin in d["pins"]})
+        self.assertIn('"Example Falls","","spot","waterfall"]', self.page("places/example-falls.html"))
+
     def test_a_kept_google_id_opens_that_exact_place(self):
         self.write("data/pins-review.yaml", {
             "TOWN1": [{"said": "Example Deli", "near": "Fixture Town", "why": "not found near Fixture Town",
@@ -220,7 +241,7 @@ class Hub(unittest.TestCase):
         self.assertNotIn("check it", deli)
         self.assertIn("the Google Maps link opens the place itself", deli)   # not "searches for it by name"
         self.assertNotIn("searches for it by name", deli)
-        self.assertIn('"Example Deli","","placed"]', deli)        # its small map draws the at-the-town ring
+        self.assertIn('"Example Deli","","placed","eat"]', deli)   # its small map draws the at-the-town ring
 
     def test_a_chain_keeps_its_search_link_for_every_branch(self):
         self.write("data/pins-review.yaml", {

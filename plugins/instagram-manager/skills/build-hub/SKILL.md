@@ -97,6 +97,18 @@ the town, not the state.
   `data/places.yaml`) still gets a page. Its posts are pinned at the next place up that has a pin.
   The build log names such places (`ev=hub_no_pin`).
 
+## What a pin looks like
+
+A pin's **colour** says how exact it is: a spot the post names, a spot at its town, a town, park
+or region, or only a state or country. The **icon** inside says what kind of place it is: food,
+coffee, a beach, a waterfall, a trail, a place to stay and so on (`ICONS` in `build_hub.py`, 20
+kinds). The icon comes from the OpenStreetMap kind. If the kind says nothing, a spot's name words
+decide it ("Example Cafe" gets coffee). If that fails too, the post's purpose decides when every
+post naming it is tagged eat or stay. Anything left gets "other spot". The legend above the map
+has one row for colour and one for icon, and lists only the icons on the map, each with its count.
+On a phone, each legend row is one line that scrolls sideways. The small maps on place and post
+pages use the same icons.
+
 The map opens on the pilot's own places (for example, a state). Pins for posts that also name
 somewhere far away are still there when you zoom out.
 

@@ -564,6 +564,102 @@ def kind_word(p):
             "other": "Place", "place": "Place"}.get(p["kind"], str(p["kind"]).replace("_", " ").capitalize())
 
 
+# The icon inside a pin says what kind of place it is; the pin's colour still says how exact it is.
+# Each: its name in the legend, the OpenStreetMap kinds it covers, and a line drawing in a 24×24 box.
+ICONS = (
+    ("eat", "Food", {"restaurant", "fast_food", "bbq", "food_court", "food", "deli", "diner"},
+     "M6 3v6a2.5 2.5 0 0 0 5 0V3M8.5 3v18M17.5 21V3c-2.5 1.5-3.5 5-3.5 9h3.5"),
+    ("coffee", "Coffee", {"cafe", "coffee", "tea"},
+     "M4 9h12v4a6 6 0 0 1-12 0zM16 10.5h1.5a2.5 2.5 0 0 1 0 5H15.5M8 3.5V6M12 3.5V6"),
+    ("sweet", "Bakery & sweets", {"bakery", "pastry", "ice_cream", "chocolate", "confectionery", "dessert", "donut"},
+     "M6.5 10a5.5 5.5 0 0 1 11 0zM6.5 10 12 21l5.5-11"),
+    ("drink", "Bar & winery", {"bar", "pub", "biergarten", "brewery", "winery", "wine", "beverages", "nightclub"},
+     "M5 4h14l-7 8zM12 12v8M8 20h8"),
+    ("stay", "Stay", {"hotel", "motel", "guest_house", "hostel", "resort", "chalet", "apartment"},
+     "M3 6v14M3 15h18v5M21 15v-2a3 3 0 0 0-3-3h-7v5M5.5 12.5a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0"),
+    ("camp", "Camp", {"camp_site", "caravan_site", "picnic_site"},
+     "M3 20 12 5l9 15zM9.5 20 12 15.5l2.5 4.5"),
+    ("beach", "Beach & coast", {"beach", "sand", "dune", "bay", "cape", "peninsula", "islet", "island", "pier",
+                                "marina", "coastline"},
+     "M3.5 12a8.5 8 0 0 1 17 0zM12 12l2.5 8.5M8 20.5h9"),
+    ("waterfall", "Waterfall", {"waterfall"},
+     "M4 4h16M8 4v9M12 4v12M16 4v9M3.5 20c2 0 2.2-1.5 4.3-1.5S10 20 12 20s2.2-1.5 4.3-1.5 2.2 1.5 4.2 1.5"),
+    ("water", "Lake & river", {"lake", "reservoir", "stream", "river", "water", "spring", "hot_spring"},
+     "M3 9c2 0 2.2-2 4.5-2S9.8 9 12 9s2.2-2 4.5-2S19 9 21 9M3 15.5c2 0 2.2-2 4.5-2s2.3 2 4.5 2 2.2-2 4.5-2 2.5 2 4.5 2"),
+    ("peak", "Peak & rock", {"peak", "cliff", "bare_rock", "rock", "volcano", "cave_entrance", "arch", "glacier",
+                             "valley", "ridge", "saddle"},
+     "M2.5 20 9 8l3.5 6 2.5-4 6.5 10zM7.2 11.3 9 8l1.8 3.3"),
+    ("view", "Viewpoint", {"viewpoint"},
+     "M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12zM9.2 12a2.8 2.8 0 1 0 5.6 0 2.8 2.8 0 1 0-5.6 0"),
+    ("trail", "Trail", {"path", "track", "cycleway", "trailhead", "bridleway"},
+     "M12 3v18M12 5h6l2 2.25-2 2.25h-6M12 12H6l-2 2.25 2 2.25h6"),
+    ("nature", "Park & nature", {"park", "nature_reserve", "protected_area", "national_park", "garden", "wood",
+                                 "forest", "meadow", "grassland", "tree", "farmland", "heath", "scrub"},
+     "M12 3 6.5 11h3L5 17.5h14L14.5 11h3zM12 17.5V21"),
+    ("culture", "Museum & landmark", {"museum", "arts_centre", "artwork", "gallery", "heritage", "ruins", "fort",
+                                      "castle", "mansion", "monument", "memorial", "religious", "place_of_worship",
+                                      "library", "theatre", "tower", "bridge", "educational_institution"},
+     "M3 9.5 12 4l9 5.5zM5.5 10.5v7M10 10.5v7M14 10.5v7M18.5 10.5v7M3 20.5h18"),
+    ("lighthouse", "Lighthouse", {"lighthouse"},
+     "M9.5 21 11 9h2l1.5 12zM8 21h8M10.2 9 12 5.5 13.8 9M4 5l3.5 1.5M20 5l-3.5 1.5"),
+    ("fun", "Fun & animals", {"attraction", "theme_park", "zoo", "aquarium", "water_park", "playground"},
+     "M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z"),
+    ("shop", "Shop & market", {"mall", "retail", "supermarket", "marketplace", "toys", "department_store", "clothes",
+                               "gift"},
+     "M5 8h14l-1.2 13H6.2zM9 10V6.5a3 3 0 0 1 6 0V10"),
+    ("town", "Town or city", {"city", "town", "village", "hamlet", "locality", "suburb", "neighbourhood", "quarter"},
+     "M3 21h18M5 21V11l5-3v13M10 21V4h9v17M13 8h3M13 12h3M13 16h3"),
+    ("region", "Region, state or country", {"region", "state", "country", "administrative", "county"},
+     "M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20zM9 4v13.5M15 6.5V20"),
+    ("spot", "Other spot", set(), "M9.5 12a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0"),
+)
+ICON_OF_KIND = {kind: g for g, _, kinds, _ in ICONS for kind in kinds}
+ICON_LABEL = {g: label for g, label, _, _ in ICONS}
+ICON_PATH = {g: path for g, _, _, path in ICONS}
+# A spot whose kind says nothing (an address, the road it is on) goes by the words in its name, first match wins.
+ICON_WORDS = [(g, re.compile(r"\b(" + words + r")\b", re.I)) for g, words in (
+    ("eat", r"bbq|bar-?b-?q|barbecue|grill|kitchen|tacos?|taqueria|pizza|pizzeria|burgers?|diner|deli|sushi|ramen|"
+            r"noodles?|restaurant|bistro|eatery|cantina|smokehouse|brisket|pho"),
+    ("coffee", r"coffee|caf[eé]|espresso|roasters?|roastery|tea ?house"),
+    ("sweet", r"bakery|bakehouse|p[aâ]tisserie|donuts?|doughnuts?|ice cream|gelato|creamery|desserts?|boba|chocolate"),
+    ("drink", r"bar|brewery|brewing|winery|wines?|taproom|pub|cellars?|distillery|cocktails?"),
+    ("stay", r"hotel|inn|motel|lodge|resort|cabins?|hostel|suites"),
+    ("camp", r"campground|campsite|camping|rv park"),
+    ("waterfall", r"falls|waterfall"),
+    ("beach", r"beach|cove|pier"),
+    ("view", r"overlook|vista|viewpoint|lookout"),
+    ("trail", r"trail|trailhead"),
+    ("peak", r"peak|summit|mount|mt"),
+    ("nature", r"park|gardens?|preserve|reserve|forest"),
+    ("culture", r"museum|gallery"),
+    ("shop", r"market|shop|store|mall|boutique"))]
+
+
+def icon_of(hub, p):
+    """Which icon a place's pin carries: by its kind, else (a spot) the words in its name, else what
+    every post naming it is for (eat or stay), else a plain spot."""
+    g = None if p["kind"] in NOT_A_KIND else ICON_OF_KIND.get(p["kind"])
+    if g or not p["spot"]:
+        return g or "spot"
+    g = next((g for g, rx in ICON_WORDS if rx.search(p["name"])), None)
+    if g:
+        return g
+    tagged = [set(hub.post(c)["tagged_purposes"]) for c in p["posts"]]
+    for purpose in ("stay", "eat"):
+        if tagged and all(purpose in t for t in tagged):
+            return purpose
+    return "spot"
+
+
+def used_icons(rows, at):
+    """The drawings a page's pins need, by icon: rows hold the icon at index `at`."""
+    return {r[at]: ICON_PATH[r[at]] for r in rows if r[at] in ICON_PATH}
+
+
+def glyph(g):
+    return f'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="{ICON_PATH[g]}"/></svg>'
+
+
 def shell(title, content, head="", script="", body=""):
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
@@ -574,17 +670,20 @@ def shell(title, content, head="", script="", body=""):
 MINI_JS = """<script>(function(){var d=__DATA__;if(!window.L||!d.length)return;
 var m=L.map('mini',{scrollWheelZoom:false});
 L.tileLayer('__TILES__',{maxZoom:19,attribution:'__CREDIT__'}).addTo(m);
-var pts=[];d.forEach(function(p){var mk=L.marker([p[0],p[1]],{title:p[2],alt:p[2],
-icon:L.divIcon({className:'',html:'<div class="pin pin-'+p[4]+'"></div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(m);
-mk.bindTooltip(p[2],{direction:'top',offset:[0,-8]});if(p[3])mk.on('click',function(){location.href=p[3]});pts.push([p[0],p[1]]);});
+var G=__ICONS__,pts=[];d.forEach(function(p){var s=p[4]==='here'?30:p[4]==='inside'?22:26;
+var mk=L.marker([p[0],p[1]],{title:p[2],alt:p[2],icon:L.divIcon({className:'',html:'<div class="pin pin-'+p[4]+'">'+
+(G[p[5]]?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+G[p[5]]+'"/></svg>':'')+'</div>',
+iconSize:[s,s],iconAnchor:[s/2,s/2]})}).addTo(m);
+mk.bindTooltip(p[2],{direction:'top',offset:[0,-s/2]});if(p[3])mk.on('click',function(){location.href=p[3]});pts.push([p[0],p[1]]);});
 if(pts.length===1)m.setView(pts[0],__ZOOM__);else m.fitBounds(pts,{padding:[30,30],maxZoom:13});})();</script>"""
 
 
 def mini_map(points, zoom=11):
-    """A small map: points are (lat, lon, label, link or "", style)."""
+    """A small map: points are (lat, lon, label, link or "", style, icon)."""
     if not points:
         return "", ""
-    js = (MINI_JS.replace("__DATA__", data_json(points)).replace("__TILES__", TILES)
+    js = (MINI_JS.replace("__DATA__", data_json(points)).replace("__ICONS__", data_json(used_icons(points, 5)))
+          .replace("__TILES__", TILES)
           .replace("__CREDIT__", CREDIT).replace("__ZOOM__", str(zoom)))
     return '<div id="mini" role="img" aria-label="Map"></div>', js
 
@@ -657,11 +756,11 @@ def place_page(hub, place):
     points = []
     if place["lat"] is not None:
         points.append([place["lat"], place["lon"], place["name"], "",
-                       "placed" if place.get("placed") else "spot" if place["spot"] else "here"])
+                       "placed" if place.get("placed") else "spot" if place["spot"] else "here", icon_of(hub, place)])
     for k in place["inside"]:
         q = hub.places[k]
         if q["lat"] is not None:
-            points.append([q["lat"], q["lon"], q["name"], q["slug"] + ".html", "inside"])
+            points.append([q["lat"], q["lon"], q["name"], q["slug"] + ".html", "inside", icon_of(hub, q)])
     box, js = mini_map(points, 13 if place["spot"] else (6 if place["kind"] in WIDE else 10))
     posts = [hub.post(c) for c in place["posts"]]
     n = len(posts)
@@ -702,7 +801,8 @@ def post_page(hub, post):
             f'<li><a href="{place_href(p)}">{esc(p["name"])}</a></li>' for p in wider) + "</ul>"))
     if not exact and not wider:
         rows.append(("Places", '<span class="muted">none tagged</span>'))
-    points = [[lat, lon, hub.places[k]["name"], place_href(hub.places[k]), style] for k, lat, lon, style in post["pins"]]
+    points = [[lat, lon, hub.places[k]["name"], place_href(hub.places[k]), style, icon_of(hub, hub.places[k])]
+              for k, lat, lon, style in post["pins"]]
     zoom = 9 if len(points) == 1 and hub.places[post["pins"][0][0]]["kind"] in ("region", "park") else 11
     box, js = mini_map(points, 6 if points and points[0][4] == "wide" else zoom)
     caption = esc(post["caption"]) if post["caption"].strip() else '<span class="muted">No caption.</span>'
@@ -780,7 +880,9 @@ function popup(pin){
   box.appendChild(ln);return box;
 }
 
-function icon(level){return L.divIcon({className:'',html:'<div class="pin pin-'+level+'"></div>',iconSize:[18,18],iconAnchor:[9,9]})}
+function icon(level,g){return L.divIcon({className:'',html:'<div class="pin pin-'+level+'">'+
+  (D.icons[g]?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+D.icons[g]+'"/></svg>':'')+'</div>',
+  iconSize:[26,26],iconAnchor:[13,13]})}
 
 // A bubble counts posts, not pins: a road-trip post that names 20 places is one post.
 function cluster(c){var seen={},n=0;c.getAllChildMarkers().forEach(function(m){if(!seen[m.post]){seen[m.post]=1;n++}});
@@ -882,7 +984,7 @@ L.tileLayer('__TILES__',{maxZoom:19,attribution:'__CREDIT__'}).addTo(map);
 layer=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:45,iconCreateFunction:cluster});
 D.pins.forEach(function(pin){
   var p=D.posts[pin[2]],pl=D.places[pin[3]];
-  var m=L.marker([pin[0],pin[1]],{icon:icon(pin[4]),title:(p.u?'@'+p.u:'')+' · '+pl.n,alt:pl.n,keyboard:true});
+  var m=L.marker([pin[0],pin[1]],{icon:icon(pin[4],pl.ic),title:(p.u?'@'+p.u:'')+' · '+pl.n,alt:pl.n,keyboard:true});
   m.post=pin[2];
   m.bindPopup(function(){return popup(pin)},{maxWidth:260,minWidth:200,autoPanPadding:[20,20]});
   marks.push(m);
@@ -947,7 +1049,7 @@ def index_page(hub, title, extra_links, home=()):
     facets, picks, inside = menus(hub, places)
     data = {
         "places": [{"n": p["name"], "s": place_href(p, up=False), "c": len(p["posts"]), "m": p["map"],
-                    "k": ("spot" if p["spot"] else kind_word(p).lower()), "g": inside[i],
+                    "k": ("spot" if p["spot"] else kind_word(p).lower()), "g": inside[i], "ic": icon_of(hub, p),
                     **({"x": 1} if p.get("placed") else {})} for i, p in enumerate(places)],
         "posts": [{"c": p["code"], "u": p["user"], "f": post_href(p, up=False), "i": p["url"], "th": p["thumb"],
                    **({"pv": p["pv"]} if p["pv"] else {}), **({"pa": p["pa"]} if p["pa"] else {}),
@@ -960,6 +1062,14 @@ def index_page(hub, title, extra_links, home=()):
         "pins": [[lat, lon, i, pidx[k], style, 1 if hub.within(k, set(home)) else 0]
                  for i, p in enumerate(posts) for k, lat, lon, style in p["pins"]],
     }
+    # The second legend row: each icon on the map, in ICONS order, with how many pins carry it.
+    n_icon = {}
+    for pin in data["pins"]:
+        g = data["places"][pin[3]]["ic"]
+        n_icon[g] = n_icon.get(g, 0) + 1
+    data["icons"] = {g: ICON_PATH[g] for g in n_icon}
+    kinds = "".join(f'<span><i class="kind">{glyph(g)}</i>{esc(ICON_LABEL[g])} <b class="n">{n_icon[g]}</b></span>'
+                    for g, *_ in ICONS if g in n_icon)
     pinned = sum(1 for p in posts if p["pins"])
     n_places = len({k for p in posts for k, *_ in p["pins"]})
     links = "".join(f'<a href="{esc(h)}">{esc(t)}</a>' for h, t in extra_links)
@@ -973,10 +1083,12 @@ def index_page(hub, title, extra_links, home=()):
                'placeholder="Search captions, creators and places" aria-label="Search captions, creators and places">'
                '</form><div id="out" aria-live="polite"></div></aside>'
                '<div class="mapcol"><div class="legend" aria-label="What the pins mean">'
+               '<div class="lrow"><b class="lh">Colour: how exact</b>'
                '<span><i class="pin pin-spot"></i>a spot the post names</span>'
                '<span><i class="pin pin-placed"></i>a spot not on OpenStreetMap, at its town</span>'
                '<span><i class="pin pin-area"></i>a town, park or region</span>'
                '<span><i class="pin pin-wide"></i>only the state or country</span></div>'
+               + (f'<div class="lrow"><b class="lh">Icon: what kind</b>{kinds}</div>' if kinds else "") + '</div>'
                '<div id="map"></div></div></div>')
     js = MAP_JS.replace("__DATA__", data_json(data)).replace("__TILES__", TILES).replace("__CREDIT__", CREDIT)
     flips = previews.player_js() if any(p["pa"] for p in posts) else ""   # before the map script, which uses it
@@ -986,17 +1098,17 @@ def index_page(hub, title, extra_links, home=()):
 CSS = """
 :root{
   --bg:#f3f5f4; --card:#ffffff; --fg:#1d2421; --muted:#5d6a64; --line:#d9e0dc;
-  --accent:#0f6b5c; --accent-soft:#dcf1ea; --spot:#c2410c; --wide:#8a948f; --mark:#fde9a8; --ring:#ffffff;
+  --accent:#0f6b5c; --accent-soft:#dcf1ea; --spot:#c2410c; --wide:#8a948f; --mark:#fde9a8; --ring:#ffffff; --pin-ink:#ffffff;
   --display:"Bricolage Grotesque","Avenir Next",system-ui,sans-serif;
   --body:"Atkinson Hyperlegible",system-ui,-apple-system,sans-serif;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#141917; --card:#1c2320; --fg:#e4ebe7; --muted:#9aa8a1; --line:#2e3833;
-  --accent:#5fc9b3; --accent-soft:#173a31; --spot:#fb923c; --wide:#7b8681; --mark:#5a4a12; --ring:#141917;
+  --accent:#5fc9b3; --accent-soft:#173a31; --spot:#fb923c; --wide:#7b8681; --mark:#5a4a12; --ring:#141917; --pin-ink:#0f1714;
   color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#141917; --card:#1c2320; --fg:#e4ebe7; --muted:#9aa8a1; --line:#2e3833;
-  --accent:#5fc9b3; --accent-soft:#173a31; --spot:#fb923c; --wide:#7b8681; --mark:#5a4a12; --ring:#141917;
+  --accent:#5fc9b3; --accent-soft:#173a31; --spot:#fb923c; --wide:#7b8681; --mark:#5a4a12; --ring:#141917; --pin-ink:#0f1714;
   color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 var(--body)}
@@ -1007,13 +1119,18 @@ h2{font:600 1.15rem/1.2 var(--display);margin:0 0 .6rem}
 .sub{margin:.3rem 0 0;color:var(--muted)}
 .muted{color:var(--muted)}
 mark{background:var(--mark);color:inherit;padding:0 .15em;border-radius:3px}
-.pin{display:inline-block;width:18px;height:18px;border-radius:50%;background:var(--accent);
-  border:3px solid var(--ring);box-shadow:0 1px 4px rgba(0,0,0,.4)}
+/* A pin: its colour says how exact it is, the drawing inside says what kind of place. */
+.pin{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--accent);
+  border:2px solid var(--ring);box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.pin svg{width:16px;height:16px;fill:none;stroke:var(--pin-ink);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .pin-spot{background:var(--spot)}
 .pin-wide{background:var(--wide)}
-.pin-placed{background:var(--card);border-color:var(--spot);border-style:dashed}
-.pin-here{background:var(--spot);width:20px;height:20px}
-.pin-inside{width:14px;height:14px;border-width:2px}
+.pin-placed{background:var(--card);border:2.5px dashed var(--spot)}
+.pin-placed svg{stroke:var(--spot)}
+.pin-here{background:var(--spot);width:30px;height:30px}
+.pin-here svg{width:18px;height:18px}
+.pin-inside{width:22px;height:22px}
+.pin-inside svg{width:13px;height:13px}
 .bubble{width:100%;height:100%;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;
   font:700 .85rem var(--body);border:3px solid var(--ring);box-shadow:0 1px 5px rgba(0,0,0,.35)}
 @media (prefers-color-scheme:dark){.bubble{color:#0b1512}}
@@ -1048,14 +1165,21 @@ aside{overflow:auto;padding:14px 16px;border-right:1px solid var(--line);display
   background:var(--bg)}
 /* The map column: the legend as one row right above the map. */
 .mapcol{display:grid;grid-template-rows:auto 1fr;min-height:0;min-width:0}
-.mapcol .legend{padding:8px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+.mapcol .legend{padding:6px 16px;background:var(--card);border-bottom:1px solid var(--line)}
 #map{min-height:0}
 form{display:flex}
 input{flex:1;width:0;min-width:0;font:inherit;padding:9px 14px;border:1px solid var(--line);border-radius:999px;
   background:var(--card);color:var(--fg)}
-.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.82rem;color:var(--muted)}
+.legend{display:grid;gap:4px;font-size:.78rem;line-height:1.3;color:var(--muted)}
+.lrow{display:flex;flex-wrap:wrap;align-items:center;gap:3px 12px}
+.lh{font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--fg)}
 .legend span{display:flex;align-items:center;gap:6px}
 .legend .pin{width:12px;height:12px;border-width:2px;box-shadow:none}
+.legend span:has(.kind){gap:4px}
+.legend .kind{display:inline-grid;place-items:center;width:19px;height:19px;border-radius:50%;
+  border:1.5px solid var(--line);background:var(--bg)}
+.legend .kind svg{width:12px;height:12px;fill:none;stroke:var(--fg);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.legend .n{font-weight:400;font-variant-numeric:tabular-nums;opacity:.75}
 .said{margin:0;color:var(--muted)}
 #out h2{margin-top:6px}
 ol{list-style:none;margin:0;padding:0}
@@ -1129,6 +1253,9 @@ ul.inline{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px
   .panes{display:flex;flex-direction:column}
   .mapcol{order:-1}
   #map{height:58vh}
+  /* On a phone each legend row is one line that scrolls sideways, so the map stays in view. */
+  .lrow{flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;padding-bottom:2px}
+  .lrow>*{flex:none}
   aside{border-right:0;overflow:visible}
   .facts,.post{grid-template-columns:minmax(0,1fr)}
   .post .big{max-width:16rem}
