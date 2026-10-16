@@ -83,9 +83,18 @@ export function scriptTag(token) {
   return `<script src="${PREFIX}client.js" data-token="${token}" defer></script>`;
 }
 
-/** Add the tag before the last `</body>`, or at the end when there is none. */
+// A tag another server already added: the repo's own Vite dev server, with the
+// Vite plugin on, sitting behind this comment server as its --target.
+const OLD_TAGS = /<script src="\/__page-comments\/client\.js" data-token="[0-9a-f]*" defer><\/script>/g;
+
+/**
+ * Add the tag before the last `</body>`, or at the end when there is none.
+ * A tag already in the page is taken out first, so the page gets one bar, and
+ * that bar carries the token of the server the page came through.
+ */
 export function injectTag(html, token) {
   const tag = scriptTag(token);
+  html = html.replace(OLD_TAGS, "");
   const i = html.toLowerCase().lastIndexOf("</body>");
   return i >= 0 ? html.slice(0, i) + tag + html.slice(i) : html + tag;
 }

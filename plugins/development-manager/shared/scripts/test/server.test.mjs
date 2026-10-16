@@ -76,6 +76,14 @@ test("the tag goes before the last </body>, or at the end", () => {
   assert.match(injectTag("<BODY>x</BODY>", "t1"), /x<script .*><\/BODY>$/);
 });
 
+test("a page that already has a tag (Vite's, behind --target) ends up with one: this server's", () => {
+  const fromVite = injectTag("<html><body><div id=root></div></body></html>", "aaaa");
+  const both = injectTag(fromVite, "bbbb");
+  assert.equal((both.match(/data-token=/g) || []).length, 1);
+  assert.equal(tokenOf(both), "bbbb");
+  assert.equal(both, '<html><body><div id=root></div><script src="/__page-comments/client.js" data-token="bbbb" defer></script></body></html>');
+});
+
 test("proxy mode: HTML gets the tag with a fixed length; everything else passes through", async () => {
   const { store, cleanup } = tempRepo();
   const t = await fakeTarget();

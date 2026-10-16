@@ -54,7 +54,7 @@ When a session starts or resumes in a repo with comments waiting on Claude, the 
 | `scripts/enable.mjs --detect` | Finds how the repo serves its pages, and the mode that fits | First, before enabling | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --detect --repo <repo>` |
 | `scripts/enable.mjs --target <url>` | Enables, with the comment server in front of the repo's own server | The repo has a dev server (make target, npm script, Python server) | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --repo <repo> --target http://127.0.0.1:<port>` |
 | `scripts/enable.mjs --root <dir>` | Enables, with the comment server serving a folder of pages itself | Plain HTML, no server | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --repo <repo> --root <dir>` |
-| `scripts/enable.mjs --check` | Proves the loop: the setting, the CLAUDE.md note, the watcher, and a test comment it can see | Right after enabling, and whenever comments seem not to arrive | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --check --repo <repo>` |
+| `scripts/enable.mjs --check` | Proves the loop: the setting, the CLAUDE.md note, the watcher, and a test comment it can see; with `--vite`, a test comment on the Vite dev server's own port too | Right after enabling, and whenever comments seem not to arrive | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --check --repo <repo>` |
 | `scripts/enable.mjs --shots-dir <path>` | Enables, with screenshots saved under that folder instead of the default | Omar wants the pictures somewhere else | add `--shots-dir <path>` to the enable command |
 | `scripts/enable.mjs --phone` | Lets Omar comment from his phone through Tailscale: serves the comment server on the Mac's tailnet name at its own HTTPS port, and writes the phone setting (name, port, allowed login) to `config.json` | Omar wants to comment from his phone in this repo. Comments must already be on, or add `--target`/`--root` to the same run | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --phone --repo <repo>` |
 | `scripts/enable.mjs --phone --undo` | Turns off only the phone: the serve entry enable added, and the phone setting. Comments on the Mac keep working | Omar wants the phone off but comments on | `node "${CLAUDE_PLUGIN_ROOT}/skills/enable-page-comments/scripts/enable.mjs" --phone --undo --repo <repo>` |
@@ -121,6 +121,7 @@ TaskCreate({ subject: "Start listening in this session", description: "Start the
    It also checks the ports: that the comment server's port is free (or held by this repo's own comment server), and, for a local `--target`, that the server answering there is this repo's.
    A port held by another repo's server is a `FAIL` that names the process and the fix.
    With `--target`, the repo's own server must be running for the page to load.
+   With `--vite` too, it also posts a test comment on the Vite dev server's own port, the one Omar opens; if that server is not running, or has not been restarted since enable, that line is a note saying so.
    Every line must read `ok` or `note`. Fix any `FAIL` before reporting.
 
 5. **Start listening in this session.** The plugin's watcher starts with each new session, so the next session hears comments by itself.

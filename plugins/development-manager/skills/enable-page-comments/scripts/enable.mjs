@@ -1036,7 +1036,38 @@ export async function check(repo, { quiet = false } = {}) {
     await stop();
   }
   if (threadId) say(`      the test thread ${threadId} was removed`);
+  if (install.changes.some((c) => c.kind === "vite-config") && config.serve.target) await checkVite(dir, config.serve.target, ok, say);
   return results;
+}
+
+/**
+ * With --vite the bar is on the Vite dev server's own port, so prove a comment
+ * saves there too, when the --target is that server and it is running.
+ */
+async function checkVite(dir, target, ok, say) {
+  const url = new URL(target);
+  const port = Number(url.port) || 80;
+  let page;
+  try {
+    page = await httpCall(port, { path: "/" });
+  } catch (err) {
+    return ok(null, "the Vite dev server was not checked", `${target} did not answer (${err.message}); start it and check again`);
+  }
+  const token = (/data-token="([0-9a-f]+)"/.exec(page.text) || [])[1];
+  if (!token) return ok(null, "the Vite dev server's page has no comment bar", `no script tag on ${target}/; restart it so it loads the plugin, or it is not the Vite server`);
+  ok(true, "the Vite dev server's pages get the comment bar", `on ${target}`);
+  const made = await httpCall(port, {
+    method: "POST",
+    path: "/__page-comments/threads",
+    headers: { origin: `http://127.0.0.1:${port}`, "content-type": "application/json", "x-page-comments-token": token },
+    body: { page: { url: `http://127.0.0.1:${port}/`, path: "/", title: "enable check" }, anchor: { type: "element", css: "", tag: "body", label: "" }, body: CHECK_TEXT },
+  }).catch((err) => ({ status: 0, text: err.message }));
+  const threadId = made.status === 201 ? JSON.parse(made.text).thread.id : null;
+  ok(!!threadId, "a comment saves on the Vite dev server", threadId ? `thread ${threadId}` : `status ${made.status}: ${made.text.slice(0, 120)}`);
+  if (threadId) {
+    rmSync(join(dir, "threads", `${threadId}.jsonl`), { force: true });
+    say(`      the test thread ${threadId} was removed`);
+  }
 }
 
 // ---- Undo -----------------------------------------------------------------------------------
