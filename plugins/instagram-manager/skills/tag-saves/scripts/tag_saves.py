@@ -461,9 +461,12 @@ def merge(saves, topics_known, purposes_known, collections, places, compiled, ta
             batch = json.load(fh)
         ans_path = batch["answers"]
         merged_path = ans_path.replace(".answers.json", ".answers.merged.json")
-        if os.path.exists(merged_path):  # merged after an earlier wave
-            done += 1
-            continue
+        if os.path.exists(merged_path):
+            if not os.path.exists(ans_path):  # merged after an earlier wave
+                done += 1
+                continue
+            # its agent wrote the answers again after they were merged: the new file wins
+            log("tag_merge_rewritten", batch=batch["batch"])
         if not os.path.exists(ans_path):  # its agent has not run yet: wait, don't blame the saves
             pending += 1
             continue

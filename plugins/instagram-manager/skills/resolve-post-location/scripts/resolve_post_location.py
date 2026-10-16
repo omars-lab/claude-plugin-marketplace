@@ -881,8 +881,11 @@ def merge(saves, tags, places, fetcher=None, frames=False):
         ans_path = batch["answers"]
         merged_path = ans_path.replace(".answers.json", ".answers.merged.json")
         if os.path.exists(merged_path):
-            before += 1
-            continue
+            if not os.path.exists(ans_path):  # merged after an earlier wave
+                before += 1
+                continue
+            # its agent wrote the answers again after they were merged: the new file wins
+            log("locate_merge_rewritten", batch=batch["batch"])
         if not os.path.exists(ans_path):  # its agent has not run yet
             pending += 1
             continue

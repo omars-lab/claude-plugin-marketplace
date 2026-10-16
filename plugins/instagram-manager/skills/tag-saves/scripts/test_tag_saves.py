@@ -300,6 +300,15 @@ class TagSaves(Home):
         self.run_tag("--merge")
         self.run_tag("--prepare", "--all")  # once merged, a new round starts
 
+    def test_answers_an_agent_writes_again_after_the_merge_are_merged_too(self):
+        self.tag("--all")
+        self.assertNotIn("recipes-coffee", self.read("data/tags.yaml").get("BAD", {}).get("topics", []))
+        self.write(".cache/batches/tag/batch-001.answers.json",
+                   {"answers": {"BAD": {"topics": ["recipes-coffee"], "cities": []}}})
+        self.run_tag("--merge")
+        self.assertIn("recipes-coffee", self.read("data/tags.yaml")["BAD"]["topics"])
+        self.run_tag("--prepare", "--all")  # nothing is left waiting, so a new round starts
+
 
 class PlacesAndMoves(Home):
     def test_a_city_brings_the_state_it_sits_in(self):
