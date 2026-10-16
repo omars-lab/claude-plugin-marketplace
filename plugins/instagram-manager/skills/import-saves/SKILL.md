@@ -25,18 +25,22 @@ account never touch disk. Works with the HTML export (current) and the older JSO
    the zip, in memory, and never unpacks the rest. It never logs in to Instagram. Everything it
    writes stays in their own folder on this computer.
 2. **Set up your folder** (first time only). One folder holds their saves and everything made
-   from them; it starts with three commented config files, copied from the plugin's examples:
+   from them; it starts with three commented config files and a Makefile, copied from the
+   plugin's examples:
    ```bash
    python3 <plugin>/skills/import-saves/scripts/setup_home.py --home ~/my-saves
-   export INSTAGRAM_HOME=~/my-saves
+   cd ~/my-saves
    ```
-   It never overwrites a file that is already there. Track the run with `TaskCreate` (set up,
+   It never overwrites a file that is already there. The Makefile points at this plugin and sets
+   `INSTAGRAM_HOME` to the folder, so every `make` line in the skills runs from there (`make help`
+   lists them). To run a script by hand instead, `export INSTAGRAM_HOME=~/my-saves` first. Track the run with `TaskCreate` (set up,
    import, check counts, list collections).
 3. **Import.** Use the zip path they give (usually `~/Downloads/instagram-*.zip`).
    ```bash
-   python3 <plugin>/skills/import-saves/scripts/import_saved.py --from-zip ~/Downloads/instagram-example.zip
+   make import EXPORT=~/Downloads/instagram-example.zip
+   # the same by hand: python3 <plugin>/skills/import-saves/scripts/import_saved.py --from-zip <the zip>
    ```
-   It writes `$INSTAGRAM_HOME/.cache/saves.json` and `$INSTAGRAM_HOME/.cache/never-public.txt`, and
+   With no `EXPORT=`, `make import` takes the newest `~/Downloads/instagram-*.zip`. It writes `$INSTAGRAM_HOME/.cache/saves.json` and `$INSTAGRAM_HOME/.cache/never-public.txt`, and
    ends with one line like:
    ```
    ev=import saves=1200 only_in_collection=2 collections=14 collection_links=310 saves_in_a_collection=300 reels=900 posts=290 tv=10 no_caption=25
@@ -46,13 +50,14 @@ account never touch disk. Works with the HTML export (current) and the older JSO
    they are kept, with no save time.
 5. **List collections** so the user can pick what to work on next:
    ```bash
-   python3 <plugin>/skills/import-saves/scripts/import_saved.py --list
+   make collections    # by hand: python3 <plugin>/skills/import-saves/scripts/import_saved.py --list
    ```
    If they want to start with a few collections, use `AskUserQuestion` with the collection names
    as options.
 6. **Name the collections in the config.** Replace the invented collections in
    `config/collections.yaml` with theirs (topics and places each one gives for free), and trim
-   `config/topics.yaml` and `config/places.yaml` to what they save. Then the tag-saves skill.
+   `config/topics.yaml` and `config/places.yaml` to what they save. `make check` then names any
+   collection still left from the examples. Then the tag-saves skill.
 
 ## What `saves.json` holds
 
@@ -80,5 +85,5 @@ their counts.
 | `scripts/import_saved.py` | Export zip or folder → `saves.json` + never-public list | A new export arrived | `python3 scripts/import_saved.py --from-zip <zip>` |
 | `scripts/import_saved.py --list` | Collection names and counts | Choosing what to work on | `python3 scripts/import_saved.py --list` |
 | `scripts/import_saved.py --collection NAME` | Post links in one collection (same-name collections merged) | Feeding one collection to the next step | `python3 scripts/import_saved.py --collection "<name>"` |
-| `scripts/setup_home.py` | Makes the saves folder with the three starter config files; never overwrites | First time, before the first import | `python3 scripts/setup_home.py --home <dir>` |
+| `scripts/setup_home.py` | Makes the saves folder with the three starter config files and a Makefile pointing at this plugin; never overwrites | First time, before the first import | `python3 scripts/setup_home.py --home <dir>` |
 | `scripts/test_import_saved.py` | Offline tests on an invented export | After any change to the importer | `python3 scripts/test_import_saved.py` |

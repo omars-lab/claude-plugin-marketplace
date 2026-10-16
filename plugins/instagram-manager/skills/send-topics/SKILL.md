@@ -68,7 +68,7 @@ No caption and no collection names go in, only the short quotes the data repo al
 
 ## Steps
 
-1. **Write.** `make send-topics` in the data repo (`--pilot <name>` by default; `PILOT=` for
+1. **Write.** `make send-topics` in your saves folder (`--pilot <name>` by default; `PILOT=` for
    every save). A pilot run writes the travel file for the pilot's own areas and the topic files
    with the pilot's saves, so an `also_in` such as `travel/other-state` can name a file that is
    not written until `--all` (the `scope` line says so). `--all` writes every file and removes

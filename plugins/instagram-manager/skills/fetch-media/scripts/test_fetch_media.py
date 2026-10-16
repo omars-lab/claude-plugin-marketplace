@@ -133,6 +133,9 @@ class Home(unittest.TestCase):
             json.dump({"saves": SAVES}, fh)
         self.env = mock.patch.dict(os.environ, {"INSTAGRAM_HOME": self.root, "INSTAGRAM_MEDIA_DIR": self.media_dir})
         self.env.start()
+        # Downloads are stubbed here, so a shell with INSTAGRAM_OFFLINE=1 (a trial sandbox) must not
+        # make fetch refuse; patch.dict puts it back on stop.
+        os.environ.pop("INSTAGRAM_OFFLINE", None)
         self.patches = [mock.patch.object(fetch_media, "download_image", fake_image),
                         mock.patch.object(fetch_media, "to_jpeg", fake_jpeg),
                         # most tests run several times in a row; RunRules checks the real rules

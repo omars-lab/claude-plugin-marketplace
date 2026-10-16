@@ -50,8 +50,10 @@ reload back (`ev=icloud_placeholder`). A code edit in the plugin restarts the se
 
 ## Steps
 
-1. **Start.** `make api` in the data repo builds the image and starts the container; it prints the
-   address (`http://127.0.0.1:8780/docs`; `API_PORT=` for another port). `make api-logs` shows its last 50 lines.
+1. **Start.** It needs Docker running. `make api` in your saves folder builds the image and starts
+   the container; it prints the address (`http://127.0.0.1:8780/docs`; `API_PORT=` for another
+   port). `make api-logs` shows its last 50 lines, `make api-stop` stops it. By hand, from the folder:
+   `INSTAGRAM_HOME=$PWD INSTAGRAM_MEDIA_DIR=<media folder> docker compose -f <plugin>/skills/serve-api/docker/compose.yaml up -d --build`.
 2. **Look.** Open `/docs` and check `/health`: its save and spot counts should match the hub's.
    Try `/v1/areas/<one area>` against `out/travel/<that area>.yaml`.
 3. **Before changing the API, read what its users ran into:** the data repo's `docs/api-feedback/`

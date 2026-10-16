@@ -8,15 +8,16 @@ description: Route Instagram saved-post work to the right step — import a new 
 The router for instagram-manager. Work out where the user's saves are in the pipeline, then hand
 off to the skill for the next step.
 
-## Step 1: Look at the data repo
+## Step 1: Look at the saves folder
 
-The data repo is `$INSTAGRAM_HOME` (default `~/Workspace/git/instagram`). Media lives outside git
-in `$INSTAGRAM_MEDIA_DIR`, one folder per post. Check what exists, top to bottom; the first row
-that is missing is the next step:
+The saves folder (the data repo) is `$INSTAGRAM_HOME` (default `~/Workspace/git/instagram`). Media
+lives outside git in `$INSTAGRAM_MEDIA_DIR`, one folder per post. The folder's Makefile, copied by
+`setup_home.py`, runs every `make` line below from there; `make help` lists them. Check what
+exists, top to bottom; the first row that is missing is the next step:
 
 | If this is missing... | The next step is |
 |---|---|
-| `config/topics.yaml` (a first-time user has no folder yet) | **import-saves**, steps 1 and 2: get the export, then `setup_home.py` copies the starter config |
+| `config/topics.yaml` (a first-time user has no folder yet) | **import-saves**, steps 1 and 2: get the export, then `setup_home.py` copies the starter config and Makefile |
 | `.cache/saves.json` | **import-saves** |
 | `data/tags.yaml` | **tag-saves** |
 | a pin in `data/places.yaml` for each tagged place | **tag-saves**, `add_places.py` (`make places`) |

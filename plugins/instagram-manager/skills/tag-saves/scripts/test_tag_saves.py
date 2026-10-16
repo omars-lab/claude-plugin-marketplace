@@ -153,6 +153,16 @@ class TagSaves(Home):
         self.assertEqual(tags["BAY"], {"topics": [], "cities": [], "source": "rules", "hints": ["Fixture State"]})
         self.assertEqual(tags["SOUR"]["hints"], ["Fixture State"])          # from the hashtag
 
+    def test_the_report_takes_every_save_or_one_pilot(self):
+        self.run_tag("--rules-only", "--pilot", "fixture")
+        every = self.run_tag("--report", "--all")
+        self.assertIn("| FAR |", every)                               # outside the pilot, still listed
+        self.assertIn("not tagged yet", every)
+        self.assertRegex(every, r"\n\d+ saves: 1 not tagged yet, ")
+        pilot = self.run_tag("--report", "--pilot", "fixture")
+        self.assertNotIn("| FAR |", pilot)
+        self.assertIn("saves in the pilot", pilot)
+
     def test_prepare_prints_the_batches_and_they_hold_what_the_agent_needs(self):
         out = self.run_tag("--prepare", "--pilot", "fixture")
         self.assertEqual(out.split(), self.batches())

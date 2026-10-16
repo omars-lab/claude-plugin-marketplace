@@ -84,7 +84,7 @@ done as it finishes.
 | `../resolve-post-location/scripts/resolve_post_location.py --merge --frames` | Checks the agents' answers against the caption and the frame text, looks the spots up, adds them to the pins | After each wave of agents | `python3 ../resolve-post-location/scripts/resolve_post_location.py --merge --frames` |
 | `scripts/test_read_frames.py` | Offline tests on an invented data folder and an ffmpeg-made video: the stuck list, frame times, sheets, batches, both readers' text, `--text`, and the merge adding video spots | After any change to either script | `python3 scripts/test_read_frames.py` |
 
-In the data repo: `make frames-stuck`, `make media-video`, `make frames`, `make frames-merge`.
+From your saves folder: `make frames-stuck`, `make media-video`, `make frames`, `make frames-merge`.
 
 ## What it can't do yet
 

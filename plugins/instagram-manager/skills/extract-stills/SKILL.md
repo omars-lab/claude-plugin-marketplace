@@ -28,7 +28,7 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
 
 ## Steps
 
-1. **Cut.** `extract_stills.py --pilot <name>` (`make stills` in the data repo). For each spot of
+1. **Cut.** `extract_stills.py --pilot <name>` (`make stills` from your saves folder). For each spot of
    each reel with a video:
    - it finds the first frame where the spot's caption words (`said`), its OpenStreetMap name or
      its `lookup` are on screen, in either text reader's words from read-frames' `text.json`
@@ -83,7 +83,7 @@ Track the run with `TaskCreate`: one task per step below, each marked done as it
 | `scripts/heard.py` | A check, not a step: turns each reel's sound into words on this Mac (whisper.cpp) and looks for its spots' names among them; writes only to `.cache/whisper/` | Before counting on speech for a new set of reels. In the first trial, 18 of 19 reels were music or silent, and the one voice never said a name | `python3 scripts/heard.py [CODE ...]` (`--prompt`, `--model PATH`); needs `brew install whisper.cpp` and a model |
 | `scripts/test_extract_stills.py` | Offline tests on an invented data folder and an ffmpeg-made video: the moment picked, a spot never on screen, a road-trip spot taking its area's moment (and a title card, one area or a state not counting), a rerun cutting nothing, a hand time kept, a clip near the end, a spot found only on the half-second frames (and those read once, then reused; none read when every spot is found), a hand time shared by an area, two spots with one name not cut again, the need-video list; previews: a picture per post, a flipbook only with a video, nothing remade unless newer, codes differing by case | After any change to either script | `python3 scripts/test_extract_stills.py` |
 
-In the data repo: `make stills` (`STILLS_REDO=1` to cut again), `make stills-need-video`, then
+From your saves folder: `make stills` (`STILLS_REDO=1` to cut again), `make stills-need-video`, then
 `make media-video VIDEO_LIST=.cache/stills/need-video.txt MEDIA_LIMIT=<n>`.
 
 ## What it can't do yet

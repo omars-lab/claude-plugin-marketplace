@@ -75,8 +75,9 @@ class Ids(unittest.TestCase):
                           ("data/tags.yaml", TAGS), ("data/pins.yaml", PINS), ("data/pins-review.yaml", REVIEW)):
             self.write(rel, data)
         self.write(".cache/saves.json", {"saves": SAVES})
-        self.env = {k: os.environ.get(k) for k in ("INSTAGRAM_HOME", "GOOGLE_MAPS_API_KEY")}
+        self.env = {k: os.environ.get(k) for k in ("INSTAGRAM_HOME", "GOOGLE_MAPS_API_KEY", "INSTAGRAM_OFFLINE")}
         os.environ["INSTAGRAM_HOME"] = self.root
+        os.environ.pop("INSTAGRAM_OFFLINE", None)   # Google is stubbed here; a trial sandbox sets it
         os.environ["GOOGLE_MAPS_API_KEY"] = "test-key-not-real"
         self.calls = []
         self.real = gp.search, gp.current_id

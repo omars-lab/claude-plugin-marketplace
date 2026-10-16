@@ -19,13 +19,15 @@ Then, first time:
 
 1. Ask Instagram for your saves: **Settings → Accounts Center → Your information and permissions →
    Download your information**, only **Saved**, format **HTML**. Instagram emails a zip.
-2. Make a folder for them, with three starter config files:
+2. Make a folder for them, with three starter config files and a Makefile:
    `python3 <plugin>/skills/import-saves/scripts/setup_home.py --home ~/my-saves`, then
-   `export INSTAGRAM_HOME=~/my-saves`.
-3. Import: `python3 <plugin>/skills/import-saves/scripts/import_saved.py --from-zip <the zip>`.
-4. `/instagram-manager:manage-saves` says what to run next.
+   `cd ~/my-saves`.
+3. Import: `make import EXPORT=<the zip>`.
+4. `/instagram-manager:manage-saves` says what to run next. `make help` lists every step.
 
-The import-saves skill walks through each of these.
+The import-saves skill walks through each of these. Every `make` line in the skills runs from
+that folder: its Makefile points at this plugin and sets `INSTAGRAM_HOME` for you. To run a script
+by hand instead, `export INSTAGRAM_HOME=~/my-saves` first.
 
 ## Skills (14)
 
@@ -67,8 +69,10 @@ makes one. Media goes to a folder of your choosing,
 - Python 3 with PyYAML, Claude Code, and an Instagram data export (HTML or JSON).
 - For videos and frames: ffmpeg, yt-dlp and tesseract; for stills, img2webp
   (`brew install ffmpeg yt-dlp tesseract webp`).
-- For Google Maps links: a Google Maps Platform key, and dotenvx to keep it encrypted.
-- For the data API: Docker.
+- For Google Maps links: a Google Maps Platform key in `GOOGLE_MAPS_API_KEY` (find-google-ids
+  says how to keep it out of files).
+- For the data API: Docker (`make api` runs `docker compose` for you).
+- To look at the hub: nothing more; `make serve` is Python's own web server on 127.0.0.1.
 
 ---
 

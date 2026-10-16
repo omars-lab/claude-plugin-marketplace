@@ -128,7 +128,7 @@ own places; pins for posts that also name somewhere far away are still there whe
 
 ## Which saves go in
 
-- `--all`: every save. This is what the data repo's `make hub` builds.
+- `--all`: every save. This is what `make hub` builds.
 - `--pilot <name>`: the saves in the pilot's collections, plus any save tagged with one of the
   pilot's places. This is the same rule the tag report uses. Use it to check one pilot on its own
   (`make hub HUB_PILOT=<name>`).
@@ -160,7 +160,7 @@ page or the spot review page, are kept, and the map page links to them.
 
 ## Steps
 
-1. **Build** from the data repo. Track the build, the look and any fixes with `TaskCreate`.
+1. **Build** from your saves folder. Track the build, the look and any fixes with `TaskCreate`.
    ```bash
    make hub                    # every save; HUB_PILOT=<name> for one pilot
    ```
@@ -170,11 +170,12 @@ page or the spot review page, are kept, and the map page links to them.
    pinned at its town, or only a town. The codes of the town-only ones are in the log
    (`ev=hub_venues town_only_codes=...`). Read their captions: either the caption names no venue
    (fine, the video may), or the locator missed one (fix **resolve-post-location**'s agent).
-2. **Look at it.** `make serve`, then open `http://localhost:8765/`. Check the map, one place
-   page and one post page, on a wide window and a narrow one. If the data repo has page comments
+2. **Look at it.** `make serve` (by hand: `python3 -m http.server 8765 --bind 127.0.0.1
+   --directory .cache/hub`), then open `http://localhost:8765/`; Ctrl-C stops it. Check
+   the map, one place page and one post page, on a wide window and a narrow one. If the folder has page comments
    on (development-manager's enable-page-comments, serving `.cache/hub` itself), the pages carry a
    Comment button, so the person can point at a wrong pin or a bad still and Claude hears about it.
-   The data repo's `make serve` can run the comment server itself (`.page-comments/run serve --root
+   The author's own data repo has `make serve` run the comment server itself (`.page-comments/run serve --root
    .cache/hub --port $(PORT)`), so there is one address. With a separate `make comments` on another
    port, note that answers picked on the decisions page are kept per address.
 3. **Fix the data, not the pages.** A pin in the wrong spot means its place in

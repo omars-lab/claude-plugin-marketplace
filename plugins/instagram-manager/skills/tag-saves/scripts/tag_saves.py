@@ -6,7 +6,7 @@ save-tagger subagent in batches. This script never calls a model.
     tag_saves.py --prepare --all            the same for every save
     tag_saves.py --merge                    check the agents' answers and write them into the tags
     tag_saves.py --rules-only --pilot NAME  rule tags only, no batches (sizing a pilot, checking config)
-    tag_saves.py --report --pilot NAME      the pilot's tags as a table; tags nothing
+    tag_saves.py --report --pilot NAME      the pilot's tags as a table; tags nothing (--all: every save)
     tag_saves.py --moves                    the saves filed in the wrong collection, as a table
     options: --limit N (saves in this round), --retag (read again), --retag-topic SLUG (read again
              only the saves with that topic), --batch-saves N, --batch-chars N
@@ -339,22 +339,25 @@ def most_specific(cities, places):
 
 
 def report(saves, tags, pilot, compiled, places):
-    """The pilot's saves as a table, with what to spot-check called out."""
+    """The pilot's saves (every save when pilot is None) as a table, with what to spot-check called out."""
     rows, rejected = [], []
+    pilot = pilot or {}
+    every = not pilot
     pilot_colls, pilot_cities = set(pilot.get("collections") or []), set(pilot.get("cities") or [])
     for s in saves:
-        hints = place_hints(s, compiled)
         tag = tags.get(s["code"])
-        if not in_pilot(s, tag, pilot, hints):
+        if not every and not in_pilot(s, tag, pilot, place_hints(s, compiled)):
             continue
         tag = tag or {"topics": [], "cities": [], "source": "untagged"}
-        in_coll = bool(set(s.get("collections") or []) & pilot_colls)
+        in_coll = every or bool(set(s.get("collections") or []) & pilot_colls)
         took = bool(set(tag["cities"]) & pilot_cities)
         if not in_coll and not took:
             if tag["source"] == "model":
                 rejected.append((s, tag))
             continue
         notes = []
+        if tag["source"] == "untagged":
+            notes.append("not tagged yet")
         if not in_coll:
             notes.append("found outside the collections")
         if len(tag["topics"]) > 1 or len(most_specific(tag["cities"], places)) > 1:
@@ -372,8 +375,12 @@ def report(saves, tags, pilot, compiled, places):
                   f"/ {', '.join(tag['cities']) or 'no place'}: {(s.get('caption') or '')[:90]!r}")
     multi = sum(1 for r in rows if "2+ topics or places" in r[2])
     outside = sum(1 for r in rows if "found outside the collections" in r[2])
+    untagged = sum(1 for r in rows if "not tagged yet" in r[2])
+    if every:
+        print(f"\n{len(rows)} saves: {untagged} not tagged yet, {multi} with 2+ topics or places.")
+        return
     print(f"\n{len(rows)} saves in the pilot: {outside} found outside the collections, {multi} with 2+ "
-          f"topics or places, {len(rejected)} place matches the agent turned down.")
+          f"topics or places, {len(rejected)} place matches the agent turned down, {untagged} not tagged yet.")
 
 
 def print_moves(saves, moves):
@@ -549,7 +556,7 @@ def main(argv=None):
     action.add_argument("--prepare", action="store_true", help="rule tags, then batch files for the agent")
     action.add_argument("--merge", action="store_true", help="check the agents' answers into the tags")
     action.add_argument("--rules-only", action="store_true", help="rule tags only, no batches")
-    action.add_argument("--report", action="store_true", help="print the pilot's tags; tag nothing")
+    action.add_argument("--report", action="store_true", help="print the pilot's tags (or every save's); tag nothing")
     action.add_argument("--moves", action="store_true", help="print the saves filed in the wrong collection")
     scope = ap.add_mutually_exclusive_group()
     scope.add_argument("--pilot", help="a pilot name from config/collections.yaml")
@@ -564,8 +571,6 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if (args.prepare or args.rules_only or args.report) and not (args.pilot or args.all):
         ap.error("--prepare, --rules-only and --report need --pilot NAME or --all")
-    if args.report and not args.pilot:
-        ap.error("--report needs --pilot")
 
     saves = read_saves(args.saved)["saves"]
     topics_known, collections, pilots, places = load_config()

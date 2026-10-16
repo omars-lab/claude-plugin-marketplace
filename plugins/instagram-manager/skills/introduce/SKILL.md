@@ -157,6 +157,7 @@ agents on the plan Claude Code is logged in with.
 - For read-frames: ffmpeg and tesseract; on a Mac, Apple Vision reads the frames as well.
 - For extract-stills: ffmpeg and img2webp (`brew install ffmpeg webp`).
 - For find-google-ids: a Google Maps Platform key with Places API (New), in `GOOGLE_MAPS_API_KEY`
-  (the data repo runs it through dotenvx, so the key stays encrypted on disk; `brew install dotenvx/brew/dotenvx`).
+  for the one run (find-google-ids says how to keep it out of files; dotenvx works too).
 - For serve-api: Docker.
+- Nothing else to look at the hub: `make serve` is Python's own web server.
 - An Instagram data export, HTML or JSON.

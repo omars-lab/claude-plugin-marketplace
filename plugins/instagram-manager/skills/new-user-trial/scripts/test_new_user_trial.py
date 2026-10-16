@@ -8,9 +8,11 @@ keep the plugin off the network: map lookups answer from its fixture, fetch-medi
 """
 
 import contextlib
+import glob
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -113,6 +115,28 @@ class Sandbox(unittest.TestCase):
         self.assertEqual((copied, kept), ([], list(setup_home.FILES)))
         with open(mine, encoding="utf-8") as fh:
             self.assertIn("Mine", fh.read())
+
+    def test_setup_writes_a_makefile_that_points_at_this_plugin(self):
+        target = os.path.join(self.box, "home")
+        quiet(setup_home.setup, target)
+        with open(os.path.join(target, "Makefile"), encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertNotIn("@PLUGIN@", text)
+        self.assertIn(f"PLUGIN      ?= {os.path.abspath(setup_home.PLUGIN)}\n", text)
+
+    def test_every_make_line_in_the_docs_is_a_target_in_the_starter_makefile(self):
+        plugin = os.path.abspath(setup_home.PLUGIN)
+        with open(os.path.join(plugin, "examples", "Makefile"), encoding="utf-8") as fh:
+            targets = set(re.findall(r"^([a-z][a-z-]+):", fh.read(), re.M))
+        # Targets only the author's own data repo has; the docs say so where they name them.
+        own = {"comments", "check-public", "init-hooks", "gitleaks"}
+        missing = []
+        for path in glob.glob(os.path.join(plugin, "**", "*.md"), recursive=True):
+            with open(path, encoding="utf-8") as fh:
+                for name in re.findall(r"`make ([a-z][a-z-]+)", fh.read()):
+                    if name not in targets and name not in own:
+                        missing.append(f"{os.path.relpath(path, plugin)}: make {name}")
+        self.assertEqual(missing, [])
 
     def test_starter_config_fits_and_names_the_collections_to_rename(self):
         target = os.path.join(self.box, "home")

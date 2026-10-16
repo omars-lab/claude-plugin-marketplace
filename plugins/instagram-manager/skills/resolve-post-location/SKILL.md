@@ -169,7 +169,7 @@ right, a `lookup:` with a better name is the whole fix.
 1. **Add its real area** to `config/places.yaml`. Give it a `lookup:` such as "Other Town, Other
    State" when the bare name finds the wrong place, and an `in:` for its state or country.
 2. **Look it up.** Run `add_places.py --dry-run` and check that each match is the right place,
-   then run `add_places.py` for real. In the data repo: `make places PLACES_DRY=1`, then
+   then run `add_places.py` for real. From your saves folder: `make places PLACES_DRY=1`, then
    `make places`.
 3. **Point the spot at it.** In `data/pins-review.yaml`, set `near:` to the new area and `lookup:`
    to the name to search. Use the caption's name, or the map's own name for it when that differs
@@ -285,10 +285,10 @@ A save's new answer (`--redo`) replaces its old pins, except the video's and a p
 
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
-| `scripts/resolve_post_location.py --prepare` | Batch files for the post-locator agents: the saves with an area more exact than a state, not answered yet; prints their paths | The start of every round | `python3 scripts/resolve_post_location.py --prepare --pilot <name>` (or `--all`); data repo: `make locate-prepare` |
-| `scripts/resolve_post_location.py --merge` | Checks the answers, looks each spot up near its area, writes pins, review and no-spot; searches review entries that have a `lookup:` | After every wave of agents, and after editing the review list | `python3 scripts/resolve_post_location.py --merge`; data repo: `make locate-merge` |
-| `scripts/pins_page.py` | The pins on a Leaflet map beside a list: creator, quote, what OpenStreetMap found, distance from the area, post link; review entries after with their reason; each post with a small picture that turns into a flipbook of its reel while on screen (at most 8 moving at once; made by extract-stills' `previews.py` when missing) | After a merge, before trusting the pins | `python3 scripts/pins_page.py` (writes `.cache/hub/pins.html`; `--out PATH` for elsewhere; `--no-previews` to leave the pictures out); data repo: `make pins-page` |
-| `scripts/check_locator.py` | Scores the agent on the hand-made check set: each listed spot pinned, at its town or lost, before and after; wrong and extra spots | Before trusting a change to `post-locator.md` or the merge | `python3 scripts/check_locator.py --prepare`, one agent, then `python3 scripts/check_locator.py`; data repo: `make locate-check-prepare`, `make locate-check` |
+| `scripts/resolve_post_location.py --prepare` | Batch files for the post-locator agents: the saves with an area more exact than a state, not answered yet; prints their paths | The start of every round | `python3 scripts/resolve_post_location.py --prepare --pilot <name>` (or `--all`); from your folder: `make locate-prepare` |
+| `scripts/resolve_post_location.py --merge` | Checks the answers, looks each spot up near its area, writes pins, review and no-spot; searches review entries that have a `lookup:` | After every wave of agents, and after editing the review list | `python3 scripts/resolve_post_location.py --merge`; from your folder: `make locate-merge` |
+| `scripts/pins_page.py` | The pins on a Leaflet map beside a list: creator, quote, what OpenStreetMap found, distance from the area, post link; review entries after with their reason; each post with a small picture that turns into a flipbook of its reel while on screen (at most 8 moving at once; made by extract-stills' `previews.py` when missing) | After a merge, before trusting the pins | `python3 scripts/pins_page.py` (writes `.cache/hub/pins.html`; `--out PATH` for elsewhere; `--no-previews` to leave the pictures out); from your folder: `make pins-page` |
+| `scripts/check_locator.py` | Scores the agent on the hand-made check set: each listed spot pinned, at its town or lost, before and after; wrong and extra spots | Before trusting a change to `post-locator.md` or the merge | `python3 scripts/check_locator.py --prepare`, one agent, then `python3 scripts/check_locator.py`; from your folder: `make locate-check-prepare`, `make locate-check` |
 | `scripts/test_check_locator.py` | Offline tests of the scoring, on invented spots | After any change to `check_locator.py` | `python3 scripts/test_check_locator.py` |
 | `scripts/test_resolve_post_location.py` | Offline tests with a fake agent and a fake OpenStreetMap | After any change to these scripts or to `geocode.py` | `python3 scripts/test_resolve_post_location.py` |
 

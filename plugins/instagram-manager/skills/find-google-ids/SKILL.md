@@ -30,9 +30,11 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
 
 - **Spots.** `data/pins.yaml` and the venues OpenStreetMap lacks in `data/pins-review.yaml`
   (**resolve-post-location**, **read-frames**).
-- **The key.** `GOOGLE_MAPS_API_KEY` (Places API (New)). The data repo's `make google-ids` runs the
-  script through `dotenvx run`, which decrypts the key into that one process from an encrypted
-  `.env`; the key is never printed and goes to Google only in a request header.
+- **The key.** `GOOGLE_MAPS_API_KEY` (Places API (New)), in the environment of the one run. Keep it
+  out of files and shell history: `read -s GOOGLE_MAPS_API_KEY && export GOOGLE_MAPS_API_KEY`, then
+  `make google-ids`; or keep it encrypted with dotenvx (`dotenvx run -f <your .env> -- make
+  google-ids`), which is how the author's data repo does it. The key is never printed and goes to
+  Google only in a request header. `GOOGLE_DRY=1` and picks need no key.
 - **The price.** Each search is "Text Search Pro" (because it asks for names and addresses to show):
   5,000 free a month, then $32 per 1,000. A pick's id check is free. Google stops the key for the
   day at its daily cap (an HTTP 429 that says "per day"); the run stops cleanly, keeps what it found,
@@ -113,7 +115,7 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
 | `../../shared/scripts/google_places.py` | The search, the box, the name rule, the waits after a refusal, and the link; build-hub and send-topics use it to put kept ids into links | Imported, not run | — |
 | `scripts/test_google_ids.py` | Offline tests with Google stubbed: the box, the name rule (one match, two, a short name, a handle with a town tag on the end or its words run together), the wider box for a spot with a house number, each spot searched once, the town box, a rerun skipping kept spots, `--pick` keeping Google's current id, `--none`, `--chain` (no id, its search link kept, not searched again), the daily cap, the waits, a spot in the wrong area left unsearched, stale ids listed and pruned (never another area's), and that the file and the spots left for a person hold nothing of Google's but ids | After any change to either script | `python3 scripts/test_google_ids.py` |
 
-In the data repo: `make google-ids` with `GOOGLE_DRY=1`, `GOOGLE_LIMIT=`, `GOOGLE_ONLY=`,
+From your saves folder: `make google-ids` with `GOOGLE_DRY=1`, `GOOGLE_LIMIT=`, `GOOGLE_ONLY=`,
 `GOOGLE_REFRESH=1`, `GOOGLE_BOX=`, `GOOGLE_PRUNE=1`, `PICK=`, `NONE=` and `CHAIN=` (several, space-separated), `PICK_BY=`
 (`hand`, the default, or `claude`), and `PILOT=`
 (empty for every save). Before a run past the pilot, take the spot count from the dry run and ask

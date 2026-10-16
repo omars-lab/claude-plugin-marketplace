@@ -129,7 +129,7 @@ Each agent reads a whole batch, so many at once can hit the plan's usage limits.
    ```
    It prints `merged <N> answers (<M> unusable); <K> batches still waiting for their agent`.
    When K is 0 the round is done.
-5. **Spot-check.** `--report --pilot <name>` prints the pilot as a table. Rows that need a look
+5. **Spot-check.** `--report --pilot <name>` prints the pilot as a table (`--report --all`, or `make tag-report`, for every save). Rows that need a look
    come first: saves found outside the collections, and saves with 2 or more topics or places (a
    town and the state it sits in count as one place). Then
    it lists place matches the agent turned down. Read 20 rows against their captions, and show
@@ -146,7 +146,7 @@ Each agent reads a whole batch, so many at once can hit the plan's usage limits.
    change of scope, so ask with `AskUserQuestion`. The options: tag every save now (about 210
    batches over several rounds on the plan, and the later steps can use every topic), or fix the
    lists and rerun the pilot first (a few batches, but the other topics wait).
-8. **Check.** The data repo's `make check` confirms every tag uses a known topic and place, and
+8. **Check.** `make check` confirms every tag uses a known topic and place, and
    every code is a save in the export.
 
 ## What the files hold
@@ -220,7 +220,7 @@ hand instead.
 | `scripts/tag_saves.py --prepare` | Rule tags, then batch files for the agents; prints their paths | The start of every round | `python3 scripts/tag_saves.py --prepare --pilot <name>` (or `--all --limit 1000`) |
 | `scripts/tag_saves.py --prepare --retag-topic <slug>` | Batches again only the agent-tagged saves with that topic, with only their collection's tags under `already` | After adding topics to `topics.yaml`: re-read the `other` saves against the longer list | `python3 scripts/tag_saves.py --prepare --all --retag-topic other --limit 1000` |
 | `scripts/tag_saves.py --merge` | Checks the agents' answers and folds them into `tags.yaml`; says how many batches still wait | After every wave of agents | `python3 scripts/tag_saves.py --merge` |
-| `scripts/tag_saves.py --report` | The pilot as a table, what to check first | Spot-checking a round | `python3 scripts/tag_saves.py --report --pilot <name>` |
+| `scripts/tag_saves.py --report` | The pilot, or every save, as a table: what to check first, and how many are not tagged yet | Spot-checking a round | `python3 scripts/tag_saves.py --report --pilot <name>` (or `--all`) |
 | `scripts/tag_saves.py --moves` | The saves filed in the wrong collection, with where to move them | After a merge that found moves | `python3 scripts/tag_saves.py --moves` |
 | `scripts/moves_page.py` | The moves list as a page: per save the collection it is in, where to move it, the caption with the quote marked, a link to the post and a "Moved" tick kept in the browser | When there are saves to move and you want to work through them in the app | `python3 scripts/moves_page.py` (writes `.cache/hub/moves.html`; `--out PATH` for elsewhere) |
 | `scripts/add_places.py` | Looks up unlisted places on OpenStreetMap and adds them, with map links and the place each sits in | After a round leaves places in review, then `--merge` | `python3 scripts/add_places.py --dry-run` first, then without |

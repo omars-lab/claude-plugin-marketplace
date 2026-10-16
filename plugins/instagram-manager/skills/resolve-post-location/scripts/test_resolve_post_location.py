@@ -115,8 +115,11 @@ class Home(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.env = os.environ.get("INSTAGRAM_HOME")
+        self.env = {k: os.environ.get(k) for k in ("INSTAGRAM_HOME", "INSTAGRAM_OFFLINE", "INSTAGRAM_GEOCODE_FIXTURE")}
         os.environ["INSTAGRAM_HOME"] = self.tmp.name
+        # OpenStreetMap is faked here; a trial sandbox's offline switch and fixture must not answer instead.
+        os.environ.pop("INSTAGRAM_OFFLINE", None)
+        os.environ.pop("INSTAGRAM_GEOCODE_FIXTURE", None)
         self.write("config/collections.yaml", COLLECTIONS)
         self.write("data/places.yaml", PLACES)
         self.write("data/tags.yaml", TAGS)
@@ -124,10 +127,11 @@ class Home(unittest.TestCase):
         self.asked = []
 
     def tearDown(self):
-        if self.env is None:
-            os.environ.pop("INSTAGRAM_HOME", None)
-        else:
-            os.environ["INSTAGRAM_HOME"] = self.env
+        for k, v in self.env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
         self.tmp.cleanup()
 
     def path(self, rel):
