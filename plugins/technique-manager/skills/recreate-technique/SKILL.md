@@ -49,18 +49,19 @@ Check the feel by putting a rendered page beside the original. If Chromium can't
 
 | Block `type` | Component | Fields |
 |---|---|---|
-| `user_prompt` | `<UserPrompt>` | `text` |
+| `user_prompt` | `<UserPrompt>` | `text`, `glyph` (`"!"` for a command the user ran in their own shell) |
 | `assistant_text` | `<AssistantText>` | `text` (supports `**bold**`, `` `code` ``, `- ` bullets, blank lines) |
 | `tool_call` | `<ToolCall>` | `name`, `args` |
 | `tool_result` | `<ToolResult>` | `text` |
 | `spinner` | `<Spinner>` | `verb`, `meta` |
 | `note` | `<Note>` | `text` (e.g. "Baked for 2m · done 9:54 AM") |
 | `recap` | `<Recap>` | `text` |
-| `task_list` | `<TaskList>` | `title`, `tasks: [{id, title, status, note}]`, `summary` |
+| `task_list` | `<TaskList>` | `title`, `mark` (`""` when the title has no ✻), `tasks: [{id, title, status, note}]`, `summary` |
 | `prompt_input` | `<PromptInput>` | `text` |
 | `statusline` | `<StatusLine>` | `segments: [{text, tone, pct}]`, `right` |
 | `footer` | `<Footer>` | `mode` (`auto`/`plan`/`accept-edits`), `text` |
 | `question` | `<Question>` | `header`, `question`, `options: [{label, description, recommended}]`, `selected` (1-based), `hint`; or `question` + `answer` for the answered form |
+| `permission_prompt` | `<PermissionPrompt>` | `title`, `from`, `description`, `command`, `hook: {label, text}`, `question`, `choices`, `selected`, `cut` (a permission or hook confirmation box) |
 | `divider` | `<Divider>` | — |
 
 `status` is one of `pending`, `in_progress`, `completed`, `blocked`. `tone` is one of `path`, `branch`, `model`, `meter`, `cost`, `dim`.

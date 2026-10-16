@@ -77,6 +77,15 @@ a { color: var(--cu-link); }
 .cu-user { background: var(--cu-term-hl); border-radius: 4px; padding: 2px 6px 2px 0; }
 .cu-user .cu-glyph { padding-left: 6px; color: var(--cu-term-dim); }
 .cu-result { margin-left: 1.4em; margin-top: 2px !important; }
+.cu-user-bang .cu-glyph { color: var(--cu-term-code); }
+
+.cu-permission { border-top: 1px solid var(--cu-term-code); padding-top: 6px; overflow-wrap: anywhere; }
+.cu-perm-title { color: var(--cu-term-code); }
+.cu-perm-box { border-top: 1px dashed var(--cu-term-dim); margin-top: 6px; padding-top: 6px; }
+.cu-perm-cmd, .cu-perm-hook { border-left: 1px solid var(--cu-term-dim); padding-left: 1.4em; margin-left: .5em; }
+.cu-perm-cmd { color: var(--cu-term-dim); white-space: pre-wrap; }
+.cu-perm-hook { color: var(--cu-term-branch); white-space: pre-wrap; }
+.cu-perm-q { margin-top: 8px; }
 .cu-dim { color: var(--cu-term-dim); }
 .cu-fg { color: var(--cu-term-text); }
 .cu-ok { color: var(--cu-ok); }
@@ -101,6 +110,11 @@ a { color: var(--cu-link); }
 .cu-task-completed { color: var(--cu-term-dim); text-decoration: line-through; }
 .cu-task-completed .cu-task-mark { color: var(--cu-ok); text-decoration: none; }
 .cu-tasks-summary { padding-left: 4.2em; }
+/* "mark": "" — the "26 tasks (…)" heading: plain text, tasks flush under it, no elbow column. */
+.cu-screen .cu-tasks-plain .cu-tasks-title { color: inherit; }
+.cu-tasks-plain .cu-task { grid-template-columns: 1.4em 1fr; }
+.cu-tasks-plain .cu-elbow { display: none; }
+.cu-tasks-plain .cu-tasks-summary { padding-left: 0.7em; }
 
 .cu-question { border: 1px solid color-mix(in srgb, var(--cu-term-dim) 45%, transparent); border-radius: 6px; padding: 8px 10px; }
 .cu-question-answered { border: 0; padding: 0 0 0 1.4em; }

@@ -16,12 +16,13 @@ Usage:
 
 Output (JSON on stdout):
     {"rendered": [{"slug", "internal", "post", "image"}], "errors": [{"spec", "problems": [...]}],
-     "no_screenshot": [slug, ...]}   only when the screenshots folder isn't on this Mac
+     "no_screenshot": [slug, ...]}   only when a screenshot is on another Mac
 
 Exit code 1 if any spec has problems (unknown block type, missing title, missing screenshot,
 or identifiers left in the post view). A hub cloned onto a Mac that doesn't have the
 screenshots folder still renders: the internal view leaves the screenshot out, and the
-slugs are listed under "no_screenshot" instead of failing.
+slugs are listed under "no_screenshot" instead of failing. The same goes for a Mac whose
+folder holds only its own screenshots: one its techniques.json doesn't list is on another Mac.
 """
 import argparse
 import json
@@ -46,6 +47,16 @@ def find_file(folder: Path, name: str) -> Path | None:
         if unicodedata.normalize("NFC", p.name).replace(" ", " ") == want:
             return p
     return None
+
+
+def listed_here(folder: Path, name: str) -> bool:
+    """Whether this Mac's techniques.json lists the screenshot. With no list, assume it does."""
+    try:
+        entries = json.loads((folder / "techniques.json").read_text(encoding="utf-8")).get("techniques", [])
+    except (OSError, ValueError, AttributeError):
+        return True
+    key = lambda s: unicodedata.normalize("NFC", s).replace(" ", " ")  # noqa: E731
+    return key(name) in {key(e.get("file", "")) for e in entries}
 
 
 def check(spec: dict, known: set[str]) -> list[str]:
@@ -104,7 +115,9 @@ def render(spec_path: Path, root: Path, known: set[str]) -> dict:
         except (OSError, SystemExit):
             src = None
         if src is None and kept is None:
-            if shots and shots.is_dir():
+            # Each Mac can have its own folder of the same name. A screenshot that this Mac's
+            # techniques.json doesn't list was taken on another Mac, so it isn't missing here.
+            if shots and shots.is_dir() and listed_here(shots, src_name):
                 problems.append(f"screenshot not found in the screenshots folder: {src_name}")
             else:
                 elsewhere = True  # the screenshots live on another Mac; render without one

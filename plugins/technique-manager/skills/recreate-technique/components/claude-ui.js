@@ -59,8 +59,28 @@
   }
 
   // ── Transcript blocks ──
+  // glyph "!" is a command the user ran in their own shell from the prompt (bash mode).
   function UserPrompt(props) {
-    return html`<div class="cu-user"><span class="cu-glyph">›</span><div><${Prose} text=${props.text} /></div></div>`;
+    var bang = props.glyph === "!";
+    return html`<div class=${bang ? "cu-user cu-user-bang" : "cu-user"}><span class="cu-glyph">${bang ? "!" : "›"}</span><div><${Prose} text=${props.text} /></div></div>`;
+  }
+
+  // Claude Code stops to ask before a tool runs: what wants to run and who asked, the command
+  // in a dashed box, a hook's message in a second one, then the choices.
+  function PermissionPrompt(props) {
+    var hook = props.hook || null, choices = props.choices || [];
+    return html`<div class="cu-permission">
+      <div class="cu-perm-head"><strong class="cu-perm-title">${props.title || "Bash command"}</strong>${props.from ? html`<span class="cu-dim"> · ${props.from}</span>` : null}</div>
+      ${props.description ? html`<div><${Inline} text=${props.description} /></div>` : null}
+      ${props.command ? html`<div class="cu-perm-box"><div class="cu-perm-cmd">${props.command}</div></div>` : null}
+      ${hook ? html`<div class="cu-perm-box"><div class="cu-perm-hook">${hook.label ? html`<${Inline} text=${hook.label} />${"\n"}` : null}${hook.text || ""}</div></div>` : null}
+      ${props.question ? html`<div class="cu-perm-q">${props.question}</div>` : null}
+      ${choices.length ? html`<ol class="cu-options">${choices.map(function (c, i) {
+        var on = props.selected === i + 1;
+        return html`<li key=${i} class=${on ? "cu-option cu-option-on" : "cu-option"}><span class="cu-option-mark">${on ? "›" : " "}</span><span>${i + 1}. <${Inline} text=${c} /></span></li>`;
+      })}</ol>` : null}
+      ${props.cut ? html`<div class="cu-dim">${props.cut}</div>` : null}
+    </div>`;
   }
 
   function AssistantText(props) {
@@ -93,13 +113,15 @@
   var TASK_MARK = { pending: "□", in_progress: "■", completed: "✔", blocked: "■" };
   function TaskList(props) {
     var tasks = props.tasks || [];
+    // "mark": "" is the "26 tasks (…)" heading: no ✻ before it and no ⎿ before the first task.
+    var mark = props.mark == null ? "✻" : props.mark;
     // With no title it hangs under the spinner line above it, the way Claude Code prints it.
-    return html`<div class=${props.title ? "cu-tasks" : "cu-tasks cu-tasks-attached"}>
-      ${props.title ? html`<div class="cu-tasks-title"><span class="cu-accent">✻</span> ${props.title}</div>` : null}
+    return html`<div class=${(props.title ? "cu-tasks" : "cu-tasks cu-tasks-attached") + (mark ? "" : " cu-tasks-plain")}>
+      ${props.title ? html`<div class="cu-tasks-title">${mark ? html`<span class="cu-accent">${mark}</span> ` : null}<${Inline} text=${props.title} /></div>` : null}
       <ul>${tasks.map(function (t, i) {
         var status = t.status || "pending";
         return html`<li key=${i} class=${"cu-task cu-task-" + status}>
-          <span class="cu-elbow">${i === 0 ? "⎿" : ""}</span><span class="cu-task-mark">${TASK_MARK[status] || "□"}</span>
+          <span class="cu-elbow">${i === 0 && mark ? "⎿" : ""}</span><span class="cu-task-mark">${TASK_MARK[status] || "□"}</span>
           <span><${Inline} text=${t.title} />${t.note ? html` <span class="cu-dim">› ${t.note}</span>` : null}</span></li>`;
       })}</ul>
       ${props.summary ? html`<div class="cu-dim cu-tasks-summary">… ${String(props.summary).replace(/^(…|\.\.\.)\s*/, "")}</div>` : null}</div>`;
@@ -149,7 +171,10 @@
   // mode: "auto" | "plan" | "accept-edits" | null
   function Footer(props) {
     var label = { auto: "auto mode on", plan: "plan mode on", "accept-edits": "accept edits on" }[props.mode];
-    return html`<div class="cu-footer">${label ? html`<span class="cu-mode">⏵⏵ ${label}</span> ` : null}<span class="cu-dim">${props.text || ""}</span></div>`;
+    // Specs often transcribe the label too ("auto mode on (shift+tab to cycle)"); print it once.
+    var text = String(props.text || "");
+    if (label && text.indexOf(label) === 0) text = text.slice(label.length).replace(/^\s+/, "");
+    return html`<div class="cu-footer">${label ? html`<span class="cu-mode">⏵⏵ ${label}</span> ` : null}<span class="cu-dim">${text}</span></div>`;
   }
 
   function Divider() { return html`<hr class="cu-divider" />`; }
@@ -176,14 +201,16 @@
 
   // ── Block registry: spec block type → component ──
   var BLOCKS = {
-    user_prompt: function (b) { return html`<${UserPrompt} text=${b.text} />`; },
+    user_prompt: function (b) { return html`<${UserPrompt} text=${b.text} glyph=${b.glyph} />`; },
+    permission_prompt: function (b) { return html`<${PermissionPrompt} title=${b.title} from=${b.from} description=${b.description}
+      command=${b.command} hook=${b.hook} question=${b.question} choices=${b.choices} selected=${b.selected} cut=${b.cut} />`; },
     assistant_text: function (b) { return html`<${AssistantText} text=${b.text} />`; },
     tool_call: function (b) { return html`<${ToolCall} name=${b.name} args=${b.args} />`; },
     tool_result: function (b) { return html`<${ToolResult} text=${b.text} />`; },
     spinner: function (b) { return html`<${Spinner} verb=${b.verb} meta=${b.meta} />`; },
     note: function (b) { return html`<${Note} text=${b.text} />`; },
     recap: function (b) { return html`<${Recap} text=${b.text} />`; },
-    task_list: function (b) { return html`<${TaskList} title=${b.title} tasks=${b.tasks} summary=${b.summary} />`; },
+    task_list: function (b) { return html`<${TaskList} title=${b.title} mark=${b.mark} tasks=${b.tasks} summary=${b.summary} />`; },
     question: function (b) { return html`<${Question} header=${b.header} question=${b.question} options=${b.options}
       selected=${b.selected} hint=${b.hint} answer=${b.answer} />`; },
     prompt_input: function (b) { return html`<${PromptInput} text=${b.text} />`; },
@@ -372,6 +399,11 @@
   // ── Catalog: one sample per block type, so a library change is visible in one place ──
   var SAMPLES = [
     { type: "user_prompt", text: "can we have a hook that runs the linter after every edit?" },
+    { type: "user_prompt", glyph: "!", text: "kill 4242" },
+    { type: "permission_prompt", title: "Bash command", from: "from the general-purpose agent", description: "Create a branch from main",
+      command: "git switch -c feature/lint-hook origin/main",
+      hook: { label: "Hook PreToolUse:Bash requires confirmation for this command:", text: "[branch-limit] 6 working trees (limit 5). Finish one before starting another." },
+      question: "Do you want to proceed?", choices: ["Yes", "No, and tell Claude what to do differently (esc)"], selected: 1 },
     { type: "spinner", verb: "Spelunking", meta: "20s · ↓ 894 tokens · thinking with medium effort" },
     { type: "tool_call", name: "Bash", args: "make lint" },
     { type: "tool_result", text: "12 files checked, 0 problems" },
@@ -418,7 +450,7 @@
 
   window.ClaudeUI = {
     html: html, Inline: Inline, Prose: Prose, Terminal: Terminal,
-    UserPrompt: UserPrompt, AssistantText: AssistantText, ToolCall: ToolCall, ToolResult: ToolResult,
+    UserPrompt: UserPrompt, PermissionPrompt: PermissionPrompt, AssistantText: AssistantText, ToolCall: ToolCall, ToolResult: ToolResult,
     Spinner: Spinner, Note: Note, Recap: Recap, TaskList: TaskList, PromptInput: PromptInput,
     StatusLine: StatusLine, Meter: Meter, Footer: Footer, Divider: Divider,
     TechniqueHeader: TechniqueHeader, StatusChip: StatusChip, STATUSES: STATUSES, PostPlan: PostPlan, Waiting: Waiting, ScreenshotCompare: ScreenshotCompare,

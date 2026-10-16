@@ -166,7 +166,7 @@ def main() -> int:
         return 0
 
     root = lib.find_root(args.root)
-    paths = sorted(lib.specs_dir(root).glob("*.json")) if args.all else [Path(s).expanduser() for s in args.spec]
+    paths = lib.spec_paths(root) if args.all else [Path(s).expanduser() for s in args.spec]
     results = []
     for p in paths:
         spec = json.loads(p.read_text(encoding="utf-8"))
