@@ -116,14 +116,13 @@ Run `TaskList()` to show the plan before proceeding.
 ### Step 0: Locate scripts
 
 ```bash
-SCRIPTS=$(find "$HOME/.claude/plugins/cache" \
-  -path "*/screenshot-manager/*/skills/suggest-groupings/scripts" \
-  -type d | head -1)
-MY_SCRIPTS=$(find "$HOME/.claude/plugins/cache" \
-  -path "*/screenshot-manager/*/skills/organize-by-plan/scripts" \
-  -type d | head -1)
+# The skill's own folder: use the "Base directory for this skill" line shown when the skill loads.
+# Don't search ~/.claude/plugins/cache: a plugin installed from a local marketplace loads from its repo folder.
+MY_SCRIPTS="<base directory of this skill>/scripts"
+SCRIPTS="<base directory of this skill>/../suggest-groupings/scripts"
 DESKTOP="$HOME/Desktop"
-SCREENSHOTS_ROOT="$HOME/Desktop/Screenshots"
+# The root may carry an emoji prefix; use whichever exists
+SCREENSHOTS_ROOT=$(ls -d "$HOME/Desktop/📸 Screenshots" "$HOME/Desktop/Screenshots" 2>/dev/null | head -1)
 NOTEPLAN_ROOT="$HOME/Library/Containers/co.noteplan.NotePlan3/Data/Library/Application Support/co.noteplan.NotePlan3"
 mkdir -p /tmp/organize-by-plan
 ```
@@ -248,6 +247,8 @@ Mark Task 6 `completed`.
 
 Mark Task 7 `in_progress`.
 
+**Topic folders first.** Run `python3 "$MY_SCRIPTS/topic_folders.py" --root "$SCREENSHOTS_ROOT" --list`. A topic folder holds one *kind* of screenshot, whatever plan it belongs to, for example every chat with one particular assistant tool. If a screenshot matches a topic's `describe` and `signals`, set `vision_subdir_name` to that topic folder and skip plan matching for it. A topic match beats a plan match. A whole burst group goes to the same topic.
+
 This is the primary classification pass. Load `manifest.json` into memory. For each screenshot entry (process in batches of ~10 to stay within context):
 
 1. Use the **`Read` tool** to view the screenshot image at `entry.src`.
@@ -336,7 +337,15 @@ Use `AskUserQuestion`:
 - multiSelect: false
 - options: ["Approve all N files", "Skip this bucket (leave on Desktop)", "Enter different plan"]
 
-For the `Unsorted/` bucket, offer the same approval flow.
+For the `Unsorted/` bucket, offer the same approval flow. Present each topic folder as its own bucket, labeled as a topic folder so the user can tell it apart from a plan.
+
+If the user asks for a new kind of screenshot to get its own folder ("put all X chats in their own folder"), add it as a topic folder rather than a one-off move, so later runs keep routing there:
+```bash
+python3 "$MY_SCRIPTS/topic_folders.py" --root "$SCREENSHOTS_ROOT" --add \
+  --folder "🏢 Example Tool Chats" --describe "Chats in Example Tool's assistant panel" \
+  --signal "'Example Tool' label in the reply box" --signal "sidebar listing its conversations"
+```
+Write the signals from what you actually see in the screenshots: labels, panel titles, layout. The list is saved as `$SCREENSHOTS_ROOT/.topic-folders.json`, with the user's screenshots, never in this repo. Then check the rest of the Desktop (and `Unsorted/`) against the new topic.
 
 Record approved buckets in memory. Mark Task 10 `completed`.
 
@@ -375,7 +384,13 @@ Mark Task 12 `in_progress`.
 
 **Create one `TaskCreate` per approved screenshot** (from the approved manifest entries). Set `subject` to the new filename, `activeForm` to "Moving {new_filename}".
 
-Process screenshots one at a time. For each:
+**Topic-folder buckets** move in one call, which renames to `YYYYMMDD-HHMMSS slug.png` and updates INDEX.md (no plan link, no meeting note):
+```bash
+# entries: [{"src": "<desktop path>", "slug": "short-slug", "excerpt": "optional"}, ...]
+python3 "$MY_SCRIPTS/topic_folders.py" --root "$SCREENSHOTS_ROOT" --move --folder "$TOPIC" --entries topic-moves.json
+```
+
+Process plan-bucket screenshots one at a time. For each:
 
 1. Mark its task `in_progress`.
 
@@ -480,9 +495,7 @@ Mark Task 14 `completed`.
 
 All at `skills/organize-by-plan/scripts/`. Locate at runtime:
 ```bash
-MY_SCRIPTS=$(find "$HOME/.claude/plugins/cache" \
-  -path "*/screenshot-manager/*/skills/organize-by-plan/scripts" \
-  -type d | head -1)
+MY_SCRIPTS="<base directory of this skill>/scripts"
 ```
 
 | Script | Purpose | CLI |
@@ -494,14 +507,13 @@ MY_SCRIPTS=$(find "$HOME/.claude/plugins/cache" \
 | `slugify_ocr.py` | Rename slug derivation | `--text "..." --max-words N --max-chars N` |
 | `update_index.py` | Idempotent INDEX.md update | `--subdir PATH --entry JSON` |
 | `update_meeting.py` | Idempotent meeting-note update | `--meeting-file PATH --entries JSON [--create ...]` |
+| `topic_folders.py` | Topic folders: list, add, move + rename + INDEX.md | `--root PATH --list` · `--add --folder F --describe D --signal S` · `--move --folder F --entries JSON` |
 
 ### Reused scripts (from suggest-groupings)
 
 Locate via:
 ```bash
-SCRIPTS=$(find "$HOME/.claude/plugins/cache" \
-  -path "*/screenshot-manager/*/skills/suggest-groupings/scripts" \
-  -type d | head -1)
+SCRIPTS="<base directory of this skill>/../suggest-groupings/scripts"
 ```
 
 | Script | Purpose |

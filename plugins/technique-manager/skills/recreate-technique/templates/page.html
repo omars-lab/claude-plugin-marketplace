@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>{{CSS}}</style>
+</head>
+<body>
+<div id="root">{{STATIC}}</div>
+<script type="application/json" id="spec">{{DATA}}</script>
+<script src="_lib/vendor/react.production.min.js"></script>
+<script src="_lib/vendor/react-dom.production.min.js"></script>
+<script src="_lib/vendor/htm.umd.js"></script>
+<script src="_lib/claude-ui.js"></script>
+<script>ClaudeUI.mount(document.getElementById("root"), ClaudeUI.Page, { spec: ClaudeUI.readJSON("spec"), backHref: "index.html" });</script>
+</body>
+</html>

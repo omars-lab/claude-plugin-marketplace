@@ -1,0 +1,213 @@
+/* claude-ui.css: tokens and styles for claude-ui.js. Pages add none of their own. */
+:root {
+  --cu-bg: #f6f4ef;
+  --cu-surface: #ffffff;
+  --cu-text: #1f1e1c;
+  --cu-muted: #6b6862;
+  --cu-border: #e2ded5;
+  --cu-accent: #c2613f;
+  --cu-ok: #2f8a4c;
+  --cu-link: #2f63b8;
+  /* The terminal always uses Claude Code's dark terminal colors, whatever the page theme. */
+  --cu-term-bg: #1d1d1d;
+  --cu-term-bar: #2b2b2b;
+  --cu-term-text: #e6e6e6;
+  --cu-term-dim: #9a9a9a;
+  --cu-term-hl: #393939;
+  --cu-term-code: #a8b4fb;
+  --cu-term-branch: #e2b062;
+  --cu-term-model: #a8b4fb;
+  --cu-term-accent: #d97757;
+  --cu-term-ok: #4eba65;
+  --cu-meter: #e2b062;
+  --cu-mode: #e07fcf;
+  --cu-radius: 10px;
+  --cu-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --cu-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --cu-bg: #1a1918; --cu-surface: #232220; --cu-text: #ecebe7; --cu-muted: #a29f97; --cu-border: #34322f;
+    --cu-accent: #e0805e; --cu-ok: #5cc27e; --cu-link: #7aa7f0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --cu-bg: #1a1918; --cu-surface: #232220; --cu-text: #ecebe7; --cu-muted: #a29f97; --cu-border: #34322f;
+  --cu-accent: #e0805e; --cu-ok: #5cc27e; --cu-link: #7aa7f0;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--cu-bg); color: var(--cu-text); font: 16px/1.55 var(--cu-sans); }
+a { color: var(--cu-link); }
+
+.cu-page { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+.cu-back { display: inline-block; margin-bottom: 16px; font-size: 14px; text-decoration: none; }
+
+.cu-header h1 { font-size: 30px; line-height: 1.2; margin: 8px 0 8px; letter-spacing: -0.01em; }
+.cu-header h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--cu-muted); margin: 0 0 6px; }
+.cu-lede { font-size: 18px; color: var(--cu-muted); margin: 0 0 20px; }
+.cu-howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-bottom: 24px; }
+.cu-howto p, .cu-howto ol { margin: 0; }
+.cu-howto ol { padding-left: 20px; }
+.cu-tag { display: inline-block; font: 12px/1 var(--cu-mono); padding: 5px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--cu-accent) 14%, transparent); color: var(--cu-accent); }
+
+/* Terminal */
+.cu-terminal { background: var(--cu-term-bg); color: var(--cu-term-text); border: 1px solid #000;
+  border-radius: var(--cu-radius); overflow: hidden; box-shadow: 0 8px 28px rgba(0,0,0,.22); color-scheme: dark; }
+.cu-titlebar { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border-bottom: 1px solid #000;
+  background: var(--cu-term-bar); }
+.cu-dot { width: 12px; height: 12px; border-radius: 50%; background: #555; }
+.cu-dot-r { background: #ff5f57; } .cu-dot-y { background: #febc2e; } .cu-dot-g { background: #28c840; }
+.cu-titlebar-text { margin-left: 8px; font: 12px var(--cu-mono); color: var(--cu-term-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Dense like the terminal: one blank line between messages, none inside one. */
+.cu-screen { padding: 12px 16px 16px; font: 13px/1.45 var(--cu-mono); overflow-x: auto; }
+.cu-screen > * + * { margin-top: 1.45em; }
+.cu-screen .cu-ok { color: var(--cu-term-ok); }
+.cu-screen .cu-accent, .cu-screen .cu-tasks-title, .cu-screen .cu-task-mark, .cu-screen .cu-chip { color: var(--cu-term-accent); }
+.cu-screen .cu-task-completed .cu-task-mark { color: var(--cu-term-ok); }
+.cu-screen a { color: var(--cu-term-code); }
+
+.cu-user, .cu-assistant, .cu-tool, .cu-result, .cu-spinner, .cu-note, .cu-recap, .cu-input {
+  display: grid; grid-template-columns: 1.4em minmax(0, 1fr); align-items: start; }
+.cu-glyph { user-select: none; }
+.cu-user { background: var(--cu-term-hl); border-radius: 4px; padding: 2px 6px 2px 0; }
+.cu-user .cu-glyph { padding-left: 6px; color: var(--cu-term-dim); }
+.cu-result { margin-left: 1.4em; margin-top: 2px !important; }
+.cu-dim { color: var(--cu-term-dim); }
+.cu-fg { color: var(--cu-term-text); }
+.cu-ok { color: var(--cu-ok); }
+.cu-accent { color: var(--cu-accent); }
+.cu-code { color: var(--cu-term-code); }
+.cu-prose p, .cu-p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cu-gap { height: 1.45em; }
+.cu-list { margin: 0; padding-left: 0; list-style: none; }
+.cu-list li { padding-left: 1.2em; text-indent: -1.2em; overflow-wrap: anywhere; }
+.cu-list li::before { content: "- "; }
+
+.cu-tasks ul { margin: 2px 0 0; padding: 0; list-style: none; }
+.cu-tasks-title { color: var(--cu-accent); }
+.cu-task { display: grid; grid-template-columns: 1.4em 1.4em 1fr; }
+.cu-elbow { color: var(--cu-term-dim); }
+.cu-screen > .cu-block-attached { margin-top: 0; }
+/* A tool's result and the footer sit right under the line before them. */
+.cu-screen > .cu-block-tool_result, .cu-screen > .cu-block-footer { margin-top: 2px; }
+.cu-tasks-attached ul { padding-left: 1.4em; margin: 0; }
+.cu-task-mark { color: var(--cu-accent); }
+.cu-task-in_progress, .cu-task-blocked { font-weight: 700; }
+.cu-task-completed { color: var(--cu-term-dim); text-decoration: line-through; }
+.cu-task-completed .cu-task-mark { color: var(--cu-ok); text-decoration: none; }
+.cu-tasks-summary { padding-left: 4.2em; }
+
+.cu-question { border: 1px solid color-mix(in srgb, var(--cu-term-dim) 45%, transparent); border-radius: 6px; padding: 8px 10px; }
+.cu-question-answered { border: 0; padding: 0 0 0 1.4em; }
+.cu-chip { display: inline-block; padding: 0 6px; border-radius: 4px; background: var(--cu-term-hl); color: var(--cu-accent); margin-bottom: 4px; }
+.cu-q { margin-bottom: 6px; overflow-wrap: anywhere; }
+.cu-options { margin: 0 0 6px; padding: 0; list-style: none; }
+.cu-option { display: grid; grid-template-columns: 1.4em minmax(0, 1fr); overflow-wrap: anywhere; }
+.cu-option + .cu-option { margin-top: 4px; }
+.cu-option-on, .cu-option-mark { color: var(--cu-term-code); }
+.cu-qa { overflow-wrap: anywhere; }
+
+.cu-divider { border: 0; border-top: 1px solid var(--cu-term-dim); opacity: .5; margin: 14px 0; }
+.cu-input { padding: 2px 0; }
+.cu-cursor { display: inline-block; width: .6em; height: 1.1em; vertical-align: text-bottom; background: var(--cu-term-text); margin-left: 2px; }
+
+.cu-status { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--cu-term-dim) 50%, transparent); }
+.cu-sep { color: var(--cu-term-dim); opacity: .6; }
+.cu-status-right { margin-left: auto; }
+.cu-tone-path { color: var(--cu-term-code); }
+.cu-tone-branch { color: var(--cu-term-branch); }
+.cu-tone-model { color: var(--cu-term-model); }
+.cu-tone-cost { color: var(--cu-meter); }
+.cu-tone-dim { color: var(--cu-term-dim); }
+.cu-meter { display: inline-flex; align-items: center; gap: 6px; }
+.cu-meter-bar { display: inline-block; width: 80px; height: .9em; border: 1px solid var(--cu-term-dim); }
+.cu-meter-bar span { display: block; height: 100%; background: var(--cu-meter); }
+.cu-footer { margin-top: 2px !important; }
+.cu-mode { color: var(--cu-mode); }
+
+.cu-missing { border: 1px dashed var(--cu-accent); color: var(--cu-accent); padding: 8px; border-radius: 6px; }
+
+.cu-compare { margin-top: 20px; }
+.cu-compare summary { cursor: pointer; color: var(--cu-muted); font-size: 14px; }
+.cu-compare img { display: block; max-width: 100%; height: auto; margin-top: 10px; border: 1px solid var(--cu-border); border-radius: var(--cu-radius); }
+
+/* Gallery */
+.cu-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.cu-filters button { font: 13px var(--cu-mono); padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  background: var(--cu-surface); color: var(--cu-text); border: 1px solid var(--cu-border); }
+.cu-filters button[aria-pressed="true"] { background: var(--cu-accent); border-color: var(--cu-accent); color: #fff; }
+.cu-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.cu-card { display: flex; flex-direction: column; text-decoration: none; color: inherit; background: var(--cu-surface);
+  border: 1px solid var(--cu-border); border-radius: var(--cu-radius); overflow: hidden; }
+.cu-card:hover { border-color: var(--cu-accent); }
+.cu-card img, .cu-card-blank { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: top left; background: var(--cu-term-bg); border-bottom: 1px solid var(--cu-border); }
+.cu-card-body { padding: 12px 14px 14px; }
+.cu-card h3 { font-size: 16px; margin: 8px 0 4px; }
+.cu-card p { margin: 0 0 6px; font-size: 14px; color: var(--cu-muted); }
+.cu-card-date { font: 12px var(--cu-mono); }
+
+/* Hub: status on the way to a post */
+.cu-status-chip { display: inline-block; font: 12px/1 var(--cu-mono); padding: 5px 8px; border-radius: 999px;
+  border: 1px solid var(--cu-border); color: var(--cu-muted); }
+.cu-status-focused { color: var(--cu-link); border-color: currentColor; }
+.cu-status-drafting, .cu-status-ready { color: var(--cu-accent); border-color: currentColor; }
+.cu-status-posted { color: var(--cu-ok); border-color: currentColor; }
+.cu-card-focus { color: var(--cu-text) !important; font-style: italic; }
+
+/* Focus: the blocks that prove the point get a bar in the gutter, like a terminal selection. */
+.cu-screen > .cu-block-focus { box-shadow: -12px 0 0 -9px var(--cu-term-accent); }
+.cu-cut { padding-left: 1.4em; }
+.cu-point { margin: 0 0 20px; font-size: 18px; max-width: 760px; }
+.cu-point-label { font: 12px/1 var(--cu-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--cu-accent); margin-right: 6px; }
+.cu-plan { border: 1px solid var(--cu-border); border-radius: var(--cu-radius); background: var(--cu-surface); padding: 14px 16px; margin: 0 0 24px; }
+.cu-plan-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 8px; }
+.cu-plan-head h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--cu-muted); margin: 0; }
+.cu-plan-preview { margin-left: auto; font-size: 14px; }
+.cu-plan p { margin: 4px 0; }
+.cu-plan-suggested { margin-top: 10px; padding: 8px 12px; border-left: 3px dashed var(--cu-accent); background: color-mix(in srgb, var(--cu-accent) 6%, transparent); }
+.cu-plan-suggested h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--cu-accent); margin: 0 0 4px; }
+.cu-plan-context { margin-top: 8px; }
+
+.cu-links { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: -8px 0 20px; font-size: 15px; }
+.cu-waiting.cu-page { max-width: 860px; }
+.cu-wait-section { margin: 0 0 24px; }
+.cu-wait-section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--cu-muted); margin: 0 0 6px; }
+.cu-wait-list { margin: 6px 0 0; padding-left: 20px; }
+.cu-wait-list li { margin: 4px 0; overflow-wrap: anywhere; }
+
+/* Catalog */
+.cu-sample { margin-bottom: 20px; }
+.cu-sample h2 { font-size: 14px; margin: 0 0 6px; color: var(--cu-muted); }
+
+/* Views */
+.cu-banner { margin: 0 0 16px; padding: 8px 12px; border-radius: 6px; font-size: 14px;
+  background: color-mix(in srgb, var(--cu-accent) 14%, transparent); color: var(--cu-accent); }
+.cu-internal.cu-page { max-width: 1400px; }
+.cu-side-by-side { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 20px; align-items: start; }
+.cu-col-title, .cu-internal-panel h2, .cu-backstory h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--cu-muted); margin: 0 0 8px; }
+.cu-original { display: block; max-width: 100%; height: auto; border: 1px solid var(--cu-border); border-radius: var(--cu-radius); }
+.cu-internal-panel { margin-top: 24px; }
+.cu-redactions { border-collapse: collapse; font-size: 14px; width: 100%; }
+.cu-redactions th, .cu-redactions td { text-align: left; padding: 4px 10px 4px 0; border-bottom: 1px solid var(--cu-border); vertical-align: top; overflow-wrap: anywhere; }
+.cu-session { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: 14px; }
+.cu-session dt { color: var(--cu-muted); }
+.cu-session dd { margin: 0; overflow-wrap: anywhere; }
+.cu-dim-text { color: var(--cu-muted); margin: 0; }
+/* The terminal gets the width a real one has; the reading text stays at a readable measure. */
+.cu-post.cu-page { max-width: 1180px; }
+.cu-post .cu-header, .cu-post .cu-backstory, .cu-post .cu-back { max-width: 760px; }
+.cu-backstory { margin: 0 0 24px; font-size: 17px; }
+.cu-backstory .cu-p { white-space: normal; }
+.cu-credit { margin-top: 16px; font-size: 14px; color: var(--cu-muted); }
+
+@media (max-width: 600px) {
+  .cu-header h1 { font-size: 24px; }
+  .cu-screen { font-size: 12.5px; padding: 12px; }
+  .cu-status-right { margin-left: 0; }
+}

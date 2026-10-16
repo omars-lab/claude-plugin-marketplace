@@ -18,13 +18,14 @@ Screenshot Manager solves two common problems with topic-organized screenshot di
 ### Step 1: Welcome and Context
 
 ```
-Screenshot Manager — 4 skills for your Screenshots folder.
+Screenshot Manager — 5 skills for your Screenshots folder.
 
 I can help with:
 - Organizing Desktop screenshots into NotePlan plan-named subdirs with meeting-note cross-references (organize-by-plan)
 - Finding misplaced files and importing Desktop screenshots using OCR + date proximity (suggest-groupings)
 - Prefixing directories with their earliest screenshot date for chronological sorting (sort-dirs)
 - Extracting URLs from browser screenshots (extract-urls)
+- Picking out screenshots that show a reusable Claude technique and moving them into the Techniques folder (suggest-techniques)
 ```
 
 ### Step 2: Ask What They Want to Do
@@ -37,6 +38,7 @@ What would you like to do?
 - Find misplaced files / import from Desktop (suggest-groupings)
 - Sort directories by date (sort-dirs)
 - Extract URLs from browser screenshots (extract-urls)
+- Pick Claude technique screenshots from the Desktop (suggest-techniques)
 - Learn about all skills
 ```
 
@@ -54,6 +56,7 @@ Based on their selection, explain the relevant skills with usage examples.
 - Creates/updates a per-subdir `INDEX.md` with OCR excerpts and plan wikilinks
 - Clusters screenshots by meeting session, links to existing NotePlan meeting notes (or creates placeholder stubs)
 - Appends linked file paths + OCR excerpts to each meeting note's `## Screenshots` section
+- Routes screenshots that match a **topic folder** (one kind of screenshot regardless of plan, such as every chat with a given assistant tool) into that folder before plan matching. Ask for a new one in plain words ("put all X chats in their own folder"). The list is kept with your screenshots in `.topic-folders.json`.
 
 **Key philosophy:** Directories are **semantic** (named after active plans), not event-snapshots. All screenshots related to `🏡 Developing OCR Tooling` go into the same subdir regardless of date. This is the **opposite** philosophy of `suggest-groupings` — choose one or the other for a given Screenshots root.
 
@@ -132,6 +135,18 @@ Keep: SF Trip and Canceling NYC Trip separate
 
 ---
 
+### `suggest-techniques` — Pick Claude technique screenshots
+
+**Invocation:** `/screenshot-manager:suggest-techniques`
+
+**What it does:** Learns the bar from the screenshots already in `~/Desktop/📸 Screenshots of Techniques/`. Then it reads every Desktop screenshot with Vision (OCR as context) and labels each one `technique`, `claude-not-technique` or `other`, with a 0–5 score, a mechanism tag (hooks, recap, tasks, statusline, prompting, …) and a one-line reason. Screenshots taken within 2 minutes of each other are judged as one group. After you approve, it moves the chosen files and records each one in `techniques.json`.
+
+**When to use:** Your Desktop has a mix of Claude screenshots and everything else, and you want to keep the ones that show a technique worth repeating.
+
+**Next:** `/technique-manager:recreate-technique` turns each approved screenshot into a Claude-style HTML page, and `/technique-manager:package-gallery` zips them all.
+
+---
+
 ## How They Work Together
 
 Two organization paradigms — choose based on what you want:
@@ -146,6 +161,11 @@ sort-dirs         →  optionally prefix plan subdirs with dates after organizin
 ```
 suggest-groupings  →  fix misplaced files and import Desktop screenshots into event-snapshot dirs
 sort-dirs          →  prefix event dirs with dates for chronological sorting
+```
+
+**Technique curation (independent, feeds technique-manager):**
+```
+suggest-techniques  →  Desktop → 📸 Screenshots of Techniques (+ techniques.json)
 ```
 
 **URL extraction (independent):**
@@ -195,6 +215,9 @@ Both skills confirm the path via `AskUserQuestion` before doing anything.
 
 **"I screenshot a browser tab and need the URL back"**
 → `/screenshot-manager:extract-urls`
+
+**"Which of my Desktop screenshots show a Claude technique worth keeping?"**
+→ `/screenshot-manager:suggest-techniques`
 
 **"I want all URLs from a whole directory of screenshots"**
 → `/screenshot-manager:extract-urls` (choose directory scope)

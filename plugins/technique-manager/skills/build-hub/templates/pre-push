@@ -1,0 +1,10 @@
+#!/bin/sh
+# technique-hub: this repo holds real names (specs, context, comment threads).
+# Push only to the remotes listed in hub.json "allow_remotes"; refuse any other.
+url="$2"
+root=$(git rev-parse --show-toplevel)
+if python3 -c 'import json,sys; sys.exit(0 if sys.argv[1] in json.load(open(sys.argv[2])).get("allow_remotes", []) else 1)' "$url" "$root/hub.json"; then
+  exit 0
+fi
+echo "technique-hub: refusing to push to $url (not in hub.json allow_remotes). This repo is private." >&2
+exit 1

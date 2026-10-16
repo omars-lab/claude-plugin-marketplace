@@ -1,0 +1,4 @@
+# Built site and copies of whole sessions: rebuilt or private, never tracked.
+.cache/
+archive/
+.DS_Store
