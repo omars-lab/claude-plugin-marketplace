@@ -43,7 +43,7 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   that has a pin. It is the same page, cut down to the posts with a pin there, and to the places and
   pins inside it, so a road trip that also pins somewhere far away shows only its pins in this
   state. Its counts are worked out over that cut. The first menu, **Map**, switches between
-  every map: "Every state and country" (the page at `index.html`), then each state or country with
+  every map: "Everywhere" (the page at `index.html`), then each state or country with
   its post count, most posts first. Place and post pages link back to their state's map ("← The map
   of Example State"). Each build removes the folders it wrote last time (they carry a marker
   comment) before writing them again, so a state with no pins left loses its map; a folder without

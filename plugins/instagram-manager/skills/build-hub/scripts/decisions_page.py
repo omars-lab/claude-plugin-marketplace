@@ -358,7 +358,7 @@ def build(rows, check, town, moves, answers, videos, links, saves, pages, tags=(
                  f"{'it' if len(town) == 1 else 'them'} exactly.")
     where = ("Run it in the data repo" if make
              else "Run it with INSTAGRAM_HOME set to your saves folder")
-    return (TEMPLATE.replace("{{LEDE}}", esc(lede)).replace("{{NAV}}", nav)
+    return (TEMPLATE.replace("{{ICON}}", bh.ICON).replace("{{LEDE}}", esc(lede)).replace("{{NAV}}", nav)
             .replace("{{N_GOOGLE}}", str(counts["google"])).replace("{{GOOGLE}}", g)
             .replace("{{N_CHECK}}", str(counts["check"])).replace("{{CHECK}}", c + t)
             .replace("{{LOCATE_MERGE}}", cmd("locate-merge"))
@@ -376,6 +376,7 @@ TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Your Decisions</title>
+{{ICON}}
 <style>
 /* An in-tray: one column of what waits on a person, each kind under its own heading, with the
    Google picks first because they are the only ones made on this page. */

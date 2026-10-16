@@ -153,6 +153,7 @@ TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Spot Pins</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 2C10.5 2 6 6.3 6 11.8 6 19.3 16 30 16 30s10-10.7 10-18.2C26 6.3 21.5 2 16 2z' fill='%230f6b5c'/><circle cx='16' cy='12' r='4.2' fill='white'/></svg>">
 {{LEAFLET}}
 <style>
 /* A checking desk: the map holds still on the left, the list of spots scrolls on the right. Each

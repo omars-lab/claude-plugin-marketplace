@@ -135,6 +135,13 @@ FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
          '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
          '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@'
          '12..96,600&family=Atkinson+Hyperlegible:wght@400;700&display=swap">')
+# A pin in the accent colour, inline, so no page asks the server for /favicon.ico (trial finding 24).
+ICON = ("""<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 2C10.5 2 6 6.3 6 11.8 6 19.3 16 30 16 30s10-10.7 10-18.2C26 6.3 21.5 2 16 2z' fill='%230f6b5c'/><circle cx='16' cy='12' r='4.2' fill='white'/></svg>">""")
+# Atkinson Hyperlegible slashes its zero, so "2026" reads "2O26" (trial finding 25): digits come
+# from a plain local face first, and the letters stay Atkinson's.
+DIGITS = '''@font-face{font-family:"Plain Digits";font-weight:400;unicode-range:U+0030-0039;src:local("AvenirNext-Regular"),local("Helvetica Neue"),local("Arial")}
+@font-face{font-family:"Plain Digits";font-weight:700;unicode-range:U+0030-0039;src:local("AvenirNext-Bold"),local("HelveticaNeue-Bold"),local("Arial Bold")}
+'''
 
 
 # ---- reading ----
@@ -714,7 +721,7 @@ def glyph(g):
 def shell(title, content, head="", script="", body=""):
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
-            f'<title>{esc(title)}</title>{FONTS}{head}<style>{CSS}</style></head>'
+            f'<title>{esc(title)}</title>{ICON}{FONTS}{head}<style>{CSS}</style></head>'
             + (f'<body class="{body}">' if body else "<body>") + f'{content}{script}</body></html>')
 
 
@@ -1287,7 +1294,7 @@ def index_page(hub, title, extra_links, home=(), area=None, maps=()):
     chooser = ""
     if maps:
         on_map = sum(1 for p in hub.posts if p["pins"])
-        opts = [(pre or "./", "Every state and country", on_map, not area)] + [
+        opts = [(pre or "./", "Everywhere", on_map, not area)] + [
             (pre + f + "/", name, n, f == hub.places[area]["slug"] if area else False) for f, name, n in maps]
         chooser = ('<label><span>Map</span><select id="maps" onchange="location.href=this.value">'
                    + "".join(f'<option value="{esc(h)}"{" selected" if on else ""}>{esc(name)} ({n})</option>'
@@ -1314,12 +1321,12 @@ def index_page(hub, title, extra_links, home=(), area=None, maps=()):
     return shell(title, content, LEAFLET + CLUSTER, f"{flips}<script>{js}</script>", body="hub")
 
 
-CSS = """
+CSS = DIGITS + """
 :root{
   --bg:#f3f5f4; --card:#ffffff; --fg:#1d2421; --muted:#5d6a64; --line:#d9e0dc;
   --accent:#0f6b5c; --accent-soft:#dcf1ea; --spot:#c2410c; --wide:#8a948f; --mark:#fde9a8; --ring:#ffffff; --pin-ink:#ffffff;
   --display:"Bricolage Grotesque","Avenir Next",system-ui,sans-serif;
-  --body:"Atkinson Hyperlegible",system-ui,-apple-system,sans-serif;
+  --body:"Plain Digits","Atkinson Hyperlegible",system-ui,-apple-system,sans-serif;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#141917; --card:#1c2320; --fg:#e4ebe7; --muted:#9aa8a1; --line:#2e3833;
@@ -1373,7 +1380,7 @@ body.hub{height:100dvh;display:grid;grid-template-rows:auto 1fr}
   background:var(--card);border-bottom:1px solid var(--line)}
 .bar .links{display:flex;gap:16px;font-weight:700;font-size:.95rem}
 .facets{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:end;gap:8px 12px}
-.facets label{flex:0 1 13rem;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:2px;font-size:.72rem;letter-spacing:.08em;
+.facets label{flex:1 1 0;min-width:min(100%,12rem);display:grid;grid-template-columns:minmax(0,1fr);gap:2px;font-size:.72rem;letter-spacing:.08em;
   text-transform:uppercase;color:var(--muted)}
 .facets select{width:100%;min-width:0;font:inherit;font-size:.92rem;letter-spacing:normal;text-transform:none;color:var(--fg);
   padding:7px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}

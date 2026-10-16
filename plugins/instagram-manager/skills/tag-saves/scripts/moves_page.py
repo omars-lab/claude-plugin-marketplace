@@ -88,15 +88,18 @@ TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Saves to Move</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 2C10.5 2 6 6.3 6 11.8 6 19.3 16 30 16 30s10-10.7 10-18.2C26 6.3 21.5 2 16 2z' fill='%230f6b5c'/><circle cx='16' cy='12' r='4.2' fill='white'/></svg>">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
 <style>
+@font-face{font-family:"Plain Digits";font-weight:400;unicode-range:U+0030-0039;src:local("AvenirNext-Regular"),local("Helvetica Neue"),local("Arial")}
+@font-face{font-family:"Plain Digits";font-weight:700;unicode-range:U+0030-0039;src:local("AvenirNext-Bold"),local("HelveticaNeue-Bold"),local("Arial Bold")}
 /* A sorting tray: a short tally of what to move out of each collection, then one slip per save,
    its route (in → move to) on the left and the caption evidence on the right. */
 :root {
   --bg: #f3f5f4; --card: #ffffff; --fg: #1d2421; --muted: #5d6a64; --line: #d9e0dc;
   --accent: #0f6b5c; --from: #8a5a12; --from-bg: #fbf0dc; --to-bg: #dcf1ea; --mark: #fde9a8;
   --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
-  --body: "Atkinson Hyperlegible", system-ui, -apple-system, sans-serif;
+  --body: "Plain Digits", "Atkinson Hyperlegible", system-ui, -apple-system, sans-serif;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #141917; --card: #1c2320; --fg: #e4ebe7; --muted: #9aa8a1; --line: #2e3833;
