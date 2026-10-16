@@ -168,4 +168,8 @@ When a repo already has a Stop hook that greps the transcript for a signal and a
   `block-git-ours-theirs` is the one deliberate deny: it needs no conf, and the only knob is
   `git-conflicts.conf` with `ENABLED=0` (repo, or `~/.claude/hooks/` for the machine). Do not
   write that file to get past a conflict — resolve the conflict by hand instead.
+  `git-settings-guard` denies the same way, for a `git config` that sets `core.bare true` or
+  an absolute or outside-the-repo `core.hooksPath`; its knob is `git-settings.conf`
+  `ENABLED=0`. When it reports a wrong setting, tell the user and give the fix it printed;
+  don't change the setting yourself.
 - Conf files are committed with the repo so every clone gets the same guardrails.

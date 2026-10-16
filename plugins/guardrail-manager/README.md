@@ -19,9 +19,13 @@ Run `/guardrail-manager:introduce` for the full capability list. That skill is t
 authoritative reference. `/guardrail-manager:configure-guardrails` audits a repo and writes
 the conf files.
 
-Every advisory hook is a no-op until a conf exists; `block-git-ours-theirs` and
-`branch-sprawl-guard` are the exceptions (on by default, opt out with `ENABLED=0` in their
-conf). All exit 0 and have a `--selftest`:
+`git-settings-guard` keeps a checkout's own git settings sane. At session start, and before git
+commands, it says when `core.bare` is true or `core.hooksPath` is absolute, outside the repo
+or missing, and gives the fix. It denies a `git config` that would set either one wrong.
+
+Every advisory hook is a no-op until a conf exists; `block-git-ours-theirs`,
+`branch-sprawl-guard` and `git-settings-guard` are the exceptions (on by default, opt out with
+`ENABLED=0` in their conf). All exit 0 and have a `--selftest`:
 
 ```
 make test-guardrail-hooks

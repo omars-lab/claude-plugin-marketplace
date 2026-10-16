@@ -93,9 +93,9 @@ test-creator: ## Test noteplan-note-creator skills
 	@echo "  $(YELLOW)/noteplan-note-creator:create-note$(NC)"
 	@echo "  $(YELLOW)/noteplan-note-creator:quick-note$(NC)"
 
-test-guardrail-hooks: ## Run guardrail-manager hook selftests (concurrent-session, commit-branch, policy-review, ours-theirs, branch-sprawl, merge-and-continue)
+test-guardrail-hooks: ## Run guardrail-manager hook selftests (concurrent-session, commit-branch, policy-review, ours-theirs, branch-sprawl, merge-and-continue, git-settings)
 	@echo "$(BLUE)Testing guardrail-manager hooks...$(NC)"
-	@for h in concurrent-session-guard remind-commit-branch policy-review-reminder block-git-ours-theirs branch-sprawl-guard merge-and-continue; do \
+	@for h in concurrent-session-guard remind-commit-branch policy-review-reminder block-git-ours-theirs branch-sprawl-guard merge-and-continue git-settings-guard; do \
 		python3 plugins/guardrail-manager/hooks/$$h.py --selftest || exit 1; \
 	done
 	@echo "$(GREEN)✓ guardrail-manager hooks pass$(NC)"

@@ -44,6 +44,13 @@ fourth is the one that denies a tool call:
   inside `sh -c "…"`. `git diff --ours` stays allowed. **On with no conf at all**; opt a repo or
   the machine out with `git-conflicts.conf` `ENABLED=0`. The tenet it enforces: work every
   conflict by hand, both sides kept, gates re-run.
+- **git-settings-guard** (SessionStart + PreToolUse on Bash): at session start, and before
+  git commands (at most every ten minutes per problem), reports a checkout whose
+  `core.bare` is true or whose `core.hooksPath` is absolute, outside the repo or missing, with
+  the exact fix. It never changes the setting. It denies a `git config` that would set
+  `core.bare true` or a repo `core.hooksPath` that is absolute, `~`, `$VAR` or `../`
+  (`--global`/`--system` hooks folders are allowed). **On with no conf**; opt out with
+  `git-settings.conf` `ENABLED=0`.
 
 The plugin has two skills:
 
@@ -100,7 +107,8 @@ guardrail-manager (this plugin)
     ├── concurrent-session-guard.py — SessionStart + UserPromptSubmit
     ├── remind-commit-branch.py     — PreToolUse (Bash)
     ├── policy-review-reminder.py   — Stop
-    ├── block-git-ours-theirs.py    — PreToolUse (Bash), the one deny
+    ├── block-git-ours-theirs.py    — PreToolUse (Bash), deny
+    ├── git-settings-guard.py       — SessionStart + PreToolUse (Bash), report + deny
     ├── _conf.py      — KEY=value and INI loaders, repo conf with global fallback
     ├── _sessions.py  — other_active_sessions(): scan ~/.claude/projects/<slug>/
     └── _selftest.py  — subprocess harness used by every --selftest
