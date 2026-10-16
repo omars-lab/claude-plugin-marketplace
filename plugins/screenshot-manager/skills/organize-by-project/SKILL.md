@@ -347,7 +347,15 @@ open "obsidian://open?vault=_review&file=<date>%20Screenshots%20to%20file%2C%20r
      pictures stay in `images/`, so it still shows them.
    - Edit `next.json` before `write` like a draft: drop a group whose answer is already plain
      (a folder Claude made on purpose, such as the keys folder, goes in `_skip` instead).
-   - Run it without `--retire` first to see what carries.
+   - Run it without `--retire` first to see what carries. When `--retire` runs after you have
+     edited `next.json`, give it a different `--out`, or it writes over your edits.
+   - **"Show me these too next time" ticked:** `carry` also brings in the plan's not-project
+     screenshots that are still on the Desktop, one group per run of shots taken close
+     together, each with "not project work" recommended. Those runs are mostly single shots, so
+     regroup them by topic before `write` (home and shopping, bills, job search, trips, kids
+     and school…): a handful of groups to tick instead of one per picture. Ask "leave them on
+     the Desktop?" and say a comment on one picture files it elsewhere. Where a picture hints at
+     a project (school practice pages and a homework project), add that project as a choice.
 
 ### After every answer
 
@@ -452,7 +460,7 @@ come back in the next review doc; the ones they left blank do too.
 | `review_doc.py draft` | Groups what the plan left unclear (unsure shots, undecided folders, key-file folders) into a groups JSON to edit | Step 6, more than 4 groups | `python3 "$OP/review_doc.py" draft --plan … --shots … --out "$WORK/groups.json"` |
 | `review_doc.py write` | Writes the Obsidian review doc with the pictures and tick boxes; won't overwrite one with ticks | Step 6, after editing the groups | `python3 "$OP/review_doc.py" write --groups … --vault "$ROOT/_review"` |
 | `review_doc.py read` | Turns the ticks into an answers file, alias rules and key-file plan flags, and lists the open comments by group and picture | Step 6, when the user says they're done; again with `--set` for each comment's answer | `python3 "$OP/review_doc.py" read --doc … --answers "$WORK/vision_answers_user.json" --aliases "$ROOT/.aliases.json" [--set G12=<project>] [--set G12.3=<project>]` |
-| `review_doc.py carry` | Keeps only the groups still open and in place for the next doc, and with `--retire` moves the old doc to `_review/done/` | Step 6, after the moves, when anything is left | `python3 "$OP/review_doc.py" carry --doc … --out "$WORK/next.json" [--retire]` |
+| `review_doc.py carry` | Keeps only the groups still open and in place for the next doc (plus the not-project screenshots when "Show me these too" is ticked), and with `--retire` moves the old doc to `_review/done/` | Step 6, after the moves, when anything is left | `python3 "$OP/review_doc.py" carry --doc … --out "$WORK/next.json" [--retire]` |
 | `move_to_projects.py plan` | Builds every destination and prints the table. Moves nothing | Step 7 | `python3 "$OP/move_to_projects.py" plan --root … --shots … --folders … --inside … --vision … [--keys-to … --keys-from …] --out …` |
 | `move_to_projects.py apply` | Writes the undo list, then moves | Step 8, after approval | `python3 "$OP/move_to_projects.py" apply --plan … --only folders` |
 | `move_to_projects.py undo` | Moves one batch back, newest first | When the user wants it undone | `python3 "$OP/move_to_projects.py" undo --log "$ROOT/.moves/<time>.json"` |

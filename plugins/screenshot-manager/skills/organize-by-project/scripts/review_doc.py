@@ -92,18 +92,14 @@ def images_in(folder: Path, n: int) -> list[str]:
     return [str(f) for f in found[::step][:n]]
 
 
-def draft(a) -> None:
-    plan = json.loads(a.plan.read_text())
-    cands = {key(r["file"]): r.get("candidates", []) for r in json.loads(a.shots.read_text())} if a.shots else {}
-    held = plan["held"]
-    unsure = sorted((h for h in held if h["reason"] == "unsure"),
-                    key=lambda h: shot_time(Path(h["src"]).name) or datetime.min)
+def shot_groups(held: list[dict], cands: dict, gap: int, recommend: str | None = None) -> list[dict]:
+    """One group per run of held screenshots taken on the same day within gap seconds of each other."""
     runs: list[list[dict]] = []
-    for h in unsure:
+    for h in sorted(held, key=lambda h: shot_time(Path(h["src"]).name) or datetime.min):
         t = shot_time(Path(h["src"]).name)
         last = runs[-1][-1] if runs else None
         lt = shot_time(Path(last["src"]).name) if last else None
-        if t and lt and t.date() == lt.date() and (t - lt).total_seconds() <= a.gap:
+        if t and lt and t.date() == lt.date() and (t - lt).total_seconds() <= gap:
             runs[-1].append(h)
         else:
             runs.append([h])
@@ -118,7 +114,15 @@ def draft(a) -> None:
                        "files": files, "captions": {h["src"]: h["why"].removeprefix("image: ") for h in run},
                        "choices": [{"label": n, "value": n} for n in names[:3]]
                        + [{"label": "Not project work: leave on the Desktop", "value": "none"}],
-                       "recommend": None})
+                       "recommend": recommend})
+    return groups
+
+
+def draft(a) -> None:
+    plan = json.loads(a.plan.read_text())
+    cands = {key(r["file"]): r.get("candidates", []) for r in json.loads(a.shots.read_text())} if a.shots else {}
+    held = plan["held"]
+    groups = shot_groups([h for h in held if h["reason"] == "unsure"], cands, a.gap)
     for h in held:
         if h["reason"] == "folder: undecided":
             folder = Path(h["src"])
@@ -367,12 +371,14 @@ def read(a) -> None:
 def carry(a) -> None:
     """Start the next doc from what the last one left open: the groups with no answer (no box,
     "not sure", "somewhere else", or two boxes) whose screenshots or folder are still where they
-    were. A screenshot that moved was answered, by a box or a comment, so it drops out. With
-    --retire the old doc, its groups and its comments go to <vault>/done/; its pictures stay."""
+    were. A screenshot that moved was answered, by a box or a comment, so it drops out. When
+    "Show me these too next time" is ticked, the plan's not-project screenshots that are still
+    there come in as groups too, with "not project work" recommended. With --retire the old
+    doc, its groups and its comments go to <vault>/done/; its pictures stay."""
     doc = a.doc.expanduser()
     side = doc.parent / f".{doc.stem}.groups.json"
     data = json.loads(side.read_text())
-    per, _ = ticks(doc)
+    per, loose = ticks(doc)
     kept = []
     for g in data["groups"]:
         got = per.get(g["id"], [])
@@ -389,14 +395,23 @@ def carry(a) -> None:
         else:
             g = {**g, "was": g["id"]}
         kept.append(g)
+    print(f"{len(kept)} of {len(data['groups'])} groups still open")
+    none_count = data.get("none_count", 0)
+    if "show-none" in loose and data.get("plan"):
+        held = [h for h in json.loads(Path(data["plan"]).read_text())["held"]
+                if h["reason"] == "none" and Path(h["src"]).is_file()]
+        added = shot_groups(held, {}, a.gap, recommend="none")
+        kept += added
+        none_count = 0
+        print(f"show-none ticked: added {len(added)} groups of not-project screenshots ({len(held)} screenshots)")
     for i, g in enumerate(kept, 1):
         g["id"] = f"G{i:02d}"
-    out = {**data, "made": date.today().isoformat(), "from": str(doc), "groups": kept}
+    out = {**data, "made": date.today().isoformat(), "from": str(doc), "groups": kept, "none_count": none_count}
     a.out.write_text(json.dumps(out, indent=1, ensure_ascii=False))
-    print(f"{len(kept)} of {len(data['groups'])} groups still open "
-          f"({sum(len(g['files']) for g in kept if g['kind'] == 'shots')} screenshots) written to {a.out}")
+    print(f"{len(kept)} groups ({sum(len(g['files']) for g in kept if g['kind'] == 'shots')} screenshots) "
+          f"written to {a.out}")
     for g in kept:
-        print(f"  {g['id']} (was {g['was']}): {g['title']}")
+        print(f"  {g['id']} ({'was ' + g['was'] if g.get('was') else 'not project work'}): {g['title']}")
     if a.retire:
         done = doc.parent / "done"
         done.mkdir(exist_ok=True)
@@ -430,6 +445,8 @@ def main() -> None:
     p.add_argument("--doc", type=Path, required=True, help="the last doc, after read and the moves")
     p.add_argument("--out", type=Path, required=True, help="groups.json for the next write")
     p.add_argument("--retire", action="store_true", help="move the old doc and its files to <vault>/done/")
+    p.add_argument("--gap", type=int, default=1800,
+                   help="seconds between not-project shots in one group, when show-none is ticked")
     a = ap.parse_args()
     {"draft": draft, "write": write, "read": read, "carry": carry}[a.cmd](a)
 
