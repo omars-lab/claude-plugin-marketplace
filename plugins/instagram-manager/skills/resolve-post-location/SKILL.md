@@ -60,6 +60,13 @@ answers. **No script calls a model**, and there is no API key: this session star
      and a long road's point can be kilometres from the venue. An address pin made before this
      check whose find has no house number moves to review at the next merge ("only the street
      was found"); a person's pin stays.
+   - **An address, when the name is found somewhere else.** A name like a chain's can find
+     another branch across town. When the caption gives an address with a house number and the
+     name's find does not carry that number, the address is looked up too, and wins if found. If
+     it is not found, the spot goes to review ("found Example Grill by name, but not at the
+     caption's address", with `address_tried: true`), not onto the other branch. A name pin from
+     before this check moves to review at the next merge and has its address looked up once; a
+     person's pin stays.
    - Kept spots go to `data/pins.yaml`. The rest go to `data/pins-review.yaml` with `why`:
      "not found near Example Town", "38 km from Example Town", "quote not in caption". The hub
      still shows the lookup misses, as dashed pins at their town that search the venue by name.

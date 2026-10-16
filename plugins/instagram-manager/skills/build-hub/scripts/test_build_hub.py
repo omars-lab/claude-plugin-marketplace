@@ -172,15 +172,20 @@ class Hub(unittest.TestCase):
         self.write("data/pins-review.yaml", {
             "TOWN1": [{"said": "@examplegrill", "name": "Example Grill", "near": "Fixture Town",
                        "address": "12 Long Rd", "why": "only the street was found near Fixture Town, not the house",
-                       "street_tried": True}]})
+                       "street_tried": True},
+                      {"said": "Example Wok", "name": "Example Wok", "near": "Fixture Town", "address": "30 Other Rd",
+                       "why": "found Example Wok by name, but not at the caption's address", "address_tried": True}]})
         self.build("--pilot", "fixture")
         d = self.data()
         names = [p["n"] for p in d["places"]]
         town1 = [(names[pl], style) for _, _, post, pl, style, _ in d["pins"] if d["posts"][post]["c"] == "TOWN1"]
-        self.assertEqual(town1, [("Example Grill", "placed")])
+        self.assertEqual(town1, [("Example Grill", "placed"), ("Example Wok", "placed")])
         grill = self.page("places/example-grill.html")
         self.assertIn("query=Example+Grill%2C+12+Long+Rd", grill)
         self.assertIn("OpenStreetMap found only its street", grill)
+        wok = self.page("places/example-wok.html")
+        self.assertIn("query=Example+Wok%2C+30+Other+Rd", wok)
+        self.assertIn("found one by that name elsewhere, not at the caption&#x27;s address", wok)
 
     def test_a_kept_google_id_opens_that_exact_place(self):
         self.write("data/pins-review.yaml", {

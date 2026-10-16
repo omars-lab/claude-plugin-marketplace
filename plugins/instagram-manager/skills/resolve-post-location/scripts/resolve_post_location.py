@@ -416,6 +416,7 @@ def venue_name(spot):
 
 
 RETRY = re.compile(r"\d+ km from |found .*, a different name$")   # found something, near another area
+ANOTHER_BRANCH = re.compile(r"^found .* by name, but not at the caption's address$")
 OTHER_AREA_KM = 60.0   # how far another of the save's areas may be from a spot to be tried for it
 
 
@@ -449,7 +450,9 @@ def resolve_near(spot, caption, areas, places, reaches, fetcher=None, creator=""
     The spot's name is looked up first. When the caption gives the spot's coordinates, they are the
     pin, if they fall within the area's reach. When the name is not found (most small restaurants
     are not on OpenStreetMap) and the caption gives the spot's street address, the address is looked
-    up instead: the pin is at the address, named for the venue."""
+    up instead: the pin is at the address, named for the venue. So it is when the name is found but
+    not at the caption's address (the house number is not in what was found): a name like a chain's
+    finds another branch. If the address is not found either, the spot goes to review."""
     said, near = spot["said"], spot["near"]
     by_person = isinstance(spot.get("lookup"), str) and bool(spot["lookup"].strip())
     base = {"said": said, "near": near}
@@ -480,10 +483,18 @@ def resolve_near(spot, caption, areas, places, reaches, fetcher=None, creator=""
                        "map": "https://www.google.com/maps/search/?api=1&query=" + quote_plus(f"{lat},{lon}")}
     where, entry = lookup_name(spot, reach, near, base, keep, by_person, fetcher)
     address = keep.get("address")
-    if where == "pin" or not address:
+    if not address:
+        return where, entry
+    elsewhere = where == "pin" and not by_person and not at_the_house(entry.get("found"), address)
+    if where == "pin" and not elsewhere:
         return where, entry
     hits = geocode.lookup_near(street_only(address), reach.search, fetcher)
     hit = next((h for h in hits if reach.ok(h["lat"], h["lon"]) and at_the_house(h.get("found"), address)), None)
+    if hit is None and elsewhere:
+        log("locate_other_branch", said=said, near=near)
+        return "review", {**base, "why": f"found {entry['name']} by name, but not at the caption's address",
+                          **({"asked": entry["asked"]} if entry.get("asked") else {}), **keep,
+                          "address_tried": True}
     if hit is None:
         return where, entry
     name = venue_name(spot)
@@ -668,10 +679,38 @@ def move_street_pins(pins, review):
     return moved
 
 
+def move_branch_pins(pins, review):
+    """Pins found by name whose caption gives an address they are not at (made before the address
+    check in resolve_near()) move to review; recheck_review() then looks the address up once. A
+    person's pin stays."""
+    moved = 0
+    for code, entries in list(pins.items()):
+        if not isinstance(entries, list):
+            continue
+        gone = [e for e in entries if isinstance(e, dict) and e.get("kind") != "address" and e.get("osm")
+                and isinstance(e.get("address"), str) and not by_hand(e)
+                and not at_the_house(e.get("found"), e["address"])]
+        if not gone:
+            continue
+        review[code] = (review.get(code) or []) + [
+            {**{k: e[k] for k in ("said", "near", "asked", "address", "from") if k in e},
+             "name": e.get("name"), "why": f"found {e.get('name')} by name, but not at the caption's address"}
+            for e in gone]
+        keep = [e for e in entries if e not in gone]
+        if keep:
+            pins[code] = keep
+        else:
+            del pins[code]
+        moved += len(gone)
+        for e in gone:
+            log("locate_branch_pin_moved", code=code, said=e.get("said"))
+    return moved
+
+
 def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
     """Review entries a person marked `ok: true` move to pins as found. Ones a person gave a `lookup:`
     are searched again; found ones move to pins. So is, once, one whose address has a suite or unit,
-    looked up before street_only() dropped it."""
+    looked up before street_only() dropped it, and one found by name but not at its address."""
     moved = 0
     for code, entries in list(review.items()):
         if not isinstance(entries, list):
@@ -689,7 +728,9 @@ def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
             by_person = isinstance(e, dict) and isinstance(e.get("lookup"), str) and e["lookup"].strip()
             unit = (isinstance(e, dict) and isinstance(e.get("address"), str) and not e.get("street_tried")
                     and street_only(e["address"]) != " ".join(e["address"].split()))
-            if not ((by_person or unit) and not e.get("drop")
+            branch = (isinstance(e, dict) and ANOTHER_BRANCH.match(str(e.get("why") or ""))
+                      and not e.get("address_tried"))
+            if not ((by_person or unit or branch) and not e.get("drop")
                     and isinstance(e.get("said"), str) and isinstance(e.get("near"), str)):
                 keep.append(e)
                 continue
@@ -709,6 +750,8 @@ def recheck_review(by_code, tags, places, pins, review, reaches, fetcher):
             else:
                 if unit and not by_person:
                     new["street_tried"] = True   # tried without the unit; not again each merge
+                if branch and not by_person:
+                    new["address_tried"] = True   # its address looked up once; not again each merge
                 keep.append(new)
         if keep:
             review[code] = keep
@@ -759,6 +802,7 @@ def merge(saves, tags, places, fetcher=None, frames=False):
     reaches = {}
     dropped = move_dropped(pins, review)
     streets = move_street_pins(pins, review)
+    branches = move_branch_pins(pins, review)
     fixed = recheck_review(by_code, tags, places, pins, review, reaches, fetcher)
     out = batch_dir(frames)
     counts = {"pins": 0, "review": 0, "no_spot": 0, "unanswered": 0}
@@ -837,18 +881,22 @@ def merge(saves, tags, places, fetcher=None, frames=False):
     write_yaml(REVIEW, review)
     write_yaml(NO_SPOT, no_spot)
     log("locate_merge", **counts, review_fixed=fixed, pins_dropped=dropped, street_pins_moved=streets,
-        batches_waiting=pending,
+        branch_pins_moved=branches, batches_waiting=pending,
         batches_merged_before=before,
         saves_with_pins=len(pins), saves_in_review=len(review), saves_no_spot=len(no_spot))
     print(f"{counts['pins']} spots pinned, {counts['review']} for review, {counts['no_spot']} saves "
           f"{'show' if frames else 'name'} no spot, "
           f"{counts['unanswered']} saves with no usable answer; {pending} batches still waiting for their agent")
     if fixed:
-        print(f"{fixed} review entries moved to the pins (a person fixed them with ok: true or a lookup, or the address was found once its suite or unit was dropped)")
+        print(f"{fixed} review entries moved to the pins (a person fixed them with ok: true or a lookup, or the "
+              "address was found once its suite or unit was dropped, or once looked up on its own)")
     if dropped:
         print(f"{dropped} pins marked drop: true moved to review, and stay out of the pins")
     if streets:
         print(f"{streets} address pins moved to review: OpenStreetMap found only the street, not the house")
+    if branches:
+        print(f"{branches} pins found by name moved to review: they are not at the address the caption gives "
+              "(another branch); the address alone was then looked up")
     wrong = wrong_area(review)
     log("locate_wrong_area", spots=len(wrong))
     if wrong:

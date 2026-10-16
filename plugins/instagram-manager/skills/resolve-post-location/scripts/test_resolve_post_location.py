@@ -380,6 +380,47 @@ class Merge(Home):
         self.assertFalse(rpl.at_the_house("Example Street, 12345, Fixture Town", "12 Example St"))   # a postcode
         self.assertTrue(rpl.at_the_house("Example Street", "Example St"))   # no house number to match
 
+    def test_a_name_found_away_from_the_captions_address_is_another_branch(self):
+        """A name like a chain's finds a branch across town: the caption's address wins, and with no
+        address found the spot goes to review rather than sit on the other branch."""
+        deli = hit("Example Deli", 40.006, -120.0, "restaurant", 41)
+        deli["display_name"] = "Example Deli, 5, Main Street, Fixture County, Fixture State"   # at the house
+        self.write(".cache/saves.json", {"saves": [save("VENUA", "Example Grill 📍12 Example St, Fixture Town. "
+                                                            "Example Wok 📍30 Other Rd, Fixture Town. "
+                                                            "Example Deli 📍5 Main St, Fixture Town")]})
+        osm = {"Example Grill": [hit("Example Grill", 40.02, -120.0, "restaurant", 40)],    # another branch
+               "12 Example St, Fixture Town": [hit("12", 40.004, -120.003, "house", 22)],
+               "Example Wok": [hit("Example Wok", 40.03, -120.0, "restaurant", 42)],
+               "Example Deli": [deli]}
+        with mock.patch.dict(OSM, osm):
+            paths = self.run_script("--prepare", "--all").split()
+            self.agent(paths, {"VENUA": [{"said": "Example Grill", "near": "Fixture Town", "address": "12 Example St, Fixture Town"},
+                                         {"said": "Example Wok", "near": "Fixture Town", "address": "30 Other Rd, Fixture Town"},
+                                         {"said": "Example Deli", "near": "Fixture Town", "address": "5 Main St, Fixture Town"}]})
+            self.run_script("--merge")
+        grill = self.spot("data/pins.yaml", "VENUA", "Example Grill")
+        self.assertEqual((grill["kind"], grill["lat"]), ("address", 40.004))   # the address, not the branch
+        self.assertEqual(self.spot("data/pins.yaml", "VENUA", "Example Deli")["osm"], "node/41")   # at the house
+        wok = self.spot("data/pins-review.yaml", "VENUA", "Example Wok")
+        self.assertEqual((wok["why"], wok["address_tried"], "lat" in wok),
+                         ("found Example Wok by name, but not at the caption's address", True, False))
+        # one pinned that way before the check moves to review and has its address looked up once
+        self.write("data/pins-review.yaml", {})
+        self.write("data/pins.yaml", {"VENUA": [
+            {"name": "Example Wok", "said": "Example Wok", "near": "Fixture Town", "kind": "restaurant", "osm": "node/42",
+             "lat": 40.03, "lon": -120.0, "address": "30 Other Rd, Fixture Town", "found": "Example Wok, Fixture County"},
+            {"name": "Example Grill", "said": "Example Grill", "near": "Fixture Town", "kind": "restaurant",
+             "osm": "node/40", "by": "hand", "lat": 40.02, "lon": -120.0, "address": "12 Example St, Fixture Town",
+             "found": "Example Grill, Fixture County"}]})
+        with mock.patch.dict(OSM, osm):
+            out = self.run_script("--merge")
+        self.assertIn("1 pins found by name moved to review", out)
+        self.assertEqual([p["said"] for p in self.read("data/pins.yaml")["VENUA"]], ["Example Grill"])   # a person's
+        wok = self.spot("data/pins-review.yaml", "VENUA", "Example Wok")
+        self.assertEqual((wok["address_tried"], "lat" in wok), (True, False))
+        self.assertIn("OpenStreetMap found one by that name elsewhere, not at 30 Other Rd, Fixture Town",
+                      pins_page.spot_row(0, wok, True))
+
     def test_a_spot_outside_the_saves_areas_goes_to_review(self):
         self.locate()
         e = self.spot("data/pins-review.yaml", "TOWNA", "Made Up Spot")

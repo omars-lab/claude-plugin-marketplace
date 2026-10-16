@@ -163,7 +163,11 @@ def maps_link(name, where=""):
 # Review entries whose quote and area checked out, and only the map lookup failed or looked doubtful.
 # OpenStreetMap is thin on small restaurants and cafés, so these are mostly real venues.
 LOOKUP_MISSES = (re.compile(r"^not found near "), re.compile(r"^found .*, a different name$"),
-                 re.compile(r"^\d+ km from "), re.compile(r"^only the street was found near "))
+                 re.compile(r"^\d+ km from "), re.compile(r"^only the street was found near "),
+                 re.compile(r"^found .* by name, but not at the caption's address$"))
+# What OpenStreetMap found instead, for a pin sent back from the map: the place page says so.
+OSM_NOTES = ((re.compile(r"^only the street"), "found only its street, not the house"),
+             (re.compile(r"not at the caption's address$"), "found one by that name elsewhere, not at the caption's address"))
 
 
 def placed_spots(review):
@@ -180,10 +184,10 @@ def placed_spots(review):
                 continue
             said = e.get("said") if isinstance(e.get("said"), str) else ""
             # What was searched: a person's lookup, else what the merge asked. Not `name`, which on a
-            # doubtful match is the other place OpenStreetMap found. A pin sent back for finding only the
-            # street keeps our own name for the spot, so there `name` counts too.
-            keys = ("lookup", "asked", "name") if str(e.get("why") or "").startswith("only the street") \
-                else ("lookup", "asked")
+            # doubtful match is the other place OpenStreetMap found. A pin sent back from the map keeps our
+            # own name for the spot, so there `name` counts too.
+            note = next((n for r, n in OSM_NOTES if r.search(str(e.get("why") or ""))), None)
+            keys = ("lookup", "asked", "name") if note else ("lookup", "asked")
             name = next((e[k] for k in keys if isinstance(e.get(k), str) and e[k].strip()), "")
             name = (name or said.lstrip("@#")).strip()
             if name:
@@ -193,8 +197,8 @@ def placed_spots(review):
                     spot["map"] = maps_link(name, spot["address"])   # the caption's address
                 if isinstance(e.get("really_in"), str) and e["really_in"].strip():
                     spot["really_in"] = e["really_in"].strip()   # filed under the wrong area
-                if str(e.get("why") or "").startswith("only the street"):
-                    spot["street_only"] = True   # OpenStreetMap has the road, not the house
+                if note:
+                    spot["osm_note"] = note
                 out.setdefault(code, []).append(spot)
     return out
 
@@ -282,7 +286,7 @@ class Hub:
                                 "map": e.get("map") or maps_link(name, near or ""), "parent": near, "spot": True,
                                 "posts": [], "said": {}, "osm": e.get("osm"), "wikidata": e.get("wikidata"),
                                 "notes": e.get("notes"), "found": e.get("found") if isinstance(e.get("found"), str) else "",
-                                "placed": bool(e.get("placed")), "street_only": bool(e.get("street_only")),
+                                "placed": bool(e.get("placed")), "osm_note": e.get("osm_note"),
                                 "google_by": e.get("google_by"),
                                 "google_chain": bool(e.get("google_chain"))}
         elif e.get("google_by") and not self.places[key].get("google_by"):   # another post's copy has the id
@@ -617,9 +621,9 @@ def place_page(hub, place):
     rows.append(("On a map", " · ".join(where)))
     if place["lat"] is None:
         rows.append(("Pin", '<span class="muted">not looked up yet, so it is not on the map</span>'))
-    elif place.get("placed") and place.get("street_only"):
-        rows.append(("Pin", f'<span class="muted">at {esc(place["parent"])}: OpenStreetMap found only its street, '
-                            'not the house, so Google Maps searches for it by name</span>'))
+    elif place.get("placed") and place.get("osm_note"):
+        rows.append(("Pin", f'<span class="muted">at {esc(place["parent"])}: OpenStreetMap {esc(place["osm_note"])}, '
+                            'so Google Maps searches for it by name</span>'))
     elif place.get("placed"):
         rows.append(("Pin", f'<span class="muted">at {esc(place["parent"])}: OpenStreetMap does not list it, '
                             'so Google Maps searches for it by name</span>'))
