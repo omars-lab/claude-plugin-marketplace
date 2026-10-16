@@ -610,6 +610,76 @@ class Hub(unittest.TestCase):
         text, found = build_hub.excerpt("nothing here", ["Fixture Town"])
         self.assertEqual((text, found), ("nothing here", False))
 
+    def topic_fixture(self):
+        """Two topics past travel: kids, with the kinds split-saves pulls out, and an untagged one only an
+        item names. PARK1 names two things for kids and one for the other topic; PARK2 is tagged kids too."""
+        self.write("config/topics.yaml", {"topics": {
+            "travel": {"label": "Travel"},
+            "parenting-kids": {"label": "Kids", "about": "children and family days out",
+                               "item_kinds": {"activity": "a thing to do with them", "tip": "a parenting tip"}}}})
+        tags = {**TAGS, "PARK2": {**TAGS["PARK2"], "topics": ["travel", "parenting-kids"]}}
+        self.write("data/tags.yaml", tags)
+        self.write("data/items/parenting-kids.yaml", {"PARK1": {"topics": ["parenting-kids", "travel"], "items": [
+            {"topic": "parenting-kids", "kind": "tip", "name": "Start <early>", "quote": "at sunrise"},
+            {"topic": "parenting-kids", "kind": "activity", "name": "Falls walk", "quote": "Hiked the Example Falls trail"},
+            {"topic": "example-crafts", "kind": "dish", "name": "Trail mix", "quote": "trail"},
+            {"topic": "parenting-kids", "kind": "tip", "name": "  "}]}})   # no name: left out
+
+    def test_each_topic_gets_a_page_of_the_things_its_saves_name(self):
+        self.topic_fixture()
+        out = self.build("--all")
+        self.assertIn("2 topic pages listing 3 things", out)
+        kids = self.page("topics/parenting-kids.html")
+        self.assertIn("<h1>Kids</h1>", kids)
+        self.assertIn("2 saved posts · 2 things they name", kids)
+        self.assertIn("children and family days out", kids)
+        # kinds in item_kinds order, each with what counts, and the names escaped
+        self.assertLess(kids.index('id="k-activity"'), kids.index('id="k-tip"'))
+        self.assertIn("<h2>Activities", kids)
+        self.assertIn("a parenting tip", kids)
+        self.assertIn("Start &lt;early&gt;", kids)
+        self.assertNotIn("<early>", kids)
+        self.assertIn('href="../posts/PARK1.html"', kids)
+        self.assertIn('href="https://www.instagram.com/p/PARK1/"', kids)
+        # PARK2 is tagged kids but names nothing yet
+        self.assertIn("Saves with nothing named yet", kids)
+        self.assertIn('href="../posts/PARK2.html"', kids)
+        self.assertIn('id="tq"', kids)                            # the filter box
+        crafts = self.page("topics/example-crafts.html")       # a topic only an item names still gets a page
+        self.assertIn("Trail mix", crafts)
+        self.assertIn("<h2>Dishes", crafts)
+        self.assertFalse(os.path.exists(os.path.join(self.out, "topics", "travel.html")))   # travel is the map
+        index = self.page("topics/index.html")
+        self.assertIn('href="parenting-kids.html"', index)
+        self.assertIn('href="../index.html#tp=travel"', index)
+        self.assertIn('<a href="topics/index.html">Topics</a>', self.page("index.html"))
+        self.assertIn('<a href="../topics/index.html">Topics</a>', self.page("fixture-state/index.html"))
+
+    def test_chips_link_to_topic_pages_and_the_post_page_lists_what_it_names(self):
+        self.topic_fixture()
+        self.build("--all")
+        post = self.page("posts/PARK1.html")
+        self.assertIn('<a href="../topics/parenting-kids.html">Kids</a>', post)
+        self.assertIn('<a href="../index.html#tp=travel">Travel</a>', post)
+        self.assertIn("What it names (3)", post)
+        self.assertIn("<b>Falls walk</b>", post)
+        self.assertIn('href="../topics/example-crafts.html"', post)
+        self.assertNotIn("What it names", self.page("posts/TOWN1.html"))
+
+    def test_no_items_and_no_other_topics_means_no_topic_pages(self):
+        out = self.build("--all")      # the base fixture: PARK1 is tagged kids, but nothing is split
+        self.assertIn("1 topic page listing 0 things", out)
+        self.assertIn("Saves with nothing named yet", self.page("topics/parenting-kids.html"))
+        self.write("data/tags.yaml", {k: {**v, "topics": ["travel"]} for k, v in TAGS.items()})
+        out = self.build("--all")
+        self.assertIn("0 topic pages", out)
+        self.assertFalse(os.path.exists(os.path.join(self.out, "topics")))
+        self.assertNotIn("topics/index.html", self.page("index.html"))
+
+    def test_kind_headings(self):
+        self.assertEqual([build_hub.kind_heading(k) for k in ("tip", "dish", "activity", "day", "quote", "how-to")],
+                         ["Tips", "Dishes", "Activities", "Days", "Quotes", "How tos"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

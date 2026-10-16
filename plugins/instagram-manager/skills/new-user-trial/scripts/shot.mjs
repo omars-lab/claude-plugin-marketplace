@@ -2,11 +2,14 @@
 //
 //   node shot.mjs --root <dir> --page <path> --out <png> [--width 1280] [--height 800] [--full]
 //                 [--playwright <playwright-core dir>] [--chrome <chrome binary>] [--wait 2500]
+//                 [--fill <css selector> --text <words>]
 //
 // --root   the folder to serve (the sandbox hub: <sandbox>/home/.cache/hub)
 // --page   the page inside it, e.g. "/" or "/westmark/" or "/posts/DEMOa000001.html"
 // --out    where the PNG goes (the sandbox's shots/ folder; never into git)
 // --full   the whole page, not only the first screen
+// --fill   type --text into the first box this selector finds before the picture, to see a
+//          filter or search box at work (e.g. --fill "#find" --text "pasta")
 //
 // It serves on a free port it picks itself, so it never clashes with a server already running,
 // and stops the server when the picture is taken. Map tiles and Leaflet come from the internet in
@@ -76,6 +79,10 @@ try {
   const resp = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
   status = resp ? resp.status() : 0;
   await page.waitForTimeout(wait);
+  if (opt("fill")) {
+    await page.locator(opt("fill")).first().fill(opt("text", ""));
+    await page.waitForTimeout(500);
+  }
   await page.screenshot({ path: out, fullPage: args.includes("--full") });
 } finally {
   await browser.close();

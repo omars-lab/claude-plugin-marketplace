@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """build_hub.py — the hub as a local site: a map with a pin for each saved post at the places it
-names, a page per place listing every saved post that names it, and a page per post.
+names, a page per place listing every saved post that names it, a page per post, and a page per
+topic listing the dishes, ideas and tips its saves name.
 
     build_hub.py --pilot NAME     the pilot's saves (`pilots:` in config/collections.yaml)
     build_hub.py --all            every save
@@ -25,17 +26,22 @@ Reads   $INSTAGRAM_HOME/.cache/saves.json          caption, creator, link, saved
         $INSTAGRAM_HOME/data/stills.yaml           a still and a 3 s clip per spot a reel names, cut
                                                    where its name, or else its area, is on screen
                                                    (extract-stills; optional, the same way)
+        $INSTAGRAM_HOME/data/items/<topic>.yaml    the things each save names (split-saves; optional:
+                                                   topic pages list the saves only until it has run)
 Writes  OUT/index.html                             the map, the list of places, a search box
         OUT/<state or country>/index.html          the same map cut to one state or country, for each
                                                    one with a pin; a Map menu switches between them
         OUT/places/<slug>.html                     one page per place
         OUT/posts/<code>.html                      one page per post
+        OUT/topics/index.html                      every topic but travel, with its counts
+        OUT/topics/<topic>.html                    one page per topic: what its saves name, by kind,
+                                                   with a filter box; travel links to the map instead
         OUT/decisions.html                         everything waiting on you (decisions_page.py)
         OUT/thumbs/<code>.jpg                      copies of the thumbnails media.yaml lists
         OUT/stills/<code>/                         copies of the stills and clips stills.yaml lists
         OUT/previews/<code>.jpg, .webp             a small picture and a flipbook per post, for the lists
                                                    (extract-stills' previews.py, made when missing)
-Only places/, posts/ and the state or country folders an earlier build wrote (they carry a
+Only places/, posts/, topics/ and the state or country folders an earlier build wrote (they carry a
 marker comment) are cleared on each build; other pages in OUT (the moves page, the pin review
 page) are left alone.
 
@@ -100,6 +106,7 @@ from home import cache, read_saves  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import Places, load_yaml  # noqa: E402
+from items_store import load_items  # noqa: E402
 from purposes import NO_PURPOSE, PURPOSES, load as load_purposes  # noqa: E402
 import previews  # noqa: E402  extract-stills; ffmpeg and img2webp are needed only for posts not made yet
 
@@ -109,6 +116,7 @@ POPUP_CHARS = 140    # caption shown in a map popup
 AROUND = 160         # caption characters shown around the words that name a place
 OPENING = 260        # caption shown on a card when no words name the place
 WIDE = {"state", "country"}   # kinds that are too big to be a useful pin when a town is there
+TRAVEL = "travel"    # the topic the map is for; every other topic gets a page of the things its saves name
 
 # A national park, seashore, monument and so on: by its name, or the name OpenStreetMap found for it
 # (a place tagged "Example Canyon" can come back as "Example Canyon National Park").
@@ -226,14 +234,15 @@ def saved_on(save):
 class Hub:
     """Everything the pages show, worked out once from the data files."""
 
-    def __init__(self, saves, tags, places, pins, media, topics, media_dir, purposes=None, stills=None):
+    def __init__(self, saves, tags, places, pins, media, topics, media_dir, purposes=None, stills=None, items=None):
         self.places = {}      # key → place: name, kind, lat, lon, map, parent, spot, posts[], said{}
         self.posts = []       # in-scope saves, newest first, with their places and pins
         self.no_pin = set()   # places with no lat/lon
         self.p = places
         self.where = gp.where_words(places)   # town words a handle-made name ends in
         self.same = {}        # what makes two spots one place → that place's key
-        self.topic_label = {k: (v or {}).get("label") or k for k, v in (topics or {}).items()}
+        self.topics = {k: v if isinstance(v, dict) else {} for k, v in (topics or {}).items()}
+        self.topic_label = {k: v.get("label") or k for k, v in self.topics.items()}
         self.purposes = {k: v for k, v in (purposes or PURPOSES).items() if isinstance(v, dict)}
         self.purpose_of = {kind: k for k, v in self.purposes.items() for kind in v.get("kinds") or []}
         aliases = {}
@@ -242,12 +251,17 @@ class Hub:
         self.aliases = aliases
         saves = sorted(saves, key=lambda s: (s.get("saved_at") or "", s["code"]), reverse=True)
         files = self._files([s["code"] for s in saves])
-        stills = stills or {}
+        stills, items = stills or {}, items or {}
         for s in saves:
             self._add_post(s, tags.get(s["code"]) or {}, pins.get(s["code"]), media.get(s["code"]),
                            files[s["code"]], media_dir, stills.get(s["code"]))
+            entry = items.get(s["code"])
+            self.posts[-1]["items"] = [it for it in (entry.get("items") if isinstance(entry, dict) else None) or []
+                                       if isinstance(it, dict) and isinstance(it.get("name"), str) and it["name"].strip()
+                                       and isinstance(it.get("topic"), str)]
         self._slugs()
         self.by_code = {p["code"]: p for p in self.posts}
+        self.topic_pages = self._topic_pages()
         for p in self.places.values():
             p["inside"] = sorted((k for k, q in self.places.items() if q["parent"] == p["key"]),
                                  key=lambda k: (-len(self.places[k]["posts"]), self.places[k]["name"]))
@@ -441,6 +455,18 @@ class Hub:
                 slug = f"{base}-{n}"
             used.add(slug)
             p["slug"] = slug
+
+    def _topic_pages(self):
+        """topic → the posts tagged with it and the things split-saves found for it (post, item), for every
+        topic but travel (its page is the map) that has either; topics.yaml's order, then any others."""
+        out = {}
+        named = {t for p in self.posts for t in p["topics"]} | {it["topic"] for p in self.posts for it in p["items"]}
+        for t in list(self.topics) + sorted(named - set(self.topics)):
+            if t == TRAVEL or t not in named:
+                continue
+            posts = [p for p in self.posts if t in p["topics"] or any(it["topic"] == t for it in p["items"])]
+            out[t] = {"posts": posts, "items": [(p, it) for p in posts for it in p["items"] if it["topic"] == t]}
+        return out
 
     def post(self, code):
         return self.by_code[code]
@@ -713,8 +739,131 @@ def mini_map(points, zoom=11):
     return '<div id="mini" role="img" aria-label="Map"></div>', js
 
 
-def topic_chips(hub, topics):
-    return "".join(f'<li>{esc(hub.topic_label.get(t, t))}</li>' for t in topics)
+def topic_href(hub, topic, up=True):
+    """A topic's page, or None when it has none; travel's is the map, with its Topic menu set to travel."""
+    pre = "../" if up else ""
+    if topic == TRAVEL:
+        return pre + "index.html#tp=" + slugify(hub.topic_label.get(TRAVEL, TRAVEL))
+    return pre + f"topics/{slugify(topic)}.html" if topic in hub.topic_pages else None
+
+
+def topic_chips(hub, topics, up=True):
+    def chip(t):
+        href, label = topic_href(hub, t, up), esc(hub.topic_label.get(t, t))
+        return f'<li><a href="{href}">{label}</a></li>' if href else f"<li>{label}</li>"
+    return "".join(map(chip, topics))
+
+
+def kind_heading(kind):
+    """An item kind as a heading: tip → Tips, dish → Dishes."""
+    w = str(kind).replace("-", " ").replace("_", " ").strip() or "thing"
+    if re.search(r"(s|sh|ch|x|z)$", w):
+        w += "es"
+    elif re.search(r"[^aeiou]y$", w):
+        w = w[:-1] + "ies"
+    else:
+        w += "s"
+    return w[:1].upper() + w[1:]
+
+
+def topic_kinds(hub, topic, items):
+    """The kinds a topic's items come in, (kind, what counts, items): topics.yaml's item_kinds order
+    first, then the rest, most items first."""
+    by = {}
+    for p, it in items:
+        by.setdefault(it.get("kind") if isinstance(it.get("kind"), str) and it["kind"].strip() else "note", []).append((p, it))
+    told = hub.topics.get(topic, {}).get("item_kinds")
+    told = told if isinstance(told, dict) else {}
+    order = [k for k in told if k in by] + sorted((k for k in by if k not in told), key=lambda k: (-len(by[k]), k))
+    return [(k, told.get(k) if isinstance(told.get(k), str) else "", by[k]) for k in order]
+
+
+# The filter box on a topic page: hides the rows whose text lacks a word typed, and the kinds left empty.
+TOPIC_JS = r"""<script>(function(){var q=document.getElementById('tq');if(!q)return;
+function tidy(s){return String(s).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[\u2019']/g,'')}
+var rows=[].slice.call(document.querySelectorAll('.ilist>li'));rows.forEach(function(r){r._q=tidy(r.textContent)});
+function go(){var w=tidy(q.value.trim()).split(/\s+/).filter(Boolean),n=0;
+rows.forEach(function(r){var ok=w.every(function(x){return r._q.indexOf(x)>=0});r.hidden=!ok;if(ok)n++});
+document.querySelectorAll('section[data-kind]').forEach(function(s){var m=s.querySelectorAll('.ilist>li:not([hidden])').length,c=s.querySelector('.kn');s.hidden=!m;
+if(c)c.textContent=w.length?m+' of '+c.getAttribute('data-n'):c.getAttribute('data-n')});
+document.getElementById('tn').textContent=w.length?n+(n===1?' thing matches':' things match'):''}
+q.addEventListener('input',go);q.form.addEventListener('submit',function(e){e.preventDefault();go()});})();</script>"""
+
+
+def item_row(post, it=None):
+    """One thing a save names (or, with no item, the save itself): its small picture, the name, the
+    caption's words, who posted it, and links to the post page and Instagram."""
+    who = f'@{esc(post["user"])}' if post["user"] else "an unknown creator"
+    meta = who + (f' · saved {esc(post["saved"])}' if post["saved"] else "")
+    if it:
+        quote = it.get("quote") if isinstance(it.get("quote"), str) and it["quote"].strip() else ""
+        body = (f'<a class="iname" href="{post_href(post)}">{esc(it["name"].strip())}</a>'
+                + (f'<q class="iquote">{esc(short(quote, 240))}</q>' if quote else ""))
+    else:
+        body = (f'<a class="iname" href="{post_href(post)}">{who}</a>'
+                f'<span class="iquote">{esc(short(post["caption"], 200)) or "No caption."}</span>')
+        meta = esc(post["saved"] and f'saved {post["saved"]}')
+    return (f'<li><a class="tlink" href="{post_href(post)}" tabindex="-1" aria-hidden="true">{pv_html(post, cls="ipv")}</a>'
+            f'<div class="ibody">{body}<p class="imeta">' + (f"{meta} · " if meta else "")
+            + f'<a href="{esc(post["url"])}" target="_blank" rel="noopener">Instagram</a></p></div></li>')
+
+
+def topic_nav(hub):
+    return '<nav class="top links"><a href="../index.html">&larr; The map</a><a href="index.html">All topics</a></nav>'
+
+
+def topic_page(hub, topic):
+    t = hub.topic_pages[topic]
+    label, about = hub.topic_label.get(topic, topic), hub.topics.get(topic, {}).get("about")
+    kinds = topic_kinds(hub, topic, t["items"])
+    bare = [p for p in t["posts"] if not any(it["topic"] == topic for it in p["items"])]
+    n, m = len(t["posts"]), len(t["items"])
+    jump = "".join(f'<li><a href="#k-{slugify(k)}">{esc(kind_heading(k))} <span>{len(rows)}</span></a></li>'
+                   for k, _, rows in kinds) + (f'<li><a href="#k-none">Nothing named yet <span>{len(bare)}</span></a></li>'
+                                               if bare and kinds else "")
+    sections = "".join(
+        f'<section data-kind id="k-{slugify(k)}"><h2>{esc(kind_heading(k))} <span class="muted kn" data-n="{len(rows)}">{len(rows)}</span></h2>'
+        + (f'<p class="muted hint">{esc(what)}</p>' if what else "")
+        + '<ol class="ilist">' + "".join(item_row(p, it) for p, it in rows) + "</ol></section>"
+        for k, what, rows in kinds)
+    if bare:
+        sections += (f'<section data-kind id="k-none"><h2>Saves with nothing named yet <span class="muted kn" data-n="{len(bare)}">{len(bare)}</span></h2>'
+                     '<p class="muted hint">Tagged with this topic, but the split step has not found a dish, tip or idea '
+                     'in their captions (or has not read them yet).</p>'
+                     '<ol class="ilist">' + "".join(item_row(p) for p in bare) + "</ol></section>")
+    content = (f'<main class="page">{topic_nav(hub)}<header><h1>{esc(label)}</h1>'
+               f'<p class="sub">{n} saved post{"" if n == 1 else "s"} · {m} thing{"" if m == 1 else "s"} they name</p>'
+               + (f'<p class="notes">{esc(about)}</p>' if isinstance(about, str) and about.strip() else "") + '</header>'
+               + ('<form role="search" class="tfind"><input id="tq" type="search" autocomplete="off" '
+                  f'placeholder="Filter {esc(label)}" aria-label="Filter this topic"><span id="tn" class="muted" '
+                  'aria-live="polite"></span></form>' if n > 1 else "")
+               + (f'<ul class="chips jump">{jump}</ul>' if len(kinds) > 1 or (kinds and bare) else "")
+               + sections + "</main>")
+    flips = previews.player_js() if any(p["pa"] for p in t["posts"]) else ""
+    return shell(f"{label} · saved posts", content, script=flips + (TOPIC_JS if n > 1 else ""))
+
+
+def topics_index(hub):
+    """Every topic with a page, and travel, which is the map."""
+    rows = []
+    travel = [p for p in hub.posts if TRAVEL in p["topics"]]
+    for topic, t in hub.topic_pages.items():
+        about = hub.topics.get(topic, {}).get("about")
+        kinds = topic_kinds(hub, topic, t["items"])
+        rows.append(f'<li><a class="iname" href="{slugify(topic)}.html">{esc(hub.topic_label.get(topic, topic))}</a>'
+                    f'<span class="muted">{len(t["posts"])} saves · {len(t["items"])} things named</span>'
+                    + (f'<span class="tabout">{esc(about)}</span>' if isinstance(about, str) and about.strip() else "")
+                    + (f'<ul class="chips">' + "".join(f"<li>{esc(kind_heading(k))} {len(r)}</li>" for k, _, r in kinds)
+                       + "</ul>" if kinds else "") + "</li>")
+    if travel:
+        rows.append(f'<li><a class="iname" href="{topic_href(hub, TRAVEL)}">{esc(hub.topic_label.get(TRAVEL, TRAVEL))}</a>'
+                    f'<span class="muted">{len(travel)} saves</span>'
+                    '<span class="tabout">On the map: each save at the places it names.</span></li>')
+    content = ('<main class="page"><nav class="top"><a href="../index.html">&larr; The map</a></nav>'
+               f'<header><h1>Topics</h1><p class="sub">The things your saves name, by topic: the dishes, tips and ideas '
+               'the split step found in each caption.</p></header>'
+               f'<ol class="tlist">{"".join(rows)}</ol></main>')
+    return shell("Topics · saved posts", content)
 
 
 def at(t):
@@ -816,6 +965,15 @@ def post_page(hub, post):
         rows.append(("Topics", f'<ul class="chips">{topic_chips(hub, post["topics"])}</ul>'))
     if post["collections"]:
         rows.append(("Collections", esc(", ".join(post["collections"]))))
+    if post["items"]:
+        def named(it):
+            href = topic_href(hub, it["topic"])
+            where = (f'<a href="{href}">{esc(hub.topic_label.get(it["topic"], it["topic"]))}</a>' if href
+                     else esc(hub.topic_label.get(it["topic"], it["topic"])))
+            kind = esc(str(it.get("kind") or "note").replace("-", " "))
+            return f'<li><b>{esc(it["name"].strip())}</b> <span class="muted">{kind}, {where}</span></li>'
+        rows.append((f"What it names ({len(post['items'])})", '<ul class="named">' + "".join(map(named, post["items"]))
+                     + "</ul>"))
     if exact:
         rows.append((f"Places it names ({len(exact)})", '<ul class="inline">' + "".join(
             f'<li><a href="{place_href(p)}">{esc(p["name"])}</a> <a class="gmap" href="{esc(p["map"])}" '
@@ -1172,6 +1330,7 @@ CSS = """
   --accent:#5fc9b3; --accent-soft:#173a31; --spot:#fb923c; --wide:#7b8681; --mark:#5a4a12; --ring:#141917; --pin-ink:#0f1714;
   color-scheme:dark}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 var(--body)}
 a{color:var(--accent)}
 a:focus-visible,input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -1308,6 +1467,30 @@ ul.inline{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px
 .play{justify-self:start;margin-top:2px;font:700 .8rem var(--body);padding:4px 12px;border-radius:999px;cursor:pointer;
   border:1px solid var(--accent);background:transparent;color:var(--accent)}
 .play[aria-pressed="true"]{background:var(--accent);color:var(--card)}
+/* Topic pages: a filter, a jump row of kinds, then each kind's things. */
+.top.links{gap:4px 18px}
+.chips li a{color:inherit;text-decoration:none}
+.jump li{padding:0}
+.jump a{display:block;padding:3px 12px;font-weight:700}
+.jump a span{font-weight:400;opacity:.75;font-variant-numeric:tabular-nums}
+.tfind{display:flex;align-items:center;gap:12px;max-width:34rem}
+.ilist{display:grid;gap:8px}
+.ilist>li{display:grid;grid-template-columns:48px minmax(0,1fr);gap:12px;background:var(--card);
+  border:1px solid var(--line);border-radius:10px;padding:8px 12px 8px 8px;align-items:start}
+.ipv{width:48px;height:64px;border-radius:6px;object-fit:cover;display:block;background:var(--line)}
+.ipv.ph{font-size:.6rem}
+.ibody{display:grid;gap:2px;min-width:0}
+.iname{font-weight:700;text-decoration:none;overflow-wrap:anywhere}
+.iname:hover{text-decoration:underline}
+.iquote{color:var(--fg);font-size:.92rem;overflow-wrap:anywhere;max-width:70ch}
+q.iquote::before{content:"\\201C"}q.iquote::after{content:"\\201D"}
+.imeta{margin:0;color:var(--muted);font-size:.82rem;overflow-wrap:anywhere}
+section[data-kind]{scroll-margin-top:12px}
+.tlist{display:grid;gap:10px}
+.tlist>li{display:grid;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.tlist .iname{font:600 1.1rem/1.2 var(--display)}
+.tabout{max-width:65ch}
+ul.named{list-style:none;margin:0;padding:0;display:grid;gap:4px}
 .caption{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;max-width:70ch;background:var(--card);
   border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 @media (prefers-color-scheme:dark){.leaflet-tile-pane{filter:brightness(.82) contrast(1.05)}}
@@ -1397,7 +1580,7 @@ def build(hub, out, title, home=(), with_previews=True):
     thumbs = copy_thumbs(hub, out)
     hub.previews = make_previews(hub, out) if with_previews else (0, 0)
     hub.stills = copy_stills(hub, out)
-    for sub in ("places", "posts"):   # only our own folders: other pages live in OUT too
+    for sub in ("places", "posts", "topics"):   # only our own folders: other pages live in OUT too
         shutil.rmtree(os.path.join(out, sub), ignore_errors=True)
     # One map page per state or country with a pin, in a folder named after it, most posts first.
     n = {}
@@ -1413,9 +1596,14 @@ def build(hub, out, title, home=(), with_previews=True):
         write(os.path.join(out, "places", place["slug"] + ".html"), place_page(hub, place))
     for post in hub.posts:
         write(os.path.join(out, "posts", post["file"] + ".html"), post_page(hub, post))
-    extra = [(f, t) for f, t in (("decisions.html", "Your decisions"), ("moves.html", "Saves to move"),
-                                 ("pins.html", "Pins to check"))
-             if os.path.exists(os.path.join(out, f))]
+    for topic in hub.topic_pages:
+        write(os.path.join(out, "topics", slugify(topic) + ".html"), topic_page(hub, topic))
+    if hub.topic_pages:
+        write(os.path.join(out, "topics", "index.html"), topics_index(hub))
+    extra = ([("topics/index.html", "Topics")] if hub.topic_pages else []) + [
+        (f, t) for f, t in (("decisions.html", "Your decisions"), ("moves.html", "Saves to move"),
+                            ("pins.html", "Pins to check"))
+        if os.path.exists(os.path.join(out, f))]
     write(os.path.join(out, "index.html"), index_page(hub, title, extra, home, maps=maps))
     for a, folder in hub.map_folders.items():
         page = index_page(hub, f"Saved places: {hub.places[a]['name']}", extra, area=a, maps=maps)
@@ -1423,7 +1611,7 @@ def build(hub, out, title, home=(), with_previews=True):
     return thumbs
 
 
-OWN_FOLDERS = {"places", "posts", "thumbs", "previews", "stills"}
+OWN_FOLDERS = {"places", "posts", "topics", "thumbs", "previews", "stills"}
 MAP_MARK = "<!-- build-hub: area map -->"
 
 
@@ -1480,7 +1668,7 @@ def main(argv=None):
     media_dir = os.path.expanduser(os.environ.get("INSTAGRAM_MEDIA_DIR") or MEDIA_DEFAULT)
     scoped = [s for s in saves if in_pilot(s, tags.get(s["code"]), pilot)]
 
-    hub = Hub(scoped, tags, Places.load(), pins, media, topics, media_dir, purposes, stills)
+    hub = Hub(scoped, tags, Places.load(), pins, media, topics, media_dir, purposes, stills, load_items())
     out = os.path.abspath(args.out or cache("hub"))
     # The decisions page first, with the same scope, so the map always links an up-to-date one.
     import decisions_page   # imports this module, so only here
@@ -1497,13 +1685,16 @@ def main(argv=None):
     multi = sum(1 for p in hub.posts if len(p["pins"]) > 1)
     if hub.no_pin:
         log("hub_no_pin", places=len(hub.no_pin), names=",".join(sorted(hub.no_pin))[:300])
+    n_items = sum(len(t["items"]) for t in hub.topic_pages.values())
     log("hub", scope=args.pilot or "all", saves=len(hub.posts), pinned=pinned, pins=n_pins,
-        posts_with_2plus_pins=multi, more_exact_than_state=exact, place_pages=len(hub.places), spots=spots, thumbs=thumbs, stills=hub.stills,
+        posts_with_2plus_pins=multi, more_exact_than_state=exact, place_pages=len(hub.places), spots=spots,
+        topic_pages=len(hub.topic_pages), topic_items=n_items, thumbs=thumbs, stills=hub.stills,
         previews=hub.previews[0], flipbooks=hub.previews[1], pins_file=bool(pins), media_file=bool(media),
         out=out)
     print(f"{len(hub.posts)} saves: {pinned} on the map ({exact} at a town, park or spot) "
           f"with {n_pins} pins, one per place a post names ({multi} posts have 2 or more); "
-          f"{len(hub.places)} place pages ({spots} spots); {thumbs} thumbnails; {hub.stills} spot stills; "
+          f"{len(hub.places)} place pages ({spots} spots); {len(hub.topic_pages)} topic page"
+          f"{'' if len(hub.topic_pages) == 1 else 's'} listing {n_items} things the saves name; {thumbs} thumbnails; {hub.stills} spot stills; "
           f"{hub.previews[0]} small pictures, {hub.previews[1]} with a flipbook")
     venues = venue_check(hub)
     log("hub_venues", **{k: len(v) for k, v in venues.items()}, town_only_codes=",".join(venues["town"]))

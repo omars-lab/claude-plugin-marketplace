@@ -50,7 +50,7 @@ fall back to the default data folder (`~/Workspace/git/instagram`) and would wri
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/make_sandbox.py` | Makes a sandbox folder: the invented export, empty home and media folders, the `run` wrapper and the offline map answers | Before each trial; one new folder per trial, so no earlier trial is overwritten | `python3 <plugin>/skills/new-user-trial/scripts/make_sandbox.py --out <sandbox>` (`--saves 15` for a short trial) |
-| `scripts/shot.mjs` | Serves a folder on 127.0.0.1 on a port it picks, screenshots one page, stops | When the tester or reviewer wants to see a hub page the sandbox built | `node <plugin>/skills/new-user-trial/scripts/shot.mjs --root <sandbox>/home/.cache/hub --page / --out <sandbox>/shots/map.png --playwright <playwright-core dir>` |
+| `scripts/shot.mjs` | Serves a folder on 127.0.0.1 on a port it picks, screenshots one page, stops | When the tester or reviewer wants to see a hub page the sandbox built; `--fill <selector> --text <words>` types into a filter or search box first, to see it at work | `node <plugin>/skills/new-user-trial/scripts/shot.mjs --root <sandbox>/home/.cache/hub --page / --out <sandbox>/shots/map.png --playwright <playwright-core dir>` (add `--full` for the whole page, `--fill "#tq" --text pasta` on a topic page) |
 
 `shot.mjs` needs `playwright-core` (pass `--playwright <dir>` or set `PLAYWRIGHT_CORE`) and Chrome.
 With no network the map tiles stay grey; pins, lists and links still show.

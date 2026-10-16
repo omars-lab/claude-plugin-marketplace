@@ -1,6 +1,6 @@
 ---
 name: build-hub
-description: Build the saves hub, a local website made from the data repo. It has a map with a pin for every tagged save, a page per place listing every saved post that names it, a page per post with its caption, topics and place links, and a decisions page listing everything waiting on the user (Google places to pick, spots to check, saves to move, steps to run). Use when someone wants to see their Instagram saves on a map, browse them by place, or check what a pilot looks like after tagging, spot-finding or a thumbnail run, or when they ask what is waiting on them.
+description: Build the saves hub, a local website made from the data repo. It has a map with a pin for every tagged save, a page per place listing every saved post that names it, a page per post with its caption, topics and place links, a page per topic listing the recipes, ideas and tips its saves name, and a decisions page listing everything waiting on the user (Google places to pick, spots to check, saves to move, steps to run). Use when someone wants to see their Instagram saves on a map, browse them by place or by topic, or check what a pilot looks like after tagging, spot-finding or a thumbnail run, or when they ask what is waiting on them.
 ---
 
 # Build Hub
@@ -67,13 +67,23 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   Two shops at one mall's position stay two pages: neither name starts with the mall's.
 - **`posts/<code>.html`: one page per post.** The thumbnail, the full caption, the creator, the
   date it was saved, its topics and collections, a link to every place it names (each with a
-  Google Maps link), and the Instagram link; a post that names one place also gets an "Open in
+  Google Maps link), the things it names (**split-saves**: a dish, an idea, a tip, each linking to
+  its topic's page), and the Instagram link; a post that names one place also gets an "Open in
   Google Maps" button.
   A reel with spot stills (**extract-stills**) also gets "The places in the video": one picture per
   spot, in the order they show in the video, each linking to the spot's page with its time in the
   reel and a "Play 3 s" button that plays the clip. Spots the video shows only by their area
   ("Stop 2. Big Sur") share their area's picture: it shows once, titled with the area, with
   "Spots here:" linking each of them.
+
+- **`topics/<topic>.html`: one page per topic but travel**, listed on `topics/index.html` and
+  linked first in the map's bar as "Topics". It lists the things the topic's saves name, a section
+  per kind (Dishes, Ideas, Tips, in the order `item_kinds` gives in `config/topics.yaml`), each
+  with the save's small picture, the caption's words, @creator, the date saved and the Instagram
+  link. A filter box narrows every section at once ("Notes 36 of 280") and says how many match.
+  Saves of the topic with nothing named yet are listed last, so none is hidden. Travel has no page:
+  its chips link to the map with that topic picked. A topic named only in items (not in
+  `config/topics.yaml`) still gets a page, under its short name.
 
 **Spot stills.** Where a spot has a still in `data/stills.yaml`, its place page card and its map
 popup show that still instead of the reel's cover. The clip plays while the pointer is on a
@@ -145,6 +155,7 @@ own places; pins for posts that also name somewhere far away are still there whe
 | `data/pins.yaml` | spots, with the caption's words for them | fine: area pins only |
 | `data/pins-review.yaml` | spots OpenStreetMap did not place: dashed pins at their town | fine: no dashed pins |
 | `data/media.yaml` + `$INSTAGRAM_MEDIA_DIR` | thumbnails; copied into `.cache/hub/thumbs/` | fine: grey boxes |
+| `data/items/<topic>.yaml` | the things each save names, for the topic pages and post pages | fine: topic pages list the saves only (run **split-saves**) |
 | `data/stills.yaml` + `$INSTAGRAM_MEDIA_DIR` | a still and clip per spot; copied into `.cache/hub/stills/` | fine: the reel's cover |
 | `ffmpeg`, `img2webp` | the small pictures and flipbooks in `.cache/hub/previews/` (**extract-stills**' `previews.py`, made only when missing or older than their source) | fine: the full thumbnail; `--no-previews` skips them |
 
@@ -202,7 +213,7 @@ State, and a spot from `data/pins.yaml`, Example Falls, near Example Bay. The bu
 
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
-| `scripts/build_hub.py` | Writes the site to `.cache/hub/`: the map, one map per state or country, one page per place, one page per post, the thumbnails, and each post's small picture and flipbook | After tagging, finding spots or fetching thumbnails, to see the result. It writes the decisions page too | `python3 scripts/build_hub.py --all` (or `--pilot <name>`; `--out DIR` for another folder; `--no-previews` to skip the small pictures; `--links FILE` and `--make` go to the decisions page) |
+| `scripts/build_hub.py` | Writes the site to `.cache/hub/`: the map, one map per state or country, one page per place, one page per post, one page per topic, the thumbnails, and each post's small picture and flipbook | After tagging, finding spots or fetching thumbnails, to see the result. It writes the decisions page too | `python3 scripts/build_hub.py --all` (or `--pilot <name>`; `--out DIR` for another folder; `--no-previews` to skip the small pictures; `--links FILE` and `--make` go to the decisions page) |
 | `scripts/test_build_hub.py` | Offline tests on an invented data repo: which saves go in, where the pins go, a map per state with only its pins (and old map folders cleared), the "State or country" menu (a town abroad under its country), spot pages, links up and down, thumbnails, small pictures and flipbooks on the lists (and `--no-previews`), a kept Google id opening its exact place, a chain keeping its search for every branch, and captions that try to break the page | After any change to the build script | `python3 scripts/test_build_hub.py` |
 | `scripts/decisions_page.py` | Writes `.cache/hub/decisions.html`, everything waiting on a person: Google's place to pick per spot (numbered options that open the exact place, "A chain: any branch near here" and "None of these", building one `google_ids.py --pick … --none … --chain …` line), spots to check, tags to check (saves the tagger could not tag, places not in `config/places.yaml`, topics two or more saves suggested), items whose words were not in the caption, saves to move, answers not merged, reels waiting on a fetch go-ahead, and a hand-kept list of decisions made elsewhere. Spots shown at their town only are not counted, since they work, but the opening line says how many. Each step it names is the plugin's own command; `--make` prints the data repo's make lines | `build_hub.py` runs it itself with the same scope, so the map always links a fresh one; run it alone after a step that leaves something for a person. Give it the hub's own scope: it works out each post's hub page name the way the build does | `python3 scripts/decisions_page.py --pilot <name>` (or `--all`; `--links FILE`, `--make`, `--out PATH`) |
 | `scripts/test_decisions_page.py` | Offline tests on invented data: which Google picks still show (not picked or marked a chain since, same search, still a spot), the chain option, spots to check versus shown at their town, answers waiting, reels waiting, the hand-kept list (done ones left out, only http links), escaping, the page holding only ids of Google's, and post links using the build's page names (codes that differ only by case, a post outside the pilot) | After any change to the decisions script | `python3 scripts/test_decisions_page.py` |
