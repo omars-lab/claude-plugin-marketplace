@@ -192,6 +192,36 @@ def retry_logger(key):
     return lambda attempt, wait, why: log("google_retry", key=key, attempt=attempt, wait_s=wait, why=why)
 
 
+def choose(spots, picks, nones, chains, by, today):
+    """A person's (or Claude's) choices, kept in data/google.yaml and taken off the to-pick list.
+    A pick is checked with Google's id-only call, so only a pick needs the key; none and chain do not
+    (the serve-api skill saves those, with no key in its container). ValueError says what is wrong."""
+    unknown = [k for k in list(picks) + list(nones) + list(chains) if k not in spots]
+    if unknown:
+        raise ValueError(f"no spot {', '.join(unknown)} in scope (keys are printed by a search run)")
+    key = gp.api_key() if picks else ""
+    if picks and not key:
+        raise ValueError("no GOOGLE_MAPS_API_KEY (run it through dotenvx: make google-ids)")
+    kept, to_pick = load_kept(), load_to_pick()
+    for k, pid in picks.items():
+        try:
+            now = gp.current_id(pid, key, retry_logger(k))
+        except urllib.error.HTTPError as e:
+            raise ValueError(f"Google does not know {pid} (HTTP {e.code}); copy it again from the list")
+        kept[k] = entry(gp.query_for(spots[k][0]), "match", by, today, now)
+        log("google_keep", key=k, by=by, moved=str(now != pid).lower())
+    for k in nones:
+        kept[k] = entry(gp.query_for(spots[k][0]), "none", by, today)
+        log("google_none", key=k, by=by)
+    for k in chains:
+        kept[k] = entry(gp.query_for(spots[k][0]), "chain", by, today)
+        log("google_chain", key=k, by=by)
+    write_kept(kept)
+    for k in list(picks) + list(nones) + list(chains):
+        to_pick.pop(k, None)
+    write_to_pick(to_pick)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     which = ap.add_mutually_exclusive_group(required=True)
@@ -231,29 +261,10 @@ def main(argv=None):
     picks, nones = pairs(args.pick, "--pick"), [k.strip() for k in args.none or []]
     chains = [k.strip() for k in args.chain or []]
     if picks or nones or chains:
-        unknown = [k for k in list(picks) + nones + chains if k not in spots]
-        if unknown:
-            sys.exit(f"google_ids: no spot {', '.join(unknown)} in scope (keys are printed by a search run)")
-        key = gp.api_key() if picks else ""
-        if picks and not key:
-            sys.exit("google_ids: no GOOGLE_MAPS_API_KEY (run it through dotenvx: make google-ids)")
-        for k, pid in picks.items():
-            try:
-                now = gp.current_id(pid, key, retry_logger(k))
-            except urllib.error.HTTPError as e:
-                sys.exit(f"google_ids: Google does not know {pid} (HTTP {e.code}); copy it again from the list")
-            kept[k] = entry(gp.query_for(spots[k][0]), "match", args.by, today, now)
-            log("google_keep", key=k, by=args.by, moved=str(now != pid).lower())
-        for k in nones:
-            kept[k] = entry(gp.query_for(spots[k][0]), "none", args.by, today)
-            log("google_none", key=k, by=args.by)
-        for k in chains:
-            kept[k] = entry(gp.query_for(spots[k][0]), "chain", args.by, today)
-            log("google_chain", key=k, by=args.by)
-        write_kept(kept)
-        for k in list(picks) + nones + chains:
-            to_pick.pop(k, None)
-        write_to_pick(to_pick)
+        try:
+            choose(spots, picks, nones, chains, args.by, today)
+        except ValueError as e:
+            sys.exit(f"google_ids: {e}")
         print(f"kept {len(picks)} picked, {len(nones)} marked none and {len(chains)} marked a chain in {OUT}")
         return
 

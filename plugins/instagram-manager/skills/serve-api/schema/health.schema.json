@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "health.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "loaded_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "When the data was last read (UTC).",
+      "title": "Loaded At"
+    },
+    "load_ms": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Load Ms"
+    },
+    "reloads": {
+      "title": "Reloads",
+      "type": "integer"
+    },
+    "saves": {
+      "title": "Saves",
+      "type": "integer"
+    },
+    "spots": {
+      "title": "Spots",
+      "type": "integer"
+    },
+    "scope": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scope"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Why the last reload failed; the data before it is still served.",
+      "title": "Error"
+    }
+  },
+  "required": [
+    "ok",
+    "reloads",
+    "saves",
+    "spots"
+  ],
+  "title": "Health",
+  "type": "object"
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tags-in.schema.json",
+  "additionalProperties": false,
+  "description": "A person's tags for one save. The entry is marked `by: hand`, so no tagging round changes it.",
+  "properties": {
+    "topics": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Topics",
+      "type": "array"
+    },
+    "places": {
+      "description": "Places from the place list (config and data/places.yaml).",
+      "items": {
+        "type": "string"
+      },
+      "title": "Places",
+      "type": "array"
+    },
+    "purposes": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Purposes"
+    }
+  },
+  "required": [
+    "topics",
+    "places"
+  ],
+  "title": "TagsIn",
+  "type": "object"
+}

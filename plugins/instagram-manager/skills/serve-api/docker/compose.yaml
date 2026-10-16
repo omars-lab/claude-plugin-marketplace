@@ -1,0 +1,27 @@
+# The saved places data API on this Mac only: http://127.0.0.1:${API_PORT:-8780}/docs
+# The data repo's `make api` runs it with INSTAGRAM_HOME and INSTAGRAM_MEDIA_DIR set.
+name: instagram-api
+services:
+  api:
+    build:
+      context: ../../..
+      dockerfile: skills/serve-api/docker/Dockerfile
+    image: instagram-api:local
+    ports:
+      - "127.0.0.1:${API_PORT:-8780}:8000"   # never 0.0.0.0: only this Mac can reach it
+    environment:
+      INSTAGRAM_HOME: /data
+      INSTAGRAM_MEDIA_DIR: /media
+      API_POLL_S: ${API_POLL_S:-2}
+      API_PILOT: ${API_PILOT:-}
+      API_LOG: /data/.cache/api.log
+      WATCHFILES_FORCE_POLLING: "true"   # file events do not cross a Mac bind mount reliably
+    volumes:
+      - ${INSTAGRAM_HOME:?set INSTAGRAM_HOME to the data folder}:/data
+      - ${INSTAGRAM_MEDIA_DIR:?set INSTAGRAM_MEDIA_DIR to the media folder}:/media:ro
+      - ../../..:/plugin:ro
+    # --reload: a code edit in the plugin restarts the server. Data edits are read again by api.py itself.
+    command: >-
+      uvicorn api:app --app-dir /plugin/skills/serve-api/scripts --host 0.0.0.0 --port 8000
+      --reload --reload-dir /plugin
+    restart: unless-stopped

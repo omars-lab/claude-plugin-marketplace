@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "google-in.schema.json",
+  "additionalProperties": false,
+  "description": "A decision on a spot's Google place. none: no candidate is this spot. chain: any branch will\ndo. Picking one place needs Google's id check and so the key, which never enters the API; the\nanswer then gives the `make google-ids PICK=…` line to run instead.",
+  "properties": {
+    "verdict": {
+      "enum": [
+        "none",
+        "chain",
+        "pick"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    },
+    "place_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Place Id"
+    }
+  },
+  "required": [
+    "verdict"
+  ],
+  "title": "GoogleIn",
+  "type": "object"
+}

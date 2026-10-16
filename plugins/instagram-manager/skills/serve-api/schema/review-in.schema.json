@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "review-in.schema.json",
+  "additionalProperties": false,
+  "description": "A decision on a spot OpenStreetMap did not find (data/pins-review.yaml). `make locate-merge`\nthen applies it: ok keeps the find, drop leaves the spot out, lookup searches another name.",
+  "properties": {
+    "action": {
+      "enum": [
+        "ok",
+        "drop",
+        "lookup"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The name to search, for lookup.",
+      "title": "Name"
+    }
+  },
+  "required": [
+    "action"
+  ],
+  "title": "ReviewIn",
+  "type": "object"
+}

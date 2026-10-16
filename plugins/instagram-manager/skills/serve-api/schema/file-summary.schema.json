@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "file-summary.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "file": {
+      "description": "travel/<area> or a topic name.",
+      "title": "File",
+      "type": "string"
+    },
+    "topic": {
+      "title": "Topic",
+      "type": "string"
+    },
+    "area": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Area"
+    },
+    "feeds": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Feeds",
+      "type": "array"
+    },
+    "saves": {
+      "title": "Saves",
+      "type": "integer"
+    },
+    "spots": {
+      "title": "Spots",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "file",
+    "topic",
+    "feeds",
+    "saves",
+    "spots"
+  ],
+  "title": "FileSummary",
+  "type": "object"
+}

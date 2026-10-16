@@ -38,7 +38,8 @@ The pipeline, in order:
    Only the id is kept, so each Google Maps link opens that exact place.
 8. **build-hub** — the private hub: a map, a page per place, a page per post.
 9. **send-topics** — the files other repos read: one per state or country for travel, each save
-   with its spots, and one per other topic.
+   with its spots, and one per other topic. **serve-api** serves the same data as a local web
+   API (Swagger, JSON Schema) for other hubs, and takes the hub's decisions as writes.
 10. **split-saves** *(coming)* — the items a non-travel post names (a recipe, an idea), each with
    its quote. For travel, the items are the spots step 3 already finds.
 
@@ -97,6 +98,7 @@ For a multi-step run, track each step with `TaskCreate` and mark it done as it f
 | A Google Maps link opens a city or a list, not the place | find-google-ids | `/instagram-manager:find-google-ids` |
 | Show my saves on a map | build-hub | `/instagram-manager:build-hub` |
 | Send travel saves to my trip planner | send-topics | `/instagram-manager:send-topics` |
+| Let another app read my saved places over HTTP | serve-api | `/instagram-manager:serve-api` |
 | What should I run next? | manage-saves | `/instagram-manager:manage-saves` |
 
 ## Plugin Map
@@ -113,7 +115,8 @@ instagram-manager
   ├── extract-stills         — videos + spots → a still and a clip per spot → data/stills.yaml
   ├── find-google-ids        — spots → one Google search each → data/google.yaml (place ids only)
   ├── build-hub              — data/ → <data repo>/.cache/hub/ (map, place pages, post pages)
-  └── send-topics            — data/ → <data repo>/out/travel/<area>.yaml, out/<topic>.yaml for other repos
+  ├── send-topics            — data/ → <data repo>/out/travel/<area>.yaml, out/<topic>.yaml for other repos
+  └── serve-api              — data/ → a local API in Docker on 127.0.0.1 (read, schema, the hub's writes)
 
   agents/ (Haiku, one batch file in, one answers file out)
     ├── save-tagger    — topics, purposes and places

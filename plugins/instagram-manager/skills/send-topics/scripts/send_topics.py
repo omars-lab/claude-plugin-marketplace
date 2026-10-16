@@ -170,7 +170,8 @@ class Sender:
         f = self.files.setdefault(rel, {"topic": topic, "area": area, "saves": {}})
         f["saves"][code] = {k: v for k, v in entry.items() if v is not None}
 
-    def document(self, rel, scope):
+    def doc(self, rel, scope):
+        """One file's content as data: what document() writes, and what serve-api answers with."""
         f = self.files[rel]
         conf = self.topics.get(f["topic"]) if isinstance(self.topics.get(f["topic"]), dict) else {}
         doc = {"topic": f["topic"]}
@@ -178,7 +179,10 @@ class Sender:
             doc["area"] = f["area"]
         doc.update({"feeds": list(conf.get("feeds") or []), "scope": scope, "count": len(f["saves"]),
                     "saves": [f["saves"][c] for c in sorted(f["saves"])]})
-        return HEADER + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=10_000)
+        return doc
+
+    def document(self, rel, scope):
+        return HEADER + yaml.safe_dump(self.doc(rel, scope), sort_keys=False, allow_unicode=True, width=10_000)
 
 
 PILOTS = re.compile(r"^pilots? ([^:]+):")
@@ -237,24 +241,19 @@ def write_all(sender, out_dir, keep, scope, prune, ours=None, pilot=None):
     return written, removed
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    which = ap.add_mutually_exclusive_group(required=True)
-    which.add_argument("--pilot")
-    which.add_argument("--all", action="store_true")
-    ap.add_argument("--out", help="where to write (default $INSTAGRAM_HOME/out)")
-    args = ap.parse_args(argv)
-
+def load(pilot_name=None):
+    """(sender, places, saves, pilot) from the data repo: every tagged save, or one pilot's. The
+    serve-api skill builds its answers from this too, so the API and the files say the same thing."""
     saves_path = cache("saves.json")
     if not os.path.exists(saves_path):
-        sys.exit(f"send_topics: no {saves_path}; run import-saves first")
+        raise FileNotFoundError(f"no {saves_path}; run import-saves first")
     places = Places.load()
     tags = load_yaml(os.path.join("data", "tags.yaml"))
     pilot = None
-    if args.pilot:
-        pilot = (load_yaml(os.path.join("config", "collections.yaml")).get("pilots") or {}).get(args.pilot)
+    if pilot_name:
+        pilot = (load_yaml(os.path.join("config", "collections.yaml")).get("pilots") or {}).get(pilot_name)
         if not isinstance(pilot, dict):
-            sys.exit(f"send_topics: no pilot {args.pilot!r} in config/collections.yaml")
+            raise KeyError(f"no pilot {pilot_name!r} in config/collections.yaml")
     saves = [s for s in bh.load_saves(saves_path) if in_pilot(s, tags.get(s["code"]), pilot)]
     stills = load_yaml(os.path.join("data", "stills.yaml"))
     pins = load_yaml(os.path.join("data", "pins.yaml"))
@@ -265,6 +264,21 @@ def main(argv=None):
     sender = Sender(saves, tags, places, pins, placed,
                     load_yaml(os.path.join("data", "media.yaml")), stills,
                     load_yaml(os.path.join("config", "topics.yaml")).get("topics") or {})
+    return sender, places, saves, pilot
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    which = ap.add_mutually_exclusive_group(required=True)
+    which.add_argument("--pilot")
+    which.add_argument("--all", action="store_true")
+    ap.add_argument("--out", help="where to write (default $INSTAGRAM_HOME/out)")
+    args = ap.parse_args(argv)
+
+    try:
+        sender, places, saves, pilot = load(args.pilot)
+    except (FileNotFoundError, KeyError) as e:
+        sys.exit(f"send_topics: {e.args[0]}")
 
     if pilot is not None:
         mine = {bh.slugify(top(places, places.resolve(c) or c)) for c in pilot.get("cities") or []}

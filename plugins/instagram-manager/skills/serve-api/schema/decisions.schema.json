@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "decisions.schema.json",
+  "$defs": {
+    "GoogleWaiting": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "query": {
+          "title": "Query",
+          "type": "string"
+        },
+        "codes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Codes",
+          "type": "array"
+        },
+        "ids": {
+          "description": "Google's candidate place ids, in Google's order.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "query",
+        "codes",
+        "ids"
+      ],
+      "title": "GoogleWaiting",
+      "type": "object"
+    },
+    "Link": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "url",
+        "note"
+      ],
+      "title": "Link",
+      "type": "object"
+    },
+    "Move": {
+      "additionalProperties": true,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "Move",
+      "type": "object"
+    },
+    "ReviewWaiting": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "index": {
+          "description": "Its place in the save's list, for POST /v1/manage/review/{code}/{index}.",
+          "title": "Index",
+          "type": "integer"
+        },
+        "said": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Said"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "near": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Near"
+        },
+        "why": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why"
+        }
+      },
+      "required": [
+        "code",
+        "index"
+      ],
+      "title": "ReviewWaiting",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Everything waiting on a person, as the decisions page lists it.",
+  "properties": {
+    "google": {
+      "items": {
+        "$ref": "#/$defs/GoogleWaiting"
+      },
+      "title": "Google",
+      "type": "array"
+    },
+    "review": {
+      "items": {
+        "$ref": "#/$defs/ReviewWaiting"
+      },
+      "title": "Review",
+      "type": "array"
+    },
+    "town_only": {
+      "description": "Spots shown at their town with a name search; nothing to decide.",
+      "title": "Town Only",
+      "type": "integer"
+    },
+    "moves": {
+      "description": "Saves to move to another collection, by hand in the app.",
+      "items": {
+        "$ref": "#/$defs/Move"
+      },
+      "title": "Moves",
+      "type": "array"
+    },
+    "answers_to_merge": {
+      "description": "kind → agent answer files waiting for their make target.",
+      "title": "Answers To Merge",
+      "type": "object"
+    },
+    "videos_waiting": {
+      "title": "Videos Waiting",
+      "type": "integer"
+    },
+    "elsewhere": {
+      "items": {
+        "$ref": "#/$defs/Link"
+      },
+      "title": "Elsewhere",
+      "type": "array"
+    }
+  },
+  "required": [
+    "google",
+    "review",
+    "town_only",
+    "moves",
+    "answers_to_merge",
+    "videos_waiting",
+    "elsewhere"
+  ],
+  "title": "Decisions",
+  "type": "object"
+}

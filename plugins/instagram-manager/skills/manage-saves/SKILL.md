@@ -63,6 +63,7 @@ For more than one step, add a task per step with `TaskCreate` and mark each done
 | "the Google Maps link opens the city" / "which places have shut?" | `find-google-ids` |
 | "show me the map" / "rebuild the hub" | `build-hub` |
 | "send travel to the trip planner" / "what does this topic send?" | `send-topics` |
+| "an API other hubs can read" / "start the data API" / "the API's schema" | `serve-api` |
 | "what's next?" | this skill, Step 1 |
 
 ## Rules every step keeps

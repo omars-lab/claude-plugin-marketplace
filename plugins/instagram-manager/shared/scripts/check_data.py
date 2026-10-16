@@ -35,7 +35,12 @@ from log import log  # noqa: E402
 from purposes import load as load_purposes  # noqa: E402
 
 
+_OVERRIDES = {}
+
+
 def load(rel):
+    if rel in _OVERRIDES:
+        return _OVERRIDES[rel]
     path = os.path.join(home(), rel)
     if not os.path.exists(path):
         return None
@@ -71,12 +76,24 @@ def shared_spots(pins):
     return out
 
 
-def check():
+def problems(overrides=None, quiet=False):
+    """Every problem as {ev, ...}. `overrides` maps a file ("data/tags.yaml") to data not yet
+    written, so a change can be checked before it is saved; `quiet` skips the log lines."""
+    _OVERRIDES.clear()
+    _OVERRIDES.update(overrides or {})
+    try:
+        return _problems(quiet)
+    finally:
+        _OVERRIDES.clear()
+
+
+def _problems(quiet):
     problems = []
 
     def bad(ev, **kv):
-        problems.append(ev)
-        log(ev, **kv)
+        problems.append({"ev": ev, **{k: str(v) for k, v in kv.items()}})
+        if not quiet:
+            log(ev, **kv)
 
     topics = load("config/topics.yaml")
     known = set()
@@ -175,8 +192,13 @@ def check():
         bad("check_fail", file="data/pins.yaml", at=where, spots="|".join(names),
             msg="different spots on one map point: fix the wrong pin, or give each the same building: if they share one")
 
-    log("check", home=home(), problems=len(problems))
-    return 1 if problems else 0
+    return problems
+
+
+def check():
+    found = problems()
+    log("check", home=home(), problems=len(found))
+    return 1 if found else 0
 
 
 if __name__ == "__main__":

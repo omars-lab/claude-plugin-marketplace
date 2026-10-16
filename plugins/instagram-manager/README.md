@@ -11,7 +11,7 @@ that feeds your other projects.
 /instagram-manager:introduce                            # what it can do
 ```
 
-## Skills (11)
+## Skills (12)
 
 | Category | Skill | What it does |
 |---|---|---|
@@ -26,6 +26,7 @@ that feeds your other projects.
 | **Links** | `find-google-ids` | Google's place id per spot, so its Google Maps link opens that exact place; only the id is kept |
 | **Hub** | `build-hub` | A private local site: a map, a page per place, a page per post |
 | **Send** | `send-topics` | The files other repos read: one per state or country for travel, one per other topic |
+| **Send** | `serve-api` | The same data as a local web API in Docker, with Swagger and JSON Schema, and the hub's decisions as writes |
 
 ## Agents (3)
 

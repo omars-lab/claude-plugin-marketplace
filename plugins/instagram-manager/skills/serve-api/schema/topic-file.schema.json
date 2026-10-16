@@ -1,0 +1,409 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "topic-file.schema.json",
+  "$defs": {
+    "Save": {
+      "additionalProperties": false,
+      "description": "One saved post, as one file lists it.",
+      "properties": {
+        "code": {
+          "description": "Instagram's post code.",
+          "title": "Code",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "creator": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The account that posted it.",
+          "title": "Creator"
+        },
+        "saved_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When it was saved, from the export.",
+          "title": "Saved At"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "post or reel.",
+          "title": "Kind"
+        },
+        "topics": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Topics",
+          "type": "array"
+        },
+        "purposes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "eat, stay, do… for travel saves.",
+          "title": "Purposes"
+        },
+        "places": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The most exact places it is tagged with.",
+          "title": "Places"
+        },
+        "thumb": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Its thumbnail, a path in the media folder.",
+          "title": "Thumb"
+        },
+        "also_in": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The other files it is in: topics, and travel/<area> for other areas.",
+          "title": "Also In"
+        },
+        "items": {
+          "description": "Its spots in this file's area (travel); empty for other topics.",
+          "items": {
+            "$ref": "#/$defs/Spot"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "url",
+        "topics",
+        "items"
+      ],
+      "title": "Save",
+      "type": "object"
+    },
+    "Spot": {
+      "additionalProperties": false,
+      "description": "One place a save names: a beach, a café, a trailhead.",
+      "properties": {
+        "name": {
+          "description": "The spot's name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "said": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The caption's (or the video's) own words for it.",
+          "title": "Said"
+        },
+        "near": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The town, park or area it sits in.",
+          "title": "Near"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OpenStreetMap's kind: restaurant, beach, viewpoint…",
+          "title": "Kind"
+        },
+        "lat": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Latitude, from OpenStreetMap. Only when `exact`.",
+          "title": "Lat"
+        },
+        "lon": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Longitude, from OpenStreetMap. Only when `exact`.",
+          "title": "Lon"
+        },
+        "osm": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OpenStreetMap id, such as node/123.",
+          "title": "Osm"
+        },
+        "wikidata": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Wikidata id, when OpenStreetMap has one.",
+          "title": "Wikidata"
+        },
+        "map": {
+          "description": "A Google Maps link: the exact place when its place id is kept, else a search for the name in its town.",
+          "title": "Map",
+          "type": "string"
+        },
+        "google_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Google's place id, when one is kept. Nothing else of Google's is kept.",
+          "title": "Google Id"
+        },
+        "from": {
+          "description": "Where the name was read.",
+          "enum": [
+            "caption",
+            "video"
+          ],
+          "title": "From",
+          "type": "string"
+        },
+        "exact": {
+          "description": "True when pinned at the spot itself; false when OpenStreetMap does not list it and it stands at its town (no lat/lon then).",
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "still": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A still from the video, a path in the media folder.",
+          "title": "Still"
+        },
+        "clip": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A 3 second clip, a path in the media folder.",
+          "title": "Clip"
+        },
+        "t": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Seconds into the video where the still is.",
+          "title": "T"
+        },
+        "still_from": {
+          "anyOf": [
+            {
+              "enum": [
+                "name",
+                "area"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "name: the spot's name is on screen; area: a shot of its area.",
+          "title": "Still From"
+        },
+        "area": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The area the still shows, when still_from is area.",
+          "title": "Area"
+        }
+      },
+      "required": [
+        "name",
+        "map",
+        "from",
+        "exact"
+      ],
+      "title": "Spot",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One file's content: a travel area (out/travel/<area>.yaml) or a topic (out/<topic>.yaml).",
+  "properties": {
+    "topic": {
+      "title": "Topic",
+      "type": "string"
+    },
+    "area": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The state or country, for a travel file.",
+      "title": "Area"
+    },
+    "feeds": {
+      "description": "The repos this topic feeds.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Feeds",
+      "type": "array"
+    },
+    "scope": {
+      "description": "Which saves are in: every tagged save, or a pilot's.",
+      "title": "Scope",
+      "type": "string"
+    },
+    "count": {
+      "title": "Count",
+      "type": "integer"
+    },
+    "saves": {
+      "items": {
+        "$ref": "#/$defs/Save"
+      },
+      "title": "Saves",
+      "type": "array"
+    }
+  },
+  "required": [
+    "topic",
+    "feeds",
+    "scope",
+    "count",
+    "saves"
+  ],
+  "title": "TopicFile",
+  "type": "object"
+}
