@@ -12,7 +12,9 @@ sends one Google Text Search: our own search text, inside a box round our own pi
 spot's town when the spot has no pin. Google's top 3 are printed on screen with name, address, kind
 and "CLOSED FOR GOOD"; none of that is written anywhere (shared/scripts/google_places.py says why).
 
-  - When exactly one of the 3 carries every word of our name, its id is kept (`by: auto`).
+  - When exactly one of the 3 carries every word of our name, its id is kept (`by: auto`). When the
+    caption gives a street address with a house number, that one must also be at that number;
+    another branch of a chain carries the name but not the address, so it is left for a person.
   - Otherwise the spot is printed with a `PICK='KEY=PLACE_ID'` line per candidate for a person.
     `--pick` checks the id with Google's free id-only call and keeps it (`by: hand`, or
     `by: claude` with `--by claude` when Claude chose from the list rather than a person).
@@ -30,7 +32,8 @@ kept by name.
 data/google.yaml is rewritten after every spot, so a run stopped by the day's cap (HTTP 429 "per
 day") keeps what it found; the same command tomorrow carries on. A spot already there with the same
 search text is skipped, and so is one whose candidates already wait for a person with the same
-search text (--refresh searches either again).
+search text (--refresh searches either again). An id kept by name before the house number was
+checked, for a spot whose caption gives one, is searched once more (`at_address` marks the check).
 
 A spot with no pin that the locator says is really in another town (`really_in`) is not searched:
 the box would sit round the wrong town. It is listed to fix its area first. A kept id whose spot
@@ -66,7 +69,8 @@ TO_PICK = "google-to-pick.json"   # in .cache: the spots left for a person, with
 STALE_SHOWN = 20   # how many stale keys to list on screen
 HEADER = ("# Google place ids for the spots in data/pins.yaml and data/pins-review.yaml, written by\n"
           "# instagram-manager's find-google-ids. Only the id is kept, with our own search text, the date\n"
-          "# and who chose it (auto: the only candidate carrying every word of our name; claude: Claude,\n"
+          "# and who chose it (auto: the only candidate carrying every word of our name, and at_address when\n"
+          "# it is also at the caption's house number; claude: Claude,\n"
           "# from Google's list on screen; hand: a person). verdict: chain means any branch will do, so\n"
           "# its link searches the name in its area and no id is kept.\n"
           "# Nothing else of Google's goes in this file: no name, address or position.\n")
@@ -147,6 +151,13 @@ def entry(query, verdict, by, today, place_id=None):
         out["id"] = place_id
     out.update({"by": by, "date": today})
     return out
+
+
+def unchecked_address(g, e):
+    """An id kept by name before the house number was checked: the spot's caption gives a street
+    address with a number, and nothing says Google's place was at it. It is searched once more."""
+    return g.get("verdict") == "match" and g.get("by") == "auto" and not g.get("at_address") \
+        and bool(gp.house_number(e.get("address")))
 
 
 def pairs(values, flag):
@@ -247,7 +258,8 @@ def main(argv=None):
         if only and k not in only:
             continue
         q = gp.query_for(e)
-        if not args.refresh and isinstance(kept.get(k), dict) and kept[k].get("query") == q:
+        if not args.refresh and isinstance(kept.get(k), dict) and kept[k].get("query") == q \
+                and not unchecked_address(kept[k], e):
             continue
         if not args.refresh and isinstance(to_pick.get(k), dict) and to_pick[k].get("query") == q:
             waiting.append(k)   # searched already: its candidates wait for a person, so no second call
@@ -299,9 +311,11 @@ def main(argv=None):
             none += 1
             print("\n".join(gp.show(k, q, found, words)))
         else:
-            hit = gp.auto_pick(e["name"], found)
+            hit = gp.auto_pick(e["name"], found, e.get("address"))
             if hit:
                 kept[k] = entry(q, "match", "auto", today, hit["id"])
+                if gp.house_number(e.get("address")):
+                    kept[k]["at_address"] = True
                 auto += 1
                 print(f"kept  {k}: {e['name']!r} = {hit['name']} — {hit['address']}"
                       + ("  CLOSED FOR GOOD" if hit["closed"] else ""))

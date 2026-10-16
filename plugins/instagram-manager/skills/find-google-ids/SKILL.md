@@ -57,7 +57,11 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
      name says enough to tell places apart (two words, or one of five letters or more). This goes a
      step past a person choosing every id: the names are compared in memory and only the id is
      kept, so it is the "on screen, nothing saved" case. The hub marks these links "matched by its
-     name: check it";
+     name: check it". When the caption gives a street address with a house number, the one
+     candidate must also be at that number, or it is left for a person: a chain's other branch a
+     few kilometres off carries the same name. Google's address is compared in memory and never
+     kept; the entry gets `at_address: true`. An id kept by name before this check, for a spot
+     with a house number, is searched once more on the next run;
    - **nothing in the box** (`verdict: none`): not searched again;
    - **everything else** is printed with a link and a `PICK='KEY=PLACE_ID'` line per candidate.
 3. **Look with your own eyes.** Open five or so kept-by-name links and check each opens the place

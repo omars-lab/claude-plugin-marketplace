@@ -135,6 +135,24 @@ class Ids(unittest.TestCase):
         self.assertIsNone(gp.auto_pick("Example Beach", [beach, peak]))                     # two places: a person
         self.assertEqual(gp.auto_pick("Example Beach", [area])["id"], "A")                 # the area is all there is
 
+    def test_a_branch_at_another_address_is_not_kept(self):
+        here = {"id": "H", "name": "Example Kitchen", "address": "412 Orchard Rd, Fixture Town", "types": []}
+        there = {"id": "T", "name": "Example Kitchen", "address": "9 Mill St, Fixture Town", "types": []}
+        self.assertIsNone(gp.auto_pick("Example Kitchen", [there], "412 Orchard Rd"))       # another branch
+        self.assertEqual(gp.auto_pick("Example Kitchen", [there, here], "412 Orchard Rd")["id"], "H")
+        self.assertEqual(gp.auto_pick("Example Kitchen", [there]), there)                   # no address given
+        self.assertEqual(gp.auto_pick("Example Kitchen", [there], "Orchard Rd")["id"], "T")  # no house number
+        self.assertIsNone(gp.auto_pick("Example Kitchen", [dict(here, address="4120 Orchard Rd")], "412 Orchard Rd"))
+        far = dict(here, address="71-100 Example Hwy, Fixture Town")
+        self.assertEqual(gp.auto_pick("Example Kitchen", [far], "71-100 Example Hwy")["id"], "H")
+        self.assertEqual(gp.auto_pick("Example Kitchen", [dict(far, address="71100 Example Hwy")], "71-100 Example Hwy")["id"], "H")
+        self.assertIsNone(gp.auto_pick("Example Kitchen", [dict(far, address="71 Example Hwy")], "71-100 Example Hwy"))
+        old = {"verdict": "match", "by": "auto", "id": "T"}
+        self.assertTrue(google_ids.unchecked_address(old, {"address": "412 Orchard Rd"}))         # searched once more
+        self.assertFalse(google_ids.unchecked_address(dict(old, at_address=True), {"address": "412 Orchard Rd"}))
+        self.assertFalse(google_ids.unchecked_address(old, {"near": "Fixture Town"}))              # no address to check
+        self.assertFalse(google_ids.unchecked_address(dict(old, by="hand"), {"address": "412 Orchard Rd"}))
+
     def test_run_keeps_only_ids(self):
         out, err = self.run_ids("--pilot", "fixture")
         text, kept = self.kept()

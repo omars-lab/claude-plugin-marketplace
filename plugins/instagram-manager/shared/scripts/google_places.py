@@ -157,10 +157,29 @@ def same_name(ours, theirs):
     return set(mine) <= set(words(theirs))
 
 
-def auto_pick(ours, found):
+def house_number(address):
+    """The house number a street address starts with ("2148 Example Dr" → "2148", "71-100 Example
+    Hwy" → "71100"), or None."""
+    m = re.match(r"\s*(\d+(?:-\d+)?[a-z]?)\b", address or "", re.I)
+    return m.group(1).replace("-", "").lower() if m else None
+
+
+def at_the_house(number, theirs):
+    """Google's address carries our house number as a word of its own, a hyphen inside a number
+    ignored. Compared in memory only."""
+    theirs = re.sub(r"(?<=\d)-(?=\d)", "", theirs or "")
+    return bool(re.search(rf"(?<![\w-]){re.escape(number)}(?![\w-])", theirs, re.I))
+
+
+def auto_pick(ours, found, address=None):
     """The one candidate whose name is ours, or None when none or more than one is. When several
-    carry the name, areas and stops of that name are set aside first (NOT_A_PLACE)."""
+    carry the name, areas and stops of that name are set aside first (NOT_A_PLACE). When the
+    caption gives a street address with a house number, only a candidate at that number counts:
+    a chain's other branch carries the name too, but not the address."""
     hits = [c for c in found if same_name(ours, c["name"])]
+    number = house_number(address)
+    if number:
+        hits = [c for c in hits if at_the_house(number, c.get("address"))]
     if len(hits) > 1:
         hits = [c for c in hits if not NOT_A_PLACE & set(c["types"])]
     return hits[0] if len(hits) == 1 else None
