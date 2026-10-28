@@ -53,6 +53,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -94,6 +95,25 @@ def offending(command: str) -> list[str]:
         if sub == "worktree" and WORKTREE_ADD_RE.match(rest):
             hits.append(("git" + m.group(1)).strip())
     return hits
+
+
+def target_root(hit: str, project: Path, cwd: str) -> Path:
+    """The repo a `git … worktree add` acts on: its `-C` dirs (git chains them,
+    a relative one against the last), else the project."""
+    try:
+        words = shlex.split(hit)
+    except ValueError:
+        words = hit.split()
+    root = Path(cwd or project)
+    named = False
+    for i, w in enumerate(words[1:], 1):
+        if w == "worktree":
+            break
+        if w == "-C" and i + 1 < len(words):
+            root, named = root / words[i + 1], True
+        elif w.startswith("-C") and len(w) > 2:
+            root, named = root / w[2:], True
+    return root if named else project
 
 
 def git(*args: str) -> subprocess.CompletedProcess | None:
@@ -288,7 +308,13 @@ def main() -> int:
     if not hits:
         return 0
     budget = conf_int(conf, "MAX_WORKTREES", DEFAULT_MAX)
-    trees = list_worktrees(_conf.project_root())
+    # `git -C <other repo> worktree add` adds a tree to that repo, so count its trees.
+    root = target_root(hits[0], Path(_conf.project_root()), payload.get("cwd") or os.getcwd())
+    trees = list_worktrees(root)
+    if trees is None and root != Path(_conf.project_root()):
+        # Can't read the named repo: count the project's trees, as before.
+        root = Path(_conf.project_root())
+        trees = list_worktrees(root)
     if trees is None or len(trees) < budget:
         return 0
     window = conf_int(conf, "IN_USE_MINUTES", DEFAULT_IN_USE_MIN)
@@ -297,7 +323,7 @@ def main() -> int:
     decision = ((conf or {}).get("DECISION", DEFAULT_DECISION) or DEFAULT_DECISION).strip().lower()
     if decision not in DECISIONS:
         decision = DEFAULT_DECISION
-    any_done, reason = message(trees, budget, hits, decision, default_branch(_conf.project_root()))
+    any_done, reason = message(trees, budget, hits, decision, default_branch(root))
     if any_done:
         decision = "deny"  # the session can clean up itself; don't make a person click through
     if decision == "nudge":
@@ -411,6 +437,14 @@ def selftest() -> int:
     rc, out, _ = t.run(payload("git worktree add ../new"), env, cwd=str(repo))
     t.check(decision(out) == "deny" and str(done) in out and "git worktree remove" in out,
             "finished tree → deny, names it and the remove command", out)
+
+    # `git -C <other repo> worktree add` counts that repo's trees, not the project's.
+    other_repo = tmp / "other-repo"
+    subprocess.run(["git", "init", "-q", str(other_repo)], check=True, capture_output=True)
+    t.assert_quiet(t.run(payload(f"git -C {other_repo} worktree add ../new"), env, cwd=str(repo)),
+                   "-C names another repo with one tree → quiet")
+    rc, out, _ = t.run(payload(f"git -C {repo} worktree add ../new"), env, cwd=str(repo))
+    t.check(decision(out) == "deny", "-C naming the project still counts the project", out)
 
     # The caller's own transcript naming it doesn't make it in use.
     own.write_text(json.dumps({"cwd": str(done)}) + "\n", encoding="utf-8")
