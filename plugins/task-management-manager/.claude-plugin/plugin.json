@@ -1,0 +1,9 @@
+{
+  "name": "task-management-manager",
+  "description": "Ships a config-driven task-management hook suite \u2014 guard task deletion, enforce the done/backlog invariant, nudge to track work, and check task-file consistency. Each hook is a no-op unless the repo's .claude/hooks/task-management.conf opts it in.\n\nTry asking...\n- What does the task-management hook suite do?\n- How do I turn on task tracking for this repo?\n- Why was my task deletion blocked?\n- Where do the task-file paths and markers come from?",
+  "version": "1.2.0",
+  "author": {
+    "name": "Omar Eid"
+  },
+  "license": "MIT"
+}

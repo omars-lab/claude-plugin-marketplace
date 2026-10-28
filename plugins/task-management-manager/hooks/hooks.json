@@ -1,0 +1,51 @@
+{
+  "description": "Task-management hook suite: guard task deletion, enforce the done/backlog invariant, nudge to track work, and check task-file consistency. All four are config-driven — each is a no-op unless the repo's .claude/hooks/task-management.conf opts it in.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "TaskUpdate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-task-deletion.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/check-task-files.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/remind-track-tasks.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/remind-task-sync.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
