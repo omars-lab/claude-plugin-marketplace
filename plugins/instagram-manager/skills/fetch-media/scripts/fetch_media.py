@@ -2,9 +2,13 @@
 """fetch_media.py — one small JPEG thumbnail per saved post, fetched logged out and slowly.
 
     fetch_media.py --pilot NAME --limit 5     the pilot's saves, at most 5 this run
-    fetch_media.py --all --limit 100          every save, at most 100 this run
+    fetch_media.py --all --limit 117          every save, at most 117 this run
     fetch_media.py --video CODES.txt          the reels listed (one code a line): their video and full
                                               cover too, for reading names off the screen
+    fetch_media.py --all --one-request        1 instagram.com request a post instead of 2 (off by default;
+                                              see "With --one-request" below)
+    fetch_media.py --all --recheck CODES.txt  ask for these posts first even if media.yaml has them, and
+                                              write nothing for them (to try a known limited post)
 
 Reads   $INSTAGRAM_HOME/.cache/saves.json           (from import-saves)
         $INSTAGRAM_HOME/config/collections.yaml     the pilots
@@ -38,6 +42,19 @@ With --video
   side is at least 540 px, else the largest. ffprobe records whether it has sound. Three file
   downloads failing in a row is a stop, as the research says. A post's thumbnail is kept.
 
+With --one-request (docs/research/instagram-media-alternatives/consolidated.md in the data repo)
+  yt-dlp's "is this post viewable?" check is answered "ok" without asking instagram.com; the post's
+  page alone has the images. So 1 request a post, and that check's 6 s wait goes too. Three things
+  follow from skipping it:
+  - The "watch" warnings come from that check, so they mean nothing here: they are logged
+    (acted=no), never paused or stopped on, and never feed the baseline.
+  - The words that name a post limited by age or audience ("isn't available to everyone") come
+    from that check too. So the first login redirect or empty answer in a run asks that post
+    again the 2-request way: a limited post is written down as login_wall, anything else is
+    handled as today (a login redirect stops the run). Once a run only.
+  - It leans on yt-dlp's code, so it refuses any yt-dlp but ONE_REQUEST_YTDLP.
+  A run may hold more posts in this mode (MAX_POSTS), since the limit is counted in requests.
+
 Never logged in
   No cookies, no login, no netrc, ever. yt-dlp gets ignoreconfig, so no config file can add them,
   and the script refuses to start if any login or cookie option is set.
@@ -51,7 +68,8 @@ Pacing (docs/research/instagram-fetch-pacing/consolidated.md in the data repo)
     "watch" warnings. The log line is ev=rate_limited. A stop is never retried inside a run.
   - Cooldown: 24 h after the first stop, 48 h after a second in a row, 3 days after a third. The
     first run after a cooldown fetches one test post only.
-  - Runs: at most 100 posts each, at least 2 hours from the end of one to the start of the next,
+  - Runs: at most 117 posts each (150 with --one-request), at least 2 hours from the end of one
+    to the start of the next,
     and at most 3 started in any 24 hours. The script reads its own log for the past runs and
     refuses to start early (ev=refused reason=run_gap or day_cap, with the time it may start).
 
@@ -108,7 +126,11 @@ VIDEO_DEADLINE = 300         # s for one video download
 VIDEO_FAIL_STOP = 3          # file downloads failing in a row
 PROBE_TIMEOUT = 30
 COOLDOWN_HOURS = {1: 24, 2: 48, 3: 72}
-MAX_POSTS = 100              # posts in one run
+# Posts in one run, by instagram.com requests a post. 2: today's way, 117 after the first 7 days with
+# no stop. 1: --one-request, 150 for its first runs, then 200 (the daily limit is counted in requests).
+MAX_POSTS = {2: 117, 1: 150}
+ONE_REQUEST_YTDLP = "2026.08.19"   # the yt-dlp whose code --one-request was read against
+RULING = "/web/get_ruling_for_content/"   # yt-dlp's "is this post viewable?" address
 RUN_GAP = dt.timedelta(hours=2)   # from the end of one run to the start of the next
 RUNS_PER_DAY = 3             # runs started in any 24 hours
 
@@ -220,6 +242,12 @@ def read_codes(path):
         return [w for line in fh for w in line.split("#")[0].split()[:1]]
 
 
+def pick_recheck(saves, codes):
+    """--recheck: the listed codes, in the list's order, whatever media.yaml says about them."""
+    by_code = {s["code"]: s for s in saves}
+    return [by_code[c] for c in codes if c in by_code]
+
+
 # ---------------------------------------------------------------- the lock and the cooldown
 
 @contextlib.contextmanager
@@ -316,6 +344,23 @@ def refuse_login(opts):
     return [k for k in LOGIN_KEYS if opts.get(k)]
 
 
+class SkipRuling:
+    """--one-request: yt-dlp's "is this post viewable?" check gets {"status": "ok"} with no request.
+    Every other call goes through. `on` is set False to ask one post the 2-request way."""
+
+    def __init__(self, ydl):
+        self.on = True
+        ie = ydl.get_info_extractor("Instagram")   # the one the run's extract_info uses
+        real = ie._download_json
+
+        def download_json(url_or_request, *args, **kwargs):
+            if self.on and RULING in str(url_or_request):
+                return {"status": "ok"}
+            return real(url_or_request, *args, **kwargs)
+
+        ie._download_json = download_json
+
+
 class Watcher:
     """yt-dlp's logger: turns its lines into ev= lines and remembers what matters for this post."""
 
@@ -330,6 +375,11 @@ class Watcher:
         self.watch = []        # watch-warning kinds seen on this post
         self.stop = None       # (kind, msg) if a warning was itself a stop signal
         self.ig = 0
+
+    def retry(self):
+        """Asking the same post again: forget its warnings, keep counting its requests."""
+        self.watch = []
+        self.stop = None
 
     def debug(self, msg):
         low = msg.lower()
@@ -485,10 +535,13 @@ def to_jpeg(src, dst, width, max_width=THUMB_WIDTH):
 # ---------------------------------------------------------------- the run
 
 class Run:
-    def __init__(self, ydl, watcher, requests, media, sleep=time.sleep, video=False):
+    def __init__(self, ydl, watcher, requests, media, sleep=time.sleep, video=False, one_request=None):
         self.ydl, self.watcher, self.requests, self.media = ydl, watcher, requests, media
         self.sleep = sleep
         self.video = video
+        self.one_request = one_request   # the SkipRuling with --one-request, else None
+        self.rechecked = False           # --one-request: a post was asked again the 2-request way
+        self.keep = set()                # --recheck codes: media.yaml is never written for them
         self.file_fails = 0    # video downloads failing in a row
         self.started = time.time()
         self.ok = self.bad = 0
@@ -516,6 +569,10 @@ class Run:
 
     def watch_rules(self, code, kinds):
         """Count this post's watch warnings; pause or stop as the research says."""
+        if self.one_request:   # they come from the check that was skipped: log them, never act on them
+            for kind in kinds:
+                log("warn", kind=kind, shortcode=code, acted="no")
+            return
         self.window.append(len(kinds))
         first = self.state.setdefault("first_posts", [])
         if "baseline" not in self.state:
@@ -546,37 +603,44 @@ class Run:
         code = save["code"]
         url = save.get("url") or f"https://www.instagram.com/p/{code}/"
         self.watcher.reset(code)
+        if self.one_request:
+            self.one_request.on = True
         t0 = time.time()
         log("post_start", n=n, shortcode=code)
-        try:
-            with deadline(POST_DEADLINE):
-                info = self.ydl.extract_info(url, download=False)
-        except Deadline:
-            log("extract_timeout", shortcode=code, secs=POST_DEADLINE)
-            return None
-        except Exception as e:  # noqa: BLE001 — yt-dlp's DownloadError; read by its text, as the research says
-            msg = str(e)
-            low = msg.lower()
-            sig = stop_signal(low) or (self.watcher.stop and self.watcher.stop[0])
-            if sig:
-                raise Stop(sig, msg[:200])
-            if "instagram sent an empty media response" in low:
-                self.empty_streak += 1
-                log("empty_media", shortcode=code, streak=self.empty_streak)
-                if self.empty_streak >= 2:
-                    raise Stop("empty_streak", msg[:200])
-                self.pending_empty = code
-                self.pause("empty", EMPTY_WAIT)
+        for attempt in (1, 2):
+            try:
+                with deadline(POST_DEADLINE):
+                    info = self.ydl.extract_info(url, download=False)
+                break
+            except Deadline:
+                log("extract_timeout", shortcode=code, secs=POST_DEADLINE)
                 return None
-            err = post_error(low)
-            log("post_bad", shortcode=code, reason=err or "unknown", msg=msg[:200])
-            self.bad += 1
-            self.empty_streak = 0
-            return self.failed(code, err) if err else None
+            except Exception as e:  # noqa: BLE001 — yt-dlp's DownloadError; read by its text, as the research says
+                msg = str(e)
+                low = msg.lower()
+                if attempt == 1 and self.may_recheck(code, low):
+                    continue
+                sig = stop_signal(low) or (self.watcher.stop and self.watcher.stop[0])
+                if sig:
+                    raise Stop(sig, msg[:200])
+                if "instagram sent an empty media response" in low:
+                    self.empty_streak += 1
+                    log("empty_media", shortcode=code, streak=self.empty_streak)
+                    if self.empty_streak >= 2:
+                        raise Stop("empty_streak", msg[:200])
+                    self.pending_empty = code
+                    self.pause("empty", EMPTY_WAIT)
+                    return None
+                err = post_error(low)
+                log("post_bad", shortcode=code, reason=err or "unknown", msg=msg[:200])
+                self.bad += 1
+                self.empty_streak = 0
+                return self.failed(code, err) if err else None
         if self.watcher.stop:
             raise Stop(*self.watcher.stop)
         if self.pending_empty:   # the empty answer before this one was that post, not a block
-            self.media[self.pending_empty] = self.failed(self.pending_empty, "not_found")
+            if self.pending_empty not in self.keep:
+                self.media[self.pending_empty] = self.failed(self.pending_empty, "not_found")
             self.pending_empty = None
         self.empty_streak = 0
         self.watch_rules(code, self.watcher.watch)
@@ -615,6 +679,27 @@ class Run:
         log("post_ok", shortcode=code, kind=kind, bytes=os.path.getsize(dst), secs=round(time.time() - t0, 1),
             ig_requests=self.watcher.ig, path="page")
         return {"thumb": f"{code}/thumb.jpg", "kind": kind, "fetched": now().date().isoformat()}
+
+    def may_recheck(self, code, low):
+        """--one-request: a login redirect or an empty answer may be a post limited by age or audience,
+        which only the skipped check names. True (and set up) to ask this post again the 2-request
+        way; once a run, so a real block costs at most 2 more requests."""
+        if not self.one_request or self.rechecked:
+            return False
+        if self.watcher.stop and self.watcher.stop[0] != "login_wall":   # a 429 or the like: a block
+            return False
+        if "redirected to the login page" in low:
+            why = "login_redirect"
+        elif "instagram sent an empty media response" in low:
+            why = "empty"
+        else:
+            return False
+        self.rechecked = True
+        self.one_request.on = False
+        self.watcher.retry()
+        log("recheck", shortcode=code, why=why)
+        self.pause("recheck", *GAP)
+        return True
 
     def failed(self, code, err):
         """The entry for a post Instagram would not serve. A --video run keeps what media.yaml already has
@@ -687,7 +772,8 @@ class Run:
         return None
 
 
-def main(argv=None, ydl_factory=None, sleep=time.sleep):
+def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
+    """version: what a test's ydl_factory stands in for (the real one reads yt-dlp's own)."""
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     scope = ap.add_mutually_exclusive_group(required=True)
     scope.add_argument("--pilot", help="a pilot name from config/collections.yaml")
@@ -695,8 +781,15 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
     scope.add_argument("--video", metavar="CODES.txt",
                        help="a file of reel codes, one a line: fetch their video and full cover")
     ap.add_argument("--limit", type=int, default=5, help="at most this many posts this run (default 5)")
+    ap.add_argument("--one-request", action="store_true",
+                    help="skip yt-dlp's \"is this post viewable?\" check: 1 instagram.com request a post")
+    ap.add_argument("--recheck", metavar="CODES.txt",
+                    help="ask for these posts first even if media.yaml has them; nothing is written for them")
     ap.add_argument("--saved", default=None, help="saves.json (default: the data repo's .cache)")
     args = ap.parse_args(argv)
+    if args.recheck and args.video:
+        ap.error("--recheck is for thumbnail runs, not --video")
+    per_post = 1 if args.one_request else 2
 
     log_path = cache("logs", "fetch-media.log")
     log_to(log_path)
@@ -737,12 +830,17 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
                 sys.exit(f"no pilot {args.pilot!r} in config/collections.yaml (have: {', '.join(pilots) or 'none'})")
             pilot = pilots[args.pilot]
         media = load_yaml(MEDIA)
-        limit = 1 if test_only else min(args.limit, MAX_POSTS)
+        limit = 1 if test_only else min(args.limit, MAX_POSTS[per_post])
+        again = []
         if args.video:
             todo, done = pick_codes(saves, read_codes(args.video), media, limit)
         else:
             todo, done = pick(saves, pilot, load_yaml(os.path.join("data", "tags.yaml")), media, limit,
                               first=load_yaml(os.path.join("data", "pins.yaml")))
+            if args.recheck:
+                again = pick_recheck(saves, read_codes(args.recheck))
+                todo = (again + [s for s in todo if s not in again])[:limit]
+        again = {s["code"] for s in again}
 
         if ydl_factory is None:
             try:
@@ -751,15 +849,21 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
                 log("refused", reason="no_ytdlp", python=sys.executable)
                 sys.exit(f"{sys.executable} has no yt_dlp: run this with a python3 that has it")
             ydl_factory, version = yt_dlp.YoutubeDL, yt_dlp.version.__version__
-        else:
-            version = "fake"
+        if args.one_request and version != ONE_REQUEST_YTDLP:
+            log("refused", reason="ytdlp_version", ytdlp=version, needs=ONE_REQUEST_YTDLP)
+            print(f"fetch_media: --one-request was checked against yt-dlp {ONE_REQUEST_YTDLP}, not {version}",
+                  file=sys.stderr)
+            return 6
         log("run_start", ytdlp=version, impersonate="no", sleep_req=SLEEP_REQUESTS, gap_min=GAP[0], gap_max=GAP[1],
             cap=limit, scope=args.pilot or ("video" if args.video else "all"), todo=len(todo), skipped=done, test_only=test_only,
+            requests_per_post=per_post, watch="off" if args.one_request else "on", recheck=len(again),
             cooldown_until=(cd or {}).get("until") or "none", media_dir=media_dir())
 
         stopped, reason = "no", ""
         with ydl_factory(opts) as ydl:
-            run = Run(ydl, watcher, requests, media, sleep=sleep, video=bool(args.video))
+            skip = SkipRuling(ydl) if args.one_request else None
+            run = Run(ydl, watcher, requests, media, sleep=sleep, video=bool(args.video), one_request=skip)
+            run.keep = again
             for n, s in enumerate(todo, 1):
                 if n > 1:
                     if (n - 1) % LONG_EVERY == 0:
@@ -779,7 +883,10 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep):
                         requests_last_hour=run.last_hour(), msg=str(e))
                     write_cooldown(e.kind)
                     break
-                if entry is not None:
+                if s["code"] in again:   # asked only to see what it answers now; media.yaml keeps what it had
+                    log("recheck_result", shortcode=s["code"],
+                        result=(entry or {}).get("error") or ("ok" if entry else "none"))
+                elif entry is not None:
                     media[s["code"]] = entry
                     write_yaml(MEDIA, media)   # after every post, so a stop loses nothing
                     if test_only and ("video" in entry if args.video else "thumb" in entry):

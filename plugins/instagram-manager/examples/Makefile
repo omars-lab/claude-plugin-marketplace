@@ -32,6 +32,11 @@ FRAMES_REDO       ?=
 STILLS_REDO       ?=
 VIDEO_LIST        ?= .cache/frames/stuck.txt
 MEDIA_LIMIT       ?= 5
+# MEDIA_ONE=1: 1 instagram.com request a post (fetch-media's --one-request; try 20 posts first).
+# MEDIA_RECHECK=file: posts to ask for again without writing anything for them (--recheck).
+MEDIA_ONE         ?=
+MEDIA_RECHECK     ?=
+MEDIA_FLAGS = $(strip $(if $(MEDIA_ONE),--one-request) $(if $(MEDIA_RECHECK),--recheck $(MEDIA_RECHECK)))
 # The python that has yt-dlp (pip install yt-dlp), for the fetch steps.
 MEDIA_PYTHON      ?= python3
 # Google place ids need GOOGLE_MAPS_API_KEY in the environment (find-google-ids says how);
@@ -116,7 +121,7 @@ decisions-page: ## Everything waiting on you, on one page: .cache/hub/decisions.
 	python3 $(PLUGIN)/skills/build-hub/scripts/decisions_page.py $(HUB_SCOPE) --make
 
 media-trial: ## Thumbnails, logged out and slow (MEDIA_LIMIT=5 per run; fetch-media says the limits)
-	$(MEDIA_PYTHON) $(PLUGIN)/skills/fetch-media/scripts/fetch_media.py $(SCOPE) --limit $(MEDIA_LIMIT)
+	$(MEDIA_PYTHON) $(PLUGIN)/skills/fetch-media/scripts/fetch_media.py $(SCOPE) --limit $(MEDIA_LIMIT) $(MEDIA_FLAGS)
 
 frames-stuck: ## The reels whose place is not in the caption: .cache/frames/stuck.txt
 	python3 $(PLUGIN)/skills/read-frames/scripts/read_frames.py --stuck $(SCOPE)

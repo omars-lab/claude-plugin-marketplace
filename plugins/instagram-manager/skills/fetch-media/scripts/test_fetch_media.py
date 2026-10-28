@@ -64,14 +64,33 @@ class FakeError(Exception):
     """Stands in for yt_dlp.utils.DownloadError."""
 
 
+class FakeIE:
+    """Stands in for yt-dlp's Instagram extractor: its _download_json is what --one-request wraps."""
+
+    def __init__(self, ydl):
+        self.ydl = ydl
+
+    def _download_json(self, url, code, *_a, **_kw):
+        self.ydl.opts["logger"].debug(f"[Instagram] {code}: Checking post accessibility")
+        self.ydl.asked_ruling = True
+        return {}
+
+
 class FakeYDL:
-    """Answers extract_info from a script: code → info dict, or an exception. Logs like yt-dlp does."""
+    """Answers extract_info from a script: code → info dict, an exception, or a function of whether
+    the "is this post viewable?" check was asked (for --one-request). Logs like yt-dlp does."""
 
     made = []
 
-    def __init__(self, answers):
+    def __init__(self, answers, warn=()):
         self.answers = answers
+        self.warn = warn   # codes that get a watch warning
         self.calls = []
+        self.ie = FakeIE(self)
+
+    def get_info_extractor(self, key):
+        assert key == "Instagram"
+        return self.ie
 
     def factory(self, opts):
         self.opts = opts
@@ -93,9 +112,14 @@ class FakeYDL:
             log.debug("[Instagram] Setting up session")
         else:
             log.debug("[Instagram] Sleeping 6.0 seconds ...")
-        log.debug(f"[Instagram] {code}: Checking post accessibility")
+        self.asked_ruling = False
+        self.ie._download_json(f"https://i.instagram.com/api/v1{fetch_media.RULING}", code)
+        if code in self.warn:
+            log.warning(f"[Instagram] {code}: Instagram API is not granting access")
         log.debug(f"[Instagram] {code}: Downloading webpage")
         a = self.answers.get(code, reel(code))
+        if callable(a):
+            a = a(self.asked_ruling)
         if isinstance(a, Exception):
             raise a
         return a
@@ -152,10 +176,12 @@ class Home(unittest.TestCase):
         self.env.stop()
         self.tmp.cleanup()
 
-    def run_main(self, answers=None, args=("--pilot", "fixture", "--limit", "5")):
-        self.ydl = FakeYDL(answers or {})
+    def run_main(self, answers=None, args=("--pilot", "fixture", "--limit", "5"), warn=(),
+                 version=fetch_media.ONE_REQUEST_YTDLP):
+        self.ydl = FakeYDL(answers or {}, warn)
         with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
-            return fetch_media.main(list(args), ydl_factory=self.ydl.factory, sleep=self.sleeps.append)
+            return fetch_media.main(list(args), ydl_factory=self.ydl.factory, sleep=self.sleeps.append,
+                                    version=version)
 
     def media(self):
         path = os.path.join(self.root, "data", "media.yaml")
@@ -335,9 +361,96 @@ class RunRules(Home):
         self.past((26, 25), (15, 14), (10, 9))   # the first now falls outside the 24 hours
         self.assertEqual(self.run_main(), 0)
 
-    def test_at_most_100_posts(self):
+    def test_at_most_117_posts_or_150_with_one_request(self):
         self.run_main(args=("--pilot", "fixture", "--limit", "500"))
-        self.assertIn("cap=100 ", self.log_lines("run_start")[0])
+        self.assertIn("cap=117 ", self.log_lines("run_start")[0])
+        self.past((5, 4))
+        self.run_main(args=("--pilot", "fixture", "--limit", "500", "--one-request"))
+        self.assertIn("cap=150 ", self.log_lines("run_start")[1])
+
+
+LOGIN_REDIRECT = FakeError("ERROR: [Instagram] X: The webpage request was redirected to the login page. You "
+                           "have exceeded the rate-limit for accessing posts anonymously")
+LIMITED = FakeError("ERROR: [Instagram] X: This content isn't available to everyone: It can't be seen by "
+                    "certain audiences.")
+
+
+def limited_post(asked_ruling):
+    """A post limited by age or audience: only the "is it viewable?" check names it; the page
+    alone redirects to the login page."""
+    return LIMITED if asked_ruling else LOGIN_REDIRECT
+
+
+class OneRequest(Home):
+    """--one-request: the "is this post viewable?" check is skipped, so 1 instagram.com request a post."""
+
+    ONE = ("--pilot", "fixture", "--limit", "5", "--one-request")
+
+    def test_one_request_a_post(self):
+        self.assertEqual(self.run_main(args=self.ONE), 0)
+        self.assertEqual(len(self.media()), 4)
+        self.assertEqual([line for line in self.log_lines("ig_request") if "step=ruling" in line], [])
+        oks = self.log_lines("post_ok")
+        self.assertIn("ig_requests=2", oks[0])   # the run's home page visit, then the post's page
+        self.assertTrue(all("ig_requests=1" in line for line in oks[1:]))
+        start = self.log_lines("run_start")[0]
+        self.assertIn("requests_per_post=1 ", start)
+        self.assertIn("watch=off ", start)
+
+    def test_today_still_asks_the_check(self):
+        self.run_main()
+        self.assertTrue(all("ig_requests=2" in line for line in self.log_lines("post_ok")[1:]))
+        self.assertIn("requests_per_post=2 watch=on ", self.log_lines("run_start")[0])
+
+    def test_watch_warnings_logged_not_acted_on(self):
+        every = ("REELA", "REELB", "PHOTOC", "TAGGED")
+        self.assertEqual(self.run_main(args=self.ONE, warn=every), 0)
+        self.assertEqual(len(self.media()), 4)   # 4 warnings in 4 posts and no stop
+        self.assertEqual([line for line in self.log_lines("sleep") if "reason=watch" in line], [])
+        self.assertEqual(len([line for line in self.log_lines("warn") if "acted=no" in line]), 4)
+        self.assertFalse(os.path.exists(os.path.join(self.root, ".cache", "fetch-media.state.json")))
+
+    def test_limited_post_found_by_asking_again(self):
+        self.assertEqual(self.run_main({"REELB": limited_post}, args=self.ONE), 0)
+        self.assertEqual(self.media()["REELB"], {"error": "login_wall"})
+        self.assertEqual(self.ydl.calls, ["REELA", "REELB", "REELB", "PHOTOC", "TAGGED"])
+        self.assertIn("why=login_redirect", self.log_lines("recheck")[0])
+        self.assertEqual(self.log_lines("rate_limited"), [])
+
+    def test_asking_again_once_a_run(self):
+        rc = self.run_main({"REELA": limited_post, "REELB": limited_post}, args=self.ONE)
+        self.assertEqual(rc, 1)   # the second redirect in the run is a stop, as today
+        self.assertEqual(self.ydl.calls, ["REELA", "REELA", "REELB"])
+        self.assertEqual(self.media(), {"REELA": {"error": "login_wall"}})
+        self.assertIn("kind=login_wall", self.log_lines("rate_limited")[0])
+
+    def test_a_real_block_still_stops_after_asking_again(self):
+        rc = self.run_main({"REELA": LOGIN_REDIRECT}, args=self.ONE)
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.ydl.calls, ["REELA", "REELA"])   # 2 more requests, then the stop
+        self.assertEqual(self.media(), {})
+
+    def test_refuses_another_ytdlp(self):
+        rc = self.run_main(args=self.ONE, version="2099.01.01")
+        self.assertEqual(rc, 6)
+        self.assertEqual(FakeYDL.made, [])
+        self.assertIn("reason=ytdlp_version", self.log_lines("refused")[0])
+        self.assertEqual(self.log_lines("run_start"), [])   # not counted as a run
+        self.assertEqual(self.run_main(version="2099.01.01"), 0)   # today's way works on any yt-dlp
+
+    def test_recheck_asks_a_known_post_and_keeps_its_entry(self):
+        with open(os.path.join(self.root, "data", "media.yaml"), "w") as fh:
+            yaml.safe_dump({"REELB": {"error": "login_wall"}}, fh)
+        codes = os.path.join(self.root, ".cache", "recheck.txt")
+        with open(codes, "w") as fh:
+            fh.write("REELB\n")
+        self.run_main({"REELB": limited_post}, args=self.ONE + ("--recheck", codes))
+        self.assertEqual(self.ydl.calls[:3], ["REELB", "REELB", "REELA"])   # first, and asked again
+        self.assertIn("result=login_wall", self.log_lines("recheck_result")[0])
+        self.assertEqual(self.media()["REELB"], {"error": "login_wall"})
+        self.run_main(args=("--pilot", "fixture", "--limit", "5", "--recheck", codes))
+        self.assertIn("result=ok", self.log_lines("recheck_result")[1])
+        self.assertEqual(self.media()["REELB"], {"error": "login_wall"})   # never written over
 
 
 class Pick(unittest.TestCase):

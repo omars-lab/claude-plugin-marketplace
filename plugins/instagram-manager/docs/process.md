@@ -93,6 +93,7 @@ The newest first. Each has a longer write-up in the data repo's `docs/issues/`.
 
 | Gap | Caught at | Fixed at |
 |---|---|---|
+| Skipping yt-dlp's "is this post viewable?" check (1 request a post) would have left the watch-warning stop firing on every post or never, and lost the words that name a limited post | the checker comparing two research passes, before any code | with `--one-request` the warnings are only logged, and the first login redirect or empty answer in a run is asked again the 2-request way: [may_recheck](../skills/fetch-media/scripts/fetch_media.py#may_recheck), [SkipRuling](../skills/fetch-media/scripts/fetch_media.py#SkipRuling) |
 | A post Instagram "isn't available to everyone" was logged as unknown and nothing was written down, so every run asked for it again | reading a run's first line: the same post as last run | it is written down as needing a login, like an age-limited post: [post_error](../skills/fetch-media/scripts/fetch_media.py#post_error) |
 | A spot whose caption names only a state or country sat among thousands of rows nobody reads | looking by eye at the Google run | the decisions page lists it under "spots to check": [open_review](../skills/build-hub/scripts/decisions_page.py#open_review) |
 | A long Google run printed so much that the tool running it saved Google's names to a file, which the rules forbid | looking by eye at the session folder | the printout stops at [SHOW_CHARS](../skills/find-google-ids/scripts/google_ids.py#SHOW_CHARS) and names the rest |
