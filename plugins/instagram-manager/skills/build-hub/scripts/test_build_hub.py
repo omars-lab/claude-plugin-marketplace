@@ -589,6 +589,12 @@ class Hub(unittest.TestCase):
         self.assertEqual(opts("TOWN1", "pu"), ["Eat & drink"])                  # from the tagger; unknown dropped
         self.assertEqual(opts("VILL1", "pu"), ["Not worked out yet"])           # only a village
         self.assertEqual(opts("PARK1", "tp"), ["Kids", "Travel"])
+        self.assertEqual(opts("TOWN1", "co"), ["Fixture Trips"])
+        self.assertEqual(opts("PARK1", "co"), ["In no collection"])            # saved in no collection
+        co = menus["co"]
+        self.assertEqual(co["o"][0][:2], ["fixture-trips", "Fixture Trips"])
+        self.assertEqual(co["none"], len(co["o"]) - 1)                         # always last
+        self.assertEqual(menus["co"]["n"], "Collection")
         self.assertEqual(opts("NOTAG", "st"), [])
         self.assertEqual(menus["st"]["n"], "State or country")
         self.assertEqual(opts("STATE1", "st"), ["Fixture State"])               # only its parks: their state

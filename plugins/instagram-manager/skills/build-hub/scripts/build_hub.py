@@ -58,7 +58,8 @@ Which pin a post gets
   pinned at its town, or only a town. The codes of the last kind go to the log.
 
 The menus over the map
-  State, national attraction, purpose and topic. Each option says how many posts it holds once the
+  State, national attraction, purpose, topic and collection (the post's Instagram collections, and
+  "In no collection" last). Each option says how many posts it holds once the
   other menus and the search are applied. A national attraction is a park or spot whose name, or
   the name OpenStreetMap found for it, says National Park, Seashore, Monument and so on. A post's
   purpose comes from the kinds of place it names (a café is "Eat & drink", a park "Adventure &
@@ -501,8 +502,9 @@ class Hub:
             NATIONAL.search(place["name"]) or NATIONAL.search(place.get("found") or ""))
 
     def facets(self, post, keep=None):
-        """The menu values a post falls under: its states or countries, national parks, purposes and topics.
-        `keep`, when given, says which of the places it names count (an area page counts its own)."""
+        """The menu values a post falls under: its states or countries, national parks, purposes, topics
+        and Instagram collections. `keep`, when given, says which of the places it names count (an area
+        page counts its own)."""
         named = [self.places[k] for k in self.named(post) if keep is None or keep(k)]
         purposes = [t for t in post["tagged_purposes"] if t in self.purposes]
         for p in named:
@@ -512,7 +514,8 @@ class Hub:
         return {"st": list(dict.fromkeys(a for a in map(self.top_area, named) if a)),
                 "np": [p["key"] for p in named if self.national(p)],
                 "pu": purposes or [NO_PURPOSE[0]],
-                "tp": list(post["topics"])}
+                "tp": list(post["topics"]),
+                "co": list(dict.fromkeys(post["collections"])) or [NO_COLLECTION[0]]}
 
     def top_area(self, place):
         """The widest state or country a place sits in (or is): the state in the US, where places have
@@ -1214,28 +1217,33 @@ $('form').addEventListener('submit',function(e){e.preventDefault();search()});
 
 
 MENUS = (("st", "State or country", "All states and countries"), ("np", "National attraction", "All national parks and sites"),
-         ("pu", "Purpose", "All purposes"), ("tp", "Topic", "All topics"))
+         ("pu", "Purpose", "All purposes"), ("tp", "Topic", "All topics"), ("co", "Collection", "All collections"))
+# A save in no collection: an empty name, which no collection can have.
+NO_COLLECTION = ("", "In no collection")
+# The option that runs last in its menu, whatever its count.
+LAST = {"pu": NO_PURPOSE[0], "co": NO_COLLECTION[0]}
 
 
 def menus(hub, places, posts, keep=None):
     """The menus over the map, each post's options in them, and each place's state and national
     attraction (itself or what it sits in). An option is [id for the link, label, posts under it];
-    options run most posts first, and "not worked out yet" last."""
+    options run most posts first, and "not worked out yet" or "in no collection" last."""
     per = [hub.facets(p, keep) for p in posts]
     label = {"st": lambda v: hub.places[v]["name"], "np": lambda v: hub.places[v]["name"],
              "pu": lambda v: hub.purposes[v]["label"] if v in hub.purposes else NO_PURPOSE[1],
-             "tp": lambda v: hub.topic_label.get(v, v)}
+             "tp": lambda v: hub.topic_label.get(v, v),
+             "co": lambda v: v or NO_COLLECTION[1]}
     out, picks, ats = [], [{} for _ in per], {}
     for key, name, every in MENUS:
         n = {}
         for f in per:
             for v in f[key]:
                 n[v] = n.get(v, 0) + 1
-        values = sorted(n, key=lambda v: (v == NO_PURPOSE[0], -n[v], label[key](v)))
+        values = sorted(n, key=lambda v: (v == LAST.get(key), -n[v], label[key](v)))
         at = {v: i for i, v in enumerate(values)}
         menu = {"k": key, "n": name, "all": every, "o": [[slugify(label[key](v)), label[key](v), n[v]] for v in values]}
-        if NO_PURPOSE[0] in at:
-            menu["none"] = at[NO_PURPOSE[0]]
+        if LAST.get(key) in at:
+            menu["none"] = at[LAST[key]]
         out.append(menu)
         for i, f in enumerate(per):
             picks[i][key] = [at[v] for v in f[key]]
