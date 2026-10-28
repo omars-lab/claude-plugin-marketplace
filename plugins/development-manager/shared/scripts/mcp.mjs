@@ -42,7 +42,7 @@ const TOOLS = {
       open: bool("Open threads only"),
       waiting: str('Only threads waiting on "claude" or on "human"'),
       asking: str('Only open threads waiting on this person\'s answer, like "omar"'),
-      page: str("Only threads on this page path, like /trips/"),
+      page: str("Only threads on this page path, like /trips/; a screen of an app that switches screens by the hash keeps its route, like /#/topic/a"),
       repo: REPO,
     },
     required: [],

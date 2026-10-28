@@ -40,7 +40,7 @@
 //
 // Agents (an agent that reviews pages, say) sign with their own names: a request
 // from this Mac's own page may carry X-Page-Comments-Author naming one of
-// config.json's `agents`. Any other name there (the repo's author, `claude`, a
+// config.json's `agents`. Any other name there (the repo's author, `claude`, `page`, a
 // typo), or the header on a phone or userscript request, is refused with 403,
 // never signed as the repo's author.
 
@@ -52,7 +52,7 @@ import { createReadStream, readFileSync, rmSync, statSync, writeFileSync, mkdirS
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { paths, readConfig } from "./repo.mjs";
-import { addReply, agentsSetting, ANCHOR_STATES, cleanAnchor, cleanBody, cleanName, cleanPage, cleanViewport, createThread, isThreadId, publicThread, readAll, readThread, setAnchorState, setStatus, STATUSES } from "./store.mjs";
+import { addReply, agentsSetting, ANCHOR_AUTHOR, ANCHOR_STATES, cleanAnchor, cleanBody, cleanName, cleanPage, cleanViewport, createThread, isThreadId, publicThread, readAll, readThread, setAnchorState, setStatus, STATUSES } from "./store.mjs";
 import { hasCommentShot, isPng, isShotName, recordShotError, saveShot, shotFileState, shotPath, SHOT_MAX } from "./shots.mjs";
 import { gitStamp } from "./git.mjs";
 import { fileLogger, nowIso } from "./log.mjs";
@@ -292,7 +292,7 @@ export function createHandler(store, { token, log = () => {}, localHosts, mode =
     if (cross || who.via !== "local") return fail("agent_not_local", "X-Page-Comments-Author works only from a page on this Mac, not from the phone or the userscript");
     if (!name) return fail("agent_unknown", "X-Page-Comments-Author needs a short plain name, like one in config.json's agents");
     const low = name.toLowerCase();
-    if (low === "claude" || low === String(s.author).toLowerCase()) return fail("agent_reserved", `"${name}" cannot be signed through X-Page-Comments-Author; it is not an agent`);
+    if (low === "claude" || low === ANCHOR_AUTHOR || low === String(s.author).toLowerCase()) return fail("agent_reserved", `"${name}" cannot be signed through X-Page-Comments-Author; it is not an agent`);
     if (!Object.hasOwn(s.agents, name)) return fail("agent_unknown", `"${name}" is not in config.json's agents, so it cannot sign comments`);
     return { author: name };
   }
@@ -374,7 +374,9 @@ export function createHandler(store, { token, log = () => {}, localHosts, mode =
       if (!ANCHOR_STATES.includes(body.state)) return sendJson(res, 400, { error: "state is lost or found" });
       const t = readThread(store, id);
       if (!!t.lost === (body.state === "lost")) return sendJson(res, 200, { changed: false, thread: publicThread(t) });
-      setAnchorState(store, id, { author, state: body.state });
+      // Signed "page", not by whoever's browser it was: a tab open on the repo
+      // author's Mac (or an agent's headless one) saw it, but nobody wrote it.
+      setAnchorState(store, id, { author: ANCHOR_AUTHOR, state: body.state });
       log("anchor", { thread: id, state: body.state });
     } else {
       if (!STATUSES.includes(body.status)) return sendJson(res, 400, { error: "status is open, resolved or dismissed" });

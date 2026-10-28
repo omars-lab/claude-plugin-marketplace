@@ -87,7 +87,7 @@
     "page": {
       "type": "object",
       "description": "page comments: the page the thread is on",
-      "properties": { "url": { "type": "string" }, "path": { "type": "string" }, "title": { "type": "string" } }
+      "properties": { "url": { "type": "string" }, "path": { "type": "string", "description": "the page key: the address path, plus the hash when it is a screen route (starts with #/ or #!/, with something after the slash). Older files may hold the path alone; readers add the route from url" }, "title": { "type": "string" } }
     },
     "viewport": {
       "type": ["object", "null"],

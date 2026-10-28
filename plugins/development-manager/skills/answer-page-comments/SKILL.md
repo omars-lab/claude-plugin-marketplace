@@ -44,6 +44,7 @@ Below, `pc` means `node "${CLAUDE_PLUGIN_ROOT}/shared/scripts/page-comments.mjs"
 |---|---|---|
 | `pc list --open --waiting claude` | Open threads whose last word is not Claude's | At the start, for the backlog |
 | `pc list --open --asking <name>` | Open threads tagged as asking that person; the list line ends `asking <name>` | To see what is waiting on one person, such as Omar |
+| `pc list --open --page <path>` | Open threads on one page. The page is the address's path, plus the screen route for an app that switches screens by the hash: `/#/topic/a` is its own page, but `/trips/#day-2` is `/trips/` | When working through one page or one screen |
 | `pc show <id>` | The whole thread: page, viewport, where on the page, every message, and the path of each picture | Before acting on any thread |
 | `pc show <id> --json` | The same, with each picture's `path`, `sha`, `role` and `commit` as fields | When a script needs the picture's path |
 | `pc shot <id> --file <png> --commit <sha>` | Attaches an after picture taken against that commit; it shows in the thread on the page | After the fix is committed and checked, before the reply |
@@ -57,7 +58,7 @@ Below, `pc` means `node "${CLAUDE_PLUGIN_ROOT}/shared/scripts/page-comments.mjs"
 | `pc watch --exclude-author claude --replay` | Prints one line per new comment, reply or picture | Start with the Monitor tool when the plugin's own watcher is not running |
 | `pc restamp` | Notes which commit took in the uncommitted work a comment was made on | Never by hand; the post-commit hook that enable installs runs it after each commit |
 | MCP tools `list`, `show`, `stats`, `reply`, `resolve`, `dismiss`, `shot` | The same commands as tools, from the plugin's `page-comments` MCP server (`shared/scripts/mcp.mjs`, started from `.mcp.json`). Each takes an optional `repo`; `reply`, `resolve` and `dismiss` default the author to `claude`. `list` takes `asking` and `reply` takes `ask`, as `--asking` and `--ask` above | When the tools are listed and shell commands are awkward; the rules for each command above still hold |
-| `X-Page-Comments-Author: <name>` header on an API call | Signs that call (a new comment, a reply, a status change, a picture) with an agent's own name instead of the repo's author. It works only from this Mac (not the phone or a userscript), only for a name listed in `config.json` under `"agents": {"<name>": "asks" or "answers"}`, and never for `claude` or the repo's author; anything else gets a 403. An `answers` agent counts as Claude's side for `--waiting` | When an agent, such as a hub reviewer, comments on a page as itself |
+| `X-Page-Comments-Author: <name>` header on an API call | Signs that call (a new comment, a reply, a status change, a picture) with an agent's own name instead of the repo's author. It works only from this Mac (not the phone or a userscript), only for a name listed in `config.json` under `"agents": {"<name>": "asks" or "answers"}`, and never for `claude`, `page` or the repo's author; anything else gets a 403. An `answers` agent counts as Claude's side for `--waiting` | When an agent, such as a hub reviewer, comments on a page as itself |
 | `pc notice` | One line saying how many threads wait on Claude, or nothing | Never by hand; the session-start hook runs it when a session opens in the repo |
 
 ## Task management
@@ -105,6 +106,8 @@ Add one task per thread once the list is loaded, so nothing is skipped.
 4. **Find the source.**
    Search the repo for the `data-comment-id`, the quoted text, or the label.
    Map the page path to the files that build it.
+   A path with `#/` or `#!/` in it is one screen of an app that switches screens by the hash, such as `/#/topic/cup-mark/round/21`: find the route that draws that screen.
+   Open the thread's `page.url` to see it; the server serves the app's one page, and the app shows the screen.
 
 5. **Triage.**
    Read `triage.md` next to this file, now, every time. It is the rubric and it can change without this skill changing.
@@ -150,6 +153,8 @@ Add one task per thread once the list is loaded, so nothing is skipped.
 ## When the element is not found
 
 The page reports "not found" once per page load, and only after the answer has held for a couple of seconds, so a page still loading does not count.
+The found and not-found lines are signed `page`, not by a person or agent: the page noticed it, nobody wrote it. `page` is reserved, so no agent can sign with it.
+On an app that switches screens by the hash, the page only checks the comments made on the screen it is showing, and checks again when the screen changes.
 It means the element's id, its saved place in the page, its label and its quoted text (even loosely, at about 80% alike) all failed.
 Work out why from the comment's picture, its quote and `git log -p` on the page's source since `Made at:` (or `Landed in:`):
 

@@ -22,6 +22,13 @@
 // differs from the one stored with it. A thread whose element is not found goes
 // in the "Not found on this page" list, and the page tells the server, once,
 // when that differs from what the thread file last said.
+//
+// Which page (design section 4, "Which page a comment belongs to"): a comment
+// belongs to the address's path plus its hash when the hash is a route (`#/…`
+// or `#!/…`), so each screen of an app that switches screens by the hash has
+// its own comments. A plain `#section` is not a route and is left out. When the
+// route changes (hashchange, popstate, or a pushState router noticed on the
+// next poll), the page drops the old screen's comments and asks for the new one's.
 (function () {
   "use strict";
   if (window.__pageComments) return;
@@ -31,8 +38,7 @@
   var TOKEN = (me && me.dataset.token) || "";
   var BASE = (me && me.dataset.base) || "/__page-comments/";
   var POLL_MS = 4000;
-  var PATH = location.pathname;
-  var DRAFT_KEY = "page-comments:draft:" + PATH;
+  var PATH = pageKey();
   var SHOT_MS = 8000; // give up on a picture after this long
   var SHOT_PAD = 16; // CSS pixels of background around the element
   var SHOT_MAX_W = 600; // CSS pixels: wider elements are scaled down
@@ -44,6 +50,21 @@
   // for "Comment here", so a stray tap never opens a comment (design section 13).
   var TOUCH = !!(window.matchMedia && matchMedia("(pointer: coarse)").matches);
   var COMMENT_LABEL = TOUCH ? "Comment" : "Comment (C)";
+
+  // The hash is a route when it starts with `#/` or `#!/` and has something after
+  // the slash; `#/` alone is the first screen, the same page as no hash. The same
+  // rule as routeOf in lib/store.mjs (test/hash-routes.test.mjs checks both).
+  function routeOf(hash) {
+    return /^#!?\/./.test(hash || "") ? hash : "";
+  }
+
+  function pageKey() {
+    return location.pathname + routeOf(location.hash);
+  }
+
+  function draftKey(path) {
+    return "page-comments:draft:" + path;
+  }
 
   // ---- State ---------------------------------------------------------------------------
   var threads = [];
@@ -169,8 +190,12 @@
   }
 
   function poll() {
-    return call("GET", "threads?page=" + encodeURIComponent(PATH) + "&since=" + encodeURIComponent(version))
+    // A router that moves with pushState fires no event: catch it here.
+    if (pageKey() !== PATH) return switchPage();
+    var asked = PATH;
+    return call("GET", "threads?page=" + encodeURIComponent(asked) + "&since=" + encodeURIComponent(version))
       .then(function (r) {
+        if (asked !== PATH) return; // the screen changed while this was on its way
         if (r.changed) {
           threads = r.threads || [];
           version = r.version;
@@ -217,13 +242,37 @@
     });
   }
 
+  /**
+   * The route changed (or the path, under a pushState router): this is another
+   * page now. Forget the old screen's comments, what was found and reported
+   * there, and ask for this one's. `version` must go too: it is a fingerprint
+   * of the whole store, so the server would otherwise answer "nothing changed".
+   */
+  function switchPage() {
+    var next = pageKey();
+    if (next === PATH) return Promise.resolve();
+    PATH = next;
+    setMode(false);
+    closePop();
+    threads = [];
+    version = "";
+    hashes = {};
+    settle = {};
+    reported = {};
+    render();
+    return poll().then(restoreDraft);
+  }
+
+  /** Add or replace a thread the server sent back; false when it is not on this page now. */
   function upsert(t) {
+    if (t.page && t.page.path && t.page.path !== PATH) return false;
     var i = threads.findIndex(function (x) {
       return x.id === t.id;
     });
     if (i >= 0) threads[i] = t;
     else threads.push(t);
     version = "";
+    return true;
   }
 
   // ---- Anchors: several ways to find the element again -------------------------------
@@ -917,10 +966,10 @@
     pop.style.top = top + scrollY + "px";
   }
 
-  function saveDraft(anchor, text) {
+  function saveDraft(path, anchor, text) {
     try {
-      if (text) sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ anchor: anchor, text: text }));
-      else sessionStorage.removeItem(DRAFT_KEY);
+      if (text) sessionStorage.setItem(draftKey(path), JSON.stringify({ anchor: anchor, text: text }));
+      else sessionStorage.removeItem(draftKey(path));
     } catch (e) {
       /* private mode: drafts just do not survive a reload */
     }
@@ -929,13 +978,14 @@
   function openComposer(anchor, el, rect, text) {
     closePop();
     composer = { anchor: anchor, el: el };
+    var at = PATH; // the page this comment is on, even if the route changes before Save
     // The picture starts now, from the click, so it shows the page as it was.
     var shot = startShot(el);
     var where = anchor.type === "text" ? "On the text “" + clip(anchor.quote.exact, 60) + "”" : "On <" + anchor.tag + ">" + (anchor.label ? " “" + clip(anchor.label, 50) + "”" : "");
     var ta = h("textarea", { rows: "4", placeholder: "What should change here?", "aria-label": "Comment" });
     ta.value = text || "";
     ta.addEventListener("input", function () {
-      saveDraft(anchor, ta.value);
+      saveDraft(at, anchor, ta.value);
     });
     var save = h("button", { type: "button", class: "primary", text: "Save" });
     var cancel = h("button", { type: "button", text: "Cancel" });
@@ -944,7 +994,7 @@
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save.click();
     });
     cancel.addEventListener("click", function () {
-      saveDraft(anchor, "");
+      saveDraft(at, anchor, "");
       closePop();
     });
     save.addEventListener("click", function () {
@@ -954,7 +1004,7 @@
       hashOf(el)
         .then(function (hash) {
           return call("POST", "threads", {
-            page: { url: location.href, path: PATH, title: document.title },
+            page: { url: location.href, path: at, title: document.title },
             viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio || 1, scrollX: Math.round(scrollX), scrollY: Math.round(scrollY), scheme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light" },
             anchor: anchor,
             bodyHash: hash,
@@ -962,12 +1012,12 @@
           });
         })
         .then(function (r) {
-          saveDraft(anchor, "");
-          upsert(r.thread);
+          saveDraft(at, anchor, "");
+          sendShot(r.thread.id, shot);
+          if (!upsert(r.thread)) return;
           closePop();
           render();
           say("Saved. Claude will see it.");
-          sendShot(r.thread.id, shot);
         })
         .catch(function (e) {
           save.disabled = false;
@@ -1035,7 +1085,7 @@
     function act(path, body) {
       return call("POST", "threads/" + t.id + "/" + path, body)
         .then(function (r) {
-          upsert(r.thread);
+          if (!upsert(r.thread)) return;
           render();
           openThread(r.thread);
         })
@@ -1201,24 +1251,30 @@
   }
 
   // ---- Start ---------------------------------------------------------------------------------
+  /** A comment typed on this page but not saved (a reload, or a trip to another screen). */
+  function restoreDraft() {
+    if (composer) return;
+    try {
+      var d = JSON.parse(sessionStorage.getItem(draftKey(PATH)) || "null");
+      if (d && d.anchor && d.text) {
+        var el = locate(d.anchor) || document.body;
+        openComposer(d.anchor, el, null, d.text);
+        say("Your unsaved comment is back.");
+      }
+    } catch (e) {
+      /* no draft */
+    }
+  }
+
   function start() {
     (document.documentElement || document.body).appendChild(host);
     if (!pageLoaded)
       addEventListener("load", function () {
         pageLoaded = true;
       });
-    poll().then(function () {
-      try {
-        var d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "null");
-        if (d && d.anchor && d.text) {
-          var el = locate(d.anchor) || document.body;
-          openComposer(d.anchor, el, null, d.text);
-          say("Your unsaved comment is back.");
-        }
-      } catch (e) {
-        /* no draft */
-      }
-    });
+    poll().then(restoreDraft);
+    addEventListener("hashchange", switchPage);
+    addEventListener("popstate", switchPage);
     setInterval(function () {
       if (!document.hidden) poll();
     }, POLL_MS);

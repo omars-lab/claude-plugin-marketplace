@@ -455,7 +455,7 @@ test("agents: a listed agent signs every write on a local request; no header is 
     assert.equal(closed.json.thread.asking, null, "a closed thread asks no one");
     const t = readAll(store)[0];
     assert.equal(t.history[0].author, "page-owner");
-    assert.equal(t.lostBy, "page-checker");
+    assert.equal(t.lostBy, "page", "a found/not found line is the page's, whoever's tab sent it");
 
     const listed = await call(s.port, { path: "/__page-comments/threads", headers: { "x-page-comments-token": token, "x-page-comments-author": "page-checker" } });
     assert.equal(listed.json.author, "page-checker", "the page shows 'you' for the agent");

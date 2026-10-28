@@ -15,6 +15,8 @@ export const BODY_MAX = 10000;
 export const STATUSES = ["open", "resolved", "dismissed"];
 export const ANCHOR_STATES = ["lost", "found"];
 export const AGENT_ROLES = ["asks", "answers"];
+/** Who signs the page's found / not found lines: the page itself, not a person. */
+export const ANCHOR_AUTHOR = "page";
 const ID_RE = /^t_[0-9a-f]{6,32}$/;
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
 
@@ -29,8 +31,8 @@ export function cleanName(v) {
  * The `agents` block of config.json, cleaned: { <name>: "asks" | "answers" }.
  * An agent signs its own comments (the server's X-Page-Comments-Author header).
  * `asks` comments like a person; `answers` is on Claude's side, so a thread whose
- * last word is theirs waits on a person. `claude` and the repo's own author are
- * never agents, so neither can be borrowed through the header.
+ * last word is theirs waits on a person. `claude`, `page` (ANCHOR_AUTHOR) and the
+ * repo's own author are never agents, so none can be borrowed through the header.
  */
 export function agentsSetting(config) {
   const out = {};
@@ -41,7 +43,7 @@ export function agentsSetting(config) {
     const name = cleanName(k);
     if (!name || !AGENT_ROLES.includes(role)) continue;
     const low = name.toLowerCase();
-    if (low === "claude" || (author && low === author)) continue;
+    if (low === "claude" || low === ANCHOR_AUTHOR || (author && low === author)) continue;
     out[name] = role;
   }
   return out;
@@ -121,7 +123,9 @@ export function foldThread(id, events, { agents = {} } = {}) {
     status: "open",
     anchor: open.anchor || { type: "element" },
     rev: open.rev || {},
-    page: open.page || {},
+    // `path` is the page the comment belongs to, its hash route included
+    // (pagePathOf): older files kept only "/" for every screen of a hash app.
+    page: open.page && typeof open.page === "object" ? { ...open.page, path: pagePathOf(open.page) } : {},
     viewport: open.viewport || null,
     messages: [{ author: str(open.author), ts: str(open.ts), body: str(open.body) }],
     history: [],
@@ -329,9 +333,50 @@ export function cleanAnchor(a) {
   return out;
 }
 
+// ---- Which page a comment belongs to ----------------------------------------------
+//
+// A comment's page is `page.path`: the address's path, plus the part after `#`
+// when that part is a route. Apps that switch screens by the hash (`/#/topic/a`,
+// `/#!/inbox`) show one screen per route, so each route is its own page. A plain
+// `#section` is a place to jump to on one page, so it is left out, and a page's
+// comments are not split by where it was scrolled to.
+//
+// The rule: the hash is a route when it starts with `#/` or `#!/` and has
+// something after the slash. `#/` alone is the app's first screen, the same page
+// as no hash at all. client/comments.js has the same rule (it is a plain script,
+// not a module, so it keeps its own copy); test/hash-routes.test.mjs runs both
+// on the same cases.
+
+/** The route part of a hash (`#/topic/a`), or "" when the hash is not a route. */
+export function routeOf(hash) {
+  const h = typeof hash === "string" ? hash : "";
+  return /^#!?\/./.test(h) ? h : "";
+}
+
+/**
+ * The page a comment belongs to, from what the page sent: { url, path }.
+ * A path that already carries a route is kept. A path without one takes the
+ * route from the url, so a comment saved before routes counted (path "/", url
+ * "…/#/topic/a") is read as on "/#/topic/a" without rewriting its file.
+ */
+export function pagePathOf(page) {
+  const p = page && typeof page === "object" ? page : {};
+  const path = typeof p.path === "string" && p.path ? p.path : "/";
+  if (path.includes("#") || typeof p.url !== "string" || !p.url.includes("#")) return path;
+  let hash = "";
+  try {
+    hash = new URL(p.url).hash;
+  } catch {
+    return path;
+  }
+  return path + routeOf(hash);
+}
+
 export function cleanPage(p) {
   p = p && typeof p === "object" ? p : {};
-  return { url: cut(p.url, 4000) || "", path: cut(p.path, 2000) || "/", title: cut(p.title, 300) || "" };
+  const url = cut(p.url, 4000) || "";
+  const path = cut(p.path, 2000) || "/";
+  return { url, path: pagePathOf({ url, path }), title: cut(p.title, 300) || "" };
 }
 
 export function cleanViewport(v) {

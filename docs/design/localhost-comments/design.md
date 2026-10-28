@@ -227,13 +227,34 @@ Later lines are events:
 | `edit` | message index, author, ts, body | The page |
 | `status` | author, ts, status (`open`, `resolved`, `dismissed`), optional note | The page or Claude's command line |
 | `shot` | a pointer (`icloud` or `local`), `role` (`comment` or `after`), `sha`; or `error` with a reason | The server, after the comment saves (section 14) |
-| `anchor` | `lost` or `found`, reported by the page on load | The page |
+| `anchor` | `lost` or `found`, reported by the page on load; always signed `page`, never a person or agent | The page |
 
 A thread's current state comes from reading its lines in order. "Waiting on Claude" is worked out,
 not stored: the thread is open and its last message is not from `claude`.
 
 The URL keeps its query string, because many pages show different content per query. The viewport
 lets Claude open the page at the same size and scroll to see what Omar saw.
+
+**Which page a comment belongs to.** `page.path` is the key: the page asks the server for the
+comments whose `page.path` matches its own, and `list --page`, `show`, `stats` and the watcher's
+`page=` all use the same value. It is the address's path, plus the part after `#` when that part
+is a screen of a hash-routed app:
+
+- The hash counts as a screen only when it starts with `#/` or `#!/` and has something after the
+  slash: `/#/topic/cup-mark/round/21` is its own page, and a query inside it (`#/x?tab=2`) is kept.
+- `#/` or `#!/` alone is the app's first screen, the same page as no hash.
+- Any other hash (`#section-2`, `#`) is a jump to a place on one page, so it is dropped:
+  `/trips/#day-2` is `/trips/`.
+- The query string is not part of the key; it stays in `page.url`.
+
+The page re-checks which comments belong when the screen changes (`hashchange`, `popstate`, and a
+check on each poll for apps that change the address without either), with no reload.
+Comments saved before development-manager 1.8.0 were all filed under the path alone, so every
+screen of a hash app landed on `/`. Their files are not rewritten: when a stored `page.path` has
+no `#` but the stored `page.url` has a screen route, the route is added as the thread is read. The
+server applies the same rule to what a page sends, so an older page script still files comments
+under their screen. There is no per-repo switch for this rule yet; one would need a data attribute
+on the script tag so the page could read it. See `docs/issues/page-comments-hash-routes.md`.
 
 ## 5. Where comments live, and how git tracks them
 

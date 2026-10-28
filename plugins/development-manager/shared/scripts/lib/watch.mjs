@@ -11,8 +11,11 @@
 // up later, prints the same two lines.
 //
 // Not found: when the page reports that it can no longer find an open
-// comment's element, `ev=anchor_lost` is printed once. The page reports only
-// when the answer differs from what the thread file already says.
+// comment's element, `ev=anchor_lost` is printed once, with `author=page`. The
+// page reports only when the answer differs from what the thread file already says.
+//
+// `page=` is the page a comment belongs to: the path, plus the screen route of
+// an app that switches screens by the hash (`/#/topic/a`); see store.mjs.
 //
 // A reply that asks someone (`reply --ask omar`) prints `ask=omar` on its line.
 
