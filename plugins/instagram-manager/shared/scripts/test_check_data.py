@@ -53,6 +53,15 @@ class SharedSpots(unittest.TestCase):
         pins = {"A1": [spot("Example Grill", found=spaced, overture="row-1")],
                 "B2": [spot("Example Grill", found=spaced, overture="row-1", checked="agent")]}
         self.assertEqual(shared_spots(pins), [])
+        # an accent in the row's name, and one name twice where the row's name is not the caption's
+        accented = "Exámple Coffee, 1, Example Street"
+        pins = {"A1": [spot("Example Coffee", found=accented, overture="row-1")],
+                "B2": [spot("Example", found=accented, overture="row-1", checked="agent")]}
+        self.assertEqual(shared_spots(pins), [])
+        other = "Sample Kitchen, 1, Example Street"
+        pins = {"A1": [spot("Example Atx", found=other, overture="row-1")],
+                "B2": [spot("Example Atx", found=other, overture="row-1", checked="agent")]}
+        self.assertEqual(shared_spots(pins), [])
 
     def test_shops_in_one_building_pass_when_marked(self):
         pins = {"A1": [spot("Example Grill", building="Example Food Hall")],

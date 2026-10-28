@@ -31,6 +31,7 @@ Prints one ev= line per problem and exits 1 if there is any.
 import json
 import os
 import sys
+import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import yaml  # noqa: E402
@@ -56,7 +57,9 @@ def load(rel):
 
 
 def _words(name):
-    return "".join(ch for ch in (name or "").lower() if ch.isalnum())
+    # accents dropped, so a caption's "Mazur" is the row's "Mazúr"
+    return "".join(ch for ch in unicodedata.normalize("NFKD", (name or "").lower())
+                   if ch.isalnum() and not unicodedata.combining(ch))
 
 
 def shared_spots(pins):
@@ -72,7 +75,7 @@ def shared_spots(pins):
     for where, spots in groups.items():
         if len({s.get("building") for s in spots}) == 1 and spots[0].get("building"):
             continue
-        names = {}
+        names, owns = {}, {}
         for s in spots:
             found_name = (s.get("found") or "").split(",")[0]
             found, own = _words(found_name), _words(s.get("name"))
@@ -83,7 +86,9 @@ def shared_spots(pins):
             # ("Ex Ample Grill & Bar" for Example Grill); a different shop given a food hall's row still does not.
             ruled = s.get("overture") and (s.get("checked") != "agent" or found.startswith(own)
                                            or _words(found_name.split(" ")[0]) == _words((s.get("name") or "").split(" ")[0]))
-            names.setdefault(found if found and (ruled or own.startswith(found)) else own, s.get("name"))
+            # the same name twice on one point (once by the rules, once by an agent) is one place
+            key = owns.setdefault(own, found if found and (ruled or own.startswith(found)) else own)
+            names.setdefault(key, s.get("name"))
         if len(names) > 1 and tuple(sorted(names.values())) not in seen:
             seen.add(tuple(sorted(names.values())))
             out.append((where, sorted(names.values())))
