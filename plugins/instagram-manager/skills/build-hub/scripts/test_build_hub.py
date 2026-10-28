@@ -440,6 +440,20 @@ class Hub(unittest.TestCase):
         self.assertNotIn("searches for it by name", deli)
         self.assertIn('"Example Deli","","placed","eat",', deli)   # its small map draws the at-the-town ring
 
+    def test_a_google_id_found_at_our_pin_says_so(self):
+        self.write("data/pins-review.yaml", {
+            "TOWN1": [{"said": "Example Deli", "near": "Fixture Town", "why": "not found near Fixture Town",
+                       "asked": "Example Deli"}]})
+        self.write("data/google.yaml", {
+            "spot:example-deli@fixture-town": {"query": "Example Deli, Fixture Town", "verdict": "match",
+                                               "id": "ChIJexampleDeli", "by": "auto", "near_pin": True,
+                                               "date": "2026-01-02"}})
+        self.build("--pilot", "fixture")
+        deli = self.page("places/example-deli.html")
+        self.assertIn("query_place_id=ChIJexampleDeli", deli)
+        self.assertIn("the only one by that name right at our pin", deli)
+        self.assertNotIn("check it", deli)
+
     def test_a_chain_keeps_its_search_link_for_every_branch(self):
         self.write("data/pins-review.yaml", {
             "TOWN1": [{"said": "Example Deli", "near": "Fixture Town", "why": "not found near Fixture Town",

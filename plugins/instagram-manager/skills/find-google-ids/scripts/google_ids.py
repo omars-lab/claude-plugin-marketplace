@@ -83,7 +83,8 @@ NEAR_WORKERS = 4   # --near-pin searches at once; far under Google's per-minute 
 HEADER = ("# Google place ids for the spots in data/pins.yaml and data/pins-review.yaml, written by\n"
           "# instagram-manager's find-google-ids. Only the id is kept, with our own search text, the date\n"
           "# and who chose it (auto: the only candidate carrying every word of our name, and at_address when\n"
-          "# it is also at the caption's house number; claude: Claude,\n"
+          "# it is also at the caption's house number, and near_pin when Google, asked for ids only in a\n"
+          "# box 300 m across round our own pin, gave back exactly one of its candidates; claude: Claude,\n"
           "# from Google's list on screen; hand: a person). verdict: chain means any branch will do, so\n"
           "# its link searches the name in its area and no id is kept.\n"
           "# Nothing else of Google's goes in this file: no name, address or position.\n")

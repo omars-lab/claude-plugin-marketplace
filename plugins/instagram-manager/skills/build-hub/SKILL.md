@@ -15,8 +15,9 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   - links to the post's page, to Instagram, and to the pin's place in Google Maps: Google's own
     page for that place when **find-google-ids** kept its id (`data/google.yaml`), otherwise a
     Google search for its name and area. A place page says who chose the id when it was not a
-    person: "matched by its name: check it" (`by: auto`) or "picked by Claude from Google's list:
-    check it" (`by: claude`). A spot marked a chain (`verdict: chain`) keeps the search, which shows
+    person: "matched by its name: check it" (`by: auto`), "its name and the caption's address both
+    match" (`at_address`), "the only one by that name right at our pin" (`near_pin`) or "picked by
+    Claude from Google's list: check it" (`by: claude`). A spot marked a chain (`verdict: chain`) keeps the search, which shows
     every branch, and its page says "a chain: every branch near <area>, any will do".
 
   Above the map is a row of menus: **State or country**, **National attraction**, **Purpose** and
