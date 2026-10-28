@@ -61,20 +61,22 @@ Never logged in
 
 Pacing (docs/research/instagram-fetch-pacing/consolidated.md in the data repo)
   - yt-dlp waits 6 s before each instagram.com request (sleep_interval_requests).
-  - The script waits a fresh random 25-55 s between posts, and 3-6 minutes every 25 posts.
+  - The script waits a fresh random 0-120 s between posts (Omar's pace, 2026-10-25), and a run
+    stops taking posts after 1 hour.
   - Hourly brake: before a post, if the last hour already holds 150 instagram.com requests, wait.
   - Stop at once, and write a cooldown, on a login wall ("redirected to the login page" or
     "rate-limit"), an HTTP 429, an Instagram 401/403, two empty answers in a row, or too many
     "watch" warnings. The log line is ev=rate_limited. A stop is never retried inside a run.
   - Cooldown: 24 h after the first stop, 48 h after a second in a row, 3 days after a third. The
     first run after a cooldown fetches one test post only. Once that works, the next 2 days are
-    gentle: half the posts a run, twice the pauses between posts, and at most 2 runs started in
-    any 24 hours. A stop in those days counts
+    gentle: half the posts and half the time a run, twice the pauses between posts, and at most
+    3 runs started in any 24 hours. A stop in those days counts
     as the next stop in a row; 2 clean days clear the cooldown file, so a later stop is a first.
-  - Runs: at most 117 posts each (150 with --one-request), at least 2 hours from the end of one
-    to the start of the next,
-    and at most 3 started in any 24 hours. The script reads its own log for the past runs and
-    refuses to start early (ev=refused reason=run_gap or day_cap, with the time it may start).
+  - Runs: 1 hour on, 1 hour off, from 9am to 9pm local: at most 117 posts each (150 with
+    --one-request), at least 1 hour from the end of one to the start of the next, at most 6
+    started in any 24 hours, none outside 9am-9pm. The script reads its own log for the past runs
+    and refuses to start early (ev=refused reason=run_gap, day_cap or night, with the time it may
+    start). media_day.py runs the bursts one after another for a whole day.
 
 Every call that can hang has a timeout: the network (30 s per read, and a hard limit on each post
 and each image), and sips.
@@ -111,9 +113,8 @@ DEFAULT_MEDIA_DIR = os.path.join("~", "Library", "Mobile Documents", "com~apple~
                                  "data", "instagram")
 
 SLEEP_REQUESTS = 6           # s before each instagram.com request (yt-dlp waits)
-GAP = (25, 55)               # s between posts
-LONG_EVERY = 25              # posts
-LONG_PAUSE = (180, 360)      # s
+GAP = (0, 120)               # s between posts (Omar's pace, 2026-10-25)
+BURST = dt.timedelta(hours=1)   # a run stops taking new posts after this long
 HOUR_BRAKE = 150             # instagram.com requests in the last 60 minutes
 EMPTY_WAIT = 300             # s after one empty answer
 WATCH_PAUSE = (60, 120)      # s after a watch warning
@@ -135,9 +136,10 @@ GENTLE = dt.timedelta(days=2)   # after a test post works: half the posts a run,
 MAX_POSTS = {2: 117, 1: 150}
 ONE_REQUEST_YTDLP = "2026.08.19"   # the yt-dlp whose code --one-request was read against
 RULING = "/web/get_ruling_for_content/"   # yt-dlp's "is this post viewable?" address
-RUN_GAP = dt.timedelta(hours=2)   # from the end of one run to the start of the next
-RUNS_PER_DAY = 3             # runs started in any 24 hours
-GENTLE_RUNS_PER_DAY = 2      # the same, in the gentle days (3 a day brought a second stop)
+RUN_GAP = dt.timedelta(hours=1)   # from the end of one run to the start of the next
+RUNS_PER_DAY = 6             # runs started in any 24 hours
+GENTLE_RUNS_PER_DAY = 3      # the same, in the gentle days
+DAY_HOURS = (9, 21)          # local hours runs may happen in: none while Omar sleeps
 
 # Options that would log in or send cookies. Any of them set means the script will not start.
 LOGIN_KEYS = ("cookiefile", "cookiesfrombrowser", "username", "password", "usenetrc", "netrc_location",
@@ -321,8 +323,23 @@ def past_runs(path):
     return runs
 
 
+def next_morning(t):
+    """The next start of the waking hours after t, in UTC."""
+    local = t.astimezone()
+    start = local.replace(hour=DAY_HOURS[0], minute=0, second=0, microsecond=0)
+    if local >= start:
+        start += dt.timedelta(days=1)
+    return start.astimezone(dt.timezone.utc)
+
+
+def awake(t):
+    return DAY_HOURS[0] <= t.astimezone().hour < DAY_HOURS[1]
+
+
 def too_soon(runs, t, per_day=RUNS_PER_DAY):
     """(reason, when it may start) if a run may not start at t, else None."""
+    if not awake(t):
+        return "night", next_morning(t)
     if runs:
         start, end = runs[-1]
         last = end or start
@@ -890,7 +907,7 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
         media = load_yaml(MEDIA)
         limit = 1 if test_only else min(args.limit, MAX_POSTS[per_post] // (2 if gentle else 1))
         slow = 2 if gentle else 1
-        gap, long_pause = (GAP[0] * slow, GAP[1] * slow), (LONG_PAUSE[0] * slow, LONG_PAUSE[1] * slow)
+        gap, burst = (GAP[0] * slow, GAP[1] * slow), BURST / slow
         again = []
         if args.video:
             todo, done = pick_codes(saves, read_codes(args.video), media, limit)
@@ -958,10 +975,10 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
                     run.pause("gap", *gap)
             for n, s in enumerate(todo, 1):
                 if n > 1:
-                    if (n - 1) % LONG_EVERY == 0:
-                        run.pause("long_pause", *long_pause)
-                    else:
-                        run.pause("gap", *gap)
+                    run.pause("gap", *gap)
+                    if time.time() - run.started >= burst.total_seconds() or not awake(now()):
+                        log("burst_over", posts=n - 1, minutes=round((time.time() - run.started) / 60, 1))
+                        break
                 run.brake()
                 if n % 10 == 0:
                     log("budget", requests_last_hour=run.last_hour())

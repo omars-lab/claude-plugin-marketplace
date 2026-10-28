@@ -1,6 +1,6 @@
 ---
 name: fetch-media
-description: Fetch one small JPEG thumbnail per saved Instagram post, or with --video a listed reel's smallest clear video and its full-size cover, logged out and slowly (a 6 s wait before each instagram.com request, 25-55 s between posts, a stop at the first 429 or login wall), into the iCloud media folder, with data/media.yaml pointing at each one. Use when the hub needs thumbnails, when someone asks to download images, covers or videos for their saves, or to get the videos read-frames reads.
+description: Fetch one small JPEG thumbnail per saved Instagram post, or with --video a listed reel's smallest clear video and its full-size cover, logged out and slowly (a 6 s wait before each instagram.com request, 0-120 s between posts, 1-hour runs with an hour off between, only 9am-9pm, a stop at the first 429 or login wall), into the iCloud media folder, with data/media.yaml pointing at each one. Use when the hub needs thumbnails, when someone asks to download images, covers or videos for their saves, or to get the videos read-frames reads.
 ---
 
 # Fetch Media
@@ -15,12 +15,12 @@ EXAMPLE123: {thumb: EXAMPLE123/thumb.jpg, kind: reel, fetched: 2026-01-01}
 EXAMPLE456: {error: private}
 ```
 
-**How long it takes.** A run of 117 posts takes about 2 hours, and the rules below allow 3 runs a
-day, so about 350 thumbnails a day: a library of 1,000 saves takes about three days of runs, 8,000
-about three weeks. With `--one-request` (below) a post takes about 52 s instead of 61 s (the gap
-between posts stays), but a run may hold 150 posts (about 2 h 10 min), then 200 (about 3 h), so a
-day of runs fetches 450-600 thumbnails instead of 350. The map works without thumbnails; they only
-add pictures.
+**How long it takes.** The pace is 1 hour of fetching, then 1 hour off, from 9am to 9pm local:
+6 runs a day. With `--one-request` (below) a post takes about 66 s (a 0-120 s gap plus the 6 s
+wait), so about 55 posts an hour and about 330 thumbnails a day: a library of 1,000 saves takes
+about three days, 8,000 about three and a half weeks. `media_day.py` (`make media-day` in the data
+repo) starts the runs one after another, so a day needs no one watching. The map works without
+thumbnails; they only add pictures.
 
 A post already in `media.yaml`, fetched or not, is skipped next time. The errors are `private`
 (only followers can see it), `login_wall` (a post limited by age or audience, "isn't available to
@@ -121,18 +121,20 @@ other tools' defaults. The run's log is what shows the real limit.
   set (`ev=refused reason=login_option`).
 - **One yt-dlp object per run.** It sets up its session once, not once per post.
 - **A 6 s wait before each instagram.com request.** yt-dlp does this itself (`sleep_interval_requests`).
-- **A random 25-55 s pause between posts**, picked fresh each time, and **3-6 minutes every 25
-  posts**.
+- **A random 0-120 s pause between posts**, picked fresh each time.
+- **A run lasts at most 1 hour.** After that it takes no new post (`ev=burst_over`).
 - **An hourly brake.** Before each post, if the last hour already holds 150 instagram.com
-  requests, it waits until it doesn't. At the pace above a run makes about 130 an hour, so this
-  rarely fires.
+  requests, it waits until it doesn't. At the pace above a run makes about 55 an hour, so this
+  should never fire.
 - **One run at a time.** A lock file (`.cache/fetch-media.lock`). A second run refuses
   (`ev=refused reason=locked`).
-- **At most 117 posts a run (150 with `--one-request`), 3 runs a day, 2 hours apart.** The trial
-  is 5 posts. The script holds to this itself: a `--limit` above the cap is cut to it
-  (`MAX_POSTS`), and it reads its own log for past runs,
-  refusing to start less than 2 hours after the last one ended (`ev=refused reason=run_gap`) or a
-  4th time in 24 hours (`reason=day_cap`). The refusal line says when it may start (`may_start=`).
+- **1 hour on, 1 hour off, 9am to 9pm local: at most 6 runs a day** (and at most 117 posts a run,
+  150 with `--one-request`). The user set this pace on 2026-10-25. The trial is 5 posts. The script
+  holds to this itself: a `--limit` above the cap is cut to it (`MAX_POSTS`), and it reads its own
+  log for past runs, refusing to start less than 1 hour after the last one ended
+  (`ev=refused reason=run_gap`), a 7th time in 24 hours (`reason=day_cap`), or outside 9am-9pm
+  (`reason=night`; a run going at 9pm stops taking posts). The refusal line says when it may start
+  (`may_start=`). In the 2 gentle days after a pause: half the hour, twice the gaps, 3 runs a day.
 - **The Mac's home connection.** No VPN, proxy or cloud machine: those get blocked sooner.
 
 ### When it stops
@@ -204,10 +206,11 @@ Every line goes to `$INSTAGRAM_HOME/.cache/logs/fetch-media.log`: a UTC time, `p
 `key=value` pairs. Each network call has a line before and after it. Read it with `grep ev=`:
 
 ```
-ev=run_start ytdlp=... sleep_req=6 gap_min=25 gap_max=55 cap=5 todo=5 skipped=0 requests_per_post=2 watch=on recheck=0
+ev=run_start ytdlp=... sleep_req=6 gap_min=0 gap_max=120 cap=5 todo=5 skipped=0 requests_per_post=2 watch=on recheck=0
 ev=post_start n=1 shortcode=EXAMPLE123
 ev=ig_request step=session|ruling|page shortcode=EXAMPLE123
-ev=sleep reason=sleep_requests|gap|long_pause|watch|empty|budget secs=...
+ev=sleep reason=sleep_requests|gap|watch|empty|budget secs=...
+ev=burst_over posts=... minutes=...                    (the run's hour is up, or it is 9pm)
 ev=image_start / ev=image_done bytes=...
 ev=post_ok shortcode=EXAMPLE123 kind=reel bytes=... secs=... ig_requests=2   (1 with --one-request)
 ev=recheck shortcode=... why=login_redirect|empty          (--one-request: asked again the 2-request way)
@@ -253,4 +256,6 @@ A timed-out post is left for a later run.
 | `scripts/fetch_media.py --one-request` | The same, at 1 instagram.com request a post: the "is this post viewable?" check is skipped, watch warnings are only logged, and the first login redirect or empty answer in a run is asked again the 2-request way | After a clean 20-post trial (above); runs of up to 150 posts | `python3 scripts/fetch_media.py --all --limit 150 --one-request` |
 | `scripts/fetch_media.py --recheck <codes.txt>` | Asks for the listed posts first even if `media.yaml` has them, and writes nothing for them | The 20-post trial, to see what a known limited post answers now | `python3 scripts/fetch_media.py --all --limit 20 --one-request --recheck <codes.txt>` |
 | `scripts/fetch_media.py --video` | Fetches a listed reel's video (smallest at least 540 px) and full-size cover, same pacing | Reels whose place is only on screen, for **read-frames** | `python3 scripts/fetch_media.py --video <codes.txt> --limit 100` |
+| `scripts/media_day.py` | Starts `fetch_media.py` run after run with the same arguments: waits out each refusal (the hour off, the night, a pause after a stop) until its `may_start`, and ends on a stop or once nothing is left. Logs `ev=day_*` lines, with a `day_wait` every 10 minutes | Once the trials are done: fetching every day at the set pace with no one watching | `python3 scripts/media_day.py --all --limit 150 --one-request` (in the data repo: `make media-day PILOT= MEDIA_ONE=1`) |
+| `scripts/test_media_day.py` | Offline tests for `media_day.py` with a stand-in fetcher: waiting after a refusal, ending on a stop, waiting out a pause | After any change to `media_day.py` | `python3 scripts/test_media_day.py` |
 | `scripts/test_fetch_media.py` | Offline tests with a fake yt-dlp: skipping done posts, the stop on a 429, the cookie refusal, the lock, the `media.yaml` shape, the video pick, the stop after 3 failed video downloads, and `--one-request` (1 request a post, warnings only logged, asking again once a run, the yt-dlp version check, `--recheck`) | After any change to the fetcher | `python3 scripts/test_fetch_media.py` |

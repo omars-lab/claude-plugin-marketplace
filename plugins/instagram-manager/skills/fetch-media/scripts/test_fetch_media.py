@@ -164,7 +164,8 @@ class Home(unittest.TestCase):
                         mock.patch.object(fetch_media, "to_jpeg", fake_jpeg),
                         # most tests run several times in a row; RunRules checks the real rules
                         mock.patch.object(fetch_media, "RUN_GAP", dt.timedelta(0)),
-                        mock.patch.object(fetch_media, "RUNS_PER_DAY", 99)]
+                        mock.patch.object(fetch_media, "RUNS_PER_DAY", 99),
+                        mock.patch.object(fetch_media, "DAY_HOURS", (0, 24))]   # tests run at any hour
         for p in self.patches:
             p.start()
         self.sleeps = []
@@ -220,7 +221,7 @@ class Fetch(Home):
         self.run_main()
         gaps = [line for line in self.log_lines("sleep") if "reason=gap" in line]
         self.assertEqual(len(gaps), 3)   # 4 posts, a gap before each but the first
-        self.assertTrue(all(25 <= s <= 55 for s in self.sleeps))
+        self.assertTrue(all(0 <= s <= 120 for s in self.sleeps))
 
     def test_skip_if_done(self):
         self.run_main(args=("--pilot", "fixture", "--limit", "2"))
@@ -294,7 +295,7 @@ class Stops(Home):
         with open(path, "w") as fh:
             json.dump(gentle, fh)
         self.assertEqual(self.run_main(args=("--pilot", "fixture", "--limit", "500")), 0)
-        self.assertTrue(all(50 <= s <= 110 for s in self.sleeps))   # twice the 25-55 s pauses
+        self.assertTrue(all(0 <= s <= 240 for s in self.sleeps))   # twice the 0-120 s pauses
         self.assertIn("cap=58", self.log_lines("run_start")[0])     # half of 117
         os.remove(os.path.join(self.root, "data", "media.yaml"))   # so the posts are asked for again
         self.run_main({"PHOTOC": FakeError("HTTP Error 429: Too Many Requests")},
@@ -307,7 +308,7 @@ class Stops(Home):
         self.sleeps.clear()
         self.assertEqual(self.run_main(), 0)
         self.assertFalse(os.path.exists(path))
-        self.assertTrue(all(25 <= s <= 55 for s in self.sleeps))
+        self.assertTrue(all(0 <= s <= 120 for s in self.sleeps))
 
     def test_two_empty_answers_stop(self):
         empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
@@ -403,7 +404,7 @@ class Refusals(Home):
 
 
 class RunRules(Home):
-    """At most 100 posts a run, 2 hours from one run's end to the next start, 3 runs a day."""
+    """At most 117 posts a run, 1 hour from one run's end to the next start, 6 runs a day, 9am-9pm."""
 
     def setUp(self):
         super().setUp()
@@ -423,35 +424,52 @@ class RunRules(Home):
         with open(os.path.join(self.root, ".cache", "logs", "fetch-media.log"), "w") as fh:
             fh.writelines(lines)
 
-    def test_two_hours_from_the_last_run_ending(self):
-        self.past((3, 1))   # started 3 hours ago, ended 1 hour ago
+    def test_one_hour_from_the_last_run_ending(self):
+        self.past((2, 0.5))   # started 2 hours ago, ended half an hour ago
         self.assertEqual(self.run_main(), 5)
         self.assertEqual(FakeYDL.made, [])
         self.assertIn("reason=run_gap", self.log_lines("refused")[0])
-        self.past((4, 2.1))
+        self.past((3, 1.1))
         self.assertEqual(self.run_main(), 0)
 
-    def test_three_runs_a_day(self):
+    def test_six_runs_a_day(self):
+        self.past((20, 19), (18, 17), (16, 15), (14, 13), (12, 11), (10, 9))
+        self.assertEqual(self.run_main(), 5)
+        refused = self.log_lines("refused")[0]
+        self.assertIn("reason=day_cap", refused)
+        may = fetch_media.now() + dt.timedelta(hours=4)   # 24 hours after the first of the six
+        self.assertIn(f"may_start={fetch_media.stamp(may)[:13]}", refused)
+        self.past((26, 25), (18, 17), (16, 15), (14, 13), (12, 11), (10, 9))   # the first falls outside
+        self.assertEqual(self.run_main(), 0)
+
+    def test_three_runs_a_day_in_the_gentle_days(self):
+        fetch_media.write_json(fetch_media.cooldown_path(), {
+            "gentle_until": fetch_media.stamp(fetch_media.now() + dt.timedelta(days=1)), "level": 1})
         self.past((20, 19), (15, 14), (10, 9))
         self.assertEqual(self.run_main(), 5)
         refused = self.log_lines("refused")[0]
         self.assertIn("reason=day_cap", refused)
         may = fetch_media.now() + dt.timedelta(hours=4)   # 24 hours after the first of the three
         self.assertIn(f"may_start={fetch_media.stamp(may)[:13]}", refused)
-        self.past((26, 25), (15, 14), (10, 9))   # the first now falls outside the 24 hours
+        self.past((26, 25), (15, 14), (10, 9))
         self.assertEqual(self.run_main(), 0)
 
-    def test_two_runs_a_day_in_the_gentle_days(self):
-        fetch_media.write_json(fetch_media.cooldown_path(), {
-            "gentle_until": fetch_media.stamp(fetch_media.now() + dt.timedelta(days=1)), "level": 1})
-        self.past((20, 19), (10, 9))
-        self.assertEqual(self.run_main(), 5)
-        refused = self.log_lines("refused")[0]
-        self.assertIn("reason=day_cap", refused)
-        may = fetch_media.now() + dt.timedelta(hours=4)   # 24 hours after the first of the two
-        self.assertIn(f"may_start={fetch_media.stamp(may)[:13]}", refused)
-        self.past((26, 25), (10, 9))
-        self.assertEqual(self.run_main(), 0)
+    def test_a_run_stops_taking_posts_after_its_hour(self):
+        with mock.patch.object(fetch_media, "BURST", dt.timedelta(0)):
+            self.assertEqual(self.run_main(args=("--pilot", "fixture", "--limit", "5")), 0)
+        self.assertEqual(len(self.ydl.calls), 1)
+        self.assertIn("posts=1 ", self.log_lines("burst_over")[0])
+
+    def test_no_runs_at_night(self):
+        with mock.patch.object(fetch_media, "DAY_HOURS", (9, 21)):
+            local = fetch_media.now().astimezone()
+            night = local.replace(hour=23, minute=0, second=0, microsecond=0)
+            reason, may = fetch_media.too_soon([], night)
+            self.assertEqual(reason, "night")
+            self.assertEqual(may.astimezone(), (night + dt.timedelta(hours=10)).astimezone())   # 9am next day
+            early = local.replace(hour=6, minute=0, second=0, microsecond=0)
+            self.assertEqual(fetch_media.too_soon([], early)[1].astimezone().hour, 9)
+            self.assertIsNone(fetch_media.too_soon([], local.replace(hour=12)))
 
     def test_at_most_117_posts_or_150_with_one_request(self):
         self.run_main(args=("--pilot", "fixture", "--limit", "500"))
