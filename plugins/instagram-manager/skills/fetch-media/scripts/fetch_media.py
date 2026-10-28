@@ -1009,7 +1009,7 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
                         write_json(cooldown_path(), {"gentle_until": gentle_until, "level": level,
                                                      "kind": cd.get("kind"), "at": cd.get("at")})
             write_yaml(MEDIA, media)
-        log("run_end", ok=run.ok, bad=run.bad, skipped=done, stopped=stopped, reason=reason or "none",
+        log("run_end", ok=run.ok, bad=run.bad, todo=len(todo), skipped=done, stopped=stopped, reason=reason or "none",
             ig_requests=watcher.total, minutes=round((time.time() - run.started) / 60, 1))
         print(f"fetched {run.ok}, bad {run.bad}, already done {done}" + (f"; stopped: {reason}" if reason else ""))
         return 1 if stopped == "yes" else 0

@@ -7,7 +7,7 @@ the pauses after a stop); this only waits until it may start again, and starts i
 
   - A refused start (exit 5: run_gap, day_cap or night) waits until its may_start.
   - A pause after a stop (exit 4) waits until the pause ends; fetch_media.py then tries one test post.
-  - It ends on a stop (exit 1), on any other exit, or once a run finds nothing left to fetch.
+  - It ends on a stop (exit 1), on any other exit, or once a run finds nothing left to fetch (todo=0).
 
 Logs go to the same .cache/logs/fetch-media.log, as ev=day_* lines; a day_wait line every 10
 minutes while it waits. Usage:
@@ -91,7 +91,8 @@ def main(argv=None):
             return rc
         runs += 1
         end = next((ln for ln in reversed(lines) if "ev=run_end" in ln), "")
-        if field(end, "ok") == "0" and field(end, "bad") == "0":
+        # todo, not ok and bad: a run whose every post timed out also ends with ok=0 bad=0
+        if field(end, "todo") == "0":
             log("day_end", reason="nothing_left", runs=runs)
             return 0
 
