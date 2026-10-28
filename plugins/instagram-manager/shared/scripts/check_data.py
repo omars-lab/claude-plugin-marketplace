@@ -16,7 +16,8 @@ Checks, each one only when its file exists:
   data/pins.yaml           no two different spots on one map point (the same OpenStreetMap thing, or
                            within about 10 m): a spot given another's pin by mistake. Names that
                            start with the name OpenStreetMap found there are one place ("Example
-                           Roastery USA" at Example Roastery). Shops that really share a building (a
+                           Roastery USA" at Example Roastery), and so are spots given one Overture
+                           row. Shops that really share a building (a
                            food hall, a mall) each get the same `building:` value and pass.
   data/items/<topic>.yaml  code → {topics[], items[{topic, kind, name, quote}]} from split-saves: codes
                            in the export, each item's topic known and not travel, a name and a kind,
@@ -75,7 +76,11 @@ def shared_spots(pins):
         for s in spots:
             found = _words((s.get("found") or "").split(",")[0])
             own = _words(s.get("name"))
-            names.setdefault(found if found and own.startswith(found) else own, s.get("name"))
+            # The Overture step's rules give a row only to a spot whose handle is in the row's links or whose
+            # name is the row's, so a spot on a row is the place the row names, however its caption names
+            # it. A row an agent picked from looser names is still checked by the spot's own name.
+            ruled = s.get("overture") and s.get("checked") != "agent"
+            names.setdefault(found if found and (ruled or own.startswith(found)) else own, s.get("name"))
         if len(names) > 1 and tuple(sorted(names.values())) not in seen:
             seen.add(tuple(sorted(names.values())))
             out.append((where, sorted(names.values())))

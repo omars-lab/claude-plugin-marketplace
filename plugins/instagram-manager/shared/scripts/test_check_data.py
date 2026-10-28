@@ -29,6 +29,21 @@ class SharedSpots(unittest.TestCase):
         pins = {"A1": [spot("Example Roastery USA", found=found)], "B2": [spot("Example Roastery Uptown", found=found)]}
         self.assertEqual(shared_spots(pins), [])
 
+    def test_names_given_one_overture_row_are_one_place(self):
+        found = "Example Wings Uptown, 1, Example Street"
+        pins = {"A1": [spot("Example Wings", found=found, overture="row-1"),
+                       spot("Example Wings Uptown", found=found, overture="row-1")],
+                "B2": [spot("Sample Noodles", overture="row-2")]}
+        self.assertEqual([names for _, names in shared_spots(pins)], [["Example Wings", "Sample Noodles"]])
+        # and the place an OpenStreetMap pin found there, under a caption's spelling
+        pins = {"A1": [spot("Example Wings", found=found, overture="row-1")],
+                "B2": [spot("Example Wings Uptown", osm="node/1", found=found)]}
+        self.assertEqual(shared_spots(pins), [])
+        # a row an agent picked is checked by name, as before
+        pins = {"A1": [spot("Example Grill", overture="row-1", checked="agent")],
+                "B2": [spot("Sample Noodles", overture="row-1", checked="agent")]}
+        self.assertEqual(len(shared_spots(pins)), 1)
+
     def test_shops_in_one_building_pass_when_marked(self):
         pins = {"A1": [spot("Example Grill", building="Example Food Hall")],
                 "B2": [spot("Sample Noodles", building="Example Food Hall")]}
