@@ -283,7 +283,31 @@ class Stops(Home):
             json.dump(cd, fh)
         self.assertEqual(self.run_main(), 0)
         self.assertEqual(self.ydl.calls, ["REELA"])   # one test post only
-        self.assertFalse(os.path.exists(path))         # it worked, so the cooldown is cleared
+        with open(path) as fh:
+            cd = json.load(fh)
+        self.assertNotIn("until", cd)                  # it worked, so the cooldown is over
+        self.assertEqual(cd["level"], 1)               # but a stop in the next 2 days is a second in a row
+
+    def test_two_gentle_days_after_a_test_post(self):
+        path = os.path.join(self.root, ".cache", "fetch-media.cooldown.json")
+        gentle = {"gentle_until": fetch_media.stamp(fetch_media.now() + dt.timedelta(days=1)), "level": 1}
+        with open(path, "w") as fh:
+            json.dump(gentle, fh)
+        self.assertEqual(self.run_main(args=("--pilot", "fixture", "--limit", "500")), 0)
+        self.assertTrue(all(50 <= s <= 110 for s in self.sleeps))   # twice the 25-55 s pauses
+        self.assertIn("cap=58", self.log_lines("run_start")[0])     # half of 117
+        os.remove(os.path.join(self.root, "data", "media.yaml"))   # so the posts are asked for again
+        self.run_main({"PHOTOC": FakeError("HTTP Error 429: Too Many Requests")},
+                      args=("--pilot", "fixture", "--limit", "500"))
+        with open(path) as fh:
+            self.assertEqual(json.load(fh)["level"], 2)              # the next stop in a row
+        gentle["gentle_until"] = "2000-01-01T00:00:00Z"              # 2 clean days have passed
+        with open(path, "w") as fh:
+            json.dump(gentle, fh)
+        self.sleeps.clear()
+        self.assertEqual(self.run_main(), 0)
+        self.assertFalse(os.path.exists(path))
+        self.assertTrue(all(25 <= s <= 55 for s in self.sleeps))
 
     def test_two_empty_answers_stop(self):
         empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")

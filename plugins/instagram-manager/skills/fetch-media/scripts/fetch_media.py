@@ -67,7 +67,9 @@ Pacing (docs/research/instagram-fetch-pacing/consolidated.md in the data repo)
     "rate-limit"), an HTTP 429, an Instagram 401/403, two empty answers in a row, or too many
     "watch" warnings. The log line is ev=rate_limited. A stop is never retried inside a run.
   - Cooldown: 24 h after the first stop, 48 h after a second in a row, 3 days after a third. The
-    first run after a cooldown fetches one test post only.
+    first run after a cooldown fetches one test post only. Once that works, the next 2 days are
+    gentle: half the posts a run and twice the pauses between posts. A stop in those days counts
+    as the next stop in a row; 2 clean days clear the cooldown file, so a later stop is a first.
   - Runs: at most 117 posts each (150 with --one-request), at least 2 hours from the end of one
     to the start of the next,
     and at most 3 started in any 24 hours. The script reads its own log for the past runs and
@@ -126,6 +128,7 @@ VIDEO_DEADLINE = 300         # s for one video download
 VIDEO_FAIL_STOP = 3          # file downloads failing in a row
 PROBE_TIMEOUT = 30
 COOLDOWN_HOURS = {1: 24, 2: 48, 3: 72}
+GENTLE = dt.timedelta(days=2)   # after a test post works: half the posts a run, twice the pauses
 # Posts in one run, by instagram.com requests a post. 2: today's way, 117 after the first 7 days with
 # no stop. 1: --one-request, 150 for its first runs, then 200 (the daily limit is counted in requests).
 MAX_POSTS = {2: 117, 1: 150}
@@ -201,6 +204,10 @@ def now():
 
 def stamp(t):
     return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_stamp(s):
+    return dt.datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
 
 
 # ---------------------------------------------------------------- which saves
@@ -810,13 +817,17 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
             log("refused", reason="locked", other_pid=other)
             return 3
         cd = read_json(cooldown_path(), None)
-        test_only = False
-        if cd:
-            until = dt.datetime.strptime(cd["until"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
-            if now() < until:
+        test_only = gentle = False
+        if cd and cd.get("until"):
+            if now() < parse_stamp(cd["until"]):
                 log("refused", reason="cooldown", until=cd["until"], level=cd.get("level"))
                 return 4
             test_only = True   # the first run after a cooldown tries one post
+        elif cd and cd.get("gentle_until"):
+            gentle = now() < parse_stamp(cd["gentle_until"])
+            if not gentle:
+                os.remove(cooldown_path())   # 2 clean days: a later stop is a first stop again
+                cd = None
         early = too_soon(past_runs(log_path), now())
         if early:
             log("refused", reason=early[0], may_start=stamp(early[1]))
@@ -830,7 +841,9 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
                 sys.exit(f"no pilot {args.pilot!r} in config/collections.yaml (have: {', '.join(pilots) or 'none'})")
             pilot = pilots[args.pilot]
         media = load_yaml(MEDIA)
-        limit = 1 if test_only else min(args.limit, MAX_POSTS[per_post])
+        limit = 1 if test_only else min(args.limit, MAX_POSTS[per_post] // (2 if gentle else 1))
+        slow = 2 if gentle else 1
+        gap, long_pause = (GAP[0] * slow, GAP[1] * slow), (LONG_PAUSE[0] * slow, LONG_PAUSE[1] * slow)
         again = []
         if args.video:
             todo, done = pick_codes(saves, read_codes(args.video), media, limit)
@@ -854,10 +867,11 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
             print(f"fetch_media: --one-request was checked against yt-dlp {ONE_REQUEST_YTDLP}, not {version}",
                   file=sys.stderr)
             return 6
-        log("run_start", ytdlp=version, impersonate="no", sleep_req=SLEEP_REQUESTS, gap_min=GAP[0], gap_max=GAP[1],
+        log("run_start", ytdlp=version, impersonate="no", sleep_req=SLEEP_REQUESTS, gap_min=gap[0], gap_max=gap[1],
             cap=limit, scope=args.pilot or ("video" if args.video else "all"), todo=len(todo), skipped=done, test_only=test_only,
             requests_per_post=per_post, watch="off" if args.one_request else "on", recheck=len(again),
-            cooldown_until=(cd or {}).get("until") or "none", media_dir=media_dir())
+            cooldown_until=(cd or {}).get("until") or "none", gentle_until=(cd or {}).get("gentle_until") or "none",
+            media_dir=media_dir())
 
         stopped, reason = "no", ""
         with ydl_factory(opts) as ydl:
@@ -867,9 +881,9 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
             for n, s in enumerate(todo, 1):
                 if n > 1:
                     if (n - 1) % LONG_EVERY == 0:
-                        run.pause("long_pause", *LONG_PAUSE)
+                        run.pause("long_pause", *long_pause)
                     else:
-                        run.pause("gap", *GAP)
+                        run.pause("gap", *gap)
                 run.brake()
                 if n % 10 == 0:
                     log("budget", requests_last_hour=run.last_hour())
@@ -890,8 +904,10 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
                     media[s["code"]] = entry
                     write_yaml(MEDIA, media)   # after every post, so a stop loses nothing
                     if test_only and ("video" in entry if args.video else "thumb" in entry):
-                        log("recovered", shortcode=s["code"])
-                        os.remove(cooldown_path())
+                        gentle_until = stamp(now() + GENTLE)
+                        log("recovered", shortcode=s["code"], gentle_until=gentle_until)
+                        write_json(cooldown_path(), {"gentle_until": gentle_until, "level": cd.get("level"),
+                                                     "kind": cd.get("kind"), "at": cd.get("at")})
             write_yaml(MEDIA, media)
         log("run_end", ok=run.ok, bad=run.bad, skipped=done, stopped=stopped, reason=reason or "none",
             ig_requests=watcher.total, minutes=round((time.time() - run.started) / 60, 1))

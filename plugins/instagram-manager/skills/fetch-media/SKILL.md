@@ -161,7 +161,10 @@ more, single warnings stop pausing and the stop level becomes N + 3 in 10 posts.
 
 The cooldown is 24 hours after a first stop, 48 hours after a second in a row, and 3 days after a
 third. Until it ends, every run refuses (`ev=refused reason=cooldown`). The first run after it
-fetches **one test post**. If that works, the cooldown file is removed (`ev=recovered`).
+fetches **one test post**. If that works (`ev=recovered`), the next 2 days are gentle: each run
+takes half the posts and pauses twice as long between them (`gentle_until=` on `ev=run_start`). A
+stop in those 2 days counts as the next stop in a row. After 2 clean days the cooldown file is
+removed, so a later stop is a first stop again.
 
 Before trying again, open one of the failed posts in a private browser window on the same Wi-Fi.
 If it asks you to log in, the connection is walled: wait. If it shows fine but yt-dlp still fails
