@@ -51,6 +51,13 @@ fourth is the one that denies a tool call:
   `core.bare true` or a repo `core.hooksPath` that is absolute, `~`, `$VAR` or `../`
   (`--global`/`--system` hooks folders are allowed). **On with no conf**; opt out with
   `git-settings.conf` `ENABLED=0`.
+- **branch-sprawl-guard** (PreToolUse on Bash): before a `git worktree add` once the repo has
+  `MAX_WORKTREES` (5) working trees. If some are finished (nothing unsaved, pushed, no other
+  session in them) it denies with the commands to reuse or remove them, so the session cleans up
+  by itself. If every tree holds live work it **nudges**: the add goes ahead and the session is
+  told what would land each tree (ahead/behind the default branch, work that is only on disk).
+  `DECISION=ask|deny` brings back the prompt or a hard stop. **On with no conf**; opt out with
+  `branch-sprawl.conf` `ENABLED=0`.
 
 The plugin has two skills:
 
@@ -110,6 +117,7 @@ guardrail-manager (this plugin)
     ├── policy-review-reminder.py   — Stop
     ├── block-git-ours-theirs.py    — PreToolUse (Bash), deny
     ├── git-settings-guard.py       — SessionStart + PreToolUse (Bash), report + deny
+    ├── branch-sprawl-guard.py      — PreToolUse (Bash), deny when trees are finished, else nudge
     ├── _conf.py      — KEY=value and INI loaders, repo conf with global fallback
     ├── _sessions.py  — other_active_sessions(): scan ~/.claude/projects/<slug>/
     └── _selftest.py  — subprocess harness used by every --selftest

@@ -18,9 +18,12 @@ session the exact commands: reuse one (`git -C <path> switch -c <new>
 origin/main`) or `git worktree remove` it, then run the command again. That is
 work the session can do itself, so nobody is asked to click "yes".
 
-Only when every tree is live does it fall back to **ask** (or `deny` with
-`DECISION=deny`): then the person really is the one to say whether another
-front is worth it.
+When every tree is live it **nudges** by default: the command goes ahead
+(through the normal permission check) and the session is told which trees
+are piling up and what would land each one (commits ahead of / behind the
+default branch, changes that exist only on disk). Asking a person every time
+blocked parallel work without consolidating anything, so `DECISION=ask` (or
+`deny`) is now opt-in.
 
 It fires on `git worktree add` only. A new branch inside an existing tree
 (`switch -c`, `checkout -b`, `branch <new>`) adds no tree — and starting the
@@ -31,14 +34,15 @@ those pass untouched, as do list / remove / prune / move.
 session or a subagent), other than the caller's own, changed in the last
 IN_USE_MINUTES and naming the tree's path. The caller's own transcript is
 skipped, because the hook's own message names those paths and would otherwise
-mark every listed tree as in use from then on.
+mark every listed tree as in use from then on. Lines carrying this hook's own
+`[branch-sprawl]` message are skipped in every transcript, for the same reason.
 
 Config `.claude/hooks/branch-sprawl.conf` (repo wins, else global
 `~/.claude/hooks/branch-sprawl.conf`); absent means ON with the defaults:
 
     ENABLED=1            # 0 opts the repo (or the machine) out
     MAX_WORKTREES=5      # look once this many working trees already exist
-    DECISION=ask         # when every tree is live: ask, or deny
+    DECISION=nudge       # when every tree is live: nudge (go ahead), ask, or deny
     IN_USE_MINUTES=120   # how recent another session's transcript must be
 
 What it cannot catch: worktrees made outside a Bash `git` call (an agent's
@@ -60,7 +64,9 @@ import _conf  # noqa: E402
 
 CONF_NAME = "branch-sprawl.conf"
 DEFAULT_MAX = 5
-DEFAULT_DECISION = "ask"
+DEFAULT_DECISION = "nudge"
+DECISIONS = ("nudge", "ask", "deny")
+OWN_MARK = "[branch-sprawl]"
 DEFAULT_IN_USE_MIN = 120
 TAIL_BYTES = 64 * 1024
 
@@ -154,9 +160,11 @@ def _tail(path: Path) -> str:
         with path.open("rb") as fh:
             if size > TAIL_BYTES:
                 fh.seek(size - TAIL_BYTES)
-            return fh.read().decode("utf-8", errors="ignore")
+            text = fh.read().decode("utf-8", errors="ignore")
     except OSError:
         return ""
+    # This hook's own message names every tree; it is not a sign anyone works there.
+    return "\n".join(l for l in text.splitlines() if OWN_MARK not in l)
 
 
 def in_use_paths(paths: list[str], transcripts: list[Path]) -> set[str]:
@@ -172,6 +180,31 @@ def in_use_paths(paths: list[str], transcripts: list[Path]) -> set[str]:
         if any(pat.search(t) for t in tails):
             used.add(path)
     return used
+
+
+def default_branch(root: Path) -> str:
+    """origin's default branch (`origin/main` when origin/HEAD isn't set)."""
+    proc = git("-C", str(root), "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    return proc.stdout.strip() if proc and proc.returncode == 0 and proc.stdout.strip() else "origin/main"
+
+
+def landing_hint(t: dict, base: str) -> str:
+    """What would land a live tree: how far it is from `base`, and the next step."""
+    proc = git("-C", t["path"], "rev-list", "--left-right", "--count", f"{base}...HEAD")
+    if proc is None or proc.returncode != 0:
+        return ""
+    try:
+        behind, ahead = (int(n) for n in proc.stdout.split())
+    except ValueError:
+        return ""
+    where = f"{ahead} ahead, {behind} behind {base}"
+    if t["why"] == "has unsaved changes" and ahead == 0:
+        return f"{where}; its work is only on disk: commit it to a branch and open a PR, or drop it"
+    if t["why"] == "has commits not pushed anywhere":
+        return f"{where}; push the branch and open a PR"
+    if ahead == 0 and t["why"] != "has unsaved changes":
+        return f"{where}; nothing of its own, so it can be reused once its session is done"
+    return where
 
 
 def classify(trees: list[dict], used: set[str]) -> None:
@@ -200,12 +233,12 @@ def classify(trees: list[dict], used: set[str]) -> None:
         t["why"] = "in use by another session" if t["path"] in used else ""
 
 
-def message(trees: list[dict], budget: int, hits: list[str]) -> tuple[bool, str]:
+def message(trees: list[dict], budget: int, hits: list[str], decision: str, base: str) -> tuple[bool, str]:
     """(any finished, the text for the session)."""
     done = [t for t in trees if not t["why"]]
     live = [t for t in trees if t["why"]]
-    head = f"[branch-sprawl] {len(trees)} working trees already (budget {budget}); not adding another: {' ; '.join(hits)}\n"
     if done:
+        head = f"{OWN_MARK} {len(trees)} working trees already (budget {budget}); not adding another: {' ; '.join(hits)}\n"
         lines = [head, "These hold nothing unsaved, their work is pushed, and no other session is using them:"]
         for t in done:
             if t["prunable"]:
@@ -218,9 +251,19 @@ def message(trees: list[dict], budget: int, hits: list[str]) -> tuple[bool, str]
             "then run your command again. Skip any your own session is still working in.",
         ]
         return True, "\n".join(lines)
+    if decision == "nudge":
+        head = f"{OWN_MARK} {len(trees) + 1} working trees with this new one (budget {budget}); going ahead: {' ; '.join(hits)}\n"
+    else:
+        head = f"{OWN_MARK} {len(trees)} working trees already (budget {budget}); not adding another: {' ; '.join(hits)}\n"
     lines = [head, "Every tree holds live work:"]
-    lines += [f"  - {t['path']} ({t['branch']}): {t['why']}" for t in live]
-    lines.append("Land one back on main first, or go ahead if this new front is worth it.")
+    for t in live:
+        hint = "" if t["primary"] else landing_hint(t, base)
+        lines.append(f"  - {t['path']} ({t['branch']}): {t['why']}" + (f" ({hint})" if hint else ""))
+    if decision == "nudge":
+        lines.append("Consolidate as you go: land one of these, and when this new tree's PR merges, "
+                     "start the next branch in it (git switch -c <next> origin/main) or remove it.")
+    else:
+        lines.append("Land one back on main first, or go ahead if this new front is worth it.")
     return False, "\n".join(lines)
 
 
@@ -251,12 +294,16 @@ def main() -> int:
     window = conf_int(conf, "IN_USE_MINUTES", DEFAULT_IN_USE_MIN)
     others = recent_transcripts(payload.get("transcript_path") or "", window, time.time())
     classify(trees, in_use_paths([t["path"] for t in trees if not t["primary"]], others))
-    any_done, reason = message(trees, budget, hits)
     decision = ((conf or {}).get("DECISION", DEFAULT_DECISION) or DEFAULT_DECISION).strip().lower()
-    if decision not in ("ask", "deny"):
+    if decision not in DECISIONS:
         decision = DEFAULT_DECISION
+    any_done, reason = message(trees, budget, hits, decision, default_branch(_conf.project_root()))
     if any_done:
         decision = "deny"  # the session can clean up itself; don't make a person click through
+    if decision == "nudge":
+        # No permissionDecision: the command still goes through the normal permission check.
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": reason}}))
+        return 0
     print(json.dumps({"hookSpecificOutput": {
         "hookEventName": "PreToolUse",
         "permissionDecision": decision,
@@ -337,11 +384,21 @@ def selftest() -> int:
         except ValueError:
             return ""
 
-    # Detection: with a budget of 0 and only the primary tree (live), creates ask.
+    def context(out: str) -> str:
+        try:
+            return json.loads(out).get("hookSpecificOutput", {}).get("additionalContext", "")
+        except ValueError:
+            return ""
+
+    def nudged(out: str) -> bool:
+        """Went ahead (no permission decision) with the live-work note for the session."""
+        return decision(out) == "" and "live work" in context(out) and "going ahead" in context(out)
+
+    # Detection: with a budget of 0 and only the primary tree (live), creates nudge.
     conf.write_text("MAX_WORKTREES=0\n", encoding="utf-8")
     for cmd in CREATE:
         rc, out, err = t.run(payload(cmd), env, cwd=str(repo))
-        t.check(rc == 0 and decision(out) == "ask" and "live work" in out, f"asks: {cmd}", out + err)
+        t.check(rc == 0 and nudged(out), f"nudges: {cmd}", out + err)
     for cmd in QUIET:
         t.assert_quiet(t.run(payload(cmd), env, cwd=str(repo)), f"quiet: {cmd}")
     t.assert_quiet(t.run(payload("git worktree add ../w", tool="Write"), env, cwd=str(repo)),
@@ -360,11 +417,23 @@ def selftest() -> int:
     rc, out, _ = t.run(payload("git worktree add ../new"), env, cwd=str(repo))
     t.check(decision(out) == "deny", "own transcript naming a tree is ignored", out)
 
-    # Another session's recent transcript naming it → live → ask.
+    # Another session's transcript naming it only inside this hook's own message → still finished.
     other = projects / "other-session.jsonl"
+    other.write_text(json.dumps({"text": f"{OWN_MARK} Every tree holds live work: {done} (x)"}) + "\n",
+                     encoding="utf-8")
+    rc, out, _ = t.run(payload("git worktree add ../new"), env, cwd=str(repo))
+    t.check(decision(out) == "deny", "the hook's own message in another transcript isn't a mention", out)
+
+    # Another session's recent transcript naming it → live → nudge.
     other.write_text(json.dumps({"cwd": str(done)}) + "\n", encoding="utf-8")
     rc, out, _ = t.run(payload("git worktree add ../new"), env, cwd=str(repo))
-    t.check(decision(out) == "ask" and "another session" in out, "other session in it → ask", out)
+    t.check(nudged(out) and "another session" in out, "other session in it → nudge", out)
+    t.check("can be reused once its session is done" in out, "a tree with nothing of its own says it can be reused", out)
+    # DECISION=ask brings back the prompt for the all-live case.
+    conf.write_text("MAX_WORKTREES=2\nDECISION=ask\n", encoding="utf-8")
+    rc, out, _ = t.run(payload("git worktree add ../new"), env, cwd=str(repo))
+    t.check(decision(out) == "ask" and "not adding another" in out, "DECISION=ask asks when all live", out)
+    conf.write_text("MAX_WORKTREES=2\n", encoding="utf-8")
     # …but a prefix match (`wt-done` vs `wt-done-2`) is not a mention.
     other.write_text(json.dumps({"cwd": str(done) + "-2"}) + "\n", encoding="utf-8")
     rc, out, _ = t.run(payload("git worktree add ../new"), env, cwd=str(repo))
@@ -382,19 +451,20 @@ def selftest() -> int:
     sub.mkdir(parents=True)
     (sub / "agent-1.jsonl").write_text(json.dumps({"cwd": str(done)}) + "\n", encoding="utf-8")
     rc, out, _ = t.run(payload("git worktree add ../new"), env, cwd=str(repo))
-    t.check(decision(out) == "ask", "subagent in it → ask", out)
+    t.check(nudged(out), "subagent in it → nudge", out)
     shutil.rmtree(projects / "parent-sid")
 
-    # Unsaved changes → live.
+    # Unsaved changes → live, and the note says the work is only on disk.
     (done / "x.txt").write_text("x", encoding="utf-8")
     rc, out, _ = t.run(payload("git worktree add ../new"), env, cwd=str(repo))
-    t.check(decision(out) == "ask" and "unsaved" in out, "unsaved changes → ask", out)
+    t.check(nudged(out) and "unsaved" in out and "only on disk" in out, "unsaved changes → nudge", out)
     (done / "x.txt").unlink()
 
-    # Commits not pushed → live.
+    # Commits not pushed → live, and the note says to push.
     run_git("commit", "-q", "--allow-empty", "-m", "local", cwd=done)
     rc, out, _ = t.run(payload("git worktree add ../new"), env, cwd=str(repo))
-    t.check(decision(out) == "ask" and "not pushed" in out, "unpushed commits → ask", out)
+    t.check(nudged(out) and "not pushed" in out and "1 ahead" in out and "push the branch" in out,
+            "unpushed commits → nudge", out)
     run_git("push", "-q", "origin", "done", cwd=done)
     rc, out, _ = t.run(payload("git worktree add ../new"), env, cwd=str(repo))
     t.check(decision(out) == "deny", "pushed to its own branch → finished", out)
@@ -402,7 +472,7 @@ def selftest() -> int:
     # Locked → live.
     run_git("worktree", "lock", str(done))
     rc, out, _ = t.run(payload("git worktree add ../new"), env, cwd=str(repo))
-    t.check(decision(out) == "ask" and "locked" in out, "locked → ask", out)
+    t.check(nudged(out) and "locked" in out, "locked → nudge", out)
 
     # DECISION=deny makes the all-live case a hard stop too.
     conf.write_text("MAX_WORKTREES=2\nDECISION=deny\n", encoding="utf-8")
