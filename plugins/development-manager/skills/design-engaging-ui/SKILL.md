@@ -20,6 +20,7 @@ without it when it isn't:
 | `frontend-design` (Anthropic's official plugin) | Picking a direction that is the page's own, not the templated default |
 | `ui-ux-pro-max` / its `design-system` skill | Palettes, font pairings, token layers, component specs |
 | `visual-site-review` | The screenshot critique, and checking a fix by looking again |
+| `development-manager:find-design-references` | The two or three sites and repos the page should look like, and a side-by-side of ours against them. Not optional: without references, "looks right" is a guess |
 | `development-manager:improve-hub` | The catalog side of a hub (ports, privacy, site map) and the score before and after |
 | `development-manager:answer-page-comments` | Omar's notes on the page, which come before anything here |
 
@@ -40,9 +41,10 @@ without it when it isn't:
 
 ```javascript
 TaskCreate({ subject: "Write the brief", description: "Who uses it, its one job, the first action, three words for how it should feel", activeForm: "Writing the brief" })
+TaskCreate({ subject: "Find references", description: "find-design-references: picks from both researchers, shots, our pages beside them", activeForm: "Finding references" })
 TaskCreate({ subject: "Render directions", description: "Two or three directions on the real page, side by side; Omar picks", activeForm: "Rendering directions" })
 TaskCreate({ subject: "Write the design system", description: "Tokens in one file plus docs/design.md", activeForm: "Writing the design system" })
-TaskCreate({ subject: "Build and check", description: "Structure, states, feedback, motion; screenshot at 1280 and 390, fix, repeat", activeForm: "Building and checking" })
+TaskCreate({ subject: "Build and check", description: "Every page at 1280 and 390 beside its references; fix, repeat", activeForm: "Building and checking" })
 TaskCreate({ subject: "Score and report", description: "PRINCIPLES.md before and after; what changed; what is left", activeForm: "Scoring and reporting" })
 ```
 
@@ -63,7 +65,10 @@ TaskCreate({ subject: "Score and report", description: "PRINCIPLES.md before and
 
    Take these from the repo's README, the page itself and the chat. Ask Omar only for what none of
    those answer.
-3. **Render two or three directions.**
+3. **Find references.** Run `find-design-references` with the brief. It ends with two or three
+   picks (sites and GitHub repos) in the shared list, and a sheet for each of our pages that lays it
+   beside its references. Read the sheets before going on: they show how far the page is from the bar.
+4. **Render two or three directions.**
    - Each direction is a real restyle of the page's main view, not a mockup: a palette, a type
      pairing, a spacing and corner style, and one signature detail.
    - Build each behind a query flag or a class on `<body>`, so all of them run on the same data.
@@ -71,35 +76,39 @@ TaskCreate({ subject: "Score and report", description: "PRINCIPLES.md before and
    - Then ask with `AskUserQuestion`: one option per direction, the recommended one first. Each
      option says what it does well, what it gives up, and what it commits the page to (for
      example "dark only" or "needs a web font").
+   - Each direction says which reference it leans on, and what it borrows from it.
    - Use `frontend-design` to push each direction away from the default. Use `ui-ux-pro-max` for
      palettes and pairings when it is installed.
-4. **Write the design system** for the chosen direction.
+5. **Write the design system** for the chosen direction.
    - Put the tokens in one file the whole page reads, such as CSS variables in `:root` or a theme
      file: colours (neutrals plus one accent, with light and dark values), the type scale, the
      spacing scale, radius, shadow and motion timing.
    - Write the same values in `docs/design.md` under the brief, with one line on why each was
      picked.
    - Delete the directions that were not chosen.
-5. **Build, then check, two to four rounds.**
+6. **Build, then check, two to four rounds.**
    - Apply the system everywhere, replacing values written inline with the tokens.
    - Then go through PRINCIPLES.md group by group: hierarchy, design system, states, feedback,
      motion, engagement, accessibility.
-   - After each round, screenshot at 1280 and 390, compare with the chosen direction and the
-     brief, and list what is off. Fix it and go again. Stop when a round finds nothing worth
-     fixing. It is not done because the build passes.
+   - After each round, shoot **every page**, not only the first one, at 1280 and 390
+     (`find-design-references`' `shoot --url`, or the hubs repo's site map). Lay each beside its
+     references with `sheet`, and list what is off against the references and the brief. Fix it and
+     go again. Stop when a round finds nothing worth fixing. A page nobody looked at this round is
+     not done. Nor is a page done because the build passes or the checklist scores well.
    - Run the repo's tests and a Lighthouse or axe scan. Then read the labels and headings
      yourself, since the scanners pass an image described as "image".
-6. **Score and report.**
+7. **Score and report.**
    - Score the page against PRINCIPLES.md again.
    - If it is a hub, run `improve-hub`'s audit too, so the catalog checks didn't regress.
    - Commit one change per group, naming the principle ids.
-   - Report the before and after shots side by side, the score, the commits, and the questions
-     for Omar.
+   - Report the before and after shots side by side, the references each page was held to, the
+     score, the commits, and the questions for Omar.
 
 ## Output
 
 ```
 <page>: 11 of 24 principles before, 21 after (3 not checked)
+References: linear-sidebar, plane-board, cal-calendar (references.yaml)
 Direction: "Ledger" (warm paper, one rust accent, serif headings), picked over "Console" and "Studio"
 System:    tokens in src/theme.css, written up in docs/design.md
 Commits:   H1-H3 hierarchy (abc1234), S1-S4 states (def5678), F1-F3 feedback (0a1b2c3)

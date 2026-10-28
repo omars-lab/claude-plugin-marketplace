@@ -15,6 +15,7 @@ It reads the request, picks the skill below, and follows that skill's SKILL.md.
 | A watcher line such as `ev=thread_new`; "answer the comments", "go through the page comments", "fix what I marked" | `answer-page-comments` |
 | "improve this hub", "review the hub", "what's wrong with this hub", "check it before I share it" | `improve-hub` |
 | "make this page look good", "make it more engaging", "polish the UI", "redesign the dashboard", "it looks like a default AI page" | `design-engaging-ui` |
+| "find references", "what should this look like", "compare it to good sites", "make it feel premium", "find a repo with a nice board" | `find-design-references` |
 | "what is this plugin", "what can you do" | `introduce` |
 
 ## Task management

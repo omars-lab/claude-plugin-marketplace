@@ -44,6 +44,7 @@ The details are in the `enable-page-comments` skill.
 | `answer-page-comments` | The routine Claude follows for each comment |
 | `improve-hub` | Reviews one hub against a rubric, fixes the changes worth the most on a branch, and logs the rest |
 | `design-engaging-ui` | Designs or reworks a page: rendered directions to pick from, a written design system, then build and check at desktop and phone width |
+| `find-design-references` | Finds the sites and GitHub repos a page should look like (two researchers, then a checker), keeps them in a shared list, screenshots them, and lays our page beside them |
 
 Needs Node 18 or later, and Claude Code with plugin monitors. Tests: `make test-development-manager`.
 Pictures are taken by [modern-screenshot](https://github.com/qq15725/modern-screenshot) 4.7.0 (MIT),

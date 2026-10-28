@@ -38,6 +38,7 @@ Only his own Tailscale login may comment, and nothing is ever put on the public 
 | `answer-page-comments` | The routine Claude follows for each comment: read the comment's picture, find the source, fix or answer, check, commit, attach an after picture, reply, close when fixed | Whenever the watcher prints a comment, or to go through open comments |
 | `improve-hub` | One pass over a hub (a local page listed in the hubs catalog): audit it, score it against a rubric, fix the changes worth the most, look again, log the rest | To make a hub better, or to check one before it is shared or published |
 | `design-engaging-ui` | Designs or reworks a page: a short brief, two or three rendered directions to pick from, a small written design system, then build and check in the browser at desktop and phone width | When a page works but looks plain or templated, or improve-hub hands over its look rows |
+| `find-design-references` | Finds two or three sites and open-source GitHub repos the page should look like, keeps them in a shared list (`references.yaml` in the hubs repo), screenshots them at desktop and phone width, and lays each of our pages beside them with a ranked list of what to change | First step of design-engaging-ui, or whenever a page "doesn't feel premium" and nobody can say why |
 
 ## How they fit together
 
@@ -51,6 +52,7 @@ answer-page-comments   fix, commit, reply on the page, close when fixed
 `improve-hub` stands on its own: it reads a hub's repo and pages, checks them against `RUBRIC.md`, and fixes on a branch for review.
 It uses page comments when they are on, since Omar's own notes come before the rubric.
 When the look needs real design work, it hands over to `design-engaging-ui`, which checks the page against `PRINCIPLES.md`.
+`design-engaging-ui` starts with `find-design-references`, so every round is compared with real sites and repos, not only a checklist.
 
 The plugin's watcher starts with every session.
 In a repo without comments turned on, it stops at once and prints nothing.
