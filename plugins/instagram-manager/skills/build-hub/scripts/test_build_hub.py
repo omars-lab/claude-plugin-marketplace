@@ -14,6 +14,7 @@ import re
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import build_hub  # noqa: E402
@@ -268,7 +269,7 @@ class Hub(unittest.TestCase):
         self.assertIn("E.moved(inView)", page)
         self.assertNotIn("Lighthouse", page)                     # only the kinds on this map
         self.assertEqual(set(d["icons"]), {icon[d["places"][pin[3]]["n"]] for pin in d["pins"]})
-        self.assertIn('"Example Falls","","spot","waterfall"]', self.page("places/example-falls.html"))
+        self.assertIn('"Example Falls","","spot","waterfall",', self.page("places/example-falls.html"))
 
     def test_a_tea_or_juice_bar_is_not_a_bar_and_bars_come_last(self):
         def by_name(name):
@@ -336,6 +337,42 @@ class Hub(unittest.TestCase):
             self.assertNotIn("gmap", self.data(rel))
             self.assertFalse(any("gid" in p for p in self.data(rel)["places"]))
 
+    def test_a_place_page_inside_a_google_area_gets_googles_map_and_one_outside_does_not(self):
+        self.write("data/pins-review.yaml", {
+            "TOWN1": [{"said": "Example Deli", "near": "Fixture Town", "why": "not found near Fixture Town",
+                       "asked": "Example Deli", "address": "1 Example Rd"}]})
+        self.write("data/google.yaml", {
+            "spot:example-deli@fixture-town": {"query": "Example Deli, 1 Example Rd", "verdict": "match",
+                                               "id": "ChIJexampleDeli", "by": "hand", "date": "2026-01-02"}})
+        key = "test-key-not-real-123"
+        os.environ["GOOGLE_MAPS_HUB_KEY"] = key
+        self.addCleanup(os.environ.pop, "GOOGLE_MAPS_HUB_KEY", None)
+        self.build("--all", "--google-map", "fixture-state")
+        for rel in ("places/fixture-state.html", "places/fixture-town.html", "places/example-deli.html"):
+            page, d = self.page(rel), self.data(rel)
+            self.assertIn("callback=hubGoogle", page, rel)
+            self.assertEqual(d["gmap"]["zoom"], build_hub.MINI_LOOK_ZOOM)
+            self.assertNotIn(key, json.dumps(d))                           # only in the script's address
+            self.assertIn("leaflet.markercluster", page)                   # the fallback groups its pins too
+        self.assertEqual(self.data("places/example-deli.html")["pts"][0][7], "ChIJexampleDeli")  # Google places it
+        self.assertIsNone(self.data("places/fixture-park.html")["pts"][0][7])   # OpenStreetMap placed it
+        for rel in ("places/faraway-land.html", "posts/TOWN1.html"):       # outside the area, and post pages
+            self.assertNotIn("maps.googleapis.com", self.page(rel), rel)
+            self.assertNotIn(key, self.page(rel))
+
+    def test_a_place_with_many_places_inside_shows_its_map_first_and_those_places_by_kind(self):
+        with mock.patch.object(build_hub, "MAP_FIRST", 3), mock.patch.object(build_hub, "GROUP_SHOWN", 1):
+            self.build("--pilot", "fixture")
+        state = self.page("places/fixture-state.html")
+        self.assertIn('<div id="mini" class="big"', state)
+        self.assertLess(state.index('<div id="mini"'), state.index("<dl>"))   # the map comes first
+        self.assertIn('<section id="inside">', state)
+        self.assertIn('class="kgroup"', state)
+        self.assertIn("Show the other 1", state)                           # two towns: one shows, one folds
+        self.assertIn('href="../fixture-state/">The full map of Fixture State', state)
+        town = self.page("places/fixture-town.html")                       # few inside: the side map stays
+        self.assertNotIn('class="big"', town)
+
     def test_without_the_hubs_key_every_map_is_openstreetmaps(self):
         os.environ.pop("GOOGLE_MAPS_HUB_KEY", None)
         with contextlib.redirect_stderr(io.StringIO()) as err, contextlib.redirect_stdout(io.StringIO()):
@@ -360,7 +397,7 @@ class Hub(unittest.TestCase):
         self.assertNotIn("check it", deli)
         self.assertIn("the Google Maps link opens the place itself", deli)   # not "searches for it by name"
         self.assertNotIn("searches for it by name", deli)
-        self.assertIn('"Example Deli","","placed","eat"]', deli)   # its small map draws the at-the-town ring
+        self.assertIn('"Example Deli","","placed","eat",', deli)   # its small map draws the at-the-town ring
 
     def test_a_chain_keeps_its_search_link_for_every_branch(self):
         self.write("data/pins-review.yaml", {

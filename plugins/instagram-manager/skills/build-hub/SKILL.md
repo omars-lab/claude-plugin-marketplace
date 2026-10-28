@@ -53,6 +53,14 @@ Turns the data repo's files into a small website in `.cache/hub/`. The site has 
   - the place it sits in, and the places inside it, each with its count;
   - a card for every saved post that names it.
 
+  The small map groups pins close together into a bubble, as the big map does. A place with
+  `MAP_FIRST` (6) or more places inside it shows its map first, full width and tall, with a link to
+  its area's full map. Then come the places inside it, a box per kind (in the legend's order), most
+  saved first: the first `GROUP_SHOWN` (8) show and the rest open from "Show the other N". A place
+  page inside an area `--google-map` names gets Google's map, and looks up the venues
+  OpenStreetMap lacks as you zoom in (at most `MINI_LOOK_MOST`, 60, a page open). Post pages
+  keep OpenStreetMap's map.
+
   A card shows the spot's still, else the post's small picture (else a grey box), @creator, the
   caption's own words for the place (highlighted), the post's topics, and links to the post's page
   and to Instagram. A reel's small picture turns into a short flipbook while it is on screen (see

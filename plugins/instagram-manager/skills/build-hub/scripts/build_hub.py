@@ -138,6 +138,10 @@ GROUPING = "https://unpkg.com/@googlemaps/markerclusterer@2.5.3/dist/index.min.j
 DEMO_MAP_ID = "DEMO_MAP_ID"
 LOOK_ZOOM = 13    # the zoom from which the page asks Google where a town's venues are: about one town
 LOOK_MOST = 150   # the most look-ups one page open makes; a reload starts again
+MINI_LOOK_ZOOM = 10   # the same on a place page's map: a town's page opens at about this zoom
+MINI_LOOK_MOST = 60   # and fewer look-ups, since every place page in the area can make them
+MAP_FIRST = 6     # a place with this many places inside it shows its map first, the places by kind
+GROUP_SHOWN = 8   # how many places of one kind show before "Show the other N"
 GOOGLE_TERMS = (' Map and the positions of venues OpenStreetMap lacks: Google, looked up as you zoom in and '
                 'never kept. Pins: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
                 'contributors. <a href="https://maps.google.com/help/terms_maps/" target="_blank" rel="noopener">'
@@ -752,25 +756,44 @@ def shell(title, content, head="", script="", body=""):
             + (f'<body class="{body}">' if body else "<body>") + f'{content}{script}</body></html>')
 
 
-MINI_JS = """<script>(function(){var d=__DATA__;if(!window.L||!d.length)return;
-var m=L.map('mini',{scrollWheelZoom:false});
-L.tileLayer('__TILES__',{maxZoom:19,attribution:'__CREDIT__'}).addTo(m);
-var G=__ICONS__,pts=[];d.forEach(function(p){var s=p[4]==='here'?30:p[4]==='inside'?22:26;
-var mk=L.marker([p[0],p[1]],{title:p[2],alt:p[2],icon:L.divIcon({className:'',html:'<div class="pin pin-'+p[4]+'">'+
-(G[p[5]]?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+G[p[5]]+'"/></svg>':'')+'</div>',
-iconSize:[s,s],iconAnchor:[s/2,s/2]})}).addTo(m);
-mk.bindTooltip(p[2],{direction:'top',offset:[0,-s/2]});if(p[3])mk.on('click',function(){location.href=p[3]});pts.push([p[0],p[1]]);});
-if(pts.length===1)m.setView(pts[0],__ZOOM__);else m.fitBounds(pts,{padding:[30,30],maxZoom:13});})();</script>"""
-
-
-def mini_map(points, zoom=11):
-    """A small map: points are (lat, lon, label, link or "", style, icon)."""
+def mini_map(points, zoom=11, google=None, big=False):
+    """A small map: points are [lat, lon, label, link or "", style, icon, posts, google id or None].
+    Pins close together group into a bubble, as on the big map. With `google` ({key, map_id}), Google
+    draws it and looks up the points with a google id as you zoom in (DESIGN.md decision 12). Returns
+    the map's box, its scripts, and what the page's head needs."""
     if not points:
-        return "", ""
-    js = (MINI_JS.replace("__DATA__", data_json(points)).replace("__ICONS__", data_json(used_icons(points, 5)))
-          .replace("__TILES__", TILES)
-          .replace("__CREDIT__", CREDIT).replace("__ZOOM__", str(zoom)))
-    return '<div id="mini" role="img" aria-label="Map"></div>', js
+        return "", "", ""
+    data = {"pts": points, "icons": used_icons(points, 5), "zoom": zoom}
+    if google:   # the key goes in the script's address only, never in the data
+        data["gmap"] = {"id": google.get("map_id") or DEMO_MAP_ID, "zoom": MINI_LOOK_ZOOM, "most": MINI_LOOK_MOST}
+    js = (MINI_JS.replace("__DATA__", data_json(data)).replace("__TILES__", TILES).replace("__CREDIT__", CREDIT)
+          + (google_head(google) if google else ""))
+    cls = ' class="big"' if big else ""
+    return f'<div id="mini"{cls} role="img" aria-label="Map"></div>', js, LEAFLET + CLUSTER
+
+
+def inside_by_kind(hub, keys):
+    """The places inside a place, a box per kind (in the legend's order), most saved first. The first
+    few of each kind show; the rest open from "Show the other N"."""
+    by = {}
+    for k in keys:
+        by.setdefault(icon_of(hub, hub.places[k]), []).append(hub.places[k])
+
+    def rows(ps):
+        return '<ol class="kplaces">' + "".join(
+            f'<li><a href="{place_href(q)}">{esc(q["name"])}</a><span class="n">{len(q["posts"])}</span></li>'
+            for q in ps) + "</ol>"
+    boxes = []
+    for g, label, *_ in ICONS:
+        ps = sorted(by.get(g, []), key=lambda q: (-len(q["posts"]), q["name"]))
+        if not ps:
+            continue
+        rest = ps[GROUP_SHOWN:]
+        boxes.append(f'<div class="kgroup"><h3><i class="kind">{glyph(g)}</i>{esc(label)} '
+                     f'<span class="muted">{len(ps)}</span></h3>{rows(ps[:GROUP_SHOWN])}'
+                     + (f'<details><summary>Show the other {len(rest)}</summary>{rows(rest)}</details>' if rest else "")
+                     + '</div>')
+    return '<div class="kgroups">' + "".join(boxes) + "</div>"
 
 
 def topic_href(hub, topic, up=True):
@@ -930,12 +953,16 @@ def card(hub, place, post):
             '</div></article>')
 
 
-def place_page(hub, place):
+def place_page(hub, place, google=None):
+    """google: {key, map_id} when the place sits in an area Google draws (decision 12)."""
     parent = hub.places.get(place["parent"]) if place["parent"] else None
     rows = []
     if parent:
         rows.append(("Sits in", f'<a href="{place_href(parent)}">{esc(parent["name"])}</a>'))
-    if place["inside"]:
+    many = len(place["inside"]) >= MAP_FIRST
+    if many:
+        rows.append(("Places inside it", f'<a href="#inside">{len(place["inside"])}, by kind below</a>'))
+    elif place["inside"]:
         rows.append((f"Places inside it ({len(place['inside'])})", '<ul class="inline">' + "".join(
             f'<li><a href="{place_href(hub.places[k])}">{esc(hub.places[k]["name"])}</a> '
             f'<span class="muted">{len(hub.places[k]["posts"])}</span></li>' for k in place["inside"]) + "</ul>"))
@@ -957,19 +984,30 @@ def place_page(hub, place):
     if place["lat"] is None:
         rows.append(("Pin", '<span class="muted">not looked up yet, so it is not on the map</span>'))
     elif place.get("placed"):
-        google = ("; the Google Maps link opens the place itself" if place.get("google_by")
-                  else ", so Google Maps searches for it by name")
+        link = ("; the Google Maps link opens the place itself" if place.get("google_by")
+                else ", so Google Maps searches for it by name")
         osm = esc(place["osm_note"]) if place.get("osm_note") else "does not list it"
-        rows.append(("Pin", f'<span class="muted">at {esc(place["parent"])}: OpenStreetMap {osm}{google}</span>'))
+        rows.append(("Pin", f'<span class="muted">at {esc(place["parent"])}: OpenStreetMap {osm}{link}</span>'))
+    def gid(q):   # a venue at its town that Google matched: the page asks Google where it is
+        return q.get("google_id") if google and q.get("placed") else None
     points = []
     if place["lat"] is not None:
         points.append([place["lat"], place["lon"], place["name"], "",
-                       "placed" if place.get("placed") else "spot" if place["spot"] else "here", icon_of(hub, place)])
+                       "placed" if place.get("placed") else "spot" if place["spot"] else "here", icon_of(hub, place),
+                       len(place["posts"]), gid(place)])
     for k in place["inside"]:
         q = hub.places[k]
         if q["lat"] is not None:
-            points.append([q["lat"], q["lon"], q["name"], q["slug"] + ".html", "inside", icon_of(hub, q)])
-    box, js = mini_map(points, 13 if place["spot"] else (6 if place["kind"] in WIDE else 10))
+            points.append([q["lat"], q["lon"], q["name"], q["slug"] + ".html", "inside", icon_of(hub, q),
+                           len(q["posts"]), gid(q)])
+    box, js, head = mini_map(points, 13 if place["spot"] else (6 if place["kind"] in WIDE else 10), google, many)
+    folder = getattr(hub, "map_folders", {}).get(place["key"])
+    note = "".join(f'<span>{x}</span>' for x in (
+        f'<a href="../{folder}/">The full map of {esc(place["name"])}, with search, filters and every post</a>'
+        if folder else "",
+        '<span id="gstat" aria-live="polite"></span>' if google and box else "",
+        GOOGLE_TERMS if google and box else "") if x)
+    note = f'<p class="gnote muted">{note}</p>' if note else ""
     posts = [hub.post(c) for c in place["posts"]]
     n = len(posts)
     notes = f'<p class="notes">{esc(place["notes"])}</p>' if isinstance(place.get("notes"), str) else ""
@@ -977,13 +1015,17 @@ def place_page(hub, place):
     content = (f'<main class="page"><nav class="top">{back_link(hub, [place["key"]])}</nav>'
                f'<header><h1>{esc(place["name"])}</h1><p class="sub">{sub} · '
                f'{n} saved post{"" if n == 1 else "s"}</p>{notes}</header>'
-               f'<div class="facts{"" if box else " solo"}"><dl>'
-               + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows) + f'</dl>{box}</div>'
-               f'<section><h2>Saved posts that name it</h2><div class="cards">'
+               + (f'<section class="mapsec">{box}{note}</section><div class="facts solo"><dl>' if many else
+                  f'<div class="facts{"" if box else " solo"}"><dl>')
+               + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows) + f'</dl>{"" if many else box}</div>'
+               + ("" if many else note)
+               + (f'<section id="inside"><h2>Places inside it ({len(place["inside"])})</h2>'
+                  f'{inside_by_kind(hub, place["inside"])}</section>' if many else "")
+               + f'<section><h2>Saved posts that name it</h2><div class="cards">'
                + "".join(card(hub, place, p) for p in posts) + '</div></section></main>')
     clips = CLIP_JS if any(hub.shot(p, place["key"]) for p in posts) else ""
     flips = previews.player_js() if any(p["pa"] and not hub.shot(p, place["key"]) for p in posts) else ""
-    return shell(place["name"], content, LEAFLET if box else "", js + clips + flips)
+    return shell(place["name"], content, head, js + clips + flips)
 
 
 def post_page(hub, post):
@@ -1018,10 +1060,10 @@ def post_page(hub, post):
             f'<li><a href="{place_href(p)}">{esc(p["name"])}</a></li>' for p in wider) + "</ul>"))
     if not exact and not wider:
         rows.append(("Places", '<span class="muted">none tagged</span>'))
-    points = [[lat, lon, hub.places[k]["name"], place_href(hub.places[k]), style, icon_of(hub, hub.places[k])]
-              for k, lat, lon, style in post["pins"]]
+    points = [[lat, lon, hub.places[k]["name"], place_href(hub.places[k]), style, icon_of(hub, hub.places[k]),
+               len(hub.places[k]["posts"]), None] for k, lat, lon, style in post["pins"]]
     zoom = 9 if len(points) == 1 and hub.places[post["pins"][0][0]]["kind"] in ("region", "park") else 11
-    box, js = mini_map(points, 6 if points and points[0][4] == "wide" else zoom)
+    box, js, head = mini_map(points, 6 if points and points[0][4] == "wide" else zoom)
     caption = esc(post["caption"]) if post["caption"].strip() else '<span class="muted">No caption.</span>'
     # In the order they show in the video, not the order the caption lists them.
     shots = sorted((x for x in post["shots"] if x["still"]), key=lambda x: x["t"] if x["t"] is not None else 1e9)
@@ -1063,7 +1105,7 @@ def post_page(hub, post):
                   f'Open in Google Maps</a>' if len(exact) == 1 else "") + '</p>'
                f'<dl>' + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows) + '</dl></div></div>'
                f'{gallery}{box}<section><h2>Caption</h2><p class="caption">{caption}</p></section></main>')
-    return shell(f"{who} · saved post", content, LEAFLET if box else "", js + (CLIP_JS if shots else ""))
+    return shell(f"{who} · saved post", content, head, js + (CLIP_JS if shots else ""))
 
 
 # A still turns into its clip while the pointer is on it, or while its Play button is pressed. With
@@ -1076,27 +1118,14 @@ if(!calm){img.addEventListener('mouseenter',function(){set(true)});img.addEventL
 if(b)b.addEventListener('click',function(){set(!on)});});})();</script>"""
 
 
-MAP_JS = r"""
-(function(){
-var D=__DATA__, map, E, marks=[], shown=[];
+# What the big map and the small maps on place pages share: a few helpers, the two map engines, and
+# Google's look-ups. Each page's script declares D, map, E, marks, shown, MAPID (the map's element),
+# MAPOPT (the Leaflet map's options) and status(left), which says how the look-ups went.
+ENGINE_JS = r"""
 var $=function(s){return document.querySelector(s)};
 function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
 function link(href,text,out){var a=el('a',null,text);a.href=href;if(out){a.target='_blank';a.rel='noopener'}return a}
 function tidy(s){return String(s).toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g,'').replace(/[’']/g,'')}
-
-function popup(pin){
-  var p=D.posts[pin[2]], pl=D.places[pin[3]], box=el('div','pop');
-  var th=(p.sp&&p.sp[pin[3]])||p.th;if(th){var img=el('img');img.src=th;img.alt='';box.appendChild(img)}
-  box.appendChild(el('p','pwho',p.u?'@'+p.u:'Unknown creator'));
-  var where=el('p','pwhere');where.appendChild(link(pl.s,pl.n));box.appendChild(where);
-  if(pl.x)box.appendChild(el('p','pnote',pl.gid&&looked[pl.gid]?'OpenStreetMap could not place it, so this is where '+
-    'Google puts it, looked up just now and not kept.':'Pinned at the town: OpenStreetMap could not place it. '+
-    (/[?&]query_place_id=/.test(pl.m)?'Google Maps opens the place itself.':'Google Maps searches for it by name.')));
-  if(p.t)box.appendChild(el('p','ptext',p.t));
-  var ln=el('p','plinks');ln.appendChild(link(p.f,'Post page'));ln.appendChild(link(p.i,'Open on Instagram',true));
-  ln.appendChild(link(pl.m,'Open in Google Maps',true));
-  box.appendChild(ln);return box;
-}
 
 function pinHtml(level,g){return '<div class="pin pin-'+level+'">'+
   (D.icons[g]?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+D.icons[g]+'"/></svg>':'')+'</div>'}
@@ -1106,12 +1135,13 @@ function posts(ms){var seen={},n=0;ms.forEach(function(m){if(!seen[m.post]){seen
 function bubble(n){var s=n<10?34:n<50?40:48;return {html:'<div class="bubble"><span>'+n+'</span></div>',size:s}}
 
 // Two map engines with the same few calls: Leaflet on OpenStreetMap's tiles, or a map Google draws
-// (D.gmap, only when the build was given a key for this page). A mark is {raw, post, ic, pl, ll()}.
+// (D.gmap, only when the build was given a key for this page). A mark is {raw, post, gid, ll()}; the big
+// map adds ic and pl.
 function leaflet(){
   var layer;
   return {
     init:function(){
-      map=L.map('map',{worldCopyJump:true}).setView([37,-119],5);
+      map=L.map(MAPID,MAPOPT).setView([37,-119],5);
       L.tileLayer('__TILES__',{maxZoom:19,attribution:'__CREDIT__'}).addTo(map);
       layer=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:45,iconCreateFunction:function(c){
         var b=bubble(posts(c.getAllChildMarkers()));return L.divIcon({html:b.html,className:'',iconSize:[b.size,b.size]})}});
@@ -1125,6 +1155,7 @@ function leaflet(){
     },
     show:function(on){layer.clearLayers();layer.addLayers(on.map(function(m){return m.raw}))},
     fit:function(lls){map.fitBounds(L.latLngBounds(lls),{padding:[30,30],maxZoom:12})},
+    center:function(ll,z){map.setView(ll,z)},
     inside:function(){var b=map.getBounds();return function(ll){return b.contains(ll)}},
     zoom:function(){return map.getZoom()},
     moved:function(fn){map.on('moveend',fn)}
@@ -1135,8 +1166,9 @@ function gmaps(){
   var g=google.maps, info, cl, on=[];
   return {
     init:function(){
-      map=new g.Map($('#map'),{center:{lat:37,lng:-119},zoom:5,mapId:D.gmap.id,clickableIcons:false,
-        streetViewControl:false,fullscreenControl:false,mapTypeControl:false});
+      map=new g.Map(document.getElementById(MAPID),{center:{lat:37,lng:-119},zoom:5,mapId:D.gmap.id,clickableIcons:false,
+        streetViewControl:false,fullscreenControl:false,mapTypeControl:false,
+        gestureHandling:MAPOPT.scrollWheelZoom===false?'cooperative':'auto'});
       info=new g.InfoWindow({maxWidth:260});
       cl=new markerClusterer.MarkerClusterer({map:map,markers:[],
         algorithm:new markerClusterer.SuperClusterAlgorithm({radius:45,maxZoom:16}),
@@ -1166,10 +1198,103 @@ function gmaps(){
     redraw:function(){cl.clearMarkers();cl.addMarkers(on.map(function(m){return m.raw}))},
     fit:function(lls){var b=new g.LatLngBounds();lls.forEach(function(ll){b.extend({lat:ll[0],lng:ll[1]})});
       map.fitBounds(b,30);g.event.addListenerOnce(map,'idle',function(){if(map.getZoom()>12)map.setZoom(12)})},
+    center:function(ll,z){map.setCenter({lat:ll[0],lng:ll[1]});map.setZoom(z)},
     inside:function(){var b=map.getBounds();return function(ll){return !!b&&b.contains({lat:ll[0],lng:ll[1]})}},
     zoom:function(){return map.getZoom()},
     moved:function(fn){map.addListener('idle',fn)}
   };
+}
+
+// On a Google map: a venue OpenStreetMap lacks but Google matched (m.gid) sits at its town until you
+// zoom in. Then the page asks Google where it is, for the venues in view only, and moves its pins.
+// The answer stays in this page's memory: never saved, never sent anywhere else. looked[id] is the
+// position, null while asking, or false when Google gave none.
+var looked={}, asked=0, placedN=0, refused='';
+function lookUp(b){
+  if(!D.gmap||!window.google||!google.maps.places)return;
+  var todo={};
+  shown.forEach(function(m){if(m.gid&&!(m.gid in looked)&&b(m.ll()))todo[m.gid]=1});
+  var room=D.gmap.most-asked, ids=Object.keys(todo);
+  if(E.zoom()<D.gmap.zoom||refused||room<=0){status(ids.length);return}
+  ids.slice(0,room).forEach(function(id){
+    looked[id]=null;asked++;
+    new google.maps.places.Place({id:id}).fetchFields({fields:['location']}).then(function(r){
+      var at=r.place.location;
+      if(!at){looked[id]=false;return}
+      looked[id]=[at.lat(),at.lng()];placedN++;
+      marks.forEach(function(m){if(m.gid===id){m.raw.position={lat:looked[id][0],lng:looked[id][1]};m.dot.className='pin pin-spot'}});
+    }).catch(function(e){looked[id]=false;if(!refused){refused=1;console.warn('Google look-up refused:',e&&e.message||e)}}).then(function(){
+      if(!ids.some(function(i){return looked[i]===null})){E.redraw();status(0)}
+    });
+  });
+  status(0);
+}
+"""
+
+
+# The small map on a place or post page. A pin opens a popup with its place's link; a point Google
+# placed says so. fallBack is the big map's: OpenStreetMap's tiles when Google refuses or fails.
+MINI_JS = r"""<script>(function(){
+var D=__DATA__, map, E, marks=[], shown=[];
+var MAPID='mini', MAPOPT={scrollWheelZoom:false};
+""" + ENGINE_JS + r"""
+function pop(p){return function(){
+  var box=el('div','pop'),w=el('p','pwhere');w.appendChild(p[3]?link(p[3],p[2]):el('b',null,p[2]));box.appendChild(w);
+  if(p[6])box.appendChild(el('p','ptext',p[6]+' saved post'+(p[6]===1?'':'s')));
+  if(p[7])box.appendChild(el('p','pnote',looked[p[7]]?'OpenStreetMap could not place it, so this is where Google '+
+    'puts it, looked up just now and not kept.':'Pinned at its town: OpenStreetMap could not place it.'));
+  return box}}
+function status(left){
+  var s=$('#gstat');if(!s)return;
+  s.textContent=refused?'Google would not look up where these venues are, so they stay at their town.':
+    asked>=D.gmap.most?'This page has asked Google '+asked+' times, its most. Reload to ask again.':
+    left&&E.zoom()<D.gmap.zoom?'Zoom in to see where Google puts '+left+' venue'+(left===1?'':'s')+' OpenStreetMap lacks.':
+    asked?'Google placed '+placedN+' venue'+(placedN===1?'':'s')+' OpenStreetMap lacks (looked up just now, not kept).':'';
+}
+function start(engine){
+  E=engine;E.init();
+  D.pts.forEach(function(p,i){var m=E.mark([p[0],p[1],i],p[4],p[5],p[2],p[2],pop(p));m.post=i;m.gid=p[7]||null;marks.push(m)});
+  shown=marks;E.show(marks);
+  if(marks.length===1)E.center(marks[0].ll(),D.zoom);else E.fit(marks.map(function(m){return m.ll()}));
+  E.moved(function(){lookUp(E.inside())});
+}
+function fallBack(why){
+  if(E&&!D.gmap)return;D.gmap=null;
+  var s=$('#gstat');if(s)s.textContent='Google\'s map did not load ('+why+'), so this is the OpenStreetMap map.';
+  var old=document.getElementById(MAPID),fresh=el('div',old.className);fresh.id=MAPID;
+  fresh.setAttribute('role','img');fresh.setAttribute('aria-label','Map');old.parentNode.replaceChild(fresh,old);
+  marks=[];shown=[];if(window.L)start(leaflet());
+}
+if(!D.pts.length)return;
+if(D.gmap){
+  window.gm_authFailure=function(){fallBack('Google refused the key for this address')};
+  window.hubGoogle=function(){
+    if(!window.markerClusterer){fallBack('no grouping script');return}
+    try{start(gmaps())}catch(e){fallBack(String(e.message||e).slice(0,80))}};
+  window.hubGoogleFailed=function(){fallBack('no connection to Google')};
+  return;
+}
+if(window.L)start(leaflet());
+})();</script>"""
+
+
+MAP_JS = r"""
+(function(){
+var D=__DATA__, map, E, marks=[], shown=[];
+var MAPID='map', MAPOPT={worldCopyJump:true};
+""" + ENGINE_JS + r"""
+function popup(pin){
+  var p=D.posts[pin[2]], pl=D.places[pin[3]], box=el('div','pop');
+  var th=(p.sp&&p.sp[pin[3]])||p.th;if(th){var img=el('img');img.src=th;img.alt='';box.appendChild(img)}
+  box.appendChild(el('p','pwho',p.u?'@'+p.u:'Unknown creator'));
+  var where=el('p','pwhere');where.appendChild(link(pl.s,pl.n));box.appendChild(where);
+  if(pl.x)box.appendChild(el('p','pnote',pl.gid&&looked[pl.gid]?'OpenStreetMap could not place it, so this is where '+
+    'Google puts it, looked up just now and not kept.':'Pinned at the town: OpenStreetMap could not place it. '+
+    (/[?&]query_place_id=/.test(pl.m)?'Google Maps opens the place itself.':'Google Maps searches for it by name.')));
+  if(p.t)box.appendChild(el('p','ptext',p.t));
+  var ln=el('p','plinks');ln.appendChild(link(p.f,'Post page'));ln.appendChild(link(p.i,'Open on Instagram',true));
+  ln.appendChild(link(pl.m,'Open in Google Maps',true));
+  box.appendChild(ln);return box;
 }
 
 function showPins(keep){
@@ -1192,30 +1317,6 @@ function inView(){
   lookUp(b);
 }
 
-// On a Google map: a venue OpenStreetMap lacks but Google matched (pl.gid) sits at its town until you
-// zoom in. Then the page asks Google where it is, for the venues in view only, and moves its pins.
-// The answer stays in this page's memory: never saved, never sent anywhere else. looked[id] is the
-// position, null while asking, or false when Google gave none.
-var looked={}, asked=0, placedN=0, refused='';
-function lookUp(b){
-  if(!D.gmap||!window.google||!google.maps.places)return;
-  var todo={};
-  shown.forEach(function(m){var pl=D.places[m.pl];if(pl.gid&&!(pl.gid in looked)&&b(m.ll()))todo[pl.gid]=1});
-  var room=D.gmap.most-asked, ids=Object.keys(todo);
-  if(E.zoom()<D.gmap.zoom||refused||room<=0){status(ids.length);return}
-  ids.slice(0,room).forEach(function(id){
-    looked[id]=null;asked++;
-    new google.maps.places.Place({id:id}).fetchFields({fields:['location']}).then(function(r){
-      var at=r.place.location;
-      if(!at){looked[id]=false;return}
-      looked[id]=[at.lat(),at.lng()];placedN++;
-      marks.forEach(function(m){if(D.places[m.pl].gid===id){m.raw.position={lat:looked[id][0],lng:looked[id][1]};m.dot.className='pin pin-spot'}});
-    }).catch(function(e){looked[id]=false;if(!refused){refused=1;console.warn('Google look-up refused:',e&&e.message||e)}}).then(function(){
-      if(!ids.some(function(i){return looked[i]===null})){E.redraw();status(0)}
-    });
-  });
-  status(0);
-}
 function status(left){
   var s=$('#gstat');if(!s)return;
   s.textContent=refused?'Google would not look up where these venues are (the key may not allow it), so they stay at their town.':
@@ -1310,7 +1411,7 @@ function start(engine){
   D.pins.forEach(function(pin){
     var p=D.posts[pin[2]],pl=D.places[pin[3]];
     var m=E.mark(pin,pin[4],pl.ic,(p.u?'@'+p.u:'')+' · '+pl.n,pl.n,function(){return popup(pin)});
-    m.post=pin[2];m.ic=pl.ic;m.pl=pin[3];marks.push(m);
+    m.post=pin[2];m.ic=pl.ic;m.pl=pin[3];m.gid=pl.gid;marks.push(m);
   });
   E.moved(inView);
   search();
@@ -1606,6 +1707,24 @@ ol{list-style:none;margin:0;padding:0}
 .facts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:16px;align-items:start}
 .facts.solo{grid-template-columns:1fr}
 #mini{height:280px;border-radius:12px;border:1px solid var(--line)}
+/* A place with many places inside: the map first and tall, then those places by kind. */
+#mini.big{height:62vh;min-height:360px}
+.mapsec{display:grid;gap:8px}
+.gnote{margin:0;font-size:.85rem}
+.gnote>span{display:block}
+.gnote>span:has(#gstat:empty){display:none}
+.kgroups{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:12px;align-items:start}
+.kgroup{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.kgroup h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:1rem}
+.kgroup .kind{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;
+  border:1.5px solid var(--line);background:var(--bg)}
+.kgroup .kind svg{width:14px;height:14px;fill:none;stroke:var(--fg);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+ol.kplaces{list-style:none;margin:0;padding:0;display:grid;gap:3px}
+ol.kplaces li{display:flex;justify-content:space-between;gap:10px}
+ol.kplaces .n{color:var(--muted);font-variant-numeric:tabular-nums}
+.kgroup details{margin-top:6px}
+.kgroup summary{cursor:pointer;color:var(--accent);font-weight:700;font-size:.9rem}
+.kgroup details[open] summary{margin-bottom:4px}
 dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:8px 16px;background:var(--card);
   border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 dt{color:var(--muted);font-size:.9rem}
@@ -1775,8 +1894,10 @@ def build(hub, out, title, home=(), with_previews=True, google=None):
     for folder in old_map_folders(out) - set(hub.map_folders.values()):
         shutil.rmtree(os.path.join(out, folder), ignore_errors=True)
     maps = [(hub.map_folders[a], hub.places[a]["name"], n[a]) for a in areas if a in hub.map_folders]
+    g_areas = {a for a, f in hub.map_folders.items() if google and f in google["areas"]}
     for place in hub.places.values():
-        write(os.path.join(out, "places", place["slug"] + ".html"), place_page(hub, place))
+        write(os.path.join(out, "places", place["slug"] + ".html"),
+              place_page(hub, place, google if hub.within(place["key"], g_areas) else None))
     for post in hub.posts:
         write(os.path.join(out, "posts", post["file"] + ".html"), post_page(hub, post))
     for topic in hub.topic_pages:
