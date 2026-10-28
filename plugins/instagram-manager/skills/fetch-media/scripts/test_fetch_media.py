@@ -618,5 +618,13 @@ class Video(Home):
         self.assertIsNone(fetch_media.pick_video({"formats": []}))
 
 
+class Order(unittest.TestCase):
+    def test_every_save_run_takes_map_then_travel_then_the_rest(self):
+        saves = [{"code": c} for c in ("RECIPE", "TRIP", "CITY", "PINNED")]
+        tags = {"TRIP": {"topics": ["travel"]}, "CITY": {"topics": ["other"], "cities": ["somewhere"]}}
+        todo, _ = fetch_media.pick(saves, None, tags, {}, 0, first={"PINNED"})
+        self.assertEqual([s["code"] for s in todo], ["PINNED", "TRIP", "CITY", "RECIPE"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

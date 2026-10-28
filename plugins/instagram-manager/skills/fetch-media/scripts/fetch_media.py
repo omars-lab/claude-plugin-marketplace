@@ -215,8 +215,8 @@ def parse_stamp(s):
 # ---------------------------------------------------------------- which saves
 
 def pick(saves, pilot, tags, media, limit, first=()):
-    """Saves still to fetch, in export order, the codes in `first` (the saves on the hub's map)
-    ahead of the rest: (todo, already recorded in media.yaml)."""
+    """Saves still to fetch, in export order: the codes in `first` (the saves on the hub's map),
+    then (on a run over every save) travel saves, then the rest: (todo, already recorded in media.yaml)."""
     todo, done = [], 0
     for s in saves:
         if pilot is not None and not in_pilot(s, tags.get(s["code"]), pilot):
@@ -226,7 +226,10 @@ def pick(saves, pilot, tags, media, limit, first=()):
             continue
         todo.append(s)
     first = set(first)
-    todo.sort(key=lambda s: s["code"] not in first)   # stable, so export order holds within each
+    def travel(code):
+        t = tags.get(code) or {}
+        return pilot is None and ("travel" in (t.get("topics") or []) or bool(t.get("cities")))
+    todo.sort(key=lambda s: (s["code"] not in first, not travel(s["code"])))   # stable: export order within each
     return (todo[:limit] if limit else todo), done
 
 
