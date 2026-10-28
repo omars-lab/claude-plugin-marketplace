@@ -22,7 +22,9 @@ sizes and spacing, so we read them rather than guess them from a picture.
 |---|---|---|---|---|
 | GitHub Primer | https://primer.style | https://github.com/primer/primitives (MIT) | [sidebar, table, type] | Dense tool UI that stays calm: the nav list, data tables, the type scale |
 | IBM Carbon | https://carbondesignsystem.com | https://github.com/carbon-design-system/carbon (Apache-2.0) | [table, forms, stats, type] | Data tables, form fields, the 2px grid, its charts guidance |
-| Radix Colors and Themes | https://www.radix-ui.com/themes | https://github.com/radix-ui/colors (MIT), https://github.com/radix-ui/themes (MIT) | [type, forms] | 12-step colour scales with a stated use for each step, in light and dark |
+| Radix Colors and Themes | https://www.radix-ui.com/themes | https://github.com/radix-ui/colors (MIT), https://github.com/radix-ui/themes (MIT) | [colour, forms] | 12-step colour scales with a stated use for each step, in light and dark |
+| Observable Framework | https://observablehq.com/framework/themes | https://github.com/observablehq/framework (ISC) | [sidebar, table, stats, colour] | Themes built as ink mixed into paper at set strengths (parchment is one); a 272px sidebar with 33px rows; quiet 13px tables. The themes page shows the default theme, so read the theme files |
+| MOJ Frontend | https://design-patterns.service.justice.gov.uk | https://github.com/ministryofjustice/moj-frontend (MIT) | [sidebar, table, forms] | GOV.UK's plain style for staff tools: side navigation, sortable tables, filters |
 | shadcn/ui | https://ui.shadcn.com | https://github.com/shadcn-ui/ui (MIT) | [sidebar, forms, table, calendar] | Its sidebar and calendar blocks. The default look is very common, so borrow structure, not the look |
 | Open Props | https://open-props.style | https://github.com/argyleink/open-props (MIT) | [type] | Ready-made spacing, type and shadow scales as CSS variables |
 | GOV.UK Design System | https://design-system.service.gov.uk | https://github.com/alphagov/govuk-frontend (MIT) | [forms, type, review] | Plain-words forms, error messages, a "check your answers" summary |
@@ -42,7 +44,9 @@ Shoot the live demo or the product site; read the source for values. Never clone
 | Plausible Analytics | https://plausible.io/plausible.io (a live dashboard) | https://github.com/plausible/analytics (AGPL-3.0) | [stats] | One-screen stats: a headline number row, one chart, ranked lists beside it |
 | Umami | https://umami.is | https://github.com/umami-software/umami (MIT) | [stats, sidebar] | A quiet analytics dashboard with a left nav |
 | Plane | https://plane.so | https://github.com/makeplane/plane (AGPL-3.0) | [board, table, sidebar] | Board columns, issue lists, the sidebar |
-| Nullboard | https://nullboard.io/preview | https://github.com/apankrat/nullboard (read its LICENSE) | [board] | A board with almost no chrome: plain columns, small type, no shadows |
+| Nullboard | https://nullboard.io/preview | https://github.com/apankrat/nullboard (read its LICENSE) | [board] | A board with almost no chrome: plain columns, small type, one soft shadow on the notes |
+| Fizzy (37signals) | https://www.fizzy.do | https://github.com/basecamp/fizzy (O'Saasy: like MIT but no competing hosted service; GitHub shows NOASSERTION) | [board, filing] | Drop targets with a tinted fill and dashed outline, quiet stages folded to narrow columns, a stamped "done" mark |
+| Schedule-X | https://schedule-x.dev | https://github.com/schedule-x/schedule-x (MIT) | [calendar] | A month grid: small weekday caps, a filled circle only on today, "+N more". The demo sits under a cookie banner and opens on week view, so read its CSS rather than shoot it |
 | Focalboard | https://www.focalboard.com | https://github.com/mattermost-community/focalboard (read its LICENSE) | [board, table] | Board and table views of the same cards |
 | Cal.diy (from Cal.com) | https://cal.diy | https://github.com/calcom/cal.diy (MIT) | [calendar, forms] | Month and week calendars, the booking form |
 | Ghost | https://ghost.org | https://github.com/TryGhost/Ghost (MIT) | [review, filing, type, sidebar] | Post list and editor screens, publishing settings, editorial type |
@@ -57,7 +61,10 @@ These have no source to read, so they are sites only. Name the exact screen to s
 
 | Name | Site | Good for | Look at |
 |---|---|---|---|
-| Linear | https://linear.app | [sidebar, board, table, landing] | 32px nav rows, muted group labels, how little colour it uses |
+| Linear | https://linear.app | [sidebar, board, table, landing] | 28px nav rows (measured on the live site), muted group labels, how little colour it uses |
+| GitHub public roadmap board | https://github.com/orgs/github/projects/4247/views/1 | [board, filing] | The count pill on each column. Its boxed cards and many-coloured tags are the part not to copy |
+| GitHub contribution graph | Any public profile page | [calendar, stats] | 10px squares with 2px corners and 3px gaps, shaded from paper to one colour by how busy a day was |
+| Typefully | https://typefully.com | [calendar, filing] | A dashed outline for planned posts and a solid one for scheduled, visible empty slots, and a queue list on phones. The app needs a sign-in, so use its help and changelog pages |
 
 ## Galleries of real product screens
 
@@ -87,6 +94,7 @@ font CDN.
 | Collletttivo | https://www.collletttivo.it | [type] | Open-source fonts from an Italian type collective |
 | Open Foundry | https://open-foundry.com | [type] | A curated set of open-source fonts, shown in use |
 | Fontshare | https://www.fontshare.com | [type] | Free fonts from the Indian Type Foundry, under their own free-font license |
+| ET Book | https://github.com/edwardtufte/et-book | [type] | The book face behind Tufte CSS (MIT), with old-style figures. For long reading text, not tables |
 
 ## Colour themes with character
 
