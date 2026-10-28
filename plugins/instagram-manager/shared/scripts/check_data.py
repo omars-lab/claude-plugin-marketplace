@@ -79,8 +79,9 @@ def shared_spots(pins):
             # The Overture step's rules give a row only to a spot whose handle is in the row's links or whose
             # name is the row's, so a spot on a row is the place the row names, however its caption names
             # it. A row an agent picked from looser names counts when both names start with the same word
-            # ("Example DC" at Example Cafe); a different shop given a food hall's row still does not.
-            ruled = s.get("overture") and (s.get("checked") != "agent"
+            # ("Example DC" at Example Cafe) or the row's name starts with the spot's however it is spaced
+            # ("Ex Ample Grill & Bar" for Example Grill); a different shop given a food hall's row still does not.
+            ruled = s.get("overture") and (s.get("checked") != "agent" or found.startswith(own)
                                            or _words(found_name.split(" ")[0]) == _words((s.get("name") or "").split(" ")[0]))
             names.setdefault(found if found and (ruled or own.startswith(found)) else own, s.get("name"))
         if len(names) > 1 and tuple(sorted(names.values())) not in seen:
