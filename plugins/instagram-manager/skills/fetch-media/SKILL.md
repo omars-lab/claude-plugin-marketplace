@@ -132,7 +132,7 @@ other tools' defaults. The run's log is what shows the real limit.
   150 with `--one-request`). The user set this pace on 2026-10-25. The trial is 5 posts. The script
   holds to this itself: a `--limit` above the cap is cut to it (`MAX_POSTS`), and it reads its own
   log for past runs, refusing to start less than 1 hour after the last one ended
-  (`ev=refused reason=run_gap`), a 7th time in 24 hours (`reason=day_cap`), or outside 9am-9pm
+  (`ev=refused reason=run_gap`), a 7th time since 9am that day (`reason=day_cap`; counted from 9am, not over 24 hours, so runs that end a minute late don't push the next day back), or outside 9am-9pm
   (`reason=night`; a run going at 9pm stops taking posts). The refusal line says when it may start
   (`may_start=`). In the 2 gentle days after a pause: half the hour, twice the gaps, 3 runs a day.
 - **The Mac's home connection.** No VPN, proxy or cloud machine: those get blocked sooner.
@@ -164,8 +164,8 @@ more, single warnings stop pausing and the stop level becomes N + 3 in 10 posts.
 The cooldown is 24 hours after a first stop, 48 hours after a second in a row, and 3 days after a
 third. Until it ends, every run refuses (`ev=refused reason=cooldown`). The first run after it
 fetches **one test post**. If that works (`ev=recovered`), the next 2 days are gentle: each run
-takes half the posts and pauses twice as long between them (`gentle_until=` on `ev=run_start`), and
-at most 2 runs start in any 24 hours, not 3 (a third run in a gentle day once brought a second stop). A
+lasts half an hour and pauses twice as long between posts (`gentle_until=` on `ev=run_start`), and
+at most 3 runs start each day, not 6. A
 stop in those 2 days counts as the next stop in a row. After 2 clean days the cooldown file is
 removed, so a later stop is a first stop again.
 

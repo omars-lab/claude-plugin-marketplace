@@ -345,9 +345,11 @@ def too_soon(runs, t, per_day=RUNS_PER_DAY):
         last = end or start
         if t - last < RUN_GAP:
             return "run_gap", last + RUN_GAP
-    day = [start for start, _ in runs if t - start < dt.timedelta(hours=24)]
-    if len(day) >= per_day:
-        return "day_cap", sorted(day)[-per_day] + dt.timedelta(hours=24)
+    # Runs since this morning, not in the last 24 hours: each run ends a minute or so past its hour, so a
+    # 24-hour window held each day's runs back a little more than the day before.
+    morning = t.astimezone().replace(hour=DAY_HOURS[0], minute=0, second=0, microsecond=0)
+    if sum(1 for start, _ in runs if start >= morning) >= per_day:
+        return "day_cap", next_morning(t)
     return None
 
 

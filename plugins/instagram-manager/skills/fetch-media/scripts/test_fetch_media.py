@@ -432,27 +432,27 @@ class RunRules(Home):
         self.past((3, 1.1))
         self.assertEqual(self.run_main(), 0)
 
-    def test_six_runs_a_day(self):
-        self.past((20, 19), (18, 17), (16, 15), (14, 13), (12, 11), (10, 9))
-        self.assertEqual(self.run_main(), 5)
-        refused = self.log_lines("refused")[0]
-        self.assertIn("reason=day_cap", refused)
-        may = fetch_media.now() + dt.timedelta(hours=4)   # 24 hours after the first of the six
-        self.assertIn(f"may_start={fetch_media.stamp(may)[:13]}", refused)
-        self.past((26, 25), (18, 17), (16, 15), (14, 13), (12, 11), (10, 9))   # the first falls outside
-        self.assertEqual(self.run_main(), 0)
+    def evening_runs(self, *hours):
+        """7pm local today, and runs started at these local hours (negative: yesterday), each an hour long."""
+        today = fetch_media.now().astimezone().replace(minute=0, second=0, microsecond=0)
+        at = lambda h: (today.replace(hour=h % 24) - dt.timedelta(days=1 if h < 0 else 0)).astimezone(dt.timezone.utc)  # noqa: E731
+        return today.replace(hour=19), [[at(h), at(h) + dt.timedelta(hours=1)] for h in hours]
+
+    def test_six_runs_a_day_counted_from_9am(self):
+        with mock.patch.object(fetch_media, "DAY_HOURS", (9, 21)):
+            t, runs = self.evening_runs(9, 10, 11, 12, 13, 15)
+            reason, may = fetch_media.too_soon(runs, t)
+            self.assertEqual(reason, "day_cap")
+            self.assertEqual(may.astimezone().hour, 9)   # tomorrow morning
+            # yesterday's runs don't count, however late they ran
+            t, runs = self.evening_runs(-13, -15, -17, -19, -20, 9, 11, 13, 15)
+            self.assertIsNone(fetch_media.too_soon(runs, t))
 
     def test_three_runs_a_day_in_the_gentle_days(self):
-        fetch_media.write_json(fetch_media.cooldown_path(), {
-            "gentle_until": fetch_media.stamp(fetch_media.now() + dt.timedelta(days=1)), "level": 1})
-        self.past((20, 19), (15, 14), (10, 9))
-        self.assertEqual(self.run_main(), 5)
-        refused = self.log_lines("refused")[0]
-        self.assertIn("reason=day_cap", refused)
-        may = fetch_media.now() + dt.timedelta(hours=4)   # 24 hours after the first of the three
-        self.assertIn(f"may_start={fetch_media.stamp(may)[:13]}", refused)
-        self.past((26, 25), (15, 14), (10, 9))
-        self.assertEqual(self.run_main(), 0)
+        with mock.patch.object(fetch_media, "DAY_HOURS", (9, 21)):
+            t, runs = self.evening_runs(9, 12, 15)
+            self.assertEqual(fetch_media.too_soon(runs, t, per_day=3)[0], "day_cap")
+            self.assertIsNone(fetch_media.too_soon(runs[1:], t, per_day=3))
 
     def test_a_run_stops_taking_posts_after_its_hour(self):
         with mock.patch.object(fetch_media, "BURST", dt.timedelta(0)):
