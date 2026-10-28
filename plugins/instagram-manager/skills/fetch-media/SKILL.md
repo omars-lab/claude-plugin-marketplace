@@ -167,11 +167,15 @@ at most 2 runs start in any 24 hours, not 3 (a third run in a gentle day once br
 stop in those 2 days counts as the next stop in a row. After 2 clean days the cooldown file is
 removed, so a later stop is a first stop again.
 
-A test post that comes back empty may just be a deleted post (`ev=test_empty`). Its code goes in
-the cooldown file's `empty_tested`, and the next test run tries a different post. If that one
-works, the empty one is marked `not_found`. If it is empty too, that is two in a row: a new
-cooldown starts (`ev=rate_limited kind=empty_streak`). Before this, one deleted post at the head
-of the list was tested again on every run, and the run never recovered.
+### Two empty answers: deleted posts or a block?
+
+Two deleted posts side by side look just like a quiet block: both come back "empty media
+response". In October 2026 one such pair caused three stops in a row, and 72-post runs went fine
+between them. So before stopping on a second empty answer in a row, or on an empty test post after a
+cooldown, the run asks one post `media.yaml` already has a thumbnail for (`ev=control_start`,
+`ev=control_done ok=`). If it comes through, the empty posts are marked `not_found`, the run goes on,
+and a test run counts as recovered. If it is empty or fails too, the run stops as before
+(`ev=rate_limited kind=empty_streak`). That costs 1 extra request, only after an empty answer.
 
 Before trying again, open one of the failed posts in a private browser window on the same Wi-Fi.
 If it asks you to log in, the connection is walled: wait. If it shows fine but yt-dlp still fails

@@ -544,10 +544,13 @@ def to_jpeg(src, dst, width, max_width=THUMB_WIDTH):
 # ---------------------------------------------------------------- the run
 
 class Run:
-    def __init__(self, ydl, watcher, requests, media, sleep=time.sleep, video=False, one_request=None):
+    def __init__(self, ydl, watcher, requests, media, sleep=time.sleep, video=False, one_request=None,
+                 test_only=False):
         self.ydl, self.watcher, self.requests, self.media = ydl, watcher, requests, media
         self.sleep = sleep
         self.video = video
+        self.test_only = test_only       # the one test post after a cooldown
+        self.control_ok = False          # a post we already have came through after an empty answer
         self.one_request = one_request   # the SkipRuling with --one-request, else None
         self.rechecked = False           # --one-request: a post was asked again the 2-request way
         self.keep = set()                # --recheck codes: media.yaml is never written for them
@@ -635,8 +638,14 @@ class Run:
                 if "instagram sent an empty media response" in low:
                     self.empty_streak += 1
                     log("empty_media", shortcode=code, streak=self.empty_streak)
-                    if self.empty_streak >= 2:
-                        raise Stop("empty_streak", msg[:200])
+                    if self.empty_streak >= 2 or self.test_only:
+                        if not self.control_answers():
+                            raise Stop("empty_streak", msg[:200])
+                        if self.pending_empty and self.pending_empty not in self.keep:
+                            self.media[self.pending_empty] = self.failed(self.pending_empty, "not_found")
+                        self.pending_empty = None
+                        self.empty_streak = 0
+                        return self.failed(code, "not_found")
                     self.pending_empty = code
                     self.pause("empty", EMPTY_WAIT)
                     return None
@@ -688,6 +697,30 @@ class Run:
         log("post_ok", shortcode=code, kind=kind, bytes=os.path.getsize(dst), secs=round(time.time() - t0, 1),
             ig_requests=self.watcher.ig, path="page")
         return {"thumb": f"{code}/thumb.jpg", "kind": kind, "fetched": now().date().isoformat()}
+
+    def control_answers(self):
+        """Two empty answers in a row look like a quiet block, but so do two deleted posts side by side
+        (three stops in Oct 2026 were one such pair). Ask a post media.yaml already has a thumbnail for:
+        True if it comes through, so the empty answers were those posts. 1 request, only after an empty."""
+        known = [c for c, e in self.media.items() if "thumb" in (e or {}) and c not in self.keep]
+        if not known:
+            return False
+        code = known[-1]
+        self.pause("control", *GAP)
+        self.watcher.reset(code)
+        if self.one_request:
+            self.one_request.on = True
+        log("control_start", shortcode=code)
+        try:
+            with deadline(POST_DEADLINE):
+                info = self.ydl.extract_info(f"https://www.instagram.com/p/{code}/", download=False)
+        except Exception as e:  # noqa: BLE001 — any failure here leaves the block reading standing
+            log("control_bad", shortcode=code, msg=str(e)[:200])
+            return False
+        ok = not self.watcher.stop and bool(pick_image(info or {})[0])
+        log("control_done", shortcode=code, ok=ok)
+        self.control_ok = self.control_ok or ok
+        return ok
 
     def may_recheck(self, code, low):
         """--one-request: a login redirect or an empty answer may be a post limited by age or audience,
@@ -830,7 +863,6 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
             if not gentle:
                 os.remove(cooldown_path())   # 2 clean days: a later stop is a first stop again
                 cd = None
-        tested = (cd or {}).get("empty_tested") or []   # earlier test posts that came back empty
         early =too_soon(past_runs(log_path), now(), GENTLE_RUNS_PER_DAY if gentle else RUNS_PER_DAY)
         if early:
             log("refused", reason=early[0], may_start=stamp(early[1]))
@@ -851,11 +883,8 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
         if args.video:
             todo, done = pick_codes(saves, read_codes(args.video), media, limit)
         else:
-            todo, done = pick(saves, pilot, load_yaml(os.path.join("data", "tags.yaml")), media, None,
+            todo, done = pick(saves, pilot, load_yaml(os.path.join("data", "tags.yaml")), media, limit,
                               first=load_yaml(os.path.join("data", "pins.yaml")))
-            if test_only:   # a test post that came back empty may just be deleted: test another one
-                todo = [s for s in todo if s["code"] not in tested]
-            todo = todo[:limit]
             if args.recheck:
                 again = pick_recheck(saves, read_codes(args.recheck))
                 todo = (again + [s for s in todo if s not in again])[:limit]
@@ -882,7 +911,8 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
         stopped, reason = "no", ""
         with ydl_factory(opts) as ydl:
             skip = SkipRuling(ydl) if args.one_request else None
-            run = Run(ydl, watcher, requests, media, sleep=sleep, video=bool(args.video), one_request=skip)
+            run = Run(ydl, watcher, requests, media, sleep=sleep, video=bool(args.video), one_request=skip,
+                      test_only=test_only)
             run.keep = again
             for n, s in enumerate(todo, 1):
                 if n > 1:
@@ -909,24 +939,12 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
                 elif entry is not None:
                     media[s["code"]] = entry
                     write_yaml(MEDIA, media)   # after every post, so a stop loses nothing
-                    if test_only and ("video" in entry if args.video else "thumb" in entry):
+                    if test_only and (("video" in entry if args.video else "thumb" in entry) or run.control_ok):
                         gentle_until = stamp(now() + GENTLE)
                         log("recovered", shortcode=s["code"], gentle_until=gentle_until)
-                        for code in tested:   # this one came through, so those empty answers were their posts
-                            if code not in again:
-                                media[code] = run.failed(code, "not_found")
-                        write_yaml(MEDIA, media)
                         write_json(cooldown_path(), {"gentle_until": gentle_until, "level": cd.get("level"),
                                                      "kind": cd.get("kind"), "at": cd.get("at")})
             write_yaml(MEDIA, media)
-        if test_only and run.pending_empty and stopped == "no":
-            if tested:   # a second test post empty too: two in a row, so most likely a quiet block
-                stopped, reason = "yes", "empty_streak"
-                log("rate_limited", kind=reason, shortcode=run.pending_empty, tested=",".join(tested))
-                write_cooldown(reason)
-            else:        # maybe a deleted post: the next test run tries another
-                write_json(cooldown_path(), {**cd, "empty_tested": [run.pending_empty]})
-                log("test_empty", shortcode=run.pending_empty)
         log("run_end", ok=run.ok, bad=run.bad, skipped=done, stopped=stopped, reason=reason or "none",
             ig_requests=watcher.total, minutes=round((time.time() - run.started) / 60, 1))
         print(f"fetched {run.ok}, bad {run.bad}, already done {done}" + (f"; stopped: {reason}" if reason else ""))

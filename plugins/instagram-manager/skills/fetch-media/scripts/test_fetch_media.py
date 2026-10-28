@@ -288,33 +288,6 @@ class Stops(Home):
         self.assertNotIn("until", cd)                  # it worked, so the cooldown is over
         self.assertEqual(cd["level"], 1)               # but a stop in the next 2 days is a second in a row
 
-    def test_an_empty_test_post_is_not_tested_again(self):
-        path = os.path.join(self.root, ".cache", "fetch-media.cooldown.json")
-        with open(path, "w") as fh:
-            json.dump({"until": "2000-01-01T00:00:00Z", "level": 1}, fh)
-        empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
-        self.assertEqual(self.run_main({"REELA": empty}), 0)
-        self.assertEqual(self.ydl.calls, ["REELA"])
-        self.assertEqual(self.run_main(), 0)
-        self.assertEqual(self.ydl.calls, ["REELB"])            # another post, not REELA again
-        self.assertEqual(self.media()["REELA"], {"error": "not_found"})
-        with open(path) as fh:
-            self.assertIn("gentle_until", json.load(fh))
-
-    def test_two_empty_test_posts_are_a_block(self):
-        path = os.path.join(self.root, ".cache", "fetch-media.cooldown.json")
-        with open(path, "w") as fh:
-            json.dump({"until": "2000-01-01T00:00:00Z", "level": 1}, fh)
-        empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
-        self.run_main({"REELA": empty})
-        self.assertEqual(self.run_main({"REELB": empty}), 1)
-        self.assertIn("kind=empty_streak", self.log_lines("rate_limited")[0])
-        with open(path) as fh:
-            cd = json.load(fh)
-        self.assertEqual(cd["level"], 2)
-        self.assertNotIn("empty_tested", cd)
-        self.assertNotIn("REELA", self.media())
-
     def test_two_gentle_days_after_a_test_post(self):
         path = os.path.join(self.root, ".cache", "fetch-media.cooldown.json")
         gentle = {"gentle_until": fetch_media.stamp(fetch_media.now() + dt.timedelta(days=1)), "level": 1}
@@ -342,6 +315,38 @@ class Stops(Home):
         self.assertEqual(rc, 1)
         self.assertIn("kind=empty_streak", self.log_lines("rate_limited")[0])
         self.assertEqual(self.media(), {})
+
+    def known_post(self):
+        with open(os.path.join(self.root, "data", "media.yaml"), "w") as fh:
+            yaml.safe_dump({"KNOWN": {"thumb": "KNOWN/thumb.jpg", "kind": "image"}}, fh)
+
+    def test_two_deleted_posts_side_by_side_are_not_a_block(self):
+        self.known_post()
+        empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
+        self.assertEqual(self.run_main({"REELA": empty, "REELB": empty}), 0)
+        self.assertEqual(self.ydl.calls[:3], ["REELA", "REELB", "KNOWN"])   # a post we have, asked once
+        self.assertEqual(self.media()["REELA"], {"error": "not_found"})
+        self.assertEqual(self.media()["REELB"], {"error": "not_found"})
+        self.assertIn("thumb", self.media()["PHOTOC"])                       # and the run carried on
+
+    def test_a_known_post_empty_too_is_a_block(self):
+        self.known_post()
+        empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
+        self.assertEqual(self.run_main({"REELA": empty, "REELB": empty, "KNOWN": empty}), 1)
+        self.assertIn("kind=empty_streak", self.log_lines("rate_limited")[0])
+        self.assertNotIn("REELA", self.media())
+
+    def test_an_empty_test_post_is_checked_against_a_known_post(self):
+        self.known_post()
+        path = os.path.join(self.root, ".cache", "fetch-media.cooldown.json")
+        with open(path, "w") as fh:
+            json.dump({"until": "2000-01-01T00:00:00Z", "level": 2}, fh)
+        empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
+        self.assertEqual(self.run_main({"REELA": empty}), 0)
+        self.assertEqual(self.ydl.calls, ["REELA", "KNOWN"])
+        self.assertEqual(self.media()["REELA"], {"error": "not_found"})
+        with open(path) as fh:
+            self.assertIn("gentle_until", json.load(fh))   # not blocked: the gentle days start
 
     def test_one_empty_answer_is_a_missing_post(self):
         empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
