@@ -17,8 +17,10 @@ EXAMPLE456: {error: private}
 
 **How long it takes.** A run of 117 posts takes about 2 hours, and the rules below allow 3 runs a
 day, so about 350 thumbnails a day: a library of 1,000 saves takes about three days of runs, 8,000
-about three weeks. With `--one-request` (below) a run may hold 150 posts, then 200, which about
-halves that. The map works without thumbnails; they only add pictures.
+about three weeks. With `--one-request` (below) a post takes about 52 s instead of 61 s (the gap
+between posts stays), but a run may hold 150 posts (about 2 h 10 min), then 200 (about 3 h), so a
+day of runs fetches 450-600 thumbnails instead of 350. The map works without thumbnails; they only
+add pictures.
 
 A post already in `media.yaml`, fetched or not, is skipped next time. The errors are `private`
 (only followers can see it), `login_wall` (a post limited by age or audience, "isn't available to
