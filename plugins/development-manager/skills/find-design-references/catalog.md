@@ -74,6 +74,32 @@ part of their content behind a sign-in. Skip what needs one; never sign in for a
 | Design Systems Repo | https://designsystemsrepo.com | [type, forms] | A directory of public design systems |
 | awesome-design-systems | https://github.com/alexpate/awesome-design-systems (Unlicense) | [type, forms] | A long list of design systems, marked by whether their code and tokens are public |
 
+## Type with character
+
+These are open or free type sources, for the C1 principle in `design-engaging-ui`. Each font
+carries its own license, so read it before using the font. Serve the font from the repo, never a
+font CDN.
+
+| Name | Site | Good for | Note |
+|---|---|---|---|
+| Fontsource | https://fontsource.org | [type] | Open-license fonts as npm packages, so a Vite page serves them itself. Repo: https://github.com/fontsource/fontsource (MIT) |
+| Velvetyne | https://velvetyne.fr | [type] | Libre display faces with a strong voice, for headings and numbers, not body text |
+| Collletttivo | https://www.collletttivo.it | [type] | Open-source fonts from an Italian type collective |
+| Open Foundry | https://open-foundry.com | [type] | A curated set of open-source fonts, shown in use |
+| Fontshare | https://www.fontshare.com | [type] | Free fonts from the Indian Type Foundry, under their own free-font license |
+
+## Colour themes with character
+
+Editor themes and colour systems are tested by people who stare at them all day. Use them for
+C2: a leading colour and a sharp accent that hold together in light and dark.
+
+| Name | Site | Repo and license | Good for | Note |
+|---|---|---|---|---|
+| Solarized | https://ethanschoonover.com/solarized/ | https://github.com/altercation/solarized (MIT) | [colour] | Exact light and dark pairs built on fixed lightness steps |
+| Nord | https://www.nordtheme.com | https://github.com/nordtheme/nord (MIT) | [colour] | A cold, quiet palette with a few clear accents |
+| Rosé Pine | https://rosepinetheme.com | https://github.com/rose-pine/rose-pine-theme (MIT) | [colour] | Muted warm tones in three variants, one light |
+| Catppuccin | https://catppuccin.com | https://github.com/catppuccin/catppuccin (MIT) | [colour] | Pastel and very widely used. Borrow its structure (named roles for each colour), not its look |
+
 ## Tools for type and colour
 
 These are not references to compare against. They help turn a borrowed value into a full scale.

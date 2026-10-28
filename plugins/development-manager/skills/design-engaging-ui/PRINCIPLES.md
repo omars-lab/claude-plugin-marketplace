@@ -27,9 +27,27 @@ passes only when it holds at both widths.
 | Id | Principle | How to see it | Common fix |
 |---|---|---|---|
 | D1 | Colours, type, spacing, corners and shadows come from one set of values | Search the styles for colours and pixel sizes written inline; lay the views side by side | Put the values in one file (CSS variables or a theme) and use only those |
-| D2 | A small palette: neutrals plus one accent, and colours for success, warning and error | Count the distinct colours in use; the accent marks actions and the current place, not decoration | Pick one accent; turn the other colours into neutrals |
-| D3 | It is not the default AI look | No purple-to-blue gradients, glowing cards, emoji in headings, or every block a rounded card with a shadow | Go back to the brief's three words and pick a direction that fits them (with `frontend-design`) |
+| D2 | A small palette: a ground and neutrals, one sharp accent, and colours for success, warning and error | Count the distinct colours in use; the accent marks actions and the current place, not decoration | Pick one accent; turn the other colours into neutrals. See C2 for making the palette committed rather than timid |
+| D3 | It is not the default AI look | No purple-to-blue gradients, glowing cards, emoji in headings, or every block a rounded card with a shadow | Go back to the brief's three words and pick a direction that fits them (with `frontend-design`), then check the Character group |
 | D4 | Every control is styled to match: inputs, dropdowns, checkboxes, scroll bars, focus rings | Look at the search box and filters next to the buttons | Style the plain browser controls with the same border, radius and spacing |
+
+## Character: made for this page, not the average of all pages
+
+Models drift toward the most common choices, and a page built from common choices looks like
+every other page built with AI. This group checks that the page made real choices of its own. It
+comes from Anthropic's guidance on frontend aesthetics, which Omar adopted on 2026-10-16.
+
+Each choice is held to the brief's three words. Character never costs readability: data stays
+easy to scan, and body text stays easy to read.
+
+| Id | Principle | How to see it | Common fix |
+|---|---|---|---|
+| C1 | The type is chosen, not defaulted | Read the font stacks. Body text is not the system stack, Inter, Roboto, Arial or Helvetica. The display face is not one of the usual "distinctive" picks either (Space Grotesk, a stock geometric sans) | Pick a display face and a text face that fit the three words, from the catalog's type sources. Serve them from the repo (Fontsource or the font files), so the page works offline |
+| C2 | The palette is committed: one colour clearly leads, and one accent is sharp | Squint at the shot: one colour sets the mood, and the accent stands out against it. A timid spread of five equal pastels fails | Pick the leading colour from something with character, such as an editor theme, print, a place, a craft or a culture that fits the brief. Keep it as variables, with light and dark values |
+| C3 | The background has depth, quietly | The ground is not one flat colour. A faint layered gradient, a paper grain, a grid or a pattern fits the brief, and stays well behind the content | Layer one or two CSS gradients or a small repeating pattern on the body. Check text contrast on top of it in light and dark |
+| C4 | The page arrives once, on purpose | Reload: the main blocks come in with one short staggered reveal, using `animation-delay` steps of about 40 to 80 ms, done within about 600 ms. No other motion is only decoration | One CSS entrance on the page's main sections, inside `prefers-reduced-motion: no-preference`. Cut scattered hover wobbles. In React, use Motion only if the repo already has it |
+| C5 | At least one layout choice is the page's own | Name the one thing in the layout a template would not have, such as an asymmetric masthead, margin notes, a ruled ledger or an oversized number | Find it in the references or the brief, and give it room |
+| C6 | It is not a copy of our last page | Compare it with the other pages and hubs already built (the hubs catalog's shots). The same font pairing, accent and layout must not repeat | Vary light against dark, the type family and the overall look between projects, unless the brief asks for a shared look |
 
 ## States: what the page says when there is nothing, or something went wrong
 
@@ -52,7 +70,7 @@ passes only when it holds at both widths.
 
 | Id | Principle | How to see it | Common fix |
 |---|---|---|---|
-| M1 | Motion explains a change (where something came from or went), and is quick | Watch a panel open or an item move; small changes take about 150 to 250 ms | Animate opacity and position only; cut motion that is only decoration |
+| M1 | Motion explains a change (where something came from or went), and is quick | Watch a panel open or an item move; small changes take about 150 to 250 ms | Animate opacity and position only; cut motion that is only decoration, apart from the one entrance in C4 |
 | M2 | Motion stops when the person's system asks for less | Turn on "Reduce motion" in the system settings (or emulate it in the browser tools) | Wrap animations in `@media (prefers-reduced-motion: no-preference)` |
 
 ## Engagement: worth opening again

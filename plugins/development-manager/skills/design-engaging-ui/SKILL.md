@@ -77,19 +77,29 @@ TaskCreate({ subject: "Score and report", description: "PRINCIPLES.md before and
      option says what it does well, what it gives up, and what it commits the page to (for
      example "dark only" or "needs a web font").
    - Each direction says which reference it leans on, and what it borrows from it.
+   - The directions really differ from each other, and from our other pages (PRINCIPLES.md C6).
+     Each has its own type family, at least one is dark unless the brief rules it out, and none
+     uses a font on the overused list in C1.
+   - Each one meets the Character group (C1 to C6) before it is shown: chosen type, one leading
+     colour with a sharp accent, a background with quiet depth, one staggered entrance, and one
+     layout choice of its own. Name those five things in its option.
    - Use `frontend-design` to push each direction away from the default. Use `ui-ux-pro-max` for
-     palettes and pairings when it is installed.
+     palettes and pairings when it is installed. The catalog in `find-design-references` lists
+     open-license type foundries and editor colour themes to draw from.
 5. **Write the design system** for the chosen direction.
    - Put the tokens in one file the whole page reads, such as CSS variables in `:root` or a theme
-     file: colours (neutrals plus one accent, with light and dark values), the type scale, the
-     spacing scale, radius, shadow and motion timing.
+     file: colours (the leading colour, neutrals and one accent, with light and dark values), the
+     type scale, the spacing scale, radius, shadow and motion timing. Add the background layers
+     and the entrance animation (C3, C4) there too.
+   - Serve the fonts from the repo, through Fontsource packages or the font files, never a font
+     CDN. Local pages must work offline, and a CDN call tells a third party who opened the page.
    - Write the same values in `docs/design.md` under the brief, with one line on why each was
      picked.
    - Delete the directions that were not chosen.
 6. **Build, then check, two to four rounds.**
    - Apply the system everywhere, replacing values written inline with the tokens.
-   - Then go through PRINCIPLES.md group by group: hierarchy, design system, states, feedback,
-     motion, engagement, accessibility.
+   - Then go through PRINCIPLES.md group by group: hierarchy, design system, character, states,
+     feedback, motion, engagement, accessibility.
    - After each round, shoot **every page**, not only the first one, at 1280 and 390
      (`find-design-references`' `shoot --url`, or the hubs repo's site map). Lay each beside its
      references with `sheet`, and list what is off against the references and the brief. Fix it and
@@ -107,9 +117,10 @@ TaskCreate({ subject: "Score and report", description: "PRINCIPLES.md before and
 ## Output
 
 ```
-<page>: 11 of 24 principles before, 21 after (3 not checked)
+<page>: 12 of 30 principles before, 27 after (3 not checked)
 References: linear-sidebar, plane-board, cal-calendar (references.yaml)
 Direction: "Ledger" (warm paper, one rust accent, serif headings), picked over "Console" and "Studio"
+Character: Fraunces + Source Serif 4, ink-on-paper with a rust accent, ruled-paper ground, one 3-step entrance
 System:    tokens in src/theme.css, written up in docs/design.md
 Commits:   H1-H3 hierarchy (abc1234), S1-S4 states (def5678), F1-F3 feedback (0a1b2c3)
 For you:   E2 a "since your last visit" strip needs a last-seen timestamp stored; worth adding?

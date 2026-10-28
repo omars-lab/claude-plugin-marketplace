@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 KINDS = {"site", "repo"}
-GOOD_FOR = {"sidebar", "calendar", "board", "table", "filing", "stats", "review", "landing", "forms", "type"}
+GOOD_FOR = {"sidebar", "calendar", "board", "table", "filing", "stats", "review", "landing", "forms", "type", "colour"}
 SIZES = {
     "desktop": {"viewport": {"width": 1280, "height": 820}},
     "phone": {"viewport": {"width": 390, "height": 844}, "is_mobile": True, "has_touch": True},

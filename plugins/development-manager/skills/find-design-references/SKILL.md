@@ -55,7 +55,7 @@ references:
     repo: https://github.com/owner/name   # repos only
     license: MIT                          # repos only
     tokens: src/styles/tokens.css         # repos only: the file the values come from
-    good_for: [sidebar, board]  # sidebar calendar board table filing stats review landing forms type
+    good_for: [sidebar, board]  # sidebar calendar board table filing stats review landing forms type colour
     borrow:
       - one concrete thing to copy
     checked: 2026-10-16         # when someone last looked at it
@@ -98,7 +98,11 @@ TaskCreate({ subject: "Shoot and compare", description: "Shoot the picks and eac
    The prompt holds:
    - the brief;
    - the kinds of page that need a reference;
-   - the look to avoid (purple gradients, glassy cards, everything in a rounded box);
+   - the look to avoid (purple gradients, glassy cards, everything in a rounded box, system or
+     Inter body text, a timid spread of equal pastels);
+   - that at least one pick is for character, not layout: a typeface, an editor theme, a print
+     or cultural source for colour and ground. This feeds the Character group (C1 to C6) in
+     `design-engaging-ui`'s PRINCIPLES.md, and is tagged `type` or `colour`;
    - both sources: live sites, and GitHub repos with their demo, license and token file;
    - the path to `catalog.md` as the place to start, with the instruction to search beyond it;
    - the output. That is `research/design-references/<page>/<a|b>/findings.md`, which covers 10 to 14
