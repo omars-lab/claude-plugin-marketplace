@@ -20,7 +20,8 @@ below allow 3 runs a day, so about 300 thumbnails a day: a library of 1,000 save
 days of runs, 8,000 about a month. The map works without thumbnails; they only add pictures.
 
 A post already in `media.yaml`, fetched or not, is skipped next time. The errors are `private`
-(only followers can see it), `login_wall` (an age-limited post that needs a login), `not_found`
+(only followers can see it), `login_wall` (a post limited by age or audience, "isn't available to
+everyone", that needs a login), `not_found`
 (Instagram sent nothing for it) and `no_image`. A run that stops on a block writes nothing for the
 post it stopped on, so that post is tried again later.
 

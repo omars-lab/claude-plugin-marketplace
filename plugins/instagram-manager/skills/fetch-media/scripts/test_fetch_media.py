@@ -210,6 +210,14 @@ class Fetch(Home):
         self.run_main()
         self.assertNotIn("REELB", self.ydl.calls)
 
+    def test_audience_limited_recorded_and_not_tried_again(self):
+        err = FakeError("ERROR: [Instagram] REELB: This content isn't available to everyone: It can't be seen "
+                        "by certain audiences.")
+        self.run_main({"REELB": err})
+        self.assertEqual(self.media()["REELB"], {"error": "login_wall"})
+        self.run_main()
+        self.assertNotIn("REELB", self.ydl.calls)
+
     def test_carousel_takes_first_slide(self):
         carousel = {"_type": "playlist", "entries": [photo("SLIDE1"), photo("SLIDE2")]}
         self.run_main({"REELA": carousel}, args=("--pilot", "fixture", "--limit", "1"))

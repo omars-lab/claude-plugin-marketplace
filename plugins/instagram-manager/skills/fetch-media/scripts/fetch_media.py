@@ -381,8 +381,8 @@ def post_error(low):
     """A problem with this one post (not the connection): the media.yaml error, or None."""
     if "only available for registered users who follow this account" in low:
         return "private"
-    if "restricted video" in low:
-        return "login_wall"   # age-limited: needs a login, which we never use
+    if "restricted video" in low or "isn't available to everyone" in low:
+        return "login_wall"   # age- or audience-limited: needs a login, which we never use
     return None
 
 
