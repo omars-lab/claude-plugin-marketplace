@@ -39,10 +39,15 @@ class SharedSpots(unittest.TestCase):
         pins = {"A1": [spot("Example Wings", found=found, overture="row-1")],
                 "B2": [spot("Example Wings Uptown", osm="node/1", found=found)]}
         self.assertEqual(shared_spots(pins), [])
-        # a row an agent picked is checked by name, as before
-        pins = {"A1": [spot("Example Grill", overture="row-1", checked="agent")],
-                "B2": [spot("Sample Noodles", overture="row-1", checked="agent")]}
+        # a row an agent picked counts only for names that start like the row's
+        hall = "Example Food Hall, 1, Example Street"
+        pins = {"A1": [spot("Example Grill", found=hall, overture="row-1", checked="agent")],
+                "B2": [spot("Sample Noodles", found=hall, overture="row-1", checked="agent")]}
         self.assertEqual(len(shared_spots(pins)), 1)
+        cafe = "Example Cafe, 1, Example Street"
+        pins = {"A1": [spot("Example", found=cafe, overture="row-1", checked="agent")],
+                "B2": [spot("Example DC", found=cafe, overture="row-1", checked="agent")]}
+        self.assertEqual(shared_spots(pins), [])
 
     def test_shops_in_one_building_pass_when_marked(self):
         pins = {"A1": [spot("Example Grill", building="Example Food Hall")],
