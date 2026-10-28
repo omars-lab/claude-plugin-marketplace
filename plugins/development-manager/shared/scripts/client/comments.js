@@ -1140,6 +1140,34 @@
     return !!(t.rev && t.rev.bodyHash && hashes[t.id] && hashes[t.id] !== t.rev.bodyHash);
   }
 
+  // The pins drawn last, with their elements, so a scroll can move them without a rebuild.
+  var placed = [];
+
+  /** Puts a pin on its spot on the element. A pin whose element is scrolled out of
+   *  a panel that cuts it off is hidden, not left floating over the panel's edge. */
+  function placePin(p) {
+    var r = p.el.getBoundingClientRect();
+    p.pin.style.left = r.left + scrollX + r.width * p.fx - 11 + "px";
+    p.pin.style.top = r.top + scrollY + r.height * p.fy - 11 + "px";
+    var gone = clipsAbove(p.el).some(function (c) {
+      return (c.y && (r.bottom <= c.top || r.top >= c.bottom)) || (c.x && (r.right <= c.left || r.left >= c.right));
+    });
+    p.pin.style.visibility = gone ? "hidden" : "";
+  }
+
+  // Window scrolling moves the pins with the page already: they sit in page
+  // coordinates. A panel that scrolls on its own (a drawer, a side list) does
+  // not, so any scroll moves the pins again, once per frame.
+  var placeFrame = 0;
+  function placePinsSoon(e) {
+    if (e && e.target === host) return; // the comment list scrolling inside the bar
+    if (placeFrame) return;
+    placeFrame = requestAnimationFrame(function () {
+      placeFrame = 0;
+      placed.forEach(placePin);
+    });
+  }
+
   var redrawTimer = null;
   function redrawSoon() {
     clearTimeout(redrawTimer);
@@ -1185,6 +1213,7 @@
     btnResolved.classList.toggle("on", showResolved);
 
     pins.textContent = "";
+    placed = [];
     var lost = [];
     var n = 0;
     threads.forEach(function (t) {
@@ -1204,13 +1233,13 @@
             redrawSoon();
           }
         });
-        var r = el.getBoundingClientRect();
         var fx = t.anchor.box && typeof t.anchor.box.fx === "number" ? t.anchor.box.fx : 1;
         var fy = t.anchor.box && typeof t.anchor.box.fy === "number" ? t.anchor.box.fy : 0;
         var title = clip(t.messages[0].body, 120) + (changed(t) ? " (changed since this comment)" : "");
         var pin = h("button", { type: "button", class: "pin " + t.status + (t.waiting === "human" ? " answered" : "") + (changed(t) ? " changed" : ""), title: title, text: String(num) });
-        pin.style.left = r.left + scrollX + r.width * fx - 11 + "px";
-        pin.style.top = r.top + scrollY + r.height * fy - 11 + "px";
+        var p = { pin: pin, el: el, fx: fx, fy: fy };
+        placePin(p);
+        placed.push(p);
         pin.addEventListener("click", function () {
           openThread(t);
         });
@@ -1278,6 +1307,7 @@
     setInterval(function () {
       if (!document.hidden) poll();
     }, POLL_MS);
+    addEventListener("scroll", placePinsSoon, { capture: true, passive: true });
     var t = null;
     addEventListener("resize", function () {
       clearTimeout(t);
