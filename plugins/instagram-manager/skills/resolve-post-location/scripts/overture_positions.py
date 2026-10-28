@@ -7,7 +7,11 @@ small restaurants), from Overture Maps' open places data, matched on this Mac.
     overture_positions.py --pilot NAME             the same, then the spots that pass every rule move
                                                    from the review list to the pins
     overture_positions.py --all                    every save
-    options: --release R (default: the newest one online), --near "Example Town" (one area only)
+    overture_positions.py --pilot NAME --check-prepare   batch files of the held spots a reader could
+                                                   clear, for overture-checker agents (nothing pinned)
+    overture_positions.py --check-merge            pin the rows the agents picked
+    options: --release R (default: the newest one online), --near "Example Town" (one area only),
+             --batch-spots N (most spots in one check batch)
 
 Reads   $INSTAGRAM_HOME/data/pins-review.yaml     the spots whose `why` is "not found near ..."
         $INSTAGRAM_HOME/data/places.yaml          each area's kind and lat/lon, and its box (the
@@ -38,6 +42,13 @@ pinned with no one looking only when all seven hold:
 A spot held by any rule stays in review as it was; the table says which rule held it, for the agent
 step or a person (`lookup:`, `ok:` with a lat/lon, `by: hand`).
 
+The agent step (`--check-prepare`, `--check-merge`): a spot held on a rule the caption can settle (a
+looser name, branches, a park or region, another town, a warning word; `SOFT`) goes to a batch file in
+$INSTAGRAM_HOME/.cache/batches/overture/ with its caption and the rows it could be, only rows that
+pass every other rule (`candidates`). The overture-checker agent writes batch-NNN.answers.json, a row
+id or null per spot; the merge pins a pick only if its batch offered it, with `checked: agent`, and
+marks a null `overture_checked: <release>` in the review file so the release doesn't offer it again.
+
 What a pin records: the fields every pin has (`name`, `said`, `near`, `kind`, `lat`, `lon`, `km`,
 `found`, `map`), plus `by: overture`, `overture: <row id>`, `overture_release`, and `licence`: the
 row's own sources' licences (Foursquare's rows are Apache-2.0, the rest CDLA-Permissive-2.0). The
@@ -49,7 +60,9 @@ downloaded only when a spot in it still waits; a later release changes nothing a
 """
 
 import argparse
+import glob
 import hashlib
+import json
 import os
 import re
 import statistics
@@ -216,27 +229,90 @@ def judge(spot, rows, area, reach, caption):
         return best, f"the area is a {area['kind']}, not a town, so the row's town can't be compared"
     if (best.get("town") or "").lower() != area["name"].lower():
         return best, f"the row's town is {best.get('town') or 'not given'}"
+    why = placed_badly(best, inside) or off_address(spot, best)
+    if why:
+        return best, why
+    warn = WARN.search(caption or "")
+    if warn:
+        return best, f"the caption says {warn.group(0)!r}"
+    return best, None
+
+
+def placed_badly(best, inside):
+    """Rule 5: why the row's point can't be trusted, or None."""
     same_street = [r for r in inside if r is not best and street_key(r) == street_key(best)]
     if same_street:
         mid = {"lat": statistics.median(r["lat"] for r in same_street),
                "lon": statistics.median(r["lon"] for r in same_street)}
         if km_m(best, mid) > ADDRESS_M:
-            return best, f"more than {ADDRESS_M} m from the other rows at its address"
+            return f"more than {ADDRESS_M} m from the other rows at its address"
     pile = sum(1 for r in inside if r is not best and round(r["lat"], 5) == round(best["lat"], 5)
                and round(r["lon"], 5) == round(best["lon"], 5))
     if pile >= PILE:
-        return best, f"{pile} other rows on the same point"
+        return f"{pile} other rows on the same point"
+    return None
+
+
+def off_address(spot, best):
+    """Rule 6: "not at the caption's address" when the caption gives one the row doesn't have, or None."""
     address = spot.get("address")
     if isinstance(address, str) and address.strip():
         house = re.match(r"\s*(\d+)\b", address)
         words = rpl.name_words(address) - rpl.STREET_WORDS
         if (house and not re.match(rf"\s*{house.group(1)}\b", best["street"])) or \
                 not words & rpl.name_words(best["street"]):
-            return best, "not at the caption's address"
-    warn = WARN.search(caption or "")
-    if warn:
-        return best, f"the caption says {warn.group(0)!r}"
-    return best, None
+            return "not at the caption's address"
+    return None
+
+
+# --- the agent's check, for the spots a person could clear ------------------------------------------
+
+# The rules a reader of the caption can settle: the name written another way, which of two branches,
+# the town next door, a park's café, and a warning word that may not mean what it says ("new menu").
+# The rest (no row, closed, not food, no street address, a guessed point, another address) are never
+# offered: the agent can't see past them.
+SOFT = ("only a looser name", "rows, more than", "the area is a", "the row's town is", "the caption says")
+CANDIDATES = 5
+CHECK_CAPTION = 2500
+BATCH_SPOTS = 15
+
+
+def soft(why):
+    return bool(why) and any(s in why for s in SOFT)
+
+
+def candidates(spot, rows, area, reach):
+    """The rows the agent may choose from: any match by name or handle, open, food or drink, with a
+    street address, a point that can be trusted and the caption's address if it gives one. Exact
+    matches first, then the nearest to the area's pin."""
+    name, said = spot["name"], spot["said"]
+    inside = [r for r in rows if r.get("lat") is not None and reach.ok(r["lat"], r["lon"])]
+    out = []
+    for r in inside:
+        m = matches(r, name, said, area["name"])
+        if not m or closed(r) or not is_food(r) or not r.get("street"):
+            continue
+        if placed_badly(r, inside) or off_address(spot, r):
+            continue
+        out.append((m == "close", km_m(r, area), r))
+    out.sort(key=lambda t: (t[0], t[1]))
+    return [r for _, _, r in out[:CANDIDATES]]
+
+
+def check_dir():
+    return cache("batches", "overture")
+
+
+def check_key(code, entry):
+    return f"{code}|{entry['said']}|{entry['near']}"
+
+
+def offered(row, area):
+    """A row as the batch carries it: what the agent reads, and what the pin is made from."""
+    return {"id": row["id"], "name": row.get("name"), "street": row.get("street"), "town": row.get("town"),
+            "kind": row.get("basic"), "km_from_area": round(km_m(row, area) / 1000, 1),
+            "hierarchy": list(row.get("hierarchy") or []), "licences": list(row.get("licences") or []),
+            "lat": row["lat"], "lon": row["lon"]}
 
 
 def licence(row):
@@ -291,8 +367,16 @@ def run(args, con=None, fetcher=None):
     todo = waiting(review, saves, tags, pilot, args.near)
     con = con or connect()
     release = args.release or newest_release(con)
+    creators = {s["code"]: s.get("creator") for s in saves}
+    dry = args.dry_run or args.check_prepare
+    if args.check_prepare:
+        waiting_answers = sorted(glob.glob(os.path.join(check_dir(), "batch-[0-9][0-9][0-9].answers.json")))
+        if waiting_answers:
+            sys.exit(f"{len(waiting_answers)} answers files are not merged yet "
+                     f"({os.path.basename(waiting_answers[0])}...): run --check-merge first")
+        todo = [t for t in todo if t[1].get("overture_checked") != release]
     boxes, reaches, rows_of = {}, {}, {}
-    table, placed, held = [], 0, {}
+    table, placed, held, check = [], 0, {}, []
     for code, entry, spot in todo:
         near = entry["near"]
         area = rpl.exact_area(near, places)
@@ -314,9 +398,17 @@ def run(args, con=None, fetcher=None):
             reason = why.split(" (")[0].split(",")[0]
             reason = re.sub(r"\d+", "N", reason)
             held[reason] = held.get(reason, 0) + 1
+            if args.check_prepare and soft(why):
+                rows = candidates(spot, rows_of[near], area, reaches[near])
+                if rows:
+                    check.append({"key": check_key(code, entry), "code": code, "creator": creators.get(code),
+                                  "said": entry["said"], "name": spot["name"], "near": near,
+                                  "near_kind": area["kind"], "held": why, "address": entry.get("address"),
+                                  "caption": captions.get(code, "")[:CHECK_CAPTION],
+                                  "rows": [offered(r, area) for r in rows]})
             continue
         placed += 1
-        if not args.dry_run:
+        if not dry:
             pins.setdefault(code, []).append(pin_for(spot, entry, row, area, release))
             left = [e for e in review[code] if e is not entry]
             if left:
@@ -326,27 +418,137 @@ def run(args, con=None, fetcher=None):
     for code, name, near, found, why in table:
         print(f"{code}  {name[:32]:<32}  {near[:18]:<18}  {why[:60]:<60}  {found[:70]}")
     print(f"\n{len(todo)} spots not found on OpenStreetMap; {placed} pass every rule"
-          f"{' (dry run: nothing written)' if args.dry_run else ' and are pinned'}; release {release}")
+          f"{' (dry run: nothing written)' if dry else ' and are pinned'}; release {release}")
     for reason, n in sorted(held.items(), key=lambda kv: -kv[1]):
         print(f"  {n:>4}  held: {reason}")
-    if not args.dry_run and placed:
+    if not dry and placed:
         rpl.write_yaml(rpl.PINS, pins)
         rpl.write_yaml(rpl.REVIEW, review)
     log("overture_run", scope=args.pilot or args.near or "all", release=release, spots=len(todo), pinned=placed,
-        held=len(todo) - placed, dry_run=bool(args.dry_run))
+        held=len(todo) - placed, dry_run=bool(dry))
+    if args.check_prepare:
+        write_check(check, release, args.batch_spots)
+        if placed:
+            print(f"{placed} spots pass every rule but are not pinned by this step: run it without "
+                  f"--check-prepare for them")
+    return 0
+
+
+def write_check(spots, release, size):
+    """The batch files for the overture-checker agents; a new round replaces the last one."""
+    out = check_dir()
+    os.makedirs(out, exist_ok=True)
+    for old in glob.glob(os.path.join(out, "batch-*.json")):
+        os.remove(old)
+    batches = [spots[i:i + size] for i in range(0, len(spots), size)]
+    for i, recs in enumerate(batches, 1):
+        name = f"batch-{i:03d}"
+        with open(os.path.join(out, name + ".json"), "w") as fh:
+            json.dump({"batch": name, "answers": os.path.join(out, name + ".answers.json"), "release": release,
+                       "spots": recs}, fh, ensure_ascii=False, indent=1)
+        log("overture_check_batch", batch=name, spots=len(recs))
+    print(f"{len(spots)} held spots a reader could clear, in {len(batches)} batch files in {out}: one "
+          f"overture-checker agent per batch, at most 4 at a time, then --check-merge")
+    log("overture_check_prepare", spots=len(spots), batches=len(batches), release=release)
+
+
+def find_entry(review, key):
+    code = key.split("|", 1)[0]
+    for e in review.get(code) or []:
+        if isinstance(e, dict) and not e.get("drop") and isinstance(e.get("said"), str) \
+                and isinstance(e.get("near"), str) and check_key(code, e) == key \
+                and str(e.get("why") or "").startswith("not found near"):
+            return code, e
+    return code, None
+
+
+def check_merge(args):
+    """Pin the rows the agents picked. A pick must be one of the rows its batch offered; a spot the agent
+    found no row for stays in review, marked so the same release doesn't offer it again."""
+    places = rpl.load_places()
+    pins, review = load_yaml(rpl.PINS), load_yaml(rpl.REVIEW)
+    counts = {"pinned": 0, "none": 0, "gone": 0, "bad": 0, "unanswered": 0}
+    waiting_batches, merged = 0, 0
+    for path in sorted(glob.glob(os.path.join(check_dir(), "batch-[0-9][0-9][0-9].json"))):
+        with open(path) as fh:
+            batch = json.load(fh)
+        ans_path = batch["answers"]
+        if not os.path.exists(ans_path):
+            waiting_batches += 1
+            continue
+        try:
+            with open(ans_path) as fh:
+                answers = json.load(fh)
+            answers = answers.get("answers", answers) if isinstance(answers, dict) else {}
+        except ValueError as e:
+            log("overture_check_bad_file", batch=batch["batch"], msg=str(e)[:200])
+            print(f"{batch['batch']}: the answers file is not JSON ({e}); ask its agent again")
+            continue
+        for s in batch["spots"]:
+            a = answers.get(s["key"])
+            code, entry = find_entry(review, s["key"])
+            if not isinstance(a, dict) or "row" not in a:
+                counts["unanswered"] += 1
+                continue
+            if entry is None:   # pinned or changed since the batch was written
+                counts["gone"] += 1
+                continue
+            offered_rows = {r["id"]: r for r in s["rows"]}
+            pick = a.get("row")
+            if pick is None:
+                entry["overture_checked"] = batch["release"]
+                counts["none"] += 1
+                log("overture_check_spot", code=code, said=s["said"], result="none")
+                continue
+            if pick not in offered_rows:
+                counts["bad"] += 1
+                log("overture_check_spot", code=code, said=s["said"], result="bad", row=str(pick)[:60])
+                continue
+            o = offered_rows[pick]
+            row = {**o, "basic": o.get("kind")}
+            area = rpl.exact_area(entry["near"], places)
+            pin = pin_for({"name": s["name"]}, entry, row, area, batch["release"])
+            pin["checked"] = "agent"
+            pins.setdefault(code, []).append(pin)
+            left = [e for e in review[code] if e is not entry]
+            if left:
+                review[code] = left
+            else:
+                del review[code]
+            counts["pinned"] += 1
+            log("overture_check_spot", code=code, said=s["said"], result="pin", row=pick)
+        os.replace(ans_path, ans_path.replace(".answers.json", ".answers.merged.json"))
+        merged += 1
+    if counts["pinned"] or counts["none"]:
+        rpl.write_yaml(rpl.PINS, pins)
+        rpl.write_yaml(rpl.REVIEW, review)
+    print(f"{merged} batches merged: {counts['pinned']} spots pinned, {counts['none']} with no row that is the "
+          f"spot, {counts['gone']} already moved on, {counts['bad']} picks not among the rows offered, "
+          f"{counts['unanswered']} unanswered; {waiting_batches} batches still waiting for their agent")
+    log("overture_check_merge", batches=merged, waiting=waiting_batches, **counts)
     return 0
 
 
 def main(argv=None, con=None, fetcher=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    scope = ap.add_mutually_exclusive_group(required=True)
+    scope = ap.add_mutually_exclusive_group()
     scope.add_argument("--pilot", help="a pilot name from config/collections.yaml")
     scope.add_argument("--all", action="store_true", help="every save")
     scope.add_argument("--near", help="only the spots filed under this area")
-    ap.add_argument("--dry-run", action="store_true", help="print the table, write no data file")
+    action = ap.add_mutually_exclusive_group()
+    action.add_argument("--dry-run", action="store_true", help="print the table, write no data file")
+    action.add_argument("--check-prepare", action="store_true",
+                        help="batch files of the held spots a reader could clear, for overture-checker agents")
+    action.add_argument("--check-merge", action="store_true", help="pin the rows the agents picked")
+    ap.add_argument("--batch-spots", type=int, default=BATCH_SPOTS, help="most spots in one check batch")
     ap.add_argument("--release", help="an Overture release, such as 2026-09-23.1 (default: the newest online)")
     ap.add_argument("--saved", default=None, help="saves.json (default: the data repo's .cache)")
-    return run(ap.parse_args(argv), con, fetcher)
+    args = ap.parse_args(argv)
+    if args.check_merge:
+        return check_merge(args)
+    if not (args.pilot or args.all or args.near):
+        ap.error("one of --pilot, --all or --near is needed")
+    return run(args, con, fetcher)
 
 
 if __name__ == "__main__":

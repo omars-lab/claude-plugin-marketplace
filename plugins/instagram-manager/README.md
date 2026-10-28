@@ -48,10 +48,12 @@ by hand instead, `export INSTAGRAM_HOME=~/my-saves` first.
 | **Send** | `serve-api` | The same data as a local web API in Docker, with Swagger and JSON Schema, and the hub's decisions as writes |
 | **Check** | `new-user-trial` | A newcomer tries the plugin in a sandbox with an invented export and writes a diary; a reviewer re-checks it and ranks the fixes |
 
-## Agents (6)
+## Agents (7)
 
 `save-tagger` (topics, purposes, places), `save-splitter` (the things a non-travel caption names),
 `post-locator` (the spots a caption names) and `frame-reader` (the spots a video shows) each read one batch file and write its answers (Haiku).
+`overture-checker` (Sonnet) does the same for the venues the Overture step held back: it picks the
+offered row that is the venue, or none.
 `new-user-tester` (Sonnet) and `trial-reviewer` (Opus) run the new-user trial: one plays a newcomer
 in a sandbox, the other re-checks its diary.
 No script calls a model: the Claude Code session starts the agents, on the plan it is logged in

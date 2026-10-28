@@ -141,7 +141,9 @@ class FakeCon:
         return [tuple(r.values()) for r in self.rows]
 
 
-class Run(unittest.TestCase):
+class Repo(unittest.TestCase):
+    """An invented data repo with one town and three review spots; the runs read its box from the cache."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = self.tmp.name
@@ -183,6 +185,8 @@ class Run(unittest.TestCase):
             code = op.main(["--pilot", "fixture", "--release", "2099-01-01.0", *argv], con=con)
         return code, out.getvalue()
 
+
+class Run(Repo):
     def test_dry_run_writes_nothing(self):
         code, out = self.go("--dry-run")
         self.assertEqual(code, 0)
@@ -197,6 +201,99 @@ class Run(unittest.TestCase):
         self.assertEqual(review["BBB"][0]["said"], "Made Up Spot")
         self.go()   # a second run finds nothing new
         self.assertEqual(len(self.read("data/pins.yaml")["AAA"]), 1)
+
+
+class Check(unittest.TestCase):
+    def test_which_rules_a_reader_can_clear(self):
+        for why in ("only a looser name (Example Fish)", "2 rows, more than 200 m apart (branches)",
+                    "the area is a park, not a town, so the row's town can't be compared",
+                    "the row's town is Other Town", "the caption says 'new'"):
+            self.assertTrue(op.soft(why), why)
+        for why in ("no row by that name", "not a food or drink place (hair_salon)", "no street address",
+                    "6 other rows on the same point", "not at the caption's address", None):
+            self.assertFalse(op.soft(why), why)
+
+    def test_candidates_skip_rows_no_one_could_pin(self):
+        rows = [row("Example Fish", lat=40.01, street="1 Fish St"), row("Example Diner", lat=40.02),
+                row("Example Diner", status="closed", street="2 Other St"), row("Example Diner", street=None),
+                row("Example Diner", basic="hair_salon", hierarchy=["lifestyle_services"], street="3 Other St")]
+        got = op.candidates(spot("Example Diner"), rows, TOWN, Reach())
+        self.assertEqual([r["name"] for r in got], ["Example Diner"])
+        got = op.candidates(spot("Example Fish N Chips"), rows, TOWN, Reach())
+        self.assertEqual([r["name"] for r in got], ["Example Fish"])
+
+
+class CheckRun(Repo):
+    def setUp(self):
+        super().setUp()
+        tags = self.read("data/tags.yaml")
+        tags["CCC"] = {"cities": ["Fixture Town"]}
+        self.write("data/tags.yaml", tags)
+        review = self.read("data/pins-review.yaml")
+        review["CCC"] = [{"said": "Example Diner", "near": "Fixture Town", "why": "not found near Fixture Town",
+                          "asked": "Example Diner"}]
+        self.write("data/pins-review.yaml", review)
+        with open(os.path.join(self.home, ".cache", "saves.json"), "w") as fh:
+            json.dump({"saves": [{"code": "AAA", "caption": "Dinner at @examplediner"},
+                                 {"code": "BBB", "caption": "Made Up Spot was fun"},
+                                 {"code": "CCC", "caption": "Example Diner has a new menu", "creator": "a_fan"}]}, fh)
+
+    def batch(self):
+        with open(os.path.join(self.home, ".cache", "batches", "overture", "batch-001.json")) as fh:
+            return json.load(fh)
+
+    def answer(self, answers):
+        b = self.batch()
+        with open(b["answers"], "w") as fh:
+            json.dump({"answers": answers}, fh)
+
+    def test_prepare_offers_only_what_a_reader_could_clear(self):
+        code, out = self.go("--check-prepare")
+        self.assertEqual(code, 0)
+        b = self.batch()
+        self.assertEqual([s["code"] for s in b["spots"]], ["CCC"])   # AAA passes, BBB has no row at all
+        s = b["spots"][0]
+        self.assertEqual(s["held"], "the caption says 'new'")
+        self.assertEqual(s["caption"], "Example Diner has a new menu")
+        self.assertEqual([r["id"] for r in s["rows"]], ["row-example-diner"])
+        self.assertEqual(self.read("data/pins.yaml"), {})   # nothing pinned, not even AAA
+        self.assertIn("not pinned by this step", out)
+
+    def test_merge_pins_the_pick_and_marks_a_none(self):
+        self.go("--check-prepare")
+        key = self.batch()["spots"][0]["key"]
+        self.answer({key: {"row": "row-example-diner", "why": "the new menu, not a new place"}})
+        self.assertEqual(op.main(["--check-merge"]), 0)
+        pin = self.read("data/pins.yaml")["CCC"][0]
+        self.assertEqual((pin["by"], pin["checked"], pin["overture"]), ("overture", "agent", "row-example-diner"))
+        self.assertEqual(pin["overture_release"], "2099-01-01.0")
+        self.assertNotIn("CCC", self.read("data/pins-review.yaml"))
+        self.assertEqual(op.main(["--check-merge"]), 0)   # merged once only
+        self.assertEqual(len(self.read("data/pins.yaml")["CCC"]), 1)
+
+    def test_a_none_stays_in_review_and_is_not_offered_again(self):
+        self.go("--check-prepare")
+        key = self.batch()["spots"][0]["key"]
+        self.answer({key: {"row": None, "why": "can't tell"}})
+        op.main(["--check-merge"])
+        self.assertEqual(self.read("data/pins-review.yaml")["CCC"][0]["overture_checked"], "2099-01-01.0")
+        _, out = self.go("--check-prepare")
+        self.assertIn("0 held spots a reader could clear, in 0 batch files", out)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".cache", "batches", "overture", "batch-001.json")))
+
+    def test_a_pick_not_offered_is_refused(self):
+        self.go("--check-prepare")
+        key = self.batch()["spots"][0]["key"]
+        self.answer({key: {"row": "row-made-up"}})
+        op.main(["--check-merge"])
+        self.assertNotIn("CCC", self.read("data/pins.yaml"))
+        self.assertIn("CCC", self.read("data/pins-review.yaml"))
+
+    def test_prepare_waits_for_answers_to_be_merged(self):
+        self.go("--check-prepare")
+        self.answer({})
+        with self.assertRaises(SystemExit):
+            self.go("--check-prepare")
 
 
 if __name__ == "__main__":

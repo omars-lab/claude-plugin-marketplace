@@ -157,6 +157,18 @@ keeps the licence texts the pins name (CDLA Permissive 2.0, Apache 2.0, Foursqua
 `docs/licences/`. Always run `--dry-run` first and read the table against the captions: each held
 spot says which rule stopped it.
 
+**An agent checks the held spots a reader could clear.** Five of the rules hold venues the caption
+can settle: a looser name, two branches, a park or region, the town next door, and a warning word
+("new menu" is not a new place). `--check-prepare` (`make overture-check-prepare`) writes batch files
+of those spots to `.cache/batches/overture/`, each with its caption and up to 5 Overture rows that
+could be it. A row is offered only when it is open, food or drink, has a street address, a point
+that can be trusted and the caption's address if it gives one, so the other rules still hold. Then
+one `overture-checker` agent (Sonnet, `agents/overture-checker.md`) per batch, at most 4 at a time,
+picks the row that is the venue or none. `--check-merge` (`make overture-check`) pins the picks with
+`checked: agent` next to `by: overture`, refuses a pick the batch did not offer, and marks a "none"
+with `overture_checked: <release>` so the same release doesn't offer it again. Read the agents'
+picks against the captions before committing.
+
 ## Venues abroad
 
 Outside the US, OpenStreetMap has the sights (a citadel, a national park) but few of the cafés,
@@ -329,6 +341,7 @@ A save's new answer (`--redo`) replaces its old pins, except the video's and a p
 | `scripts/check_locator.py` | Scores the agent on the hand-made check set: each listed spot pinned, at its town or lost, before and after; wrong and extra spots | Before trusting a change to `post-locator.md` or the merge | `python3 scripts/check_locator.py --prepare`, one agent, then `python3 scripts/check_locator.py`; from your folder: `make locate-check-prepare`, `make locate-check` |
 | `scripts/test_check_locator.py` | Offline tests of the scoring, on invented spots | After any change to `check_locator.py` | `python3 scripts/test_check_locator.py` |
 | `scripts/overture_positions.py` | Pins review spots "not found near" their town from Overture Maps' open places data, when all seven rules pass; prints a line per spot with the rule that held it | After a merge, for venues OpenStreetMap lacks; `--dry-run` first, then read the table against the captions | `python3 scripts/overture_positions.py --pilot <name> --dry-run` (`--all`, `--near AREA`, `--release R`); from your folder: `make overture OVERTURE_DRY=1`, then `make overture` |
+| `scripts/overture_positions.py --check-prepare` / `--check-merge` | Batch files of the held spots a reader could clear, for `overture-checker` agents; then pins the rows they picked | After `make overture`, when its table holds venues for a looser name, branches, a park, the next town or a warning word | `make overture-check-prepare`, one agent per batch, then `make overture-check` |
 | `scripts/test_overture_positions.py` | Offline tests of the seven rules and a run, on invented rows (no network, no DuckDB) | After any change to `overture_positions.py` | `python3 scripts/test_overture_positions.py` |
 | `scripts/test_resolve_post_location.py` | Offline tests with a fake agent and a fake OpenStreetMap | After any change to these scripts or to `geocode.py` | `python3 scripts/test_resolve_post_location.py` |
 

@@ -64,7 +64,7 @@ API_PORT          ?= 8780
 API_COMPOSE        = docker compose -f $(PLUGIN)/skills/serve-api/docker/compose.yaml
 export API_PORT
 
-.PHONY: help import collections tag-prepare tag-merge tag-rules tag-report places overture tag-moves moves-page split-prepare split-merge locate-prepare locate-merge locate-check-prepare locate-check pins-page decisions-page media-trial frames-stuck media-video frames frames-text frames-merge stills stills-need-video google-ids send-topics hub serve check test api api-stop api-logs api-test api-schema
+.PHONY: help import collections tag-prepare tag-merge tag-rules tag-report places overture overture-check-prepare overture-check tag-moves moves-page split-prepare split-merge locate-prepare locate-merge locate-check-prepare locate-check pins-page decisions-page media-trial frames-stuck media-video frames frames-text frames-merge stills stills-need-video google-ids send-topics hub serve check test api api-stop api-logs api-test api-schema
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -94,6 +94,12 @@ places: ## Look up the places left in review on OpenStreetMap, then merge (PLACE
 
 overture: ## Pin venues OpenStreetMap lacks from Overture Maps' open places data (OVERTURE_DRY=1 to only print the table)
 	python3 $(PLUGIN)/skills/resolve-post-location/scripts/overture_positions.py $(SCOPE) $(if $(OVERTURE_DRY),--dry-run) $(if $(OVERTURE_RELEASE),--release $(OVERTURE_RELEASE))
+
+overture-check-prepare: ## The held venues a reader could clear → batch files; then one overture-checker agent per batch, at most 4 at a time
+	python3 $(PLUGIN)/skills/resolve-post-location/scripts/overture_positions.py $(SCOPE) --check-prepare $(if $(OVERTURE_RELEASE),--release $(OVERTURE_RELEASE))
+
+overture-check: ## After each wave of agents: pin the Overture rows they picked
+	python3 $(PLUGIN)/skills/resolve-post-location/scripts/overture_positions.py --check-merge
 
 tag-moves: ## Saves filed in the wrong collection, as a table
 	$(TAG) --moves
