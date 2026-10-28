@@ -385,6 +385,18 @@ class RunRules(Home):
         self.past((26, 25), (15, 14), (10, 9))   # the first now falls outside the 24 hours
         self.assertEqual(self.run_main(), 0)
 
+    def test_two_runs_a_day_in_the_gentle_days(self):
+        fetch_media.write_json(fetch_media.cooldown_path(), {
+            "gentle_until": fetch_media.stamp(fetch_media.now() + dt.timedelta(days=1)), "level": 1})
+        self.past((20, 19), (10, 9))
+        self.assertEqual(self.run_main(), 5)
+        refused = self.log_lines("refused")[0]
+        self.assertIn("reason=day_cap", refused)
+        may = fetch_media.now() + dt.timedelta(hours=4)   # 24 hours after the first of the two
+        self.assertIn(f"may_start={fetch_media.stamp(may)[:13]}", refused)
+        self.past((26, 25), (10, 9))
+        self.assertEqual(self.run_main(), 0)
+
     def test_at_most_117_posts_or_150_with_one_request(self):
         self.run_main(args=("--pilot", "fixture", "--limit", "500"))
         self.assertIn("cap=117 ", self.log_lines("run_start")[0])

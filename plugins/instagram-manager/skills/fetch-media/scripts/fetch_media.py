@@ -68,7 +68,8 @@ Pacing (docs/research/instagram-fetch-pacing/consolidated.md in the data repo)
     "watch" warnings. The log line is ev=rate_limited. A stop is never retried inside a run.
   - Cooldown: 24 h after the first stop, 48 h after a second in a row, 3 days after a third. The
     first run after a cooldown fetches one test post only. Once that works, the next 2 days are
-    gentle: half the posts a run and twice the pauses between posts. A stop in those days counts
+    gentle: half the posts a run, twice the pauses between posts, and at most 2 runs started in
+    any 24 hours. A stop in those days counts
     as the next stop in a row; 2 clean days clear the cooldown file, so a later stop is a first.
   - Runs: at most 117 posts each (150 with --one-request), at least 2 hours from the end of one
     to the start of the next,
@@ -136,6 +137,7 @@ ONE_REQUEST_YTDLP = "2026.08.19"   # the yt-dlp whose code --one-request was rea
 RULING = "/web/get_ruling_for_content/"   # yt-dlp's "is this post viewable?" address
 RUN_GAP = dt.timedelta(hours=2)   # from the end of one run to the start of the next
 RUNS_PER_DAY = 3             # runs started in any 24 hours
+GENTLE_RUNS_PER_DAY = 2      # the same, in the gentle days (3 a day brought a second stop)
 
 # Options that would log in or send cookies. Any of them set means the script will not start.
 LOGIN_KEYS = ("cookiefile", "cookiesfrombrowser", "username", "password", "usenetrc", "netrc_location",
@@ -316,7 +318,7 @@ def past_runs(path):
     return runs
 
 
-def too_soon(runs, t):
+def too_soon(runs, t, per_day=RUNS_PER_DAY):
     """(reason, when it may start) if a run may not start at t, else None."""
     if runs:
         start, end = runs[-1]
@@ -324,8 +326,8 @@ def too_soon(runs, t):
         if t - last < RUN_GAP:
             return "run_gap", last + RUN_GAP
     day = [start for start, _ in runs if t - start < dt.timedelta(hours=24)]
-    if len(day) >= RUNS_PER_DAY:
-        return "day_cap", min(day) + dt.timedelta(hours=24)
+    if len(day) >= per_day:
+        return "day_cap", sorted(day)[-per_day] + dt.timedelta(hours=24)
     return None
 
 
@@ -828,7 +830,7 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
             if not gentle:
                 os.remove(cooldown_path())   # 2 clean days: a later stop is a first stop again
                 cd = None
-        early = too_soon(past_runs(log_path), now())
+        early = too_soon(past_runs(log_path), now(), GENTLE_RUNS_PER_DAY if gentle else RUNS_PER_DAY)
         if early:
             log("refused", reason=early[0], may_start=stamp(early[1]))
             return 5
