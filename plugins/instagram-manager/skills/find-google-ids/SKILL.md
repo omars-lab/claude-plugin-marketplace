@@ -84,7 +84,15 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
    `verdict: chain` with no id, so its link stays a search for its name in its area and Google Maps
    shows every branch; the hub says "a chain: every branch near <area>, any will do". A spot to
    search again: `GOOGLE_ONLY=KEY GOOGLE_REFRESH=1`, or `GOOGLE_BOX=5` for a wider box.
-   - **Claude picks first**, reading the printed list on screen (never a copy in a file), and
+   - **Let Google check "is it at our pin" first** (`make google-ids GOOGLE_NEAR=1`, `--near-pin`).
+     For each spot waiting for a person that has a pin of its own, it searches the spot's name
+     again inside a box 300 m across round that pin, asking Google for ids only (Text Search
+     Essentials IDs Only: free, no monthly limit). When exactly one of the spot's candidates comes
+     back, it is kept (`by: auto`, `near_pin: true`); the hub says "the only one by that name right
+     at our pin". Google never sends a name or a position, so nothing reaches the screen. Places
+     API (New) has no call that takes many searches at once, so 4 go at a time; 88 spots take
+     about 6 seconds. `GOOGLE_NEAR_KM=` widens the box for a park or lake whose pin is its middle.
+   - **Claude picks next**, reading the printed list on screen (never a copy in a file), and
      records them with `PICK_BY=claude` (`--by claude`). Pick only where one candidate is plainly the
      place: the same name with a word added or dropped, the park for a park. For a chain, read
      the post's caption first: when it names a street or a branch, that branch wins over the one
@@ -115,12 +123,12 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
 
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
-| `scripts/google_ids.py` | One Google search per spot, keeps an id by name or prints candidates (and keeps their ids in `.cache/google-to-pick.json` for the decisions page); `--pick`/`--none`/`--chain` record a person's choice | After new spots land, or to pick the leftovers | `python3 scripts/google_ids.py --pilot <name>` (`--all`, `--only`, `--limit`, `--refresh`, `--box-km`, `--dry-run`, `--prune`, `--pick KEY=ID`, `--none KEY`, `--chain KEY`, `--by hand\|claude`) |
+| `scripts/google_ids.py` | One Google search per spot, keeps an id by name or prints candidates (and keeps their ids in `.cache/google-to-pick.json` for the decisions page); `--pick`/`--none`/`--chain` record a person's choice | After new spots land, or to pick the leftovers | `python3 scripts/google_ids.py --pilot <name>` (`--all`, `--only`, `--limit`, `--refresh`, `--box-km`, `--dry-run`, `--prune`, `--near-pin`, `--near-km`, `--pick KEY=ID`, `--none KEY`, `--chain KEY`, `--by hand\|claude`) |
 | `../../shared/scripts/google_places.py` | The search, the box, the name rule, the waits after a refusal, and the link; build-hub and send-topics use it to put kept ids into links | Imported, not run | — |
 | `scripts/test_google_ids.py` | Offline tests with Google stubbed: the box, the name rule (one match, two, a short name, a handle with a town tag on the end or its words run together), the wider box for a spot with a house number, each spot searched once, the town box, a rerun skipping kept spots, `--pick` keeping Google's current id, `--none`, `--chain` (no id, its search link kept, not searched again), the daily cap, the waits, a spot in the wrong area left unsearched, stale ids listed and pruned (never another area's), and that the file and the spots left for a person hold nothing of Google's but ids | After any change to either script | `python3 scripts/test_google_ids.py` |
 
 From your saves folder: `make google-ids` with `GOOGLE_DRY=1`, `GOOGLE_LIMIT=`, `GOOGLE_ONLY=`,
-`GOOGLE_REFRESH=1`, `GOOGLE_BOX=`, `GOOGLE_PRUNE=1`, `PICK=`, `NONE=` and `CHAIN=` (several, space-separated), `PICK_BY=`
+`GOOGLE_REFRESH=1`, `GOOGLE_BOX=`, `GOOGLE_PRUNE=1`, `GOOGLE_NEAR=1`, `GOOGLE_NEAR_KM=`, `PICK=`, `NONE=` and `CHAIN=` (several, space-separated), `PICK_BY=`
 (`hand`, the default, or `claude`), and `PILOT=`
 (empty for every save). Before a run past the pilot, take the spot count from the dry run and ask
 with `AskUserQuestion`: all at once (one search per spot, against the month's 5,000 free and the

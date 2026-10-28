@@ -34,8 +34,13 @@ TIMEOUT_S = 15
 CANDIDATE_FIELDS = ("places.id,places.displayName,places.formattedAddress,places.types,"
                     "places.businessStatus")   # Text Search Pro
 ID_FIELDS = "id,movedPlaceId"                  # Place Details Essentials (IDs Only): $0, no limit
+NEAR_FIELDS = "places.id"                      # Text Search Essentials (IDs Only): $0, no limit
 CANDIDATES = 3
 BOX_KM = 2.0            # half the box's width round our own pin
+# Half the box for the second, ids-only search right at our own pin: Google does the "is it at our
+# pin" test, so we never ask for its coordinates. Asks for a few, so "exactly one" means something.
+NEAR_KM = 0.15
+NEAR_SIZE = 5
 TOWN_BOX_KM = {"city": 8.0, "park": 20.0, "region": 30.0, "other": 10.0}   # round the town, no pin
 # Round the town, no pin, but the caption gives a house number: Google's place must be at that
 # number to be kept by name, so a wide box cannot pick a namesake, and a sprawling city's far side
@@ -115,6 +120,14 @@ def call(method, url, body, fields, key, on_retry=None, sleep=time.sleep):
 
 def search(query, pin, half_km, key, on_retry=None):
     return candidates(call("POST", SEARCH, search_body(query, pin, half_km), CANDIDATE_FIELDS, key, on_retry))
+
+
+def ids_near(query, pin, half_km, key, on_retry=None):
+    """The ids of Google's places for this text inside a small box round our pin, and nothing else:
+    no name, no address, no position (free, no monthly limit)."""
+    body = {"textQuery": query, "pageSize": NEAR_SIZE, "locationRestriction": box(pin, half_km)}
+    got = call("POST", SEARCH, body, NEAR_FIELDS, key, on_retry)
+    return [g["id"] for g in (got or {}).get("places") or [] if g.get("id")]
 
 
 def current_id(place_id, key, on_retry=None):
@@ -300,7 +313,11 @@ def apply(pins, google):
             if g:
                 e["map"] = maps_link(g["query"], g["id"])
                 by = g.get("by") or "hand"
-                e["google_id"], e["google_by"] = g["id"], "auto-address" if by == "auto" and g.get("at_address") else by
+                if by == "auto" and g.get("at_address"):
+                    by = "auto-address"
+                elif by == "auto" and g.get("near_pin"):
+                    by = "auto-near"
+                e["google_id"], e["google_by"] = g["id"], by
                 n += 1
     return n
 

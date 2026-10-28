@@ -384,6 +384,45 @@ class Ids(unittest.TestCase):
         self.assertIn("query=Example+Tacos%2C+Fixture+Town", link)
         self.assertIn("query_place_id=ID_TACOS", link)
 
+    def test_near_pin_keeps_the_one_place_at_our_pin(self):
+        self.run_ids("--pilot", "fixture")   # Example Grill (two names) and Pho (too short) wait for a person
+        with open(os.path.join(self.root, ".cache", google_ids.TO_PICK)) as fh:
+            self.assertEqual(set(json.load(fh)), {"osm:node/2", "osm:node/3"})
+        asked, real = [], gp.ids_near
+        near = {"Example Grill": ["ID_GRILL_A", "ID_GRILL_B"],   # both candidates at the pin
+                "Pho": ["ID_ELSE", "ID_PHO"]}                    # one candidate, among other places
+
+        def ids_near(query, pin, half_km, key, on_retry=None):
+            asked.append((query, half_km))
+            return near.get(query, [])
+        gp.ids_near = ids_near
+        try:
+            out, _ = self.run_ids("--pilot", "fixture", "--near-pin")
+        finally:
+            gp.ids_near = real
+        self.assertEqual(sorted(asked), [("Example Grill", gp.NEAR_KM), ("Pho", gp.NEAR_KM)])   # our name, small box
+        self.assertIn("1 kept", out)
+        _, data = self.kept()
+        pho = data["osm:node/3"]
+        self.assertEqual((pho["id"], pho["by"], pho["near_pin"]), ("ID_PHO", "auto", True))
+        self.assertNotIn("osm:node/2", data)                 # two candidates at the pin: still a person's
+        with open(os.path.join(self.root, ".cache", google_ids.TO_PICK)) as fh:
+            self.assertEqual(set(json.load(fh)), {"osm:node/2"})
+        pins = {"X": [dict(PINS["EAT1"][2])]}
+        gp.apply(pins, data)
+        self.assertEqual(pins["X"][0]["google_by"], "auto-near")        # the hub says how it was matched
+
+    def test_near_pin_asks_google_for_ids_only(self):
+        sent, real = [], gp.call
+        gp.call = lambda method, url, body, fields, key, on_retry=None: sent.append((body, fields)) or {
+            "places": [{"id": "ID_A"}]}
+        try:
+            self.assertEqual(gp.ids_near("Example Grill", {"lat": 10.0, "lon": 20.0}, 0.15, "k"), ["ID_A"])
+        finally:
+            gp.call = real
+        self.assertEqual(sent[0][1], "places.id")                       # no name, address or position
+        self.assertIn("locationRestriction", sent[0][0])
+
 
 if __name__ == "__main__":
     unittest.main()

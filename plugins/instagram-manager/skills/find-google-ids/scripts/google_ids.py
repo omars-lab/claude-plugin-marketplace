@@ -58,6 +58,7 @@ import json
 import os
 import sys
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import yaml
 
@@ -78,6 +79,7 @@ STALE_SHOWN = 20   # how many stale keys to list on screen
 # Most of Google's words one run prints. A longer printout is saved to a file by the tool that runs
 # this (Claude Code keeps long output on disk), and Google's names must never sit in a file
 SHOW_CHARS = 15000
+NEAR_WORKERS = 4   # --near-pin searches at once; far under Google's per-minute limit
 HEADER = ("# Google place ids for the spots in data/pins.yaml and data/pins-review.yaml, written by\n"
           "# instagram-manager's find-google-ids. Only the id is kept, with our own search text, the date\n"
           "# and who chose it (auto: the only candidate carrying every word of our name, and at_address when\n"
@@ -227,6 +229,82 @@ def choose(spots, picks, nones, chains, by, today):
     write_to_pick(to_pick)
 
 
+def own_pin(e):
+    """Our own pin for a spot ({lat, lon}), or None for one placed at its town."""
+    lat, lon = bh.number(e.get("lat")), bh.number(e.get("lon"))
+    if e.get("placed") or lat is None or lon is None:
+        return None
+    return {"lat": lat, "lon": lon}
+
+
+def near_pin(spots, to_pick, only, limit, half_km, dry_run, today, workers=NEAR_WORKERS):
+    """For each spot waiting for a person that has a pin of its own: search its name again, ids only,
+    in a small box round that pin. When exactly one of the spot's candidates is among what Google
+    gives back (other places nearby can come back too), keep it (`by: auto`, `near_pin: true`).
+    Two candidates both at the pin stay for a person. Google never sends a name or a
+    position, so nothing of Google's but the id is seen, shown or kept."""
+    todo = []
+    for k in sorted(to_pick):
+        if (only and k not in only) or k not in spots:
+            continue
+        e = spots[k][0]
+        pin = own_pin(e)
+        if pin is not None and isinstance(to_pick[k], dict) and to_pick[k].get("ids"):
+            todo.append((k, e, pin))
+    if limit is not None:
+        todo = todo[:limit]
+    print(f"{len(to_pick)} spots waiting for a person; {len(todo)} have a pin of our own to search "
+          f"round (within {half_km * 1000:g} m)")
+    if dry_run or not todo:
+        for k, _, _ in todo:
+            print(f"  {k}")
+        return
+    key = gp.api_key()
+    if not key:
+        sys.exit("google_ids: no GOOGLE_MAPS_API_KEY (run it through dotenvx: make google-ids)")
+
+    def one(item):
+        k, e, pin = item
+        log("google_near", key=k)
+        return gp.ids_near(e["name"], pin, half_km, key, retry_logger(k))
+
+    kept = load_kept()
+    took, zero, many, other, errors = [], 0, 0, 0, 0
+    # Places API (New) has no call that takes many searches at once, so a few go at a time
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(one, item): item for item in todo}
+        for fut in as_completed(futures):
+            k, e, _ = futures[fut]
+            try:
+                ids = fut.result()
+            except urllib.error.HTTPError as e2:
+                errors += 1
+                log("google_error", key=k, http=e2.code, msg=gp.error_text(e2)[:200])
+                continue
+            hits = [i for i in ids if i in to_pick[k]["ids"]]
+            log("google_near_found", key=k, ids=len(ids), candidates=len(hits))
+            if len(hits) == 1:
+                kept[k] = entry(gp.query_for(e), "match", "auto", today, hits[0])
+                kept[k]["near_pin"] = True
+                to_pick.pop(k)
+                took.append(k)
+            elif not ids:
+                zero += 1
+            elif hits:
+                many += 1
+            else:
+                other += 1
+    if took:
+        write_kept(kept)
+        write_to_pick(to_pick)
+    for k in sorted(took):
+        print(f"kept  {k}")
+    print(f"\n{len(took)} kept (the only candidate at our pin), {zero} with nothing there, "
+          f"{many} with several candidates there, {other} with no candidate there, {errors} errors; "
+          f"{len(to_pick)} still waiting for a person")
+    log("google_near_done", searched=len(todo), kept=len(took), zero=zero, many=many, other=other, errors=errors)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     which = ap.add_mutually_exclusive_group(required=True)
@@ -244,6 +322,10 @@ def main(argv=None):
                     help="who chose the --pick/--none/--chain: a person (hand, the default) or Claude reading the list")
     ap.add_argument("--dry-run", action="store_true", help="list what would be searched; no key, no calls")
     ap.add_argument("--prune", action="store_true", help="drop kept ids that no spot uses any more")
+    ap.add_argument("--near-pin", action="store_true",
+                    help="for spots waiting for a person: keep the one place Google finds right at our pin (ids only, free)")
+    ap.add_argument("--near-km", type=float, default=gp.NEAR_KM,
+                    help="half the box round our pin for --near-pin (default 0.15)")
     args = ap.parse_args(argv)
     if offline() and not args.dry_run and not (args.pick or args.none or args.chain):
         sys.exit("google_ids: INSTAGRAM_OFFLINE is set, so Google is not searched; --dry-run lists what would be")
@@ -293,6 +375,9 @@ def main(argv=None):
         stale = []
 
     only = {k.strip() for k in (args.only or "").split(",") if k.strip()}
+    if args.near_pin:
+        near_pin(spots, to_pick, only, args.limit, args.near_km, args.dry_run, today)
+        return
     todo, no_box, wrong, waiting = [], [], [], []
     for k in sorted(spots):
         e, codes = spots[k]

@@ -993,6 +993,7 @@ def place_page(hub, place, google=None):
     where = [f'<a href="{esc(place["map"])}" target="_blank" rel="noopener">Google Maps</a>'
              + {"auto": ' <span class="muted">(this place, matched by its name: check it)</span>',
                 "auto-address": ' <span class="muted">(this place: its name and the caption\'s address both match)</span>',
+                "auto-near": ' <span class="muted">(this place: the only one by that name right at our pin)</span>',
                 "claude": ' <span class="muted">(this place, picked by Claude from Google\'s list: check it)</span>',
                 "hand": ' <span class="muted">(this place)</span>'}.get(place.get("google_by"), "")
              + (' <span class="muted">(a chain: every branch near '
