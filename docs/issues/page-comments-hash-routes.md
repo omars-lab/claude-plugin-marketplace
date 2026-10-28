@@ -1,6 +1,6 @@
 # Page comments: every screen of a hash app was filed under "/"
 
-**Status:** resolved in development-manager 1.8.0
+**Status:** resolved in development-manager 1.12.0 (built as 1.8.0 on a side branch; main had its own 1.8.0 by the time it merged)
 **Affects:** `plugins/development-manager/shared/scripts/client/comments.js`,
 `plugins/development-manager/shared/scripts/lib/store.mjs`,
 `plugins/development-manager/shared/scripts/lib/server.mjs`
