@@ -126,7 +126,10 @@ def open_review(review):
             if not isinstance(e, dict) or e.get("drop") or e.get("ok") or e.get("lookup"):
                 continue
             why = str(e.get("why") or "")
-            (town if any(r.match(why) for r in bh.LOOKUP_MISSES) else check).append((code, e))
+            # filed under the wrong area: its town-only pin sits in the wrong place, so a person
+            # gives it its real town (resolve-post-location, "A spot in the wrong area")
+            lookup_miss = any(r.match(why) for r in bh.LOOKUP_MISSES) and not bh.really_elsewhere(e)
+            (town if lookup_miss else check).append((code, e))
     return check, town
 
 
@@ -239,6 +242,9 @@ def review_card(code, e, saves, pages):
     return (f'<article class="item"><header><h3><q>{esc(str(e.get("said") or ""))}</q></h3>'
             f'<span class="where">near {esc(str(e.get("near") or ""))}</span></header>'
             f'<p class="why">{esc(str(e.get("why") or ""))}</p>{found}'
+            + (f'<p class="why">The caption puts it in <b>{esc(bh.really_elsewhere(e))}</b>, not near '
+               f'{esc(str(e.get("near") or ""))}: say which town, and it is filed and looked up there.</p>'
+               if bh.really_elsewhere(e) else "") +
             f'<ul class="posts"><li>{post_links(code, saves, pages)}</li></ul></article>')
 
 

@@ -193,6 +193,15 @@ OSM_NOTES = ((re.compile(r"^only the street"), "found only its street, not the h
              (re.compile(r"not at the caption's address$"), "found one by that name elsewhere, not at the caption's address"))
 
 
+def really_elsewhere(e):
+    """The place the locator quoted for a review spot filed under another town, or "".
+    "really in Example Town, Example State" under Example Town is the same town, as in
+    resolve_post_location.wrong_area: only another town means it was filed under the wrong area."""
+    really = e["really_in"].strip() if isinstance(e.get("really_in"), str) else ""
+    near = str(e.get("near") or "").strip().lower()
+    return really if really and really.split(",")[0].strip().lower() != near else ""
+
+
 def placed_spots(review):
     """code → the spots a post names that OpenStreetMap did not place, from pins-review.yaml. Each is
     shown at its town's pin, and its Google Maps link searches the caption's name in that town (or
@@ -218,11 +227,8 @@ def placed_spots(review):
                 if isinstance(e.get("address"), str) and e["address"].strip():
                     spot["address"] = e["address"].strip()
                     spot["map"] = maps_link(name, spot["address"])   # the caption's address
-                really = e["really_in"].strip() if isinstance(e.get("really_in"), str) else ""
-                # "really in Example Town, Example State" under Example Town is the same town, as in
-                # resolve_post_location.wrong_area: only another town means it was filed under the wrong area
-                if really and really.split(",")[0].strip().lower() != e["near"].strip().lower():
-                    spot["really_in"] = really
+                if really_elsewhere(e):
+                    spot["really_in"] = really_elsewhere(e)
                 if note:
                     spot["osm_note"] = note
                 out.setdefault(code, []).append(spot)

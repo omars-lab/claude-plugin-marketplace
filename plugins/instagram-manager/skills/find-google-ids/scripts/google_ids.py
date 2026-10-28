@@ -11,6 +11,8 @@ For each spot (data/pins.yaml, and the venues OpenStreetMap lacks from data/pins
 sends one Google Text Search: our own search text, inside a box round our own pin, or round the
 spot's town when the spot has no pin. Google's top 3 are printed on screen with name, address, kind
 and "CLOSED FOR GOOD"; none of that is written anywhere (shared/scripts/google_places.py says why).
+One run prints at most SHOW_CHARS of it and names the spots past that, since a tool that runs this
+may save a long printout to a file.
 
   - When exactly one of the 3 carries every word of our name, its id is kept (`by: auto`). When the
     caption gives a street address with a house number, that one must also be at that number;
@@ -73,6 +75,9 @@ from places import Places, load_yaml  # noqa: E402
 OUT = os.path.join("data", "google.yaml")
 TO_PICK = "google-to-pick.json"   # in .cache: the spots left for a person, with their candidates' ids
 STALE_SHOWN = 20   # how many stale keys to list on screen
+# Most of Google's words one run prints. A longer printout is saved to a file by the tool that runs
+# this (Claude Code keeps long output on disk), and Google's names must never sit in a file
+SHOW_CHARS = 15000
 HEADER = ("# Google place ids for the spots in data/pins.yaml and data/pins-review.yaml, written by\n"
           "# instagram-manager's find-google-ids. Only the id is kept, with our own search text, the date\n"
           "# and who chose it (auto: the only candidate carrying every word of our name, and at_address when\n"
@@ -331,6 +336,17 @@ def main(argv=None):
 
     auto, left, none, closed = 0, [], 0, []
     place_words = where_words(places)
+    shown, hidden = 0, []
+
+    def say(k, lines):
+        nonlocal shown
+        text = "\n".join(lines)
+        if shown + len(text) > SHOW_CHARS:
+            hidden.append(k)   # still kept or listed for a person; only the printout is left out
+            return
+        shown += len(text) + 1
+        print(text)
+
     for n, (k, e, q, (pin, half, words)) in enumerate(todo, 1):
         log("google_search", n=n, of=len(todo), key=k)
         try:
@@ -346,7 +362,7 @@ def main(argv=None):
         if not found:
             kept[k] = entry(q, "none", "auto", today)
             none += 1
-            print("\n".join(gp.show(k, q, found, words)))
+            say(k, gp.show(k, q, found, words))
         else:
             hit = gp.auto_pick(e["name"], found, e.get("address"), place_words)
             if hit:
@@ -354,16 +370,19 @@ def main(argv=None):
                 if gp.house_number(e.get("address")):
                     kept[k]["at_address"] = True
                 auto += 1
-                print(f"kept  {k}: {e['name']!r} = {hit['name']} — {hit['address']}"
-                      + ("  CLOSED FOR GOOD" if hit["closed"] else ""))
+                say(k, [f"kept  {k}: {e['name']!r} = {hit['name']} — {hit['address']}"
+                        + ("  CLOSED FOR GOOD" if hit["closed"] else "")])
                 if hit["closed"]:
                     closed.append(k)
             else:
                 left.append(k)
                 to_pick[k] = {"query": q, "ids": [c["id"] for c in found], "date": today}
-                print("\n".join(gp.show(k, q, found, words)))
+                say(k, gp.show(k, q, found, words))
         write_kept(kept)
         write_to_pick(to_pick)
+    if hidden:
+        print(f"\n{len(hidden)} not shown, to keep the printout short: {', '.join(hidden)}. Those left for "
+              "a person are on the hub's decisions page; a smaller --limit (GOOGLE_LIMIT=) shows every spot")
     print(f"\n{auto} kept by name, {len(left)} for a person to pick, {none} with nothing in the box; "
           f"{len(closed)} kept places Google says are closed for good"
           + (f" ({', '.join(closed)})" if closed else ""))

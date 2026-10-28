@@ -183,6 +183,18 @@ right, a `lookup:` with a better name is the whole fix.
 
 A café in the next town over, both of them already listed areas, needs only step 3.
 
+**When OpenStreetMap doesn't know the area** (a peninsula, a stretch of resort coast, a group of
+islands), use the nearest town it does know as the area, with `kind: city` and a `box_km:` wide
+enough to reach the spot: an island resort 40 km off its coast town needs `box_km: 60`. Say why in
+a comment beside the area.
+
+**When the caption names no town** (only a state, a region or a country: "up north in Example State"),
+there is no area to add from the post alone. The spot stays in review, and the hub's decisions page
+lists it under "spots to check" with the place the caption gives, for a person who knows the town.
+Mark `drop: true` instead when the "spot" is not a place at all (a guide account, a tour company).
+`really_in` that names the spot's own area ("Example Town, Example State" under Example Town) is
+not a wrong area, and nothing is held back for it.
+
 ## Pacing: waves, and stopping on a limit
 
 The same as tag-saves:

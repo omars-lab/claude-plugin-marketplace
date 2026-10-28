@@ -89,7 +89,11 @@ was agreed for a sister project (its `docs/research/google-terms/options.md`); t
      place: the same name with a word added or dropped, the park for a park. For a chain, read
      the post's caption first: when it names a street or a branch, that branch wins over the one
      nearest our pin (search again with `GOOGLE_BOX=5` if it is not in the list). Mark `NONE` where Google gave a different place, a neighbourhood, or only a namesake far
-     off. The hub marks these links "picked by Claude from Google's list: check it".
+     off. The hub marks these links "picked by Claude from Google's list: check it". One run
+     prints at most about 15 spots' worth of Google's list and names the rest ("not shown, to keep
+     the printout short"): a longer printout is saved to a file by Claude Code, and Google's names
+     must not sit in a file. Those left out wait on the decisions page; run with a smaller
+     `GOOGLE_LIMIT=` to see every spot you mean to pick.
    - **Leave real toss-ups for the user** (two branches equally near, a name that could be either
      of two places) and list them in the report; their picks go in with the default `PICK_BY=hand`.
      Every spot left for a person is kept in `.cache/google-to-pick.json`: our search text and

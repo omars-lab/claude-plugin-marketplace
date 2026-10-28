@@ -74,6 +74,15 @@ class Review(unittest.TestCase):
         self.assertEqual([e["said"] for _, e in check], ["Example Hall"])
         self.assertEqual([e["said"] for _, e in town], ["Example Bar"])
 
+    def test_a_spot_filed_under_another_town_is_to_check(self):
+        far = {"said": "Example Coaster", "near": "Fixture Town", "why": "not found near Fixture Town",
+               "really_in": "Other State"}
+        same = {**far, "said": "Example Cafe", "really_in": "Fixture Town, Fixture State"}
+        check, town = dp.open_review({"A1": [far, same]})
+        self.assertEqual([e["said"] for _, e in check], ["Example Coaster"])   # needs its real town
+        self.assertEqual([e["said"] for _, e in town], ["Example Cafe"])       # the same town: a map miss
+        self.assertIn("The caption puts it in <b>Other State</b>", dp.review_card("A1", far, {}, {}))
+
 
 class Waiting(unittest.TestCase):
     def test_answers_videos_and_links(self):

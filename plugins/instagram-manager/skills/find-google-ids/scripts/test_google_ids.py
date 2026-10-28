@@ -275,6 +275,18 @@ class Ids(unittest.TestCase):
         with open(path) as fh:
             self.assertEqual(json.load(fh), {})              # picked or marked none: off the list
 
+    def test_a_long_printout_stops_at_its_cap_and_names_the_rest(self):
+        cap = google_ids.SHOW_CHARS
+        google_ids.SHOW_CHARS = 200   # room for about one spot
+        try:
+            out, _ = self.run_ids("--pilot", "fixture")
+        finally:
+            google_ids.SHOW_CHARS = cap
+        self.assertIn("not shown, to keep the printout short", out)
+        self.assertIn("ID_TACOS", self.kept()[0])             # what was left out is still kept
+        with open(os.path.join(self.root, ".cache", google_ids.TO_PICK)) as fh:
+            self.assertEqual(sorted(json.load(fh)), ["osm:node/2", "osm:node/3"])   # and still listed
+
     def test_a_spot_in_the_wrong_area_is_not_searched(self):
         review = {**REVIEW, "EAT1": [{"said": "Other Diner", "asked": "Other Diner", "near": "Fixture Town",
                                       "why": "not found near Fixture Town", "really_in": "Other Town"}]}
