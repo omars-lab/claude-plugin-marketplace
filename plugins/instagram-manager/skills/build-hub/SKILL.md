@@ -166,7 +166,10 @@ Venues with no kept Google id stay at their town on every map.
 
 ### The hub's Google key
 
-A browser key of its own, not the one **find-google-ids** uses and not one shared with another site:
+The build reads `GOOGLE_MAPS_HUB_KEY`. Any browser key works if it allows both APIs below and the
+hub's address, so another site's place-card key can be passed in as that variable (its look-ups
+then count against that site's quota). Never the server key **find-google-ids** uses. To make one
+just for the hub:
 
 1. In the Google Cloud console, in the project that holds your other Maps keys, create an API key.
 2. **Which APIs:** Maps JavaScript API and Places API (New). Nothing else.
