@@ -218,8 +218,11 @@ def placed_spots(review):
                 if isinstance(e.get("address"), str) and e["address"].strip():
                     spot["address"] = e["address"].strip()
                     spot["map"] = maps_link(name, spot["address"])   # the caption's address
-                if isinstance(e.get("really_in"), str) and e["really_in"].strip():
-                    spot["really_in"] = e["really_in"].strip()   # filed under the wrong area
+                really = e["really_in"].strip() if isinstance(e.get("really_in"), str) else ""
+                # "really in Example Town, Example State" under Example Town is the same town, as in
+                # resolve_post_location.wrong_area: only another town means it was filed under the wrong area
+                if really and really.split(",")[0].strip().lower() != e["near"].strip().lower():
+                    spot["really_in"] = really
                 if note:
                     spot["osm_note"] = note
                 out.setdefault(code, []).append(spot)

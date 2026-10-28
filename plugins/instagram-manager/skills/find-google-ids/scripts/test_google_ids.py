@@ -284,6 +284,15 @@ class Ids(unittest.TestCase):
         self.assertIn("1 not searched: filed under the wrong area, fix its area first", out)
         self.assertIn("spot:other-diner@fixture-town: 'Other Diner' under Fixture Town, really in Other Town", out)
 
+    def test_really_in_the_same_town_is_searched(self):
+        review = {**REVIEW, "EAT1": [{"said": "Other Diner", "asked": "Other Diner", "near": "Fixture Town",
+                                      "why": "not found near Fixture Town",
+                                      "really_in": "Fixture Town, Fixture State"}]}
+        self.write("data/pins-review.yaml", review)
+        out, _ = self.run_ids("--pilot", "fixture")
+        self.assertIn("Other Diner, Fixture Town", [q for q, _, _ in self.calls])
+        self.assertNotIn("filed under the wrong area", out)
+
     def test_ids_no_spot_uses_are_listed_then_pruned(self):
         self.run_ids("--pilot", "fixture")
         self.run_ids("--pilot", "fixture", "--pick", "osm:node/2=ID_GRILL_A")
