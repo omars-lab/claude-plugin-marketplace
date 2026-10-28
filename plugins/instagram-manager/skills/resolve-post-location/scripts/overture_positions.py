@@ -496,7 +496,8 @@ def check_merge(args):
             batch = json.load(fh)
         ans_path = batch["answers"]
         if not os.path.exists(ans_path):
-            waiting_batches += 1
+            # a batch merged by an earlier run has its answers renamed, so it is done, not waiting
+            waiting_batches += not os.path.exists(ans_path.replace(".answers.json", ".answers.merged.json"))
             continue
         try:
             with open(ans_path) as fh:
