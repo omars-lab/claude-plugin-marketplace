@@ -13,6 +13,11 @@
 // Options: { repo } names the repo; without it `.page-comments/` is looked for
 // from Vite's root up to the git root. With no `.page-comments/` the plugin
 // does nothing and says so once.
+//
+// PAGE_COMMENTS=off in the dev server's environment turns the bar off for that
+// one server. A repo's end-to-end tests set it on the server they start: the bar
+// sits over the bottom of the page and its buttons share words with the app's,
+// so clicks and button lookups in the tests would hit it.
 
 import { randomBytes } from "node:crypto";
 import { fileLogger } from "./lib/log.mjs";
@@ -36,6 +41,11 @@ export default function pageComments(options = {}) {
       if (!store && !options.repo) store = findStore(config.root);
     },
     configureServer(server) {
+      if (process.env.PAGE_COMMENTS === "off") {
+        const say = server.config.logger.info || server.config.logger.warn;
+        say.call(server.config.logger, "page comments: off for this server (PAGE_COMMENTS=off).");
+        return;
+      }
       if (!store) {
         server.config.logger.warn("page comments: no .page-comments/ folder for this Vite root, so there is no comment bar. Run /development-manager:enable-page-comments to turn it on.");
         return;

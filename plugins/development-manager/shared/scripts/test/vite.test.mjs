@@ -118,6 +118,28 @@ test("with no .page-comments/ it warns once and stays out of the way", async () 
   }
 });
 
+test("PAGE_COMMENTS=off keeps the bar out of a server a repo's tests start", async () => {
+  const { repo, cleanup } = tempRepo();
+  const saved = process.env.PAGE_COMMENTS;
+  process.env.PAGE_COMMENTS = "off";
+  try {
+    const plugin = pageComments({ repo });
+    const v = await fakeVite(plugin, repo);
+    try {
+      assert.equal(v.warnings.length, 1, "says once that it is off");
+      assert.match(v.warnings[0], /PAGE_COMMENTS=off/);
+      assert.equal((await call(v.port, { path: "/__page-comments/health" })).text, "vite answered");
+      assert.equal(plugin.transformIndexHtml("<body></body>"), "<body></body>", "no script tag");
+    } finally {
+      await v.close();
+    }
+  } finally {
+    if (saved === undefined) delete process.env.PAGE_COMMENTS;
+    else process.env.PAGE_COMMENTS = saved;
+    cleanup();
+  }
+});
+
 test("the loader in the repo finds the plugin, or stands down with a warning where it is not installed", async () => {
   const { store, cleanup } = tempRepo();
   const saved = process.env.CLAUDE_CONFIG_DIR;
