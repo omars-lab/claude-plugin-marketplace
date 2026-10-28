@@ -51,6 +51,15 @@ account never touch disk. Works with the HTML export (current) and the older JSO
    `never-public.txt` lists the account, collection names, creators' handles and post codes. It
    is only for people who share code: a pre-commit check reads it and stops any of those names
    reaching a public repo. Someone who only uses their own data can ignore it.
+
+   On a later import it also says what changed since the last one, and keeps that one:
+   ```
+   ev=import_diff before=instagram-old.zip new=98 gone=30 moved=0 collections_new=0 collections_gone=0
+   Since the last import (instagram-old.zip): 98 new saves, 30 no longer saved, 0 moved to other collections.
+   ```
+   The codes are in `.cache/import-diff.json` (`new`, `gone`, `moved`, and collections added or
+   gone); the last import is kept as `.cache/saves-previous.json`. Saves no longer saved still sit in
+   `data/`, so `make check` fails on them until they are taken out.
 4. **Check the counts** against what Instagram shows (Saved → All posts, and the collection
    count). `only_in_collection` counts posts that sit in a collection but not in the saved list;
    they are kept, with no save time.

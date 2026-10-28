@@ -164,6 +164,25 @@ class HtmlExport(unittest.TestCase):
         self.assertIn("No export given, so this lists the collections", err)
         self.assertIn("All saved", out)
 
+    def test_a_second_import_says_what_changed(self):
+        self.load()
+        with open(self.out, encoding="utf-8") as fh:
+            data = json.load(fh)
+        data["saves"] = [s for s in data["saves"] if s["code"] != "FXa1Reel001"]   # saved since
+        data["saves"].append({"code": "FXz9Gone999", "collections": []})          # unsaved since
+        data["saves"][0]["collections"] = ["Somewhere Else"]
+        data["exported"] = "instagram-fixture-old.zip"
+        with open(self.out, "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+        code, out, err = run(["--from-zip", html_zip(self.d), "--out", self.out, "--never-public", self.np])
+        self.assertEqual(code, 0, err)
+        self.assertIn("ev=import_diff before=instagram-fixture-old.zip new=1 gone=1 moved=1", err)
+        self.assertIn("Since the last import (instagram-fixture-old.zip): 1 new saves, 1 no longer saved", out)
+        with open(os.path.join(self.d, "import-diff.json"), encoding="utf-8") as fh:
+            diff = json.load(fh)
+        self.assertEqual((diff["new"], diff["gone"]), (["FXa1Reel001"], ["FXz9Gone999"]))
+        self.assertTrue(os.path.exists(os.path.join(self.d, "saves-previous.json")))
+
     def test_caption_is_verbatim_with_entities_decoded(self):
         _, saves, _ = self.load()
         self.assertEqual(saves["FXa1Reel001"]["caption"],

@@ -34,6 +34,8 @@ Output ($INSTAGRAM_HOME/.cache/saves.json, gitignored there):
   A post can sit in a collection without being in saved_posts (seen a handful of times). It is
   kept, flagged only_in_collection, and left out of the `saves=` count in the log.
    "collections": [{name, type, privacy, updated, codes[]}]}
+  On a second import the last one is moved to saves-previous.json, and import-diff.json next to it
+  lists what changed: {exported_before, new[], gone[], moved[], collections_new[], collections_gone[]}.
 
 It also writes never-public.txt: the account name, collection names, creators' handles and
 post codes, one per line. The marketplace pre-commit hook and the data repo's
@@ -450,6 +452,11 @@ def write_import(a):
             msg="no saved posts found: was Saved ticked in the export? see SKILL.md")
         return 1
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
+    before = None
+    if os.path.exists(a.out):   # the last import, kept so this one can say what changed
+        with open(a.out, encoding="utf-8") as fh:
+            before = json.load(fh)
+        os.replace(a.out, previous_path(a.out))
     with open(a.out, "w", encoding="utf-8") as fh:
         json.dump({"exported": os.path.basename(a.export.rstrip("/")), "account": acct, "format": fmt,
                    "saves": saves, "collections": cols}, fh, indent=1, ensure_ascii=False)
@@ -466,7 +473,47 @@ def write_import(a):
         reels=kinds.get("reel", 0), posts=kinds.get("post", 0), tv=kinds.get("tv", 0),
         no_caption=sum(1 for s in saves if not (s["caption"] or "").strip()))
     print(summary(listed, saves, cols, a.out, a.never_public))
+    if before is not None:
+        print(write_diff(before, saves, cols, a.out))
     return 0
+
+
+def previous_path(out):
+    root, ext = os.path.splitext(out)
+    return root + "-previous" + ext
+
+
+def diff_saves(before, saves, cols):
+    """What changed since the last import: {exported_before, new[], gone[], moved[], collections_new[],
+    collections_gone[]}. moved: saves whose collections changed."""
+    old = {s["code"]: s for s in before.get("saves") or []}
+    now = {s["code"]: s for s in saves}
+    names = lambda c: {x["name"] for x in c}  # noqa: E731
+    return {"exported_before": before.get("exported"),
+            "new": [c for c in now if c not in old],
+            "gone": [c for c in old if c not in now],
+            "moved": [c for c in now if c in old
+                      and sorted(now[c].get("collections") or []) != sorted(old[c].get("collections") or [])],
+            "collections_new": sorted(names(cols) - names(before.get("collections") or [])),
+            "collections_gone": sorted(names(before.get("collections") or []) - names(cols))}
+
+
+def write_diff(before, saves, cols, out):
+    """The diff to import-diff.json next to saves.json, a log line, and the same in plain words."""
+    d = diff_saves(before, saves, cols)
+    path = os.path.join(os.path.dirname(out) or ".", "import-diff.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(d, fh, indent=1, ensure_ascii=False)
+    log("import_diff", before=d["exported_before"] or "unknown", new=len(d["new"]), gone=len(d["gone"]),
+        moved=len(d["moved"]), collections_new=len(d["collections_new"]),
+        collections_gone=len(d["collections_gone"]), out=path)
+    text = (f"Since the last import ({d['exported_before']}): {len(d['new'])} new saves, "
+            f"{len(d['gone'])} no longer saved, {len(d['moved'])} moved to other collections.")
+    if d["collections_new"]:
+        text += f" New collections: {', '.join(d['collections_new'])}."
+    if d["collections_gone"]:
+        text += f" Collections gone: {', '.join(d['collections_gone'])}."
+    return text + f"\nThe codes are in {path}; the last import is kept as {previous_path(out)}."
 
 
 def summary(listed, saves, cols, out, never_public_path):
