@@ -37,6 +37,7 @@ Writes  OUT/index.html                             the map, the list of places, 
         OUT/topics/<topic>.html                    one page per topic: what its saves name, by kind,
                                                    with a filter box; travel links to the map instead
         OUT/decisions.html                         everything waiting on you (decisions_page.py)
+        OUT/unsaved.html                           the saves you unsaved, data kept (import-saves unsaved.py)
         OUT/thumbs/<code>.jpg                      copies of the thumbnails media.yaml lists
         OUT/stills/<code>/                         copies of the stills and clips stills.yaml lists
         OUT/previews/<code>.jpg, .webp             a small picture and a flipbook per post, for the lists

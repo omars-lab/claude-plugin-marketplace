@@ -95,14 +95,15 @@ def shared_spots(pins):
     return out
 
 
-def item_problems(items, known=(), captions=None):
+def item_problems(items, known=(), captions=None, unsaved=()):
     """[(code, {why, ...})]: what is wrong in the items (data/items/). `known` is the topic list (empty: not
-    checked); `captions` maps code → caption (None: codes and quotes not checked)."""
+    checked); `captions` maps code → caption (None: codes and quotes not checked); `unsaved` are codes
+    data/unsaved.yaml keeps on purpose, so their missing caption is not a problem."""
     out = []
     if not isinstance(items, dict):
         return [("", {"msg": "needs a map of code → {topics, items}"})]
     for code, e in items.items():
-        if captions is not None and code not in captions:
+        if captions is not None and code not in captions and code not in unsaved:
             out.append((code, {"msg": "not a save in the export"}))
         if not isinstance(e, dict) or not isinstance(e.get("items"), list) \
                 or not isinstance(e.get("topics", []), list):
@@ -162,6 +163,9 @@ def _problems(quiet):
         exported = {c["name"] for c in saved["collections"]}
         codes = {s["code"] for s in saved["saves"]}
         captions = {s["code"]: s.get("caption") or "" for s in saved["saves"]}
+    unsaved = set(load("data/unsaved.yaml") or {})   # gone from the export, kept until you say (unsaved.py)
+    if codes is not None:
+        codes |= unsaved
 
     places = load("config/places.yaml")
     places_known = set()
@@ -239,7 +243,7 @@ def _problems(quiet):
 
     if items_store.exists(home()):
         items = items_store.load_items(home())
-        for code, why in item_problems(items, known, captions):
+        for code, why in item_problems(items, known, captions, unsaved):
             bad("check_fail", file=items_store.file_for(items.get(code)), code=code, **why)
         for code, rels in items_store.duplicates(home()).items():
             bad("check_fail", file="|".join(rels), code=code, msg="a save in two item files: keep one")

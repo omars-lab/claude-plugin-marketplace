@@ -120,7 +120,7 @@ class Page(unittest.TestCase):
         page, counts = dp.build(rows, check, [], {"M1": {}}, {"tag": 3, "locate": 0, "frames": 0, "split": 0}, 2,
                                 [{"label": "Example link", "url": "https://example.com", "note": ""}],
                                 {"CAFE1": save("CAFE1")}, {})
-        self.assertEqual(counts, {"google": 1, "check": 1, "tags": 0, "items": 0, "moves": 1, "merge": 3,
+        self.assertEqual(counts, {"google": 1, "check": 1, "tags": 0, "items": 0, "moves": 1, "unsaved": 0, "merge": 3,
                                   "fetch": 1, "links": 1})
         self.assertIn("8 things wait on you.", page)
         self.assertIn('data-key="%s" data-id="idA"' % k, page)

@@ -64,7 +64,7 @@ API_PORT          ?= 8780
 API_COMPOSE        = docker compose -f $(PLUGIN)/skills/serve-api/docker/compose.yaml
 export API_PORT
 
-.PHONY: help import collections tag-prepare tag-merge tag-rules tag-report places overture overture-check-prepare overture-check tag-moves moves-page split-prepare split-merge locate-prepare locate-merge locate-check-prepare locate-check pins-page decisions-page media-trial frames-stuck media-video frames frames-text frames-merge stills stills-need-video google-ids send-topics hub serve check test api api-stop api-logs api-test api-schema
+.PHONY: help import unsaved-page forget-unsaved collections tag-prepare tag-merge tag-rules tag-report places overture overture-check-prepare overture-check tag-moves moves-page split-prepare split-merge locate-prepare locate-merge locate-check-prepare locate-check pins-page decisions-page media-trial media-day media-impersonate-env frames-stuck media-video frames frames-text frames-merge stills stills-need-video google-ids send-topics hub serve check test api api-stop api-logs api-test api-schema
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -72,6 +72,13 @@ help: ## List targets
 import: ## Read the saved posts from the export zip into .cache/saves.json (EXPORT=path)
 	@test -n "$(EXPORT)" || { echo "import: no instagram-*.zip in ~/Downloads; run make import EXPORT=path/to/the.zip (import-saves says how to get it)" >&2; exit 2; }
 	python3 $(PLUGIN)/skills/import-saves/scripts/import_saved.py --from-zip "$(EXPORT)"
+	python3 $(PLUGIN)/skills/import-saves/scripts/unsaved.py --flag
+
+unsaved-page: ## The saves you unsaved (flagged, nothing removed) as a page: .cache/hub/unsaved.html
+	python3 $(PLUGIN)/skills/import-saves/scripts/unsaved.py --page --make
+
+forget-unsaved: ## Take only the saves you name out of data/ (CODES="a b", FORGET_DRY=1 first)
+	python3 $(PLUGIN)/skills/import-saves/scripts/unsaved.py --forget $(CODES) $(if $(FORGET_DRY),--dry-run)
 
 collections: ## Your collections and their sizes
 	python3 $(PLUGIN)/skills/import-saves/scripts/import_saved.py --list
@@ -133,6 +140,13 @@ decisions-page: ## Everything waiting on you, on one page: .cache/hub/decisions.
 
 media-trial: ## Thumbnails, logged out and slow (MEDIA_LIMIT=5 per run; fetch-media says the limits)
 	$(MEDIA_PYTHON) $(PLUGIN)/skills/fetch-media/scripts/fetch_media.py $(SCOPE) --limit $(MEDIA_LIMIT) $(MEDIA_FLAGS)
+
+media-day: ## Thumbnail runs all day at the set pace: 1 h on, 1 h off, 9am-9pm, until nothing is left or a stop
+	$(MEDIA_PYTHON) $(PLUGIN)/skills/fetch-media/scripts/media_day.py $(SCOPE) --limit 150 $(MEDIA_FLAGS)
+
+media-impersonate-env: ## A Python for browser-like fetching (MEDIA_PYTHON=.cache/venv-impersonate/bin/python3): yt-dlp plus curl_cffi
+	python3 -m venv --system-site-packages .cache/venv-impersonate
+	.cache/venv-impersonate/bin/python3 -m pip install -q "yt-dlp[curl-cffi]==$$(python3 -c 'import yt_dlp; print(yt_dlp.version.__version__)')"
 
 frames-stuck: ## The reels whose place is not in the caption: .cache/frames/stuck.txt
 	python3 $(PLUGIN)/skills/read-frames/scripts/read_frames.py --stuck $(SCOPE)

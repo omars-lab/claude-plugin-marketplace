@@ -47,9 +47,11 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, os.pardir, "shared", "scripts"))
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(HERE, os.pardir, os.pardir, "import-saves", "scripts"))
 import build_hub as bh  # noqa: E402
 import google_places as gp  # noqa: E402
-from home import PLUGIN, cache  # noqa: E402
+from home import PLUGIN, cache, home  # noqa: E402
+import unsaved  # noqa: E402
 from log import log  # noqa: E402
 from pilot import in_pilot  # noqa: E402
 from places import load_yaml  # noqa: E402
@@ -315,17 +317,18 @@ def item_card(code, e, saves, pages):
 
 
 def build(rows, check, town, moves, answers, videos, links, saves, pages, tags=((), {}, {}), items=(),
-          make=False):
+          make=False, unsaved=0):
     cmd = (lambda k: cmd_html(COMMANDS[k][0 if make else 1]))
     errors, places, topics = tags
     n_topics = sum(1 for codes in topics.values() if len(codes) >= TOPIC_MIN)
     counts = {"google": len(rows), "check": len(check), "tags": len(errors) + len(places) + n_topics,
-              "items": len(items), "moves": len(moves), "merge": sum(answers.values()),
+              "items": len(items), "moves": len(moves), "unsaved": unsaved, "merge": sum(answers.values()),
               "fetch": 1 if videos else 0, "links": len(links)}
     total = sum(counts.values())
     toc = [("#google", "Google's place to pick", counts["google"]), ("#check", "Spots to check", counts["check"]),
            ("#tags", "Tags to check", counts["tags"]), ("#items", "Items to check", counts["items"]),
-           ("#moves", "Saves to move", counts["moves"]), ("#terminal", "Steps in the terminal", counts["merge"]),
+           ("#moves", "Saves to move", counts["moves"]),
+           ("#unsaved", "Saves you unsaved", counts["unsaved"]), ("#terminal", "Steps in the terminal", counts["merge"]),
            ("#chat", "Go-aheads in chat", counts["fetch"]), ("#elsewhere", "Elsewhere", counts["links"])]
     nav = "".join(f'<li><a href="{h}">{esc(t)}</a> <span class="n{" zero" if not c else ""}">{c:,}</span></li>'
                   for h, t, c in toc)
@@ -344,6 +347,9 @@ def build(rows, check, town, moves, answers, videos, links, saves, pages, tags=(
     m = (f'<p>{many(len(moves), "save")} {"is" if len(moves) == 1 else "are"} filed in a collection that does not fit. '
          '<a href="moves.html">See where each one goes</a>, then move them in Instagram.</p>'
          if moves else '<p class="empty">No saves to move.</p>')
+    un = (f'<p>{many(unsaved, "post")} you saved before {"is" if unsaved == 1 else "are"} not in your newest export. '
+          'Their data is kept. <a href="unsaved.html">See each one</a> and pick any whose data should go.</p>'
+          if unsaved else '<p class="empty">Every save we hold data for is still saved.</p>')
     merge = [f'<li><b>{many(answers[kind], "batch", "batches")}</b> of {esc(what)} are ready. Run {cmd(key)}</li>'
              for kind, what, key in BATCH_KINDS if answers.get(kind)]
     term = (f'<ul class="steps">{"".join(merge)}</ul>' if merge
@@ -370,7 +376,7 @@ def build(rows, check, town, moves, answers, videos, links, saves, pages, tags=(
             .replace("{{LOCATE_MERGE}}", cmd("locate-merge"))
             .replace("{{N_TAGS}}", f'{counts["tags"]:,}').replace("{{TAGS}}", tags_html(errors, places, topics, saves, pages, cmd))
             .replace("{{N_ITEMS}}", str(counts["items"])).replace("{{ITEMS}}", it)
-            .replace("{{MOVES}}", m).replace("{{TERMINAL}}", term).replace("{{CHAT}}", chat)
+            .replace("{{MOVES}}", m).replace("{{UNSAVED}}", un).replace("{{TERMINAL}}", term).replace("{{CHAT}}", chat)
             .replace("{{ELSEWHERE}}", else_).replace("{{WHERE}}", esc(where))
             .replace("{{GOOGLE_MODE}}", "make" if make else "plugin")
             .replace("{{GOOGLE_SCRIPT}}", esc(shlex.quote(GOOGLE_IDS)))), counts
@@ -480,6 +486,9 @@ code { font-family: var(--mono); font-size: .88em; background: var(--quote-bg); 
   <h2 id="moves">Saves to move</h2>
   {{MOVES}}
 
+  <h2 id="unsaved">Saves you unsaved</h2>
+  {{UNSAVED}}
+
   <h2 id="terminal">Steps waiting in the terminal</h2>
   {{TERMINAL}}
 
@@ -587,11 +596,15 @@ def main(argv=None):
     answers = waiting_answers(cache("batches"))
     videos = videos_waiting(cache(os.path.join("frames", "stuck.txt")), load_yaml(os.path.join("data", "media.yaml")))
     out = args.out or cache(os.path.join("hub", "decisions.html"))
-    page, counts = build(rows, check, town, moves, answers, videos, links, saves, pages, tags, items, args.make)
+    flagged = load_yaml(os.path.join("data", "unsaved.yaml"))
+    flagged = flagged if isinstance(flagged, dict) else {}
+    page, counts = build(rows, check, town, moves, answers, videos, links, saves, pages, tags, items, args.make,
+                         len(flagged))
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(page)
     log("decisions_page", **counts, town_only=len(town), out=out)
+    unsaved.write_page(home(), os.path.join(os.path.dirname(out), "unsaved.html"), args.make)   # the page it links
     print(f"{many(counts['google'], 'Google pick')}, {many(counts['check'], 'spot')} to check "
           f"({many(len(town), 'more spot')} shown at their town only), {many(counts['tags'], 'tag')} to check, "
           f"{many(counts['items'], 'item')} to check, {many(counts['moves'], 'save')} to move, {many(counts['merge'], 'answer file')} to merge, "
