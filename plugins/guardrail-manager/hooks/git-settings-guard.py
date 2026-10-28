@@ -10,10 +10,16 @@ Two settings in a checkout's own `.git/config` break things quietly:
                          repo makes every worktree run one checkout's hooks
                          (or none, once that folder moves). A relative folder
                          that does not exist turns the hooks off without a word.
+  user.email = …@….invalid   a throwaway identity (a domain that cannot exist:
+                         .invalid, .test, .example, example.com, localhost) in the
+                         checkout's own config means a test ran git against the
+                         real repo, usually because GIT_DIR was set. New commits
+                         would be authored as it. A real repo-local identity (a
+                         work address) is fine and stays quiet.
 
 What it does:
 
-  SessionStart           reads both settings for the checkout the session opens
+  SessionStart           reads these settings for the checkout the session opens
                          in and, when one is wrong, says which and gives the
                          exact command that fixes it. It never changes them.
   PreToolUse (Bash)      denies a `git config` that would set `core.bare true`,
@@ -55,6 +61,11 @@ TRUE_WORDS = {"true", "yes", "on", "1"}
 # `git config` options that take the next word as their value.
 VALUE_OPTS = {"-f", "--file", "--blob", "--type", "--default", "--comment", "--value"}
 MACHINE_SCOPES = {"--global", "--system"}
+# Email domains that cannot belong to a real person: the reserved test names (RFC 2606/6761).
+TEST_EMAIL_RE = re.compile(
+    r"@(?:[\w.-]+\.)?(?:invalid|test|example|localhost|example\.(?:com|org|net))$|@localhost$",
+    re.IGNORECASE,
+)
 
 
 def _tokens(span: str) -> list[str]:
@@ -169,6 +180,17 @@ def problems(top: Path) -> list[str]:
                 else f"git -C {shlex.quote(str(top))} config --unset core.hooksPath"
             )
             found.append(f"core.hooksPath is {hooks!r}: {why}. Fix: {fix}")
+    email = _git_config(top, "user.email")
+    if email and TEST_EMAIL_RE.search(email):
+        name = _git_config(top, "user.name")
+        q = shlex.quote(str(top))
+        fix = f"git -C {q} config --unset user.email"
+        if name:
+            fix += f" && git -C {q} config --unset user.name"
+        found.append(
+            f"user.email is {email!r} in this checkout's own settings: a test's throwaway identity, "
+            f"so new commits would be authored as it. A test probably ran git here with GIT_DIR set. Fix: {fix}"
+        )
     return found
 
 
@@ -368,6 +390,22 @@ def selftest() -> int:
     t.assert_flags(t.run(start(wt), env), "absolute path", "a worktree reports the shared absolute hooksPath")
     git("config", "core.hooksPath", ".githooks")
     t.assert_quiet(t.run(start(wt), env), "a worktree with the relative hooksPath is quiet")
+
+    # A test's throwaway identity in the checkout's own config; a real one stays quiet.
+    git("config", "user.email", "t@t.invalid")
+    git("config", "user.name", "t")
+    rc, out, err = t.run(start(), env)
+    t.check("throwaway identity" in out and "--unset user.email" in out and "--unset user.name" in out,
+            "a .invalid user.email is reported with both unsets", out + err)
+    for fake in ("ci@example.com", "x@build.test", "me@localhost", "a@b.example"):
+        git("config", "user.email", fake)
+        t.assert_flags(t.run(start(), env), "throwaway identity", f"test identity {fake} is reported")
+    for real in ("someone@company.io", "dev@examples.com", "x@invalid-domain.org"):
+        git("config", "user.email", real)
+        t.assert_quiet(t.run(start(), env), f"a real-looking repo identity {real} is quiet")
+    git("config", "--unset", "user.email")
+    git("config", "--unset", "user.name")
+    t.assert_quiet(t.run(start(), env), "no repo identity: quiet")
 
     # Opt out.
     git("config", "core.bare", "true")

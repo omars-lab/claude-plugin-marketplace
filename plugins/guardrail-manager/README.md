@@ -24,7 +24,8 @@ the conf files.
 
 `git-settings-guard` keeps a checkout's own git settings sane. At session start, and before git
 commands, it says when `core.bare` is true or `core.hooksPath` is absolute, outside the repo
-or missing, and gives the fix. It denies a `git config` that would set either one wrong.
+or missing, or when the checkout's own `user.email` is a test's throwaway address (a domain like
+`.invalid`, `.test` or `example.com` that cannot be real), and gives the fix. It denies a `git config` that would set either one wrong.
 
 Every advisory hook is a no-op until a conf exists; `block-git-ours-theirs`,
 `branch-sprawl-guard` and `git-settings-guard` are the exceptions (on by default, opt out with

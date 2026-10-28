@@ -46,8 +46,9 @@ fourth is the one that denies a tool call:
   conflict by hand, both sides kept, gates re-run.
 - **git-settings-guard** (SessionStart + PreToolUse on Bash): at session start, and before
   git commands (at most every ten minutes per problem), reports a checkout whose
-  `core.bare` is true or whose `core.hooksPath` is absolute, outside the repo or missing, with
-  the exact fix. It never changes the setting. It denies a `git config` that would set
+  `core.bare` is true, whose `core.hooksPath` is absolute, outside the repo or missing, or
+  whose own `user.email` is a test's throwaway address (`.invalid`, `.test`, `example.com`,
+  `localhost` — usually a test that ran git with `GIT_DIR` set), with the exact fix. It never changes the setting. It denies a `git config` that would set
   `core.bare true` or a repo `core.hooksPath` that is absolute, `~`, `$VAR` or `../`
   (`--global`/`--system` hooks folders are allowed). **On with no conf**; opt out with
   `git-settings.conf` `ENABLED=0`.
