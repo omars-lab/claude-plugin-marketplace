@@ -88,7 +88,8 @@ answers. **No script calls a model**, and there is no API key: this session star
      person's pin stays.
    - Kept spots go to `data/pins.yaml`. The rest go to `data/pins-review.yaml` with `why`:
      "not found near Example Town", "38 km from Example Town", "quote not in caption". The hub
-     still shows the lookup misses, as dashed pins at their town that search the venue by name.
+     still shows the lookup misses: on their town's page, and as dashed pins at their town once
+     **find-google-ids** keeps an id for them.
    - Saves that name no spot go to `data/no-spot.yaml`, the "look at the video" list for when
      frames are read.
 4. **Look.** `pins_page.py` puts every pin on a map beside its quote. Every pin is a guess until a
@@ -134,7 +135,7 @@ pin is not a fix, because the next re-read finds it again; mark it `drop: true` 
 ## Venues OpenStreetMap lacks: Overture Maps
 
 Many cafés and food trucks a post names are not on OpenStreetMap, so they stay in review as "not
-found near" and the hub draws them at their town's middle, on top of each other. Overture Maps'
+found near" and the hub can't pin them: it lists them on their town's page instead. Overture Maps'
 open places data has most of them. `overture_positions.py` reads one box of it per town (from
 Overture's public bucket, no key, cached in `.cache/overture/<release>/`, never committed) and pins
 a review spot only when every rule passes:
@@ -163,7 +164,7 @@ sweets shops and huts a post names, above all those known only by an Instagram h
 first trial abroad, most such venues stayed in review as "not found". Don't chase them
 with `lookup:` one by one:
 
-- **Leave them in review.** The hub shows them as dashed pins at their town, and **find-google-ids**
+- **Leave them in review.** The hub lists them on their town's page, and **find-google-ids**
   searches them by name in a box round that town. Its pick gives the exact Google Maps link even
   though the venue has no pin of its own. That covers most of the gap.
 - **Check the handle the agent wrote.** Agents misspell handles ("Example Tidei" for a handle

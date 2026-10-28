@@ -364,19 +364,25 @@ class Hub:
             lat, lon = number(e.get("lat")), number(e.get("lon"))
             if lat is None or lon is None:
                 lat = lon = None
-                self.no_pin.add(key)
+                if not e.get("listed"):
+                    self.no_pin.add(key)
             self.places[key] = {"key": key, "name": name, "kind": e.get("kind") or "spot", "lat": lat, "lon": lon,
                                 "map": e.get("map") or maps_link(name, near or ""), "parent": near, "spot": True,
                                 "posts": [], "said": {}, "osm": e.get("osm"), "wikidata": e.get("wikidata"),
                                 "notes": e.get("notes"), "found": e.get("found") if isinstance(e.get("found"), str) else "",
                                 "placed": bool(e.get("placed")), "osm_note": e.get("osm_note"),
                                 "google_by": e.get("google_by"), "google_id": e.get("google_id"),
-                                "google_chain": bool(e.get("google_chain"))}
-        elif e.get("google_by") and not self.places[key].get("google_by"):   # another post's copy has the id
-            self.places[key].update(map=e["map"], google_by=e["google_by"], google_id=e.get("google_id"))
+                                "google_chain": bool(e.get("google_chain")), "listed": bool(e.get("listed"))}
+            return self.places[key]
+        q = self.places[key]
+        lat, lon = number(e.get("lat")), number(e.get("lon"))
+        if q["listed"] and lat is not None and lon is not None:   # another post's copy has a pin
+            q.update(lat=lat, lon=lon, listed=False)
+        if e.get("google_by") and not q.get("google_by"):   # another post's copy has the id
+            q.update(map=e["map"], google_by=e["google_by"], google_id=e.get("google_id"))
         elif e.get("google_chain"):
-            self.places[key]["google_chain"] = True
-        return self.places[key]
+            q["google_chain"] = True
+        return q
 
     def _name_post(self, place, code, said=None):
         if code not in place["posts"]:
@@ -427,11 +433,14 @@ class Hub:
             if e.get("placed"):   # not found on OpenStreetMap: shown at its town
                 if not near or near not in self.places:
                     continue
-                # Only a town's middle is a fair stand-in. A region's or park's middle is often a lake or a
-                # bay, so a spot there gets no pin of its own and the post's pin falls back to the area.
-                town = ICON_OF_KIND.get(self.places[near]["kind"]) == "town"
+                # Only a town's middle is a fair stand-in, and only for a venue with a kept Google id, which
+                # Google's map then moves to its own spot (decision 12). One no source places is listed under
+                # its town with no pin (decision 13), so a town's venues never stack on its middle. A region's
+                # or park's middle is often a lake or a bay, so a spot there gets no pin either. Either way the
+                # post's pin falls back to the area.
+                town = ICON_OF_KIND.get(self.places[near]["kind"]) == "town" and bool(e.get("google_id"))
                 e = {**e, "lat": self.places[near]["lat"] if town else None,
-                     "lon": self.places[near]["lon"] if town else None}
+                     "lon": self.places[near]["lon"] if town else None, "listed": not town}
             if near and e["name"].strip().lower() == near.lower():   # the spot is the area itself
                 self._name_post(self.places[near], code, said)
                 shot(near, e["name"])
@@ -981,8 +990,27 @@ def place_page(hub, place, google=None):
     if isinstance(place.get("wikidata"), str) and re.match(r"^Q\d+$", place["wikidata"]):
         where.append(f'<a href="https://www.wikidata.org/wiki/{esc(place["wikidata"])}" target="_blank" '
                      f'rel="noopener">Wikidata</a>')
+    off = [hub.places[k] for k in place["inside"] if hub.places[k].get("listed")]
+    if off:   # decision 13: listed here instead of stacked on this place's middle
+        def gm(q):
+            return (f'<li><a href="{place_href(q)}">{esc(q["name"])}</a> <a class="gmap" href="{esc(q["map"])}" '
+                    f'target="_blank" rel="noopener" aria-label="{esc(q["name"])} in Google Maps">Google Maps</a></li>')
+        off.sort(key=lambda q: (-len(q["posts"]), q["name"]))
+        rest = off[GROUP_SHOWN:]
+        rows.append((f"Not on the map yet ({len(off)})",
+                     '<span class="muted">No open map has given us their address yet, so they have no pin.</span>'
+                     '<ul class="inline">' + "".join(map(gm, off[:GROUP_SHOWN])) + "</ul>"
+                     + (f'<details><summary>Show the other {len(rest)}</summary><ul class="inline">'
+                        + "".join(map(gm, rest)) + "</ul></details>" if rest else "")))
     rows.append(("On a map", " · ".join(where)))
-    if place["lat"] is None:
+    if place.get("listed"):
+        link = ("; its Google Maps link opens the place itself" if place.get("google_by")
+                else "; its Google Maps link searches for it by name")
+        osm = esc(place["osm_note"]) if place.get("osm_note") else "does not list it"
+        town = f'<a href="{place_href(parent)}">{esc(parent["name"])}</a>' if parent else "its area"
+        rows.append(("Pin", f'<span class="muted">none yet: OpenStreetMap {osm} and we have its address from no other '
+                            f'open map yet, so it is listed on {town}\'s page{link}</span>'))
+    elif place["lat"] is None:
         rows.append(("Pin", '<span class="muted">not looked up yet, so it is not on the map</span>'))
     elif place.get("placed"):
         link = ("; the Google Maps link opens the place itself" if place.get("google_by")
@@ -2031,21 +2059,24 @@ def main(argv=None):
     venues = venue_check(hub)
     log("hub_venues", **{k: len(v) for k, v in venues.items()}, town_only_codes=",".join(venues["town"]))
     print(f"eat or stay posts: {len(venues['spot'])} open a spot OpenStreetMap placed, {len(venues['placed'])} "
-          f"one it doesn't list (pinned at its town), {len(venues['town'])} only a town")
+          f"one it doesn't list (at its town until Google moves it), {len(venues['listed'])} one no open map "
+          f"places (listed under its town, no pin), {len(venues['town'])} only a town")
     print(os.path.join(out, "index.html"))
     return 0
 
 
 def venue_check(hub, purposes=("eat", "stay")):
     """The posts for eating or staying, by what their Google Maps links open: a spot OpenStreetMap
-    placed, a spot it does not list (searched by name in its town), or only a town. A "town" post
-    either names no venue in its caption or lost it before the lookup: those are the ones to read."""
-    out = {"spot": [], "placed": [], "town": []}
+    placed, a spot it does not list but Google has an id for (at its town until Google moves it), a
+    spot no open map places (listed under its town), or only a town. A "town" post either names no
+    venue in its caption or lost it before the lookup: those are the ones to read."""
+    out = {"spot": [], "placed": [], "listed": [], "town": []}
     for p in hub.posts:
         if not set(p["tagged_purposes"]) & set(purposes):
             continue
         styles = {style for *_, style in p["pins"]}
-        out["spot" if "spot" in styles else "placed" if "placed" in styles else "town"].append(p["code"])
+        out["spot" if "spot" in styles else "placed" if "placed" in styles
+            else "listed" if any(hub.places[k].get("listed") for k in p["exact"]) else "town"].append(p["code"])
     return out
 
 

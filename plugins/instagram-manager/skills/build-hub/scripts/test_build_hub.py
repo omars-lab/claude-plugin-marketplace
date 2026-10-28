@@ -183,8 +183,14 @@ class Hub(unittest.TestCase):
         self.assertEqual(pins["VILL1"], [("Fixture State", "wide", 1)])        # no pin for the village: go up
         self.assertNotIn("NOTAG", pins)
 
-    def test_a_cafe_openstreetmap_does_not_list_is_pinned_at_its_town_and_searched_by_name(self):
+    def test_a_cafe_openstreetmap_does_not_list_is_pinned_at_its_town_only_with_a_google_id(self):
+        # Decision 13: a venue no open map places gets no pin and is listed on its town's page, so a
+        # town's venues never stack on its middle. One with a kept Google id waits at the town for
+        # Google's map to move it.
         self.write("data/tags.yaml", {**TAGS, "TOWN1": {**TAGS["TOWN1"], "purposes": ["eat"]}})
+        self.write("data/google.yaml", {
+            "spot:example-deli@fixture-town": {"query": "Example Deli, 1 Example Rd", "verdict": "match",
+                                               "id": "ChIJexampleDeli", "by": "hand", "date": "2026-01-02"}})
         self.write("data/pins-review.yaml", {
             "TOWN1": [{"said": "@examplecafe", "name": "Example Cafe", "asked": "Example Cafe", "near": "Fixture Town",
                        "why": "not found near Fixture Town"},
@@ -201,15 +207,23 @@ class Hub(unittest.TestCase):
         names = [p["n"] for p in d["places"]]
         town1 = [(names[pl], style, lat, lon) for lat, lon, post, pl, style, _ in d["pins"]
                  if d["posts"][post]["c"] == "TOWN1"]
-        self.assertEqual(town1, [("Example Cafe", "placed", 10.5, 20.5),         # at the town, not the town itself
-                                 ("Example Bakery", "placed", 10.5, 20.5),
-                                 ("Example Deli", "placed", 10.5, 20.5)])
+        self.assertEqual(town1, [("Example Deli", "placed", 10.5, 20.5),   # at the town, not the town itself
+                                 ("Fixture Town", "area", 10.5, 20.5)])    # the town stands for the other two
         cafe = self.page("places/example-cafe.html")
         self.assertIn("google.com/maps/search/?api=1&amp;query=Example+Cafe%2C+Fixture+Town", cafe)
-        self.assertIn("OpenStreetMap does not list it", cafe)
+        self.assertIn("none yet: OpenStreetMap does not list it", cafe)
+        self.assertIn("its Google Maps link searches for it by name", cafe)
         self.assertIn("query=Example+Deli%2C+1+Example+Rd", self.page("places/example-deli.html"))
         self.assertNotIn("Example Baguette", self.page("posts/TOWN1.html"))
+        town = self.page("places/fixture-town.html")
+        self.assertIn("<dt>Not on the map yet (2)</dt>", town)
+        self.assertIn('href="../places/example-cafe.html"', town)
+        self.assertIn('href="../places/example-bakery.html"', town)
         self.assertIn("eat or stay posts: 0 open a spot OpenStreetMap placed, 1 one it doesn't list", out)
+        self.write("data/google.yaml", {})
+        out = self.build("--pilot", "fixture")
+        self.assertIn("0 one it doesn't list (at its town until Google moves it), 1 one no open map places", out)
+        self.assertIn("<dt>Not on the map yet (3)</dt>", self.page("places/fixture-town.html"))
 
     def test_a_spot_openstreetmap_does_not_list_gets_no_pin_at_a_parks_middle(self):
         # A park's or region's middle can be a lake or a bay: a spot drawn there sits in the water.
@@ -228,7 +242,7 @@ class Hub(unittest.TestCase):
         self.assertEqual(icon["Example Rock"], "peak")            # a rock, not food, though the post is tagged eat
         self.assertIn("Example Rock", self.page("places/fixture-park.html"))   # still listed on its area's page
 
-    def test_a_spot_found_only_as_its_street_is_shown_at_its_town(self):
+    def test_a_spot_found_only_as_its_street_is_listed_under_its_town(self):
         self.write("data/pins-review.yaml", {
             "TOWN1": [{"said": "@examplegrill", "name": "Example Grill", "near": "Fixture Town",
                        "address": "12 Long Rd", "why": "only the street was found near Fixture Town, not the house",
@@ -239,7 +253,7 @@ class Hub(unittest.TestCase):
         d = self.data()
         names = [p["n"] for p in d["places"]]
         town1 = [(names[pl], style) for _, _, post, pl, style, _ in d["pins"] if d["posts"][post]["c"] == "TOWN1"]
-        self.assertEqual(town1, [("Example Grill", "placed"), ("Example Wok", "placed")])
+        self.assertEqual(town1, [("Fixture Town", "area")])   # no Google id for either: no pin of their own
         grill = self.page("places/example-grill.html")
         self.assertIn("query=Example+Grill%2C+12+Long+Rd", grill)
         self.assertIn("OpenStreetMap found only its street", grill)

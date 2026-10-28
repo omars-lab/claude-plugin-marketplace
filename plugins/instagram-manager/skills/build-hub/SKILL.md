@@ -116,9 +116,13 @@ the town, not the state.
   OpenStreetMap thing share one spot page.
 - **Spots OpenStreetMap doesn't list.** OpenStreetMap is thin on small restaurants and cafés, so
   many land in `data/pins-review.yaml` as "not found near Example Town" (or a doubtful match).
-  Each still becomes a spot, with a dashed pin at its town and a Google Maps link that searches its
-  name in that town (`Example Cafe, Example Town`). The post then opens the café, not the town.
-  The doubtful match's own name and lat/lon are never used. Entries marked `drop: true`, or that
+  Each still becomes a spot with its own page and a Google Maps link that searches its name in
+  that town (`Example Cafe, Example Town`), so the post opens the café, not the town. Only one
+  with a kept Google id (**find-google-ids**) gets a dashed pin at its town, which a map Google
+  draws moves to the venue. The rest get no pin: they are listed on their town's page under "Not on
+  the map yet", and their posts are pinned at the town itself, so a town's venues never stack on
+  its middle (DESIGN.md decision 13 in the data repo). A spot in a park or region gets no pin
+  either, since its middle is often a lake. The doubtful match's own name and lat/lon are never used. Entries marked `drop: true`, or that
   failed the quote or area check, are left out. The review file stays the list for a person to fix.
 - **Wide pins.** A post tagged only with a state or a country gets a grey pin at that state's or
   country's middle, so it still shows up on the map.
@@ -154,7 +158,7 @@ OpenStreetMap's), and has the hub's Google key. On that map:
 - **Pins we keep stay as they are.** A spot OpenStreetMap placed, a town, a park, a state: the same
   position as on any other map.
 - **A venue OpenStreetMap lacks moves to where Google puts it.** It starts as a dashed pin at its
-  town, as everywhere else. Once you zoom in to about one town (zoom 13, `LOOK_ZOOM`), the page asks
+  town. Once you zoom in to about one town (zoom 13, `LOOK_ZOOM`), the page asks
   Google for the position of each such venue in view that **find-google-ids** kept an id for, and
   moves its pin there, coloured like a placed spot. Its popup says Google placed it, just now.
 - **Nothing Google sends is kept.** The positions live in the open page's memory only: not in the
@@ -171,7 +175,7 @@ OpenStreetMap's), and has the hub's Google key. On that map:
 - **The legend** says the dashed pins stay at their town until you zoom in, and credits Google (with
   links to its map terms and privacy policy) and OpenStreetMap.
 
-Venues with no kept Google id stay at their town on every map.
+Venues with no kept Google id get no pin on any map; they are listed on their town's page.
 
 ### The hub's Google key
 
@@ -215,7 +219,7 @@ Without the key it prints a note and draws every map from OpenStreetMap.
 | `config/collections.yaml` | the pilots | `--pilot` stops; `--all` still works |
 | `config/topics.yaml` | the topics' display names | the topic's short name shows instead |
 | `data/pins.yaml` | spots, with the caption's words for them | fine: area pins only |
-| `data/pins-review.yaml` | spots OpenStreetMap did not place: dashed pins at their town | fine: no dashed pins |
+| `data/pins-review.yaml` | spots OpenStreetMap did not place: a dashed pin at their town when Google has an id for them, else listed on the town's page | fine: no dashed pins |
 | `data/google.yaml` + `GOOGLE_MAPS_HUB_KEY` | kept place ids; on a map Google draws, the venues at their town are looked up from them | fine: every map is OpenStreetMap's |
 | `data/media.yaml` + `$INSTAGRAM_MEDIA_DIR` | thumbnails; copied into `.cache/hub/thumbs/` | fine: grey boxes |
 | `data/items/<topic>.yaml` | the things each save names, for the topic pages and post pages | fine: topic pages list the saves only (run **split-saves**) |
@@ -241,7 +245,8 @@ page or the spot review page, are kept, and the map page links to them.
    It prints one line of counts: saves, how many have a pin, how many sit at a town, park or spot
    rather than a whole state, place pages, spots, thumbnails and spot stills. A second line is the **venue
    check**: of the posts tagged `eat` or `stay`, how many open a spot OpenStreetMap placed, a spot
-   pinned at its town, or only a town. The codes of the town-only ones are in the log
+   pinned at its town until Google moves it, a spot no open map places (listed under its town), or
+   only a town. The codes of the town-only ones are in the log
    (`ev=hub_venues town_only_codes=...`). Read their captions: either the caption names no venue
    (fine, the video may), or the locator missed one (fix **resolve-post-location**'s agent).
 2. **Look at it.** `make serve` (by hand: `python3 -m http.server 8765 --bind 127.0.0.1
@@ -277,6 +282,6 @@ State, and a spot from `data/pins.yaml`, Example Falls, near Example Bay. The bu
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/build_hub.py` | Writes the site to `.cache/hub/`: the map, one map per state or country, one page per place, one page per post, one page per topic, the thumbnails, and each post's small picture and flipbook | After tagging, finding spots or fetching thumbnails, to see the result. It writes the decisions page too | `python3 scripts/build_hub.py --all` (or `--pilot <name>`; `--out DIR` for another folder; `--no-previews` to skip the small pictures; `--links FILE` and `--make` go to the decisions page; `--google-map <folders>` with `GOOGLE_MAPS_HUB_KEY` lets Google draw those maps) |
-| `scripts/test_build_hub.py` | Offline tests on an invented data repo: which saves go in, where the pins go, a map per state with only its pins (and old map folders cleared), the "State or country" menu (a town abroad under its country), spot pages, links up and down, thumbnails, small pictures and flipbooks on the lists (and `--no-previews`), a kept Google id opening its exact place, a chain keeping its search for every branch, a map Google draws (ids only on venues at their town, the key never printed nor in the data, every other map OpenStreetMap's, and no key meaning no Google), and captions that try to break the page | After any change to the build script | `python3 scripts/test_build_hub.py` |
+| `scripts/test_build_hub.py` | Offline tests on an invented data repo: which saves go in, where the pins go, a map per state with only its pins (and old map folders cleared), the "State or country" menu (a town abroad under its country), spot pages, links up and down, thumbnails, small pictures and flipbooks on the lists (and `--no-previews`), a venue no open map places listed on its town's page with no pin, a kept Google id opening its exact place, a chain keeping its search for every branch, a map Google draws (ids only on venues at their town, the key never printed nor in the data, every other map OpenStreetMap's, and no key meaning no Google), and captions that try to break the page | After any change to the build script | `python3 scripts/test_build_hub.py` |
 | `scripts/decisions_page.py` | Writes `.cache/hub/decisions.html`, everything waiting on a person: Google's place to pick per spot (numbered options that open the exact place, "A chain: any branch near here" and "None of these", building one `google_ids.py --pick … --none … --chain …` line), spots to check, tags to check (saves the tagger could not tag, places not in `config/places.yaml`, topics two or more saves suggested), items whose words were not in the caption, saves to move, answers not merged, reels waiting on a fetch go-ahead, and a hand-kept list of decisions made elsewhere. Spots shown at their town only are not counted, since they work, but the opening line says how many. Each step it names is the plugin's own command; `--make` prints the data repo's make lines | `build_hub.py` runs it itself with the same scope, so the map always links a fresh one; run it alone after a step that leaves something for a person. Give it the hub's own scope: it works out each post's hub page name the way the build does | `python3 scripts/decisions_page.py --pilot <name>` (or `--all`; `--links FILE`, `--make`, `--out PATH`) |
 | `scripts/test_decisions_page.py` | Offline tests on invented data: which Google picks still show (not picked or marked a chain since, same search, still a spot), the chain option, spots to check versus shown at their town, answers waiting, reels waiting, the hand-kept list (done ones left out, only http links), escaping, the page holding only ids of Google's, and post links using the build's page names (codes that differ only by case, a post outside the pilot) | After any change to the decisions script | `python3 scripts/test_decisions_page.py` |
