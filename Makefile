@@ -109,6 +109,9 @@ check-never-public-range: ## Same check over commits not yet on GitHub (RANGE=<a
 test-never-public: ## Self-test the never-public check and the GitHub sync on a throwaway repo
 	@./scripts/test-never-public.sh
 
+check-code-pointers: ## Check docs marked code-pointers still link to code that exists (FIX=1 repoints moved code; pre-commit runs this)
+	@./scripts/check-code-pointers.py $(if $(FIX),--fix)
+
 test-workflow: ## Test complete plugin lifecycle (uninstall -> install -> update)
 	@./scripts/cli test-workflow $(MARKETPLACE_NAME)
 

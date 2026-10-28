@@ -30,6 +30,13 @@ if [ -n "$(git diff --cached --name-only -- plugins/instagram-manager)" ]; then
     --fixed-list "${INSTAGRAM_HOME:-$HOME/Workspace/git/instagram}/.cache/never-public.txt"
 fi
 
+# === Docs' links into the code ===
+# A doc marked <!-- code-pointers: checked --> links to functions by name. A rename or move that
+# leaves one of those links pointing at nothing stops the commit; make check-code-pointers FIX=1
+# repoints the links whose new home is clear.
+echo "Checking docs' links into the code..."
+"$(git rev-parse --show-toplevel)/scripts/check-code-pointers.py"
+
 STAGED=$(git diff --cached --name-only)
 
 if echo "$STAGED" | grep -q 'plugins/oeid-noteplan-quicknote/\(script\.js\|plugin\.json\)'; then
