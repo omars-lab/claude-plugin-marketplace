@@ -239,7 +239,7 @@
             }
           ],
           "default": null,
-          "description": "Latitude, from OpenStreetMap. Only when `exact`.",
+          "description": "Latitude, from OpenStreetMap, or from Overture Maps when `overture` is set. Only when `exact`.",
           "title": "Lat"
         },
         "lon": {
@@ -252,7 +252,7 @@
             }
           ],
           "default": null,
-          "description": "Longitude, from OpenStreetMap. Only when `exact`.",
+          "description": "Longitude, from the same source as `lat`. Only when `exact`.",
           "title": "Lon"
         },
         "osm": {
@@ -299,6 +299,45 @@
           "description": "Google's place id, when one is kept. Nothing else of Google's is kept.",
           "title": "Google Id"
         },
+        "overture": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Overture Maps' place id, when the position is from Overture's open places data. Show its credit with it.",
+          "title": "Overture"
+        },
+        "overture_release": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Overture release the position was read from, such as 2026-09-23.1. Only with `overture`.",
+          "title": "Overture Release"
+        },
+        "licence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Overture row's licence: CDLA-Permissive-2.0, or Apache-2.0 for rows from Foursquare. Only with `overture`.",
+          "title": "Licence"
+        },
         "from": {
           "description": "Where the name was read.",
           "enum": [
@@ -309,9 +348,23 @@
           "type": "string"
         },
         "exact": {
-          "description": "True when pinned at the spot itself; false when OpenStreetMap does not list it and it stands at its town (no lat/lon then).",
+          "description": "True when pinned at the spot itself; false when no open map lists it and it stands at its town (no lat/lon then).",
           "title": "Exact",
           "type": "boolean"
+        },
+        "listed": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when no source places it and no Google id is kept: list it under its town, not on a map. Only when `exact` is false.",
+          "title": "Listed"
         },
         "still": {
           "anyOf": [

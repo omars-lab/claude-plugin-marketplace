@@ -45,8 +45,12 @@ A travel item is a spot:
   wikidata: Q101                 # when OpenStreetMap has one
   map: https://www.google.com/maps/search/?api=1&query=Example+Falls%2C+Example+Park&query_place_id=ChIJexample
   google_id: ChIJexample         # when find-google-ids kept one: the map link opens that exact place
+  overture: 00000000-0000-4000-8000-000000000101   # only when lat/lon are from Overture Maps
+  overture_release: 2026-01-01.0 #   the Overture release they were read from
+  licence: CDLA-Permissive-2.0   #   or Apache-2.0 (rows from Foursquare)
   from: caption                  # or video, when read-frames found it
-  exact: true                    # false: OpenStreetMap does not list it; no lat/lon
+  exact: true                    # false: no open map lists it; no lat/lon
+  listed: true                   # only when exact is false and no google_id is kept: list it, don't pin it
   still: EXAMPLE1/spots/still-example-falls.jpg
   clip: EXAMPLE1/spots/clip-example-falls.webp
   t: 4.9                         # seconds into the reel
@@ -64,8 +68,15 @@ Any other topic's item is what the caption names, from split-saves:
 ```
 
 `exact: false` spots are the venues OpenStreetMap is thin on (small restaurants, cafés), from
-`data/pins-review.yaml`. They are the same spots the hub shows with a dashed pin, and their map link
-searches the name in its town. `thumb`, `still` and `clip` are paths inside `$INSTAGRAM_MEDIA_DIR`,
+`data/pins-review.yaml`. Their map link searches the name in its town. One with a kept `google_id`
+is a spot the hub shows with a dashed pin at its town, which Google's map moves to the venue. One
+with neither is `listed: true`: no source has its position, so the hub lists it under its town and
+an intake should too, never stacking it on the town's middle (decision 13 in the data repo's
+DESIGN.md).
+
+A spot with `overture` has its position from Overture Maps' places data, which other repos may
+keep. A repo that shows it credits Overture, and Foursquare for `licence: Apache-2.0` rows; the data
+repo's `docs/licences/README.md` has the line to show. `thumb`, `still` and `clip` are paths inside `$INSTAGRAM_MEDIA_DIR`,
 outside git; an intake copies the files it uses. `google_id` is Google's place id and nothing else
 of Google's (**find-google-ids**); an intake can keep it and never search for the place again.
 

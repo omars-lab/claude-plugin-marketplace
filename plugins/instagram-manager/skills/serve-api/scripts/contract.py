@@ -24,17 +24,27 @@ class Spot(Strict):
     said: Optional[str] = Field(None, description="The caption's (or the video's) own words for it.")
     near: Optional[str] = Field(None, description="The town, park or area it sits in.")
     kind: Optional[str] = Field(None, description="OpenStreetMap's kind: restaurant, beach, viewpoint…")
-    lat: Optional[float] = Field(None, description="Latitude, from OpenStreetMap. Only when `exact`.")
-    lon: Optional[float] = Field(None, description="Longitude, from OpenStreetMap. Only when `exact`.")
+    lat: Optional[float] = Field(None, description="Latitude, from OpenStreetMap, or from Overture Maps when "
+                                                   "`overture` is set. Only when `exact`.")
+    lon: Optional[float] = Field(None, description="Longitude, from the same source as `lat`. Only when `exact`.")
     osm: Optional[str] = Field(None, description="OpenStreetMap id, such as node/123.")
     wikidata: Optional[str] = Field(None, description="Wikidata id, when OpenStreetMap has one.")
     map: str = Field(description="A Google Maps link: the exact place when its place id is kept, else a "
                                  "search for the name in its town.")
     google_id: Optional[str] = Field(None, description="Google's place id, when one is kept. Nothing else "
                                                        "of Google's is kept.")
+    overture: Optional[str] = Field(None, description="Overture Maps' place id, when the position is from "
+                                                      "Overture's open places data. Show its credit with it.")
+    overture_release: Optional[str] = Field(None, description="The Overture release the position was read "
+                                                              "from, such as 2026-09-23.1. Only with `overture`.")
+    licence: Optional[str] = Field(None, description="The Overture row's licence: CDLA-Permissive-2.0, or "
+                                                     "Apache-2.0 for rows from Foursquare. Only with `overture`.")
     from_: Literal["caption", "video"] = Field(alias="from", description="Where the name was read.")
-    exact: bool = Field(description="True when pinned at the spot itself; false when OpenStreetMap does "
-                                    "not list it and it stands at its town (no lat/lon then).")
+    exact: bool = Field(description="True when pinned at the spot itself; false when no open map lists it "
+                                    "and it stands at its town (no lat/lon then).")
+    listed: Optional[Literal[True]] = Field(
+        None, description="True when no source places it and no Google id is kept: list it under its town, "
+                          "not on a map. Only when `exact` is false.")
     still: Optional[str] = Field(None, description="A still from the video, a path in the media folder.")
     clip: Optional[str] = Field(None, description="A 3 second clip, a path in the media folder.")
     t: Optional[float] = Field(None, description="Seconds into the video where the still is.")

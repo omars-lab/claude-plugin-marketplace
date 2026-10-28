@@ -31,6 +31,10 @@ What a save carries
   kind, id and lat/lon, a Google Maps link, and its still and clip when it has them. A spot
   OpenStreetMap does not list (many small restaurants) still comes, with `exact: false`, no lat/lon,
   and a map link that searches its name in its town; that is the same set of spots the hub shows.
+  One with no kept Google id either is `listed: true`: show it under its town, not on a map. A spot
+  whose position is from Overture Maps' places data carries `overture` (the row's id),
+  `overture_release` and `licence`; a repo that shows it credits Overture (the data repo's
+  docs/licences/README.md has the line).
   For any other topic the items are what split-saves found in the caption under that topic: each
   with `topic`, `kind` (dish, technique, idea, note…), a short `name` and the caption's `quote`.
   No caption goes in: only the short quotes the data repo already keeps.
@@ -86,8 +90,10 @@ def item(e, still):
            "lon": bh.number(e.get("lon")) if exact else None, "osm": text(e.get("osm")),
            "wikidata": text(e.get("wikidata")),
            "map": text(e.get("map")) or bh.maps_link(e["name"].strip(), e.get("near") or ""),
-           "google_id": text(e.get("google_id")),
-           "from": "video" if e.get("from") == "video" else "caption", "exact": exact}
+           "google_id": text(e.get("google_id")), **bh.overture(e),
+           "from": "video" if e.get("from") == "video" else "caption", "exact": exact,
+           # decision 13: no source places it and no Google id is kept, so it goes under its town, not on a map
+           "listed": True if not exact and not text(e.get("google_id")) else None}
     if still:
         out.update({"still": still["still"], "clip": text(still.get("clip")), "t": bh.number(still.get("t")),
                     "still_from": "area" if still.get("how") == "area" else "name"})

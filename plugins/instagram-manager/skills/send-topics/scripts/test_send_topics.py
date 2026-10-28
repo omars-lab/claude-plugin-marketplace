@@ -53,7 +53,12 @@ TAGS = {
 }
 PINS = {
     "TRIP1": [{"name": "Example Cove Beach", "said": "the cove beach", "near": "Fixture Town", "kind": "beach",
-               "lat": 10.51, "lon": 20.51, "osm": "way/7", "wikidata": "Q7", "map": "https://maps.example/cove"}],
+               "lat": 10.51, "lon": 20.51, "osm": "way/7", "wikidata": "Q7", "map": "https://maps.example/cove"},
+              # placed from Overture's places data (decision 13); `found` is its row's name and must not go out
+              {"name": "Example Corner Cafe", "said": "the corner cafe", "near": "Fixture Town", "kind": "restaurant",
+               "lat": 10.52, "lon": 20.52, "found": "Example Corner Cafe, 1 Example St", "by": "overture",
+               "overture": "00000000-0000-4000-8000-000000000001", "overture_release": "2026-01-01.0",
+               "licence": "Apache-2.0"}],
     "ROAD1": [{"name": "Example Point", "said": "Example Point", "near": "Fixture Coast", "kind": "viewpoint",
                "lat": 10.81, "lon": 20.81, "osm": "node/8"},
               {"name": "Example Bluff", "said": "the bluff", "near": "Fixture Coast", "kind": "cliff",
@@ -154,12 +159,24 @@ class Send(unittest.TestCase):
         self.assertEqual((cove["still"], cove["t"], cove["still_from"]),
                          ("TRIP1/spots/still-example-cove-beach.jpg", 3.1, "name"))
 
+    def test_overture_spot_carries_its_release_and_licence(self):
+        self.send("--all")
+        items = self.saves("travel/fixture-state.yaml")["TRIP1"]["items"]
+        corner = [i for i in items if i["name"] == "Example Corner Cafe"][0]
+        self.assertEqual((corner["lat"], corner["exact"], corner["overture"], corner["overture_release"],
+                          corner["licence"]),
+                         (10.52, True, "00000000-0000-4000-8000-000000000001", "2026-01-01.0", "Apache-2.0"))
+        self.assertNotIn("listed", corner)
+        self.assertNotIn("1 Example St", self.read("travel/fixture-state.yaml"))   # its row's address stays out
+        self.assertNotIn("overture", items[0])   # OpenStreetMap's spot carries none of it
+
     def test_unplaced_spot_kept_without_coordinates(self):
         self.send("--all")
         items = self.saves("travel/fixture-state.yaml")["TRIP1"]["items"]
         tiny = [i for i in items if i["name"] == "Example Tiny Cafe"]
         self.assertEqual(len(tiny), 1)
         self.assertFalse(tiny[0]["exact"])
+        self.assertTrue(tiny[0]["listed"])   # no Google id either: under its town, not on a map
         self.assertNotIn("lat", tiny[0])
         self.assertIn("Example+Tiny+Cafe", tiny[0]["map"])
         self.assertNotIn("Dropped", [i["name"] for i in items])
@@ -253,6 +270,7 @@ class Send(unittest.TestCase):
         self.assertNotIn("google_id", bluff)          # its search text changed since: not used
         tiny = [i for i in state["TRIP1"]["items"] if i["name"] == "Example Tiny Cafe"][0]
         self.assertEqual(tiny["google_id"], "ChIJexampleCafe")
+        self.assertNotIn("listed", tiny)             # Google's map can place it
         cove = state["TRIP1"]["items"][0]
         self.assertNotIn("google_id", cove)           # nothing found: keeps its own link
         self.assertEqual(cove["map"], "https://maps.example/cove")
