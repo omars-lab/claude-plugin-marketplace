@@ -70,7 +70,7 @@ That way the choice travels with the page.
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/references.py check` | Says what is wrong with the list: missing fields, unknown `good_for` words, a repo with no license or tokens file, an id listed twice. Exit 1 on any problem | After every edit to the list | `uv run "${CLAUDE_PLUGIN_ROOT}/skills/find-design-references/scripts/references.py" check` |
-| `scripts/references.py shoot` | Screenshots listed references, or any one page, at 1280×820 and 390×844 into `.cache/references/<name>/`. Only reads, so nothing gets submitted or bought | After adding picks; and once for each of our pages, with `--url` and `--name ours-<page>` | `... references.py shoot --ids a,b` / `... references.py shoot --url <address> --name ours-<page> [--full]` |
+| `scripts/references.py shoot` | Screenshots listed references, or any one page, at 1280×820 and 390×844 into `.cache/references/<name>/`. Only reads, so nothing gets submitted or bought | After adding picks; and once for each of our pages, with `--url` and `--name ours-<page>` | `... references.py shoot --ids a,b` / `... references.py shoot --url <address> --name ours-<page> [--full] [--dark]` (`--dark` asks the page for its dark colours). Every page in one run: `--url "<address with {page}>" --name ours --pages a,b,c` |
 | `scripts/references.py sheet` | One HTML page with our shot beside each reference, desktop row then phone row, at the same scale, with each reference's "borrow" notes under it | To compare one of our pages with its references | `... references.py sheet --ours ours-<page> --ids a,b --title "<Page>"` |
 
 Every command takes `--list <file>` and `--out <folder>` to work outside the hubs repo. Each run

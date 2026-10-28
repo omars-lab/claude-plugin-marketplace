@@ -7,6 +7,7 @@
     uv run references.py check                                  # is the list well formed?
     uv run references.py shoot --ids a,b                        # shots of listed references
     uv run references.py shoot --url <address> --name ours-lifecycle   # a shot of any page, ours included
+    uv run references.py shoot --url "http://127.0.0.1:4690/#/{page}" --name ours --pages calendar,list
     uv run references.py sheet --ours ours-lifecycle --ids a,b --title Lifecycle
 
 The list is --list, else $HUBS_REPO/references.yaml, else ~/Workspace/git/hubs/references.yaml.
@@ -91,8 +92,8 @@ def problems(refs: list[dict]) -> list[str]:
 
 # --------------------------------------------------------------------------- shots
 
-def shoot(targets: list[tuple[str, str]], out: Path, full: bool = False) -> list[dict]:
-    """Screenshot each (name, url) at desktop and phone width into out/<name>/."""
+def shoot(targets: list[tuple[str, str]], out: Path, full: bool = False, dark: bool = False) -> list[dict]:
+    """Screenshot each (name, url) at desktop and phone width into out/<name>/, light or dark."""
     from playwright.sync_api import Error as PwError, TimeoutError as PwTimeout, sync_playwright
 
     results = []
@@ -103,7 +104,8 @@ def shoot(targets: list[tuple[str, str]], out: Path, full: bool = False) -> list
             folder.mkdir(parents=True, exist_ok=True)
             entry = {"name": name, "url": url, "shots": {}, "notes": {}}
             for size, opts in SIZES.items():
-                ctx = browser.new_context(**opts, service_workers="block")
+                ctx = browser.new_context(**opts, service_workers="block",
+                                          color_scheme="dark" if dark else "light")
                 ctx.route("**/*", lambda route: route.continue_() if route.request.method in ("GET", "HEAD")
                           else route.abort())
                 page = ctx.new_page()
@@ -184,7 +186,10 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--ids", help="comma-separated ids from the list (default: all)")
     s.add_argument("--url", help="shoot this address instead of the list; --name names its folder")
     s.add_argument("--name", help="the folder for --url, e.g. ours-lifecycle")
+    s.add_argument("--pages", help="comma-separated pages: each replaces {page} in --url, "
+                                   "and is shot into <name>-<page>")
     s.add_argument("--full", action="store_true", help="the whole page, not just the first screen")
+    s.add_argument("--dark", action="store_true", help="ask the page for its dark colours")
     h = sub.add_parser("sheet", help="lay one of our shots beside references, as an HTML page")
     h.add_argument("--ours", required=True, help="the folder name our page was shot into")
     h.add_argument("--ids", required=True, help="comma-separated reference ids")
@@ -206,7 +211,12 @@ def main(argv: list[str] | None = None) -> int:
         if a.url:
             if not a.name or not ID.match(a.name):
                 ap.error("--url needs --name in short-kebab-case")
-            targets = [(a.name, a.url)]
+            if a.pages:
+                if "{page}" not in a.url:
+                    ap.error("--pages needs {page} in --url, where each page goes")
+                targets = [(f"{a.name}-{p}", a.url.replace("{page}", p)) for p in a.pages.split(",")]
+            else:
+                targets = [(a.name, a.url)]
         else:
             refs = load(lst)
             want = set(a.ids.split(",")) if a.ids else None
@@ -214,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
             missing = (want or set()) - {t[0] for t in targets}
             if missing:
                 ap.error(f"not in {lst}: {', '.join(sorted(missing))}")
-        for e in shoot(targets, out, a.full):
+        for e in shoot(targets, out, a.full, a.dark):
             got = ", ".join(e["shots"]) or "nothing"
             notes = "; ".join(f"{k}: {v}" for k, v in e["notes"].items())
             print(f"{e['name']}: {got}{f'  ({notes})' if notes else ''}  -> {out / e['name']}")
