@@ -103,6 +103,7 @@ Every pin is a guess until a person has looked at it: run pins_page.py and look.
 """
 
 import argparse
+import functools
 import glob
 import json
 import math
@@ -328,9 +329,14 @@ def stem(word):
 def name_words(text):
     """A name's words: lower case, no accents, no punctuation, filler words or bracketed part, plurals
     as singular."""
-    text = unicodedata.normalize("NFKD", str(text).lower().replace("’", "").replace("'", ""))
+    return set(_name_words(str(text)))
+
+
+@functools.lru_cache(maxsize=None)  # the Overture step compares each spot with every row in its town
+def _name_words(text):
+    text = unicodedata.normalize("NFKD", text.lower().replace("’", "").replace("'", ""))
     text = re.sub(r"\(.*?\)", " ", "".join(c for c in text if not unicodedata.combining(c)))
-    return {stem(w) for w in re.findall(r"[a-z0-9]+", text)} - FILLER
+    return frozenset({stem(w) for w in re.findall(r"[a-z0-9]+", text)} - FILLER)
 
 
 def area_words(area):

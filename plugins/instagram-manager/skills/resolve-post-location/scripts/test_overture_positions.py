@@ -63,6 +63,9 @@ class Match(unittest.TestCase):
         self.assertEqual(op.matches(row("Tacos Example"), "Examples Tacos FT", "@examplestacos", "Fixture Town"),
                          "close")
         self.assertEqual(op.matches(row("The Example Cafe"), "Example Cafe", "Example Cafe", "Fixture Town"), "name")
+        # one word left, and each name carries a different kind word: another place
+        self.assertEqual(op.matches(row("Example & Co."), "Example Bar FT", "Example Bar FT", "Fixture Town"), "close")
+        self.assertEqual(op.matches(row("Example Bar"), "Example Bar FT", "Example Bar FT", "Fixture Town"), "name")
 
 
 class Rule(unittest.TestCase):

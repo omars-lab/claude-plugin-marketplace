@@ -60,6 +60,7 @@ downloaded only when a spot in it still waits; a later release changes nothing a
 """
 
 import argparse
+import functools
 import glob
 import hashlib
 import json
@@ -143,8 +144,16 @@ def fetch(con, release, area, box):
 
 # --- the rule -------------------------------------------------------------------------------------
 
+# Each spot is compared with every row in its town's box (100,000 rows in a big city), so the work on
+# a row's name and links is done once and kept.
+@functools.lru_cache(maxsize=None)
 def core(name, area):
-    return rpl.name_words(name) - rpl.KIND_WORDS - rpl.area_words(area)
+    return frozenset(rpl.name_words(name) - rpl.KIND_WORDS - rpl.area_words(area))
+
+
+@functools.lru_cache(maxsize=None)
+def kinds(name):
+    return frozenset(rpl.name_words(name) & rpl.KIND_WORDS)
 
 
 def lead(name):
@@ -164,16 +173,24 @@ def carries_handle(row, handle):
     ("@examplecafe" and examplecafe.com)."""
     if not handle:
         return False
-    for s in row.get("socials") or []:
+    pages, domains = link_handles(tuple(row.get("socials") or ()), tuple(row.get("websites") or ()))
+    return handle in pages or rpl.squash(handle) in domains
+
+
+@functools.lru_cache(maxsize=None)
+def link_handles(socials, websites):
+    """The Instagram pages a row links to, and its websites' domains without the ending, squashed."""
+    pages, domains = set(), set()
+    for s in socials:
         m = re.search(r"instagram\.com/([A-Za-z0-9_.]+)", s or "")
-        if m and m.group(1).lower().rstrip(".") == handle:
-            return True
-    for w in row.get("websites") or []:
+        if m:
+            pages.add(m.group(1).lower().rstrip("."))
+    for w in websites:
         host = (urlparse(w if "//" in (w or "") else "//" + (w or "")).hostname or "").lower()
         host = host[4:] if host.startswith("www.") else host
-        if host and rpl.squash(host.rsplit(".", 1)[0]) == rpl.squash(handle):
-            return True
-    return False
+        if host:
+            domains.add(rpl.squash(host.rsplit(".", 1)[0]))
+    return frozenset(pages), frozenset(domains)
 
 
 def matches(row, name, said, area):
@@ -184,8 +201,13 @@ def matches(row, name, said, area):
     a, f = core(name, area), core(row.get("name") or "", area)
     # The same words in another order can be another place ("Examples Tacos" and "Tacos Example"),
     # so the names must also start with the same word.
-    if a and a == f and lead(name) == lead(row.get("name") or ""):
-        return "name"
+    # One word left after the kind words go is thin: "Example Bar" and "Example & Co." both come down
+    # to "example", so when both names carry kind words they must be the same ones.
+    if a and a == f:
+        ka, kf = kinds(name), kinds(row.get("name") or "")
+        thin = len(a) == 1 and ka and kf and ka != kf
+        if lead(name) == lead(row.get("name") or "") and not thin:
+            return "name"
     if a and a == f:
         return "close"
     if rpl.same_name(name, row.get("name") or "", area) or (len(rpl.squash(name)) >= 5
