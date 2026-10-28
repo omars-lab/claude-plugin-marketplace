@@ -14,7 +14,15 @@ A reference is either:
   because its source holds the exact colours, type sizes and spacing. We read those values instead
   of guessing them from a picture.
 
-All references go into one shared list, so the next page can reuse a pick instead of searching again.
+Two files keep what earlier searches learned:
+
+- **`catalog.md`**, next to this file: where to look. It lists design systems with public token
+  files, open-source apps with demos, galleries of real product screens, and type and colour tools,
+  each with its link, license and `good_for` words. It holds no private data, and it grows when a
+  search finds a good new place.
+- **`references.yaml`** in the catalog repo: the picks. Each pick is a place someone checked
+  against a brief, with the things to borrow from it written down. The next page can reuse a pick
+  instead of searching again.
 
 ## Rules
 
@@ -92,6 +100,7 @@ TaskCreate({ subject: "Shoot and compare", description: "Shoot the picks and eac
    - the kinds of page that need a reference;
    - the look to avoid (purple gradients, glassy cards, everything in a rounded box);
    - both sources: live sites, and GitHub repos with their demo, license and token file;
+   - the path to `catalog.md` as the place to start, with the instruction to search beyond it;
    - the output. That is `research/design-references/<page>/<a|b>/findings.md`, which covers 10 to 14
      candidates and marks each claim as fetched or snippet-only. Plus `picks.md`, which names 3 to 5
      picks in the YAML shape above.
@@ -102,7 +111,9 @@ TaskCreate({ subject: "Shoot and compare", description: "Shoot the picks and eac
    - flags anything only one found or that rests on a snippet;
    - writes `research/design-references/<page>/picks.md` (the one to act on), and adds the final
      3 to 5 picks to `references.yaml`, with `found_by` set;
-   - runs `check`, and commits on its own branch.
+   - runs `check`, and commits on its own branch;
+   - adds any good new place the researchers found to `catalog.md`, in the right section, with
+     its link and license checked. That edit goes to the plugin repo, not the catalog repo.
 
    Sometimes the two researchers point the look in different directions, and the sources don't
    settle it. One example is an editorial site against a dense tool. Then shoot both candidates
@@ -125,7 +136,7 @@ TaskCreate({ subject: "Shoot and compare", description: "Shoot the picks and eac
 7. **Hand over.**
    - Write the ranked list into the page's `docs/design.md` under "References", with the ids
      compared.
-   - Then go on in `design-engaging-ui` step 3, which renders directions, or step 5, which builds
+   - Then go on in `design-engaging-ui` step 4, which renders directions, or step 6, which builds
      and checks if the direction is already chosen. The references are now what each round is
      compared against.
 
@@ -139,5 +150,5 @@ References for <page>: 3 picks (2 found by both researchers, 1 by one, flagged)
 List:     references.yaml (check: 0 problems), branch design-refs-check
 Compared: 6 pages at 1280 and 390; sheets in .cache/references/sheet-ours-*.html
 Top changes: 1. ... 2. ... 3. ...
-Next:     design-engaging-ui step 5, comparing each round against these sheets
+Next:     design-engaging-ui step 6, comparing each round against these sheets
 ```
