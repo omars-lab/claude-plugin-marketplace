@@ -181,8 +181,10 @@ def entry(query, verdict, by, today, place_id=None):
 
 def unchecked_address(g, e):
     """An id kept by name before the house number was checked: the spot's caption gives a street
-    address with a number, and nothing says Google's place was at it. It is searched once more."""
-    return g.get("verdict") == "match" and g.get("by") == "auto" and not g.get("at_address") \
+    address with a number, and nothing says Google's place was at it. It is searched once more.
+    One Google found at our own pin (near_pin) is already placed better than a house number."""
+    return g.get("verdict") == "match" and g.get("by") == "auto" \
+        and not g.get("at_address") and not g.get("near_pin") \
         and bool(gp.house_number(e.get("address")))
 
 

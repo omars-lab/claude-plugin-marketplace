@@ -151,6 +151,7 @@ class Ids(unittest.TestCase):
         old = {"verdict": "match", "by": "auto", "id": "T"}
         self.assertTrue(google_ids.unchecked_address(old, {"address": "412 Orchard Rd"}))         # searched once more
         self.assertFalse(google_ids.unchecked_address(dict(old, at_address=True), {"address": "412 Orchard Rd"}))
+        self.assertFalse(google_ids.unchecked_address(dict(old, near_pin=True), {"address": "412 Orchard Rd"}))
         self.assertFalse(google_ids.unchecked_address(old, {"near": "Fixture Town"}))              # no address to check
         self.assertFalse(google_ids.unchecked_address(dict(old, by="hand"), {"address": "412 Orchard Rd"}))
 
