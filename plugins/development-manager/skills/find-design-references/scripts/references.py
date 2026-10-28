@@ -92,8 +92,32 @@ def problems(refs: list[dict]) -> list[str]:
 
 # --------------------------------------------------------------------------- shots
 
-def shoot(targets: list[tuple[str, str]], out: Path, full: bool = False, dark: bool = False) -> list[dict]:
-    """Screenshot each (name, url) at desktop and phone width into out/<name>/, light or dark."""
+def gate_for(out: Path, name: str, size: str, blocked: list[str], allow_post: tuple[str, ...]):
+    """The route handler for one shot: let reads through, log and refuse everything else."""
+
+    def gate(route, request):
+        if request.method in ("GET", "HEAD"):
+            return route.continue_()
+        # Origin and path only: a query string can carry a token.
+        where = request.url.split("?")[0][:200]
+        if request.method == "POST" and where.startswith(allow_post):
+            log(out, "request_allowed", name=name, size=size, method=request.method, url=where)
+            return route.continue_()
+        blocked.append(f"{request.method} {where}")
+        log(out, "request_blocked", name=name, size=size, method=request.method, url=where)
+        return route.abort()
+
+    return gate
+
+
+def shoot(targets: list[tuple[str, str]], out: Path, full: bool = False, dark: bool = False,
+          settle_ms: int = SETTLE_MS, idle: bool = False, allow_post: tuple[str, ...] = ()) -> list[dict]:
+    """Screenshot each (name, url) at desktop and phone width into out/<name>/, light or dark.
+
+    Only GET and HEAD go out, so a shot can never submit or change anything. A page that loads its
+    data with POST (Plausible's dashboard does) then shows a spinner; every blocked request is logged
+    and counted in the notes, so the shot says why it is empty instead of looking like a slow page.
+    `allow_post` lets POSTs through under the exact address prefixes given, for read queries only."""
     from playwright.sync_api import Error as PwError, TimeoutError as PwTimeout, sync_playwright
 
     results = []
@@ -102,12 +126,12 @@ def shoot(targets: list[tuple[str, str]], out: Path, full: bool = False, dark: b
         for name, url in targets:
             folder = out / name
             folder.mkdir(parents=True, exist_ok=True)
-            entry = {"name": name, "url": url, "shots": {}, "notes": {}}
+            entry = {"name": name, "url": url, "shots": {}, "notes": {}, "blocked": {}}
             for size, opts in SIZES.items():
                 ctx = browser.new_context(**opts, service_workers="block",
                                           color_scheme="dark" if dark else "light")
-                ctx.route("**/*", lambda route: route.continue_() if route.request.method in ("GET", "HEAD")
-                          else route.abort())
+                blocked: list[str] = []
+                ctx.route("**/*", gate_for(out, name, size, blocked, allow_post))
                 page = ctx.new_page()
                 page.on("dialog", lambda d: d.dismiss())
                 log(out, "shot_start", name=name, size=size, url=url)
@@ -115,7 +139,13 @@ def shoot(targets: list[tuple[str, str]], out: Path, full: bool = False, dark: b
                     resp = page.goto(url, wait_until="load", timeout=LOAD_MS)
                     if resp is not None and resp.status >= 400:
                         entry["notes"][size] = f"answered {resp.status}"
-                    page.wait_for_timeout(SETTLE_MS)
+                    if idle:
+                        log(out, "idle_wait", name=name, size=size)
+                        try:
+                            page.wait_for_load_state("networkidle", timeout=LOAD_MS)
+                        except PwTimeout:
+                            log(out, "idle_timeout", name=name, size=size)
+                    page.wait_for_timeout(settle_ms)
                     page.screenshot(path=str(folder / f"{size}.png"), full_page=full, timeout=LOAD_MS)
                     entry["shots"][size] = f"{size}.png"
                 except PwTimeout:
@@ -126,7 +156,12 @@ def shoot(targets: list[tuple[str, str]], out: Path, full: bool = False, dark: b
                     log(out, "shot_fail", name=name, size=size, msg=entry["notes"][size])
                 finally:
                     ctx.close()
-                log(out, "shot_done", name=name, size=size, ok=size in entry["shots"])
+                if blocked:
+                    entry["blocked"][size] = blocked
+                    methods = sorted({b.split(" ")[0] for b in blocked})
+                    note = f"blocked {len(blocked)} {'/'.join(methods)} request{'' if len(blocked) == 1 else 's'}"
+                    entry["notes"][size] = "; ".join(filter(None, [entry["notes"].get(size), note]))
+                log(out, "shot_done", name=name, size=size, ok=size in entry["shots"], blocked=len(blocked))
             (folder / "shots.json").write_text(json.dumps(entry, indent=2) + "\n")
             results.append(entry)
         browser.close()
@@ -190,6 +225,14 @@ def main(argv: list[str] | None = None) -> int:
                                    "and is shot into <name>-<page>")
     s.add_argument("--full", action="store_true", help="the whole page, not just the first screen")
     s.add_argument("--dark", action="store_true", help="ask the page for its dark colours")
+    s.add_argument("--settle", type=float, default=SETTLE_MS / 1000,
+                   help=f"seconds to wait after the page loads (default {SETTLE_MS / 1000:g}); "
+                        "raise it for pages that draw their data late")
+    s.add_argument("--idle", action="store_true",
+                   help="also wait until the page stops fetching (up to the load timeout) before the settle")
+    s.add_argument("--allow-post", action="append", default=[], metavar="URL_PREFIX",
+                   help="let POST requests through to addresses starting with this (repeatable). Only for "
+                        "read queries a dashboard sends as POST; the log's request_blocked lines name them")
     h = sub.add_parser("sheet", help="lay one of our shots beside references, as an HTML page")
     h.add_argument("--ours", required=True, help="the folder name our page was shot into")
     h.add_argument("--ids", required=True, help="comma-separated reference ids")
@@ -224,7 +267,13 @@ def main(argv: list[str] | None = None) -> int:
             missing = (want or set()) - {t[0] for t in targets}
             if missing:
                 ap.error(f"not in {lst}: {', '.join(sorted(missing))}")
-        for e in shoot(targets, out, a.full, a.dark):
+        if a.settle < 0:
+            ap.error("--settle cannot be negative")
+        for p in a.allow_post:
+            # A bare origin would let a page post anything to its own site; insist on a path.
+            if not p.startswith("https://") or p.count("/") < 4 or p.endswith("://"):
+                ap.error(f"--allow-post {p!r}: give an https address with a path, e.g. https://site/api/query/")
+        for e in shoot(targets, out, a.full, a.dark, int(a.settle * 1000), a.idle, tuple(a.allow_post)):
             got = ", ".join(e["shots"]) or "nothing"
             notes = "; ".join(f"{k}: {v}" for k, v in e["notes"].items())
             print(f"{e['name']}: {got}{f'  ({notes})' if notes else ''}  -> {out / e['name']}")

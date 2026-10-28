@@ -70,7 +70,7 @@ That way the choice travels with the page.
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/references.py check` | Says what is wrong with the list: missing fields, unknown `good_for` words, a repo with no license or tokens file, an id listed twice. Exit 1 on any problem | After every edit to the list | `uv run "${CLAUDE_PLUGIN_ROOT}/skills/find-design-references/scripts/references.py" check` |
-| `scripts/references.py shoot` | Screenshots listed references, or any one page, at 1280×820 and 390×844 into `.cache/references/<name>/`. Only reads, so nothing gets submitted or bought | After adding picks; and once for each of our pages, with `--url` and `--name ours-<page>` | `... references.py shoot --ids a,b` / `... references.py shoot --url <address> --name ours-<page> [--full] [--dark]` (`--dark` asks the page for its dark colours). Every page in one run: `--url "<address with {page}>" --name ours --pages a,b,c` |
+| `scripts/references.py shoot` | Screenshots listed references, or any one page, at 1280×820 and 390×844 into `.cache/references/<name>/`. Only reads, so nothing gets submitted or bought | After adding picks; and once for each of our pages, with `--url` and `--name ours-<page>` | `... references.py shoot --ids a,b` / `... references.py shoot --url <address> --name ours-<page> [--full] [--dark]` (`--dark` asks the page for its dark colours). Every page in one run: `--url "<address with {page}>" --name ours --pages a,b,c`. For a page that draws its data late: `--idle` waits until it stops fetching, `--settle <seconds>` waits longer after that (default 1.5), and `--allow-post <address prefix>` lets a dashboard's POST read queries through (each blocked request is logged as `ev=request_blocked`) |
 | `scripts/references.py sheet` | One HTML page with our shot beside each reference, desktop row then phone row, at the same scale, with each reference's "borrow" notes under it | To compare one of our pages with its references | `... references.py sheet --ours ours-<page> --ids a,b --title "<Page>"` |
 
 Every command takes `--list <file>` and `--out <folder>` to work outside the hubs repo. Each run
@@ -130,6 +130,12 @@ TaskCreate({ subject: "Shoot and compare", description: "Shoot the picks and eac
      Add `--full` for long pages.
    - Look at every shot. A cookie banner, a sign-in wall or a blank page means the shot can't be
      used: pick the demo page, or drop the reference and say why.
+   - A spinner where the data should be has two causes, and the printout says which:
+     - **"blocked N POST requests"**: the page loads its data with POST, which the tool refuses.
+       Find the address in `references.log` (`grep ev=request_blocked`). If it is a read query
+       (a dashboard's stats endpoint), shoot again with `--allow-post <that address>`. Never
+       allow a sign-in, form, checkout or tracking address.
+     - **Nothing blocked**: the page is just slow. Shoot again with `--idle --settle 4`.
 6. **Compare, page by page.**
    - For each of our pages, run `sheet` with the picks meant for it.
    - Open the sheet and read it at both widths.
