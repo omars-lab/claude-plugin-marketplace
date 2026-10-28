@@ -147,8 +147,9 @@ own places; pins for posts that also name somewhere far away are still there whe
 ## A map Google draws
 
 Every map is drawn from OpenStreetMap's tiles, unless the build is told to let Google draw a state's
-or country's map (`--google-map <folder>`, e.g. `--google-map example-state`) and has the hub's
-Google key. On that map:
+or country's map (`--google-map <folder>`, e.g. `--google-map example-state`), or every map
+(`--google-map all`: the main map, each area map and each place page; post pages stay
+OpenStreetMap's), and has the hub's Google key. On that map:
 
 - **Pins we keep stay as they are.** A spot OpenStreetMap placed, a town, a park, a state: the same
   position as on any other map.

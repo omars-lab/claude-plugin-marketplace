@@ -360,6 +360,19 @@ class Hub(unittest.TestCase):
             self.assertNotIn("maps.googleapis.com", self.page(rel), rel)
             self.assertNotIn(key, self.page(rel))
 
+    def test_google_map_all_draws_every_map_and_place_page(self):
+        key = "test-key-not-real-123"
+        os.environ["GOOGLE_MAPS_HUB_KEY"] = key
+        self.addCleanup(os.environ.pop, "GOOGLE_MAPS_HUB_KEY", None)
+        out = self.build("--all", "--google-map", "all")
+        self.assertIn("every map: Google draws the map", out)
+        for rel in ("index.html", "fixture-state/index.html", "faraway-land/index.html",
+                    "places/faraway-land.html", "places/fixture-park.html"):
+            self.assertIn("callback=hubGoogle", self.page(rel), rel)
+            self.assertIn("gmap", self.data(rel), rel)
+            self.assertNotIn(key, json.dumps(self.data(rel)))
+        self.assertNotIn("maps.googleapis.com", self.page("posts/TOWN1.html"))   # post pages stay OpenStreetMap's
+
     def test_a_place_with_many_places_inside_shows_its_map_first_and_those_places_by_kind(self):
         with mock.patch.object(build_hub, "MAP_FIRST", 3), mock.patch.object(build_hub, "GROUP_SHOWN", 1):
             self.build("--pilot", "fixture")

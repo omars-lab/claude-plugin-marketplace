@@ -83,7 +83,8 @@ places. That is the same set `tag_saves.py --report` shows.
 
 The pages hold captions and post codes, so they stay under .cache, never in git. The map loads
 Leaflet from cdnjs and tiles from OpenStreetMap, with the credit showing; no Instagram script.
-A map named in --google-map is drawn by Google instead, with the hub's own browser key
+A map named in --google-map ("all" for every map and place page) is drawn by Google instead, with
+the hub's own browser key
 (GOOGLE_MAPS_HUB_KEY); the page looks up the venues OpenStreetMap lacks from their kept ids and
 keeps the positions in memory only (DESIGN.md decision 12). The key is never printed.
 """
@@ -1894,10 +1895,12 @@ def build(hub, out, title, home=(), with_previews=True, google=None):
     for folder in old_map_folders(out) - set(hub.map_folders.values()):
         shutil.rmtree(os.path.join(out, folder), ignore_errors=True)
     maps = [(hub.map_folders[a], hub.places[a]["name"], n[a]) for a in areas if a in hub.map_folders]
-    g_areas = {a for a, f in hub.map_folders.items() if google and f in google["areas"]}
+    def drawn(folder):   # Google draws this map: it is named, or every map is
+        return bool(google) and ("all" in google["areas"] or folder in google["areas"])
+    g_areas = {a for a, f in hub.map_folders.items() if drawn(f)}
     for place in hub.places.values():
         write(os.path.join(out, "places", place["slug"] + ".html"),
-              place_page(hub, place, google if hub.within(place["key"], g_areas) else None))
+              place_page(hub, place, google if drawn("all") or hub.within(place["key"], g_areas) else None))
     for post in hub.posts:
         write(os.path.join(out, "posts", post["file"] + ".html"), post_page(hub, post))
     for topic in hub.topic_pages:
@@ -1908,10 +1911,11 @@ def build(hub, out, title, home=(), with_previews=True, google=None):
         (f, t) for f, t in (("decisions.html", "Your decisions"), ("moves.html", "Saves to move"),
                             ("pins.html", "Pins to check"))
         if os.path.exists(os.path.join(out, f))]
-    write(os.path.join(out, "index.html"), index_page(hub, title, extra, home, maps=maps))
+    write(os.path.join(out, "index.html"), index_page(hub, title, extra, home, maps=maps,
+                                                      google=google if drawn("all") else None))
     for a, folder in hub.map_folders.items():
         page = index_page(hub, f"Saved places: {hub.places[a]['name']}", extra, area=a, maps=maps,
-                          google=google if google and folder in google["areas"] else None)
+                          google=google if drawn(folder) else None)
         write(os.path.join(out, folder, "index.html"), page.replace("<head>", f"<head>{MAP_MARK}", 1))
     return thumbs
 
@@ -1946,7 +1950,8 @@ def main(argv=None):
     ap.add_argument("--make", action="store_true",
                     help="the decisions page prints the data repo's make lines instead of the plugin's commands")
     ap.add_argument("--google-map", default="", metavar="AREAS",
-                    help="area map folders Google draws, comma-separated (e.g. california); needs "
+                    help="area map folders Google draws, comma-separated (e.g. california), or all for "
+                         "every map and place page; needs "
                          "GOOGLE_MAPS_HUB_KEY, the hub's browser key, in the environment")
     args = ap.parse_args(argv)
     google = None
@@ -1996,13 +2001,14 @@ def main(argv=None):
     thumbs = build(hub, out, title, (pilot or {}).get("cities") or (), not args.no_previews, google)
     if google:
         # How many look-ups a Google map could make in all: its venues at a town with a kept id.
-        for a, folder in hub.map_folders.items():
-            if folder in google["areas"]:
+        every = "all" in google["areas"]
+        for a, folder in [(None, "all")] if every else hub.map_folders.items():
+            if every or folder in google["areas"]:
                 ids = {p["google_id"] for p in hub.places.values()
-                       if p.get("placed") and p.get("google_id") and hub.within(p["key"], {a})}
+                       if p.get("placed") and p.get("google_id") and (a is None or hub.within(p["key"], {a}))}
                 log("hub_google_map", area=folder, venues_to_look_up=len(ids))
-                print(f"{folder}: Google draws the map; {len(ids)} venues OpenStreetMap lacks are looked up "
-                      f"as you zoom in (at most {LOOK_MOST} a page open)")
+                print(f"{'every map' if a is None else folder}: Google draws the map; {len(ids)} venues "
+                      f"OpenStreetMap lacks are looked up as you zoom in (at most {LOOK_MOST} a page open)")
 
     pinned = sum(1 for p in hub.posts if p["pins"])
     exact = sum(1 for p in hub.posts if any(style != "wide" for *_, style in p["pins"]))
