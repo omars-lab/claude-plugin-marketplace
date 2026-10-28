@@ -361,6 +361,10 @@ class Stops(Home):
         with open(path) as fh:
             self.assertEqual(json.load(fh)["level"], 2)
 
+    def test_impersonate_never_with_one_request(self):
+        with self.assertRaises(SystemExit):
+            self.run_main(args=("--pilot", "fixture", "--impersonate", "--one-request"))
+
     def test_an_empty_post_is_not_asked_again_before_a_known_post_answers(self):
         empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
         args = ("--pilot", "fixture", "--limit", "5", "--one-request")

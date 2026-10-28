@@ -831,10 +831,15 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
                     help="skip yt-dlp's \"is this post viewable?\" check: 1 instagram.com request a post")
     ap.add_argument("--recheck", metavar="CODES.txt",
                     help="ask for these posts first even if media.yaml has them; nothing is written for them")
+    ap.add_argument("--impersonate", action="store_true",
+                    help="look like a browser (a Python with curl_cffi); only after a block the known-post check confirmed")
     ap.add_argument("--saved", default=None, help="saves.json (default: the data repo's .cache)")
     args = ap.parse_args(argv)
     if args.recheck and args.video:
         ap.error("--recheck is for thumbnail runs, not --video")
+    if args.impersonate and args.one_request:
+        # With curl_cffi, yt-dlp feeds the skipped check's token to a GraphQL request: never read together.
+        ap.error("--impersonate asks the 2-request way; leave out --one-request")
     per_post = 1 if args.one_request else 2
 
     log_path = cache("logs", "fetch-media.log")
@@ -901,12 +906,26 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
                 log("refused", reason="no_ytdlp", python=sys.executable)
                 sys.exit(f"{sys.executable} has no yt_dlp: run this with a python3 that has it")
             ydl_factory, version = yt_dlp.YoutubeDL, yt_dlp.version.__version__
+            # yt-dlp looks like a browser by itself whenever curl_cffi is installed, and then asks Instagram's
+            # GraphQL address too. So it must match the switch: a Python with curl_cffi only for --impersonate.
+            try:
+                import curl_cffi  # noqa: F401
+                has_cffi = True
+            except ImportError:
+                has_cffi = False
+            if has_cffi != args.impersonate:
+                why = "no_curl_cffi" if args.impersonate else "curl_cffi_installed"
+                log("refused", reason=why, python=sys.executable)
+                print(f"fetch_media: {sys.executable} " + ("has no curl_cffi: use MEDIA_IMPERSONATE=1's Python"
+                      if args.impersonate else "has curl_cffi, so yt-dlp would look like a browser: pass --impersonate"),
+                      file=sys.stderr)
+                return 7
         if args.one_request and version != ONE_REQUEST_YTDLP:
             log("refused", reason="ytdlp_version", ytdlp=version, needs=ONE_REQUEST_YTDLP)
             print(f"fetch_media: --one-request was checked against yt-dlp {ONE_REQUEST_YTDLP}, not {version}",
                   file=sys.stderr)
             return 6
-        log("run_start", ytdlp=version, impersonate="no", sleep_req=SLEEP_REQUESTS, gap_min=gap[0], gap_max=gap[1],
+        log("run_start", ytdlp=version, impersonate="yes" if args.impersonate else "no", sleep_req=SLEEP_REQUESTS, gap_min=gap[0], gap_max=gap[1],
             cap=limit, scope=args.pilot or ("video" if args.video else "all"), todo=len(todo), skipped=done, test_only=test_only,
             requests_per_post=per_post, watch="off" if args.one_request else "on", recheck=len(again),
             cooldown_until=(cd or {}).get("until") or "none", gentle_until=(cd or {}).get("gentle_until") or "none",

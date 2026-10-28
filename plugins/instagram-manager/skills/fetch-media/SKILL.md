@@ -185,6 +185,14 @@ empty it is marked `not_found` and the cooldown level steps back down one, since
 likely that post. With `--one-request`, an empty post is asked again the 2-request way only once a
 known post has come through that run; before that, those 2 requests could be a block's.
 
+**After a confirmed block: `--impersonate`.** It makes yt-dlp look like a browser through
+`curl_cffi`, and yt-dlp then asks Instagram's GraphQL address for the post (its logged-out answer
+also says whether a post is hidden). yt-dlp turns this on by itself wherever `curl_cffi` is
+installed, so it runs on its own Python, and the fetcher refuses (exit 7) when the switch and the
+Python disagree. It never goes with `--one-request`. In the data repo: `make media-impersonate-env`
+once, then `MEDIA_IMPERSONATE=1 make media-trial` (no `MEDIA_ONE`). Only after the known-post check
+has failed (`ev=control_done ok=False`).
+
 Before trying again, open one of the failed posts in a private browser window on the same Wi-Fi.
 If it asks you to log in, the connection is walled: wait. If it shows fine but yt-dlp still fails
 after the cooldown, the tool is the problem, not the pace. The research says what to try first:
