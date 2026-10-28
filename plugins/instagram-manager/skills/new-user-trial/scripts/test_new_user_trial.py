@@ -129,8 +129,9 @@ class Sandbox(unittest.TestCase):
         plugin = os.path.abspath(setup_home.PLUGIN)
         with open(os.path.join(plugin, "examples", "Makefile"), encoding="utf-8") as fh:
             targets = set(re.findall(r"^([a-z][a-z-]+):", fh.read(), re.M))
-        # Targets only the author's own data repo has; the docs say so where they name them.
-        own = {"comments", "check-public", "init-hooks", "gitleaks"}
+        # Targets only the author's own data repo has, or the plugin marketplace's own Makefile; the
+        # docs say so where they name them.
+        own = {"comments", "check-public", "init-hooks", "gitleaks", "check-code-pointers"}
         missing = []
         for path in glob.glob(os.path.join(plugin, "**", "*.md"), recursive=True):
             with open(path, encoding="utf-8") as fh:

@@ -28,6 +28,8 @@ SPLIT_LIMIT       ?=
 SPLIT_REDO        ?=
 LOCATE_REDO       ?=
 PLACES_DRY        ?=
+OVERTURE_DRY      ?=
+OVERTURE_RELEASE  ?=
 FRAMES_REDO       ?=
 STILLS_REDO       ?=
 VIDEO_LIST        ?= .cache/frames/stuck.txt
@@ -62,7 +64,7 @@ API_PORT          ?= 8780
 API_COMPOSE        = docker compose -f $(PLUGIN)/skills/serve-api/docker/compose.yaml
 export API_PORT
 
-.PHONY: help import collections tag-prepare tag-merge tag-rules tag-report places tag-moves moves-page split-prepare split-merge locate-prepare locate-merge locate-check-prepare locate-check pins-page decisions-page media-trial frames-stuck media-video frames frames-text frames-merge stills stills-need-video google-ids send-topics hub serve check test api api-stop api-logs api-test api-schema
+.PHONY: help import collections tag-prepare tag-merge tag-rules tag-report places overture tag-moves moves-page split-prepare split-merge locate-prepare locate-merge locate-check-prepare locate-check pins-page decisions-page media-trial frames-stuck media-video frames frames-text frames-merge stills stills-need-video google-ids send-topics hub serve check test api api-stop api-logs api-test api-schema
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -89,6 +91,9 @@ tag-report: ## The tags as a table, with what to spot-check
 places: ## Look up the places left in review on OpenStreetMap, then merge (PLACES_DRY=1 to only print the table)
 	python3 $(PLUGIN)/skills/tag-saves/scripts/add_places.py $(if $(PLACES_DRY),--dry-run)
 	$(if $(PLACES_DRY),,$(TAG) --merge)
+
+overture: ## Pin venues OpenStreetMap lacks from Overture Maps' open places data (OVERTURE_DRY=1 to only print the table)
+	python3 $(PLUGIN)/skills/resolve-post-location/scripts/overture_positions.py $(SCOPE) $(if $(OVERTURE_DRY),--dry-run) $(if $(OVERTURE_RELEASE),--release $(OVERTURE_RELEASE))
 
 tag-moves: ## Saves filed in the wrong collection, as a table
 	$(TAG) --moves

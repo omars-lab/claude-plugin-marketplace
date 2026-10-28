@@ -592,6 +592,11 @@ class Merge(Home):
                 p["drop"] = True                                       # a wrong pin, dropped where it is
         pins["TOWNA"].append({"name": "Invented Lighthouse", "said": "Invented Lighthouse", "near": "Fixture Town",
                               "lat": 40.01, "lon": -120.01, "by": "hand"})   # a pin a person placed
+        review["TOWNA"] = [e for e in review["TOWNA"] if e["said"] != "Made Up Spot"]
+        self.write("data/pins-review.yaml", review)
+        pins["TOWNA"].append({"name": "Made Up Spot", "said": "Made Up Spot", "near": "Fixture Town",
+                              "lat": 40.02, "lon": -120.02, "by": "overture", "overture": "row-1",
+                              "licence": "CDLA-Permissive-2.0"})            # placed from Overture's data
         self.write("data/pins.yaml", pins)
         self.assertIn("1 pins marked drop: true", self.run_script("--merge"))
 
@@ -601,10 +606,12 @@ class Merge(Home):
         tower = [p for p in pins["TOWNA"] if p["said"] == "Far Away Tower"]
         self.assertEqual([(p["name"], p["lookup"]) for p in tower], [("Near Tower", "Far Away Tower, Fixture Town")])
         self.assertEqual([p.get("by") for p in pins["TOWNA"] if p["said"] == "Invented Lighthouse"], ["hand"])
+        self.assertEqual([(p.get("by"), p.get("overture"), p.get("licence")) for p in pins["TOWNA"]
+                          if p["said"] == "Made Up Spot"], [("overture", "row-1", "CDLA-Permissive-2.0")])
         self.assertNotIn("Example Pier", [p["said"] for p in pins["LISTA"]])
         self.assertEqual([e.get("drop") for e in review["LISTA"] if e["said"] == "Example Pier"], [True])
         self.assertEqual([e["said"] for e in review.get("TOWNA") or []
-                          if e["said"] in ("Far Away Tower", "Invented Lighthouse")], [])
+                          if e["said"] in ("Far Away Tower", "Invented Lighthouse", "Made Up Spot")], [])
 
     def test_rerunning_is_safe(self):
         self.locate()

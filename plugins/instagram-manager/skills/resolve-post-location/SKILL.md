@@ -131,6 +131,31 @@ replaces an entry with `lookup:`, `ok: true`, `drop: true` or `by: hand`, and th
 `said` are left out for that save, whatever area it files them under this time. Deleting a wrong
 pin is not a fix, because the next re-read finds it again; mark it `drop: true` instead.
 
+## Venues OpenStreetMap lacks: Overture Maps
+
+Many cafés and food trucks a post names are not on OpenStreetMap, so they stay in review as "not
+found near" and the hub draws them at their town's middle, on top of each other. Overture Maps'
+open places data has most of them. `overture_positions.py` reads one box of it per town (from
+Overture's public bucket, no key, cached in `.cache/overture/<release>/`, never committed) and pins
+a review spot only when every rule passes:
+
+1. A row has the spot's name, or carries its handle (an Instagram link, or a website whose domain
+   is the handle). A looser name ("Example Fish" for "Example Fish N Chips") is held, not pinned.
+2. One branch only: rows of that name more than 200 m apart are held.
+3. The row is food or drink, open, and has a street address.
+4. The area is a town (a park or region has no town to compare), and the row's town is that town.
+5. The row sits within 300 m of the other rows at its address, and fewer than 5 other rows share its
+   point (a pile means a guessed position).
+6. A street address in the caption has the row's house number and a street word.
+7. The caption doesn't warn: "new", "now open", "opening", "coming", "branch", "pop-up", a hall,
+   market, mall, department store or hotel.
+
+A pin it writes has `by: overture`, the row's `overture:` id, `overture_release:` and `licence:`
+(from the row's sources). A merge leaves it alone, as it does a pin set by hand. The data repo
+keeps the licence texts the pins name (CDLA Permissive 2.0, Apache 2.0, Foursquare's NOTICE) in
+`docs/licences/`. Always run `--dry-run` first and read the table against the captions: each held
+spot says which rule stopped it.
+
 ## Venues abroad
 
 Outside the US, OpenStreetMap has the sights (a citadel, a national park) but few of the cafés,
@@ -302,6 +327,8 @@ A save's new answer (`--redo`) replaces its old pins, except the video's and a p
 | `scripts/pins_page.py` | The pins on a Leaflet map beside a list: creator, quote, what OpenStreetMap found, distance from the area, post link; review entries after with their reason; each post with a small picture that turns into a flipbook of its reel while on screen (at most 8 moving at once; made by extract-stills' `previews.py` when missing) | After a merge, before trusting the pins | `python3 scripts/pins_page.py` (writes `.cache/hub/pins.html`; `--out PATH` for elsewhere; `--no-previews` to leave the pictures out); from your folder: `make pins-page` |
 | `scripts/check_locator.py` | Scores the agent on the hand-made check set: each listed spot pinned, at its town or lost, before and after; wrong and extra spots | Before trusting a change to `post-locator.md` or the merge | `python3 scripts/check_locator.py --prepare`, one agent, then `python3 scripts/check_locator.py`; from your folder: `make locate-check-prepare`, `make locate-check` |
 | `scripts/test_check_locator.py` | Offline tests of the scoring, on invented spots | After any change to `check_locator.py` | `python3 scripts/test_check_locator.py` |
+| `scripts/overture_positions.py` | Pins review spots "not found near" their town from Overture Maps' open places data, when all seven rules pass; prints a line per spot with the rule that held it | After a merge, for venues OpenStreetMap lacks; `--dry-run` first, then read the table against the captions | `python3 scripts/overture_positions.py --pilot <name> --dry-run` (`--all`, `--near AREA`, `--release R`); from your folder: `make overture OVERTURE_DRY=1`, then `make overture` |
+| `scripts/test_overture_positions.py` | Offline tests of the seven rules and a run, on invented rows (no network, no DuckDB) | After any change to `overture_positions.py` | `python3 scripts/test_overture_positions.py` |
 | `scripts/test_resolve_post_location.py` | Offline tests with a fake agent and a fake OpenStreetMap | After any change to these scripts or to `geocode.py` | `python3 scripts/test_resolve_post_location.py` |
 
 Other options: `--redo` (read saves that already have an answer), `--limit N` (saves per round),

@@ -40,6 +40,7 @@ flowchart LR
 | Look up the towns | `make places` | [main](../skills/tag-saves/scripts/add_places.py#main) |
 | Pull out dishes, tips, ideas | `make split-prepare`, agents, `make split-merge` | [prepare](../skills/split-saves/scripts/split_saves.py#prepare), [merge](../skills/split-saves/scripts/split_saves.py#merge), the agent: [save-splitter](../agents/save-splitter.md) |
 | Find the spots | `make locate-prepare`, agents, `make locate-merge` | [prepare](../skills/resolve-post-location/scripts/resolve_post_location.py#prepare), [merge](../skills/resolve-post-location/scripts/resolve_post_location.py#merge), [resolve](../skills/resolve-post-location/scripts/resolve_post_location.py#resolve), the agent: [post-locator](../agents/post-locator.md) |
+| Pin venues OpenStreetMap lacks | `make overture OVERTURE_DRY=1`, then `make overture` | [run](../skills/resolve-post-location/scripts/overture_positions.py#run), the seven rules: [judge](../skills/resolve-post-location/scripts/overture_positions.py#judge) |
 | Fetch thumbnails and videos | `make media-trial`, `make media-video` | [main](../skills/fetch-media/scripts/fetch_media.py#main) |
 | Read spots off the frames | `make frames-stuck`, `make frames`, agents, `make frames-merge` | [stuck](../skills/read-frames/scripts/read_frames.py#stuck), [prepare](../skills/read-frames/scripts/read_frames.py#prepare), the agent: [frame-reader](../agents/frame-reader.md) |
 | Cut stills and clips | `make stills` | [main](../skills/extract-stills/scripts/extract_stills.py#main) |

@@ -665,6 +665,12 @@ def by_hand(entry):
                                         or (isinstance(entry.get("lookup"), str) and bool(entry["lookup"].strip())))
 
 
+def kept(entry):
+    """A pin a re-read leaves alone: a person's (by_hand), or one overture_positions.py placed from open
+    data, which OpenStreetMap would only send back to review as "not found near"."""
+    return by_hand(entry) or (isinstance(entry, dict) and entry.get("by") == "overture")
+
+
 def said_key(entry):
     return " ".join(str(entry.get("said") or "").lower().split())
 
@@ -697,7 +703,7 @@ def move_street_pins(pins, review):
     for code, entries in list(pins.items()):
         if not isinstance(entries, list):
             continue
-        gone = [e for e in entries if isinstance(e, dict) and e.get("kind") == "address" and not by_hand(e)
+        gone = [e for e in entries if isinstance(e, dict) and e.get("kind") == "address" and not kept(e)
                 and not at_the_house(e.get("found"), e.get("address"))]
         if not gone:
             continue
@@ -725,7 +731,7 @@ def move_branch_pins(pins, review):
         if not isinstance(entries, list):
             continue
         gone = [e for e in entries if isinstance(e, dict) and e.get("kind") != "address" and e.get("osm")
-                and isinstance(e.get("address"), str) and not by_hand(e)
+                and isinstance(e.get("address"), str) and not kept(e)
                 and not at_the_house(e.get("found"), e["address"])]
         if not gone:
             continue
@@ -939,7 +945,7 @@ def merge(saves, tags, places, fetcher=None, frames=False):
             pinned = {key(e) for e in pins.get(code) or [] if isinstance(e, dict)}
             # A name a person settled (pinned by hand, given a lookup, or dropped) stays as they left
             # it, whichever area the agent files it under this time.
-            settled = {said_key(e) for e in (pins.get(code) or []) + (review.get(code) or []) if by_hand(e)}
+            settled = {said_key(e) for e in (pins.get(code) or []) + (review.get(code) or []) if kept(e)}
             new_pins, new_review, redone = [], [], set()
             for spot in spots:
                 if frames and key(spot) in pinned:  # the caption already gave it
@@ -965,7 +971,7 @@ def merge(saves, tags, places, fetcher=None, frames=False):
                 new_review = [e for e in review.get(code) or [] if key(e) not in redone] + new_review
             else:  # a caption answer replaces the caption's last one; the video's spots and a person's stay
                 given = {key(e) for e in new_pins + new_review}
-                stays = lambda e: (isinstance(e, dict) and (e.get("from") == "video" or by_hand(e))  # noqa: E731
+                stays = lambda e: (isinstance(e, dict) and (e.get("from") == "video" or kept(e))  # noqa: E731
                                    and key(e) not in given)
                 new_pins += [e for e in pins.get(code) or [] if stays(e)]
                 new_review += [e for e in review.get(code) or [] if stays(e)]
