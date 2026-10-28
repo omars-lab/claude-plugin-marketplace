@@ -343,10 +343,30 @@ class Stops(Home):
             json.dump({"until": "2000-01-01T00:00:00Z", "level": 2}, fh)
         empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
         self.assertEqual(self.run_main({"REELA": empty}), 0)
-        self.assertEqual(self.ydl.calls, ["REELA", "KNOWN"])
+        self.assertEqual(self.ydl.calls, ["KNOWN", "REELA"])   # a post we have first, then the test post
         self.assertEqual(self.media()["REELA"], {"error": "not_found"})
         with open(path) as fh:
-            self.assertIn("gentle_until", json.load(fh))   # not blocked: the gentle days start
+            cd = json.load(fh)
+        self.assertIn("gentle_until", cd)   # not blocked: the gentle days start
+        self.assertEqual(cd["level"], 1)    # and the stop was that deleted post, so it doesn't count
+
+    def test_a_test_run_stops_when_a_known_post_is_empty(self):
+        self.known_post()
+        path = os.path.join(self.root, ".cache", "fetch-media.cooldown.json")
+        with open(path, "w") as fh:
+            json.dump({"until": "2000-01-01T00:00:00Z", "level": 1}, fh)
+        empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
+        self.assertEqual(self.run_main({"KNOWN": empty}), 1)
+        self.assertEqual(self.ydl.calls, ["KNOWN"])   # 1 request, and the post still missing isn't asked
+        with open(path) as fh:
+            self.assertEqual(json.load(fh)["level"], 2)
+
+    def test_an_empty_post_is_not_asked_again_before_a_known_post_answers(self):
+        empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
+        args = ("--pilot", "fixture", "--limit", "5", "--one-request")
+        self.assertEqual(self.run_main({"REELA": empty}, args=args), 0)
+        self.assertEqual(self.ydl.calls[:2], ["REELA", "REELB"])   # no 2-request re-ask of REELA
+        self.assertEqual(self.log_lines("recheck"), [])
 
     def test_one_empty_answer_is_a_missing_post(self):
         empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")

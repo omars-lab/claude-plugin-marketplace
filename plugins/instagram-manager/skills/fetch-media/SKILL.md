@@ -176,6 +176,14 @@ cooldown, the run asks one post `media.yaml` already has a thumbnail for (`ev=co
 `ev=control_done ok=`). If it comes through, the empty posts are marked `not_found`, the run goes on,
 and a test run counts as recovered. If it is empty or fails too, the run stops as before
 (`ev=rate_limited kind=empty_streak`). That costs 1 extra request, only after an empty answer.
+The known post is picked at random, so no one post is asked every time.
+
+The test run after a cooldown asks a known post *first*, before the post still missing, since that
+post may be the deleted one the run stopped on. Empty: the cooldown steps up and nothing else is
+asked (1 request). Through: the gentle days start, then the missing post is asked; if it comes back
+empty it is marked `not_found` and the cooldown level steps back down one, since the stop was most
+likely that post. With `--one-request`, an empty post is asked again the 2-request way only once a
+known post has come through that run; before that, those 2 requests could be a block's.
 
 Before trying again, open one of the failed posts in a private browser window on the same Wi-Fi.
 If it asks you to log in, the connection is walled: wait. If it shows fine but yt-dlp still fails

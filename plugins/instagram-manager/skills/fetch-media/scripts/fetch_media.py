@@ -551,6 +551,7 @@ class Run:
         self.video = video
         self.test_only = test_only       # the one test post after a cooldown
         self.control_ok = False          # a post we already have came through after an empty answer
+        self.control_tried = False       # a post we already have was asked for this run
         self.one_request = one_request   # the SkipRuling with --one-request, else None
         self.rechecked = False           # --one-request: a post was asked again the 2-request way
         self.keep = set()                # --recheck codes: media.yaml is never written for them
@@ -639,7 +640,7 @@ class Run:
                     self.empty_streak += 1
                     log("empty_media", shortcode=code, streak=self.empty_streak)
                     if self.empty_streak >= 2 or self.test_only:
-                        if not self.control_answers():
+                        if not (self.test_only and self.control_ok) and not self.control_answers():
                             raise Stop("empty_streak", msg[:200])
                         if self.pending_empty and self.pending_empty not in self.keep:
                             self.media[self.pending_empty] = self.failed(self.pending_empty, "not_found")
@@ -701,11 +702,13 @@ class Run:
     def control_answers(self):
         """Two empty answers in a row look like a quiet block, but so do two deleted posts side by side
         (three stops in Oct 2026 were one such pair). Ask a post media.yaml already has a thumbnail for:
-        True if it comes through, so the empty answers were those posts. 1 request, only after an empty."""
+        True if it comes through, so the empty answers were those posts. 1 request, only after an empty
+        or at the start of a test run. Picked at random, so no one post is asked every time."""
         known = [c for c, e in self.media.items() if "thumb" in (e or {}) and c not in self.keep]
         if not known:
             return False
-        code = known[-1]
+        code = random.choice(known)
+        self.control_tried = True
         self.pause("control", *GAP)
         self.watcher.reset(code)
         if self.one_request:
@@ -725,14 +728,15 @@ class Run:
     def may_recheck(self, code, low):
         """--one-request: a login redirect or an empty answer may be a post limited by age or audience,
         which only the skipped check names. True (and set up) to ask this post again the 2-request
-        way; once a run, so a real block costs at most 2 more requests."""
+        way; once a run, so a real block costs at most 2 more requests. An empty answer is asked again
+        only once a known post has come through this run: before that, the 2 requests may be a block's."""
         if not self.one_request or self.rechecked:
             return False
         if self.watcher.stop and self.watcher.stop[0] != "login_wall":   # a 429 or the like: a block
             return False
         if "redirected to the login page" in low:
             why = "login_redirect"
-        elif "instagram sent an empty media response" in low:
+        elif "instagram sent an empty media response" in low and self.control_ok:
             why = "empty"
         else:
             return False
@@ -914,6 +918,22 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
             run = Run(ydl, watcher, requests, media, sleep=sleep, video=bool(args.video), one_request=skip,
                       test_only=test_only)
             run.keep = again
+            if test_only and todo:
+                # The test after a pause asks a post we have first: the next post missing a thumbnail may be
+                # a deleted one, which can't tell a block from a deleted post (the Oct 2026 stops).
+                if not run.control_answers() and run.control_tried:
+                    kind = watcher.stop[0] if watcher.stop else "empty_streak"
+                    stopped, reason = "yes", kind
+                    log("rate_limited", kind=kind, shortcode="control", posts_since_start=0,
+                        ig_requests_since_start=watcher.total, minutes_since_start=0,
+                        requests_last_hour=run.last_hour(), msg="a post we have came back without its image")
+                    write_cooldown(kind)
+                    todo = []
+                elif run.control_ok:
+                    log("recovered", shortcode="control", gentle_until=stamp(now() + GENTLE))
+                    write_json(cooldown_path(), {"gentle_until": stamp(now() + GENTLE), "level": cd.get("level"),
+                                                 "kind": cd.get("kind"), "at": cd.get("at")})
+                    run.pause("gap", *gap)
             for n, s in enumerate(todo, 1):
                 if n > 1:
                     if (n - 1) % LONG_EVERY == 0:
@@ -940,9 +960,14 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
                     media[s["code"]] = entry
                     write_yaml(MEDIA, media)   # after every post, so a stop loses nothing
                     if test_only and (("video" in entry if args.video else "thumb" in entry) or run.control_ok):
+                        level = cd.get("level")
+                        if entry.get("error") == "not_found" and level:
+                            # The post still waiting after the pause is deleted, and a post we have answered:
+                            # the stop was most likely that post, so this pause doesn't count as one in a row.
+                            level -= 1
                         gentle_until = stamp(now() + GENTLE)
-                        log("recovered", shortcode=s["code"], gentle_until=gentle_until)
-                        write_json(cooldown_path(), {"gentle_until": gentle_until, "level": cd.get("level"),
+                        log("recovered", shortcode=s["code"], gentle_until=gentle_until, level=level)
+                        write_json(cooldown_path(), {"gentle_until": gentle_until, "level": level,
                                                      "kind": cd.get("kind"), "at": cd.get("at")})
             write_yaml(MEDIA, media)
         log("run_end", ok=run.ok, bad=run.bad, skipped=done, stopped=stopped, reason=reason or "none",
