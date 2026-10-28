@@ -830,7 +830,8 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
             if not gentle:
                 os.remove(cooldown_path())   # 2 clean days: a later stop is a first stop again
                 cd = None
-        early = too_soon(past_runs(log_path), now(), GENTLE_RUNS_PER_DAY if gentle else RUNS_PER_DAY)
+        tested = (cd or {}).get("empty_tested") or []   # earlier test posts that came back empty
+        early =too_soon(past_runs(log_path), now(), GENTLE_RUNS_PER_DAY if gentle else RUNS_PER_DAY)
         if early:
             log("refused", reason=early[0], may_start=stamp(early[1]))
             return 5
@@ -850,8 +851,11 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
         if args.video:
             todo, done = pick_codes(saves, read_codes(args.video), media, limit)
         else:
-            todo, done = pick(saves, pilot, load_yaml(os.path.join("data", "tags.yaml")), media, limit,
+            todo, done = pick(saves, pilot, load_yaml(os.path.join("data", "tags.yaml")), media, None,
                               first=load_yaml(os.path.join("data", "pins.yaml")))
+            if test_only:   # a test post that came back empty may just be deleted: test another one
+                todo = [s for s in todo if s["code"] not in tested]
+            todo = todo[:limit]
             if args.recheck:
                 again = pick_recheck(saves, read_codes(args.recheck))
                 todo = (again + [s for s in todo if s not in again])[:limit]
@@ -908,9 +912,21 @@ def main(argv=None, ydl_factory=None, sleep=time.sleep, version="fake"):
                     if test_only and ("video" in entry if args.video else "thumb" in entry):
                         gentle_until = stamp(now() + GENTLE)
                         log("recovered", shortcode=s["code"], gentle_until=gentle_until)
+                        for code in tested:   # this one came through, so those empty answers were their posts
+                            if code not in again:
+                                media[code] = run.failed(code, "not_found")
+                        write_yaml(MEDIA, media)
                         write_json(cooldown_path(), {"gentle_until": gentle_until, "level": cd.get("level"),
                                                      "kind": cd.get("kind"), "at": cd.get("at")})
             write_yaml(MEDIA, media)
+        if test_only and run.pending_empty and stopped == "no":
+            if tested:   # a second test post empty too: two in a row, so most likely a quiet block
+                stopped, reason = "yes", "empty_streak"
+                log("rate_limited", kind=reason, shortcode=run.pending_empty, tested=",".join(tested))
+                write_cooldown(reason)
+            else:        # maybe a deleted post: the next test run tries another
+                write_json(cooldown_path(), {**cd, "empty_tested": [run.pending_empty]})
+                log("test_empty", shortcode=run.pending_empty)
         log("run_end", ok=run.ok, bad=run.bad, skipped=done, stopped=stopped, reason=reason or "none",
             ig_requests=watcher.total, minutes=round((time.time() - run.started) / 60, 1))
         print(f"fetched {run.ok}, bad {run.bad}, already done {done}" + (f"; stopped: {reason}" if reason else ""))

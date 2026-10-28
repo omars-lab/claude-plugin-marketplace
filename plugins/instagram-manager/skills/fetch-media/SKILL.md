@@ -167,6 +167,12 @@ at most 2 runs start in any 24 hours, not 3 (a third run in a gentle day once br
 stop in those 2 days counts as the next stop in a row. After 2 clean days the cooldown file is
 removed, so a later stop is a first stop again.
 
+A test post that comes back empty may just be a deleted post (`ev=test_empty`). Its code goes in
+the cooldown file's `empty_tested`, and the next test run tries a different post. If that one
+works, the empty one is marked `not_found`. If it is empty too, that is two in a row: a new
+cooldown starts (`ev=rate_limited kind=empty_streak`). Before this, one deleted post at the head
+of the list was tested again on every run, and the run never recovered.
+
 Before trying again, open one of the failed posts in a private browser window on the same Wi-Fi.
 If it asks you to log in, the connection is walled: wait. If it shows fine but yt-dlp still fails
 after the cooldown, the tool is the problem, not the pace. The research says what to try first:

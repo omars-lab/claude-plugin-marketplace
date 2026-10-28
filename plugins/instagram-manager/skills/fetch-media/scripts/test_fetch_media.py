@@ -288,6 +288,33 @@ class Stops(Home):
         self.assertNotIn("until", cd)                  # it worked, so the cooldown is over
         self.assertEqual(cd["level"], 1)               # but a stop in the next 2 days is a second in a row
 
+    def test_an_empty_test_post_is_not_tested_again(self):
+        path = os.path.join(self.root, ".cache", "fetch-media.cooldown.json")
+        with open(path, "w") as fh:
+            json.dump({"until": "2000-01-01T00:00:00Z", "level": 1}, fh)
+        empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
+        self.assertEqual(self.run_main({"REELA": empty}), 0)
+        self.assertEqual(self.ydl.calls, ["REELA"])
+        self.assertEqual(self.run_main(), 0)
+        self.assertEqual(self.ydl.calls, ["REELB"])            # another post, not REELA again
+        self.assertEqual(self.media()["REELA"], {"error": "not_found"})
+        with open(path) as fh:
+            self.assertIn("gentle_until", json.load(fh))
+
+    def test_two_empty_test_posts_are_a_block(self):
+        path = os.path.join(self.root, ".cache", "fetch-media.cooldown.json")
+        with open(path, "w") as fh:
+            json.dump({"until": "2000-01-01T00:00:00Z", "level": 1}, fh)
+        empty = FakeError("ERROR: [Instagram] X: Instagram sent an empty media response. Check if this post ...")
+        self.run_main({"REELA": empty})
+        self.assertEqual(self.run_main({"REELB": empty}), 1)
+        self.assertIn("kind=empty_streak", self.log_lines("rate_limited")[0])
+        with open(path) as fh:
+            cd = json.load(fh)
+        self.assertEqual(cd["level"], 2)
+        self.assertNotIn("empty_tested", cd)
+        self.assertNotIn("REELA", self.media())
+
     def test_two_gentle_days_after_a_test_post(self):
         path = os.path.join(self.root, ".cache", "fetch-media.cooldown.json")
         gentle = {"gentle_until": fetch_media.stamp(fetch_media.now() + dt.timedelta(days=1)), "level": 1}
