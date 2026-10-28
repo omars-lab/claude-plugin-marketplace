@@ -83,6 +83,9 @@ places. That is the same set `tag_saves.py --report` shows.
 
 The pages hold captions and post codes, so they stay under .cache, never in git. The map loads
 Leaflet from cdnjs and tiles from OpenStreetMap, with the credit showing; no Instagram script.
+A map named in --google-map is drawn by Google instead, with the hub's own browser key
+(GOOGLE_MAPS_HUB_KEY); the page looks up the venues OpenStreetMap lacks from their kept ids and
+keeps the positions in memory only (DESIGN.md decision 12). The key is never printed.
 """
 
 import argparse
@@ -128,6 +131,18 @@ NATIONAL = re.compile(r"\bNational (Park|Seashore|Lakeshore|Monument|Historic|Hi
 TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 CDN = "https://cdnjs.cloudflare.com/ajax/libs"
+# A map Google draws (DESIGN.md decision 12): Google's script, its grouping script, and Google's test
+# map id, which the pins need until the hub has a map id of its own.
+GMAPS_JS = "https://maps.googleapis.com/maps/api/js"
+GROUPING = "https://unpkg.com/@googlemaps/markerclusterer@2.5.3/dist/index.min.js"
+DEMO_MAP_ID = "DEMO_MAP_ID"
+LOOK_ZOOM = 13    # the zoom from which the page asks Google where a town's venues are: about one town
+LOOK_MOST = 150   # the most look-ups one page open makes; a reload starts again
+GOOGLE_TERMS = (' Map and the positions of venues OpenStreetMap lacks: Google, looked up as you zoom in and '
+                'never kept. Pins: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
+                'contributors. <a href="https://maps.google.com/help/terms_maps/" target="_blank" rel="noopener">'
+                'Google Maps terms</a> · <a href="https://policies.google.com/privacy" target="_blank" '
+                'rel="noopener">Google privacy policy</a>')
 LEAFLET = (f'<link rel="stylesheet" href="{CDN}/leaflet/1.9.4/leaflet.min.css">'
            f'<script src="{CDN}/leaflet/1.9.4/leaflet.min.js"></script>')
 CLUSTER = (f'<link rel="stylesheet" href="{CDN}/leaflet.markercluster/1.5.3/MarkerCluster.css">'
@@ -350,10 +365,10 @@ class Hub:
                                 "posts": [], "said": {}, "osm": e.get("osm"), "wikidata": e.get("wikidata"),
                                 "notes": e.get("notes"), "found": e.get("found") if isinstance(e.get("found"), str) else "",
                                 "placed": bool(e.get("placed")), "osm_note": e.get("osm_note"),
-                                "google_by": e.get("google_by"),
+                                "google_by": e.get("google_by"), "google_id": e.get("google_id"),
                                 "google_chain": bool(e.get("google_chain"))}
         elif e.get("google_by") and not self.places[key].get("google_by"):   # another post's copy has the id
-            self.places[key].update(map=e["map"], google_by=e["google_by"])
+            self.places[key].update(map=e["map"], google_by=e["google_by"], google_id=e.get("google_id"))
         elif e.get("google_chain"):
             self.places[key]["google_chain"] = True
         return self.places[key]
@@ -1063,7 +1078,7 @@ if(b)b.addEventListener('click',function(){set(!on)});});})();</script>"""
 
 MAP_JS = r"""
 (function(){
-var D=__DATA__, map, layer, marks=[], shown=[];
+var D=__DATA__, map, E, marks=[], shown=[];
 var $=function(s){return document.querySelector(s)};
 function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
 function link(href,text,out){var a=el('a',null,text);a.href=href;if(out){a.target='_blank';a.rel='noopener'}return a}
@@ -1074,7 +1089,8 @@ function popup(pin){
   var th=(p.sp&&p.sp[pin[3]])||p.th;if(th){var img=el('img');img.src=th;img.alt='';box.appendChild(img)}
   box.appendChild(el('p','pwho',p.u?'@'+p.u:'Unknown creator'));
   var where=el('p','pwhere');where.appendChild(link(pl.s,pl.n));box.appendChild(where);
-  if(pl.x)box.appendChild(el('p','pnote','Pinned at the town: OpenStreetMap could not place it. '+
+  if(pl.x)box.appendChild(el('p','pnote',pl.gid&&looked[pl.gid]?'OpenStreetMap could not place it, so this is where '+
+    'Google puts it, looked up just now and not kept.':'Pinned at the town: OpenStreetMap could not place it. '+
     (/[?&]query_place_id=/.test(pl.m)?'Google Maps opens the place itself.':'Google Maps searches for it by name.')));
   if(p.t)box.appendChild(el('p','ptext',p.t));
   var ln=el('p','plinks');ln.appendChild(link(p.f,'Post page'));ln.appendChild(link(p.i,'Open on Instagram',true));
@@ -1082,31 +1098,131 @@ function popup(pin){
   box.appendChild(ln);return box;
 }
 
-function icon(level,g){return L.divIcon({className:'',html:'<div class="pin pin-'+level+'">'+
-  (D.icons[g]?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+D.icons[g]+'"/></svg>':'')+'</div>',
-  iconSize:[26,26],iconAnchor:[13,13]})}
+function pinHtml(level,g){return '<div class="pin pin-'+level+'">'+
+  (D.icons[g]?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+D.icons[g]+'"/></svg>':'')+'</div>'}
 
 // A bubble counts posts, not pins: a road-trip post that names 20 places is one post.
-function cluster(c){var seen={},n=0;c.getAllChildMarkers().forEach(function(m){if(!seen[m.post]){seen[m.post]=1;n++}});
-  var s=n<10?34:n<50?40:48;
-  return L.divIcon({html:'<div class="bubble"><span>'+n+'</span></div>',className:'',iconSize:[s,s]})}
+function posts(ms){var seen={},n=0;ms.forEach(function(m){if(!seen[m.post]){seen[m.post]=1;n++}});return n}
+function bubble(n){var s=n<10?34:n<50?40:48;return {html:'<div class="bubble"><span>'+n+'</span></div>',size:s}}
+
+// Two map engines with the same few calls: Leaflet on OpenStreetMap's tiles, or a map Google draws
+// (D.gmap, only when the build was given a key for this page). A mark is {raw, post, ic, pl, ll()}.
+function leaflet(){
+  var layer;
+  return {
+    init:function(){
+      map=L.map('map',{worldCopyJump:true}).setView([37,-119],5);
+      L.tileLayer('__TILES__',{maxZoom:19,attribution:'__CREDIT__'}).addTo(map);
+      layer=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:45,iconCreateFunction:function(c){
+        var b=bubble(posts(c.getAllChildMarkers()));return L.divIcon({html:b.html,className:'',iconSize:[b.size,b.size]})}});
+      map.addLayer(layer);
+    },
+    mark:function(pin,level,g,title,alt,pop){
+      var m=L.marker([pin[0],pin[1]],{icon:L.divIcon({className:'',html:pinHtml(level,g),iconSize:[26,26],iconAnchor:[13,13]}),
+        title:title,alt:alt,keyboard:true});
+      m.post=pin[2];m.bindPopup(pop,{maxWidth:260,minWidth:200,autoPanPadding:[20,20]});
+      return {raw:m,ll:function(){var l=m.getLatLng();return [l.lat,l.lng]}};
+    },
+    show:function(on){layer.clearLayers();layer.addLayers(on.map(function(m){return m.raw}))},
+    fit:function(lls){map.fitBounds(L.latLngBounds(lls),{padding:[30,30],maxZoom:12})},
+    inside:function(){var b=map.getBounds();return function(ll){return b.contains(ll)}},
+    zoom:function(){return map.getZoom()},
+    moved:function(fn){map.on('moveend',fn)}
+  };
+}
+
+function gmaps(){
+  var g=google.maps, info, cl, on=[];
+  return {
+    init:function(){
+      map=new g.Map($('#map'),{center:{lat:37,lng:-119},zoom:5,mapId:D.gmap.id,clickableIcons:false,
+        streetViewControl:false,fullscreenControl:false,mapTypeControl:false});
+      info=new g.InfoWindow({maxWidth:260});
+      cl=new markerClusterer.MarkerClusterer({map:map,markers:[],
+        algorithm:new markerClusterer.SuperClusterAlgorithm({radius:45,maxZoom:16}),
+        renderer:{render:function(c){var b=bubble(posts(c.markers)),d=el('div');d.innerHTML=b.html;
+          d.firstChild.style.width=d.firstChild.style.height=b.size+'px';d.style.transform='translateY(50%)';
+          return new g.marker.AdvancedMarkerElement({position:c.position,content:d,zIndex:1000+c.count})}},
+        // A bubble of pins at one point (venues at their town) would otherwise zoom to the street, and
+        // never splits: at zoom 16 it lists its pins instead, each opening its own popup.
+        onClusterClick:function(e,c,m){
+          if(m.getZoom()<16){m.fitBounds(c.bounds,40);
+            g.event.addListenerOnce(m,'idle',function(){if(m.getZoom()>16)m.setZoom(16)});return}
+          var ul=el('ul','stack');
+          c.markers.forEach(function(k){var b=el('button','',k.title||'A post');b.type='button';
+            b.onclick=function(){info.setContent(k.pop())};var li=el('li');li.appendChild(b);ul.appendChild(li)});
+          info.setContent(ul);info.setPosition(c.position);info.open({map:m})}});
+    },
+    mark:function(pin,level,g2,title,alt,pop){
+      var d=el('div');d.innerHTML=pinHtml(level,g2);d.style.transform='translateY(50%)';
+      var m=new g.marker.AdvancedMarkerElement({position:{lat:pin[0],lng:pin[1]},content:d,title:title});
+      m.post=pin[2];m.pop=pop;
+      m.gmpClickable=true;
+      m.addEventListener('gmp-click',function(){info.setContent(pop());info.open({anchor:m,map:map})});
+      return {raw:m,dot:d.firstChild,
+        ll:function(){var p=m.position;return [typeof p.lat==='function'?p.lat():p.lat,typeof p.lng==='function'?p.lng():p.lng]}};
+    },
+    show:function(list){on=list;cl.clearMarkers();cl.addMarkers(list.map(function(m){return m.raw}))},
+    redraw:function(){cl.clearMarkers();cl.addMarkers(on.map(function(m){return m.raw}))},
+    fit:function(lls){var b=new g.LatLngBounds();lls.forEach(function(ll){b.extend({lat:ll[0],lng:ll[1]})});
+      map.fitBounds(b,30);g.event.addListenerOnce(map,'idle',function(){if(map.getZoom()>12)map.setZoom(12)})},
+    inside:function(){var b=map.getBounds();return function(ll){return !!b&&b.contains({lat:ll[0],lng:ll[1]})}},
+    zoom:function(){return map.getZoom()},
+    moved:function(fn){map.addListener('idle',fn)}
+  };
+}
 
 function showPins(keep){
-  layer.clearLayers();var on=[],fit=[];
-  marks.forEach(function(m,i){if(!keep||keep(D.pins[i])){on.push(m);if(keep||D.pins[i][5])fit.push(m.getLatLng())}});
-  layer.addLayers(on);shown=on;inView();
-  if(!fit.length)fit=on.map(function(m){return m.getLatLng()});
-  if(fit.length){map.fitBounds(L.latLngBounds(fit),{padding:[30,30],maxZoom:12})}
+  var on=[],fit=[];
+  marks.forEach(function(m,i){if(!keep||keep(D.pins[i])){on.push(m);if(keep||D.pins[i][5])fit.push(m.ll())}});
+  E.show(on);shown=on;
+  if(!fit.length)fit=on.map(function(m){return m.ll()});
+  if(fit.length)E.fit(fit);
+  inView();
   return on.length;
 }
 
 // The icon counts in the legend: the pins shown that sit inside the map's view, recounted after each
 // pan or zoom. A loop over a few thousand pins, so it needs no index.
 function inView(){
-  var b=map.getBounds(),n={};
-  shown.forEach(function(m){if(b.contains(m.getLatLng()))n[m.ic]=(n[m.ic]||0)+1});
+  var b=E.inside(),n={};
+  shown.forEach(function(m){if(b(m.ll()))n[m.ic]=(n[m.ic]||0)+1});
   document.querySelectorAll('.legend [data-ic]').forEach(function(s){
     var k=n[s.getAttribute('data-ic')]||0;s.querySelector('.n').textContent=k;s.classList.toggle('none',!k)});
+  lookUp(b);
+}
+
+// On a Google map: a venue OpenStreetMap lacks but Google matched (pl.gid) sits at its town until you
+// zoom in. Then the page asks Google where it is, for the venues in view only, and moves its pins.
+// The answer stays in this page's memory: never saved, never sent anywhere else. looked[id] is the
+// position, null while asking, or false when Google gave none.
+var looked={}, asked=0, placedN=0, refused='';
+function lookUp(b){
+  if(!D.gmap||!window.google||!google.maps.places)return;
+  var todo={};
+  shown.forEach(function(m){var pl=D.places[m.pl];if(pl.gid&&!(pl.gid in looked)&&b(m.ll()))todo[pl.gid]=1});
+  var room=D.gmap.most-asked, ids=Object.keys(todo);
+  if(E.zoom()<D.gmap.zoom||refused||room<=0){status(ids.length);return}
+  ids.slice(0,room).forEach(function(id){
+    looked[id]=null;asked++;
+    new google.maps.places.Place({id:id}).fetchFields({fields:['location']}).then(function(r){
+      var at=r.place.location;
+      if(!at){looked[id]=false;return}
+      looked[id]=[at.lat(),at.lng()];placedN++;
+      marks.forEach(function(m){if(D.places[m.pl].gid===id){m.raw.position={lat:looked[id][0],lng:looked[id][1]};m.dot.className='pin pin-spot'}});
+    }).catch(function(e){looked[id]=false;if(!refused){refused=1;console.warn('Google look-up refused:',e&&e.message||e)}}).then(function(){
+      if(!ids.some(function(i){return looked[i]===null})){E.redraw();status(0)}
+    });
+  });
+  status(0);
+}
+function status(left){
+  var s=$('#gstat');if(!s)return;
+  s.textContent=refused?'Google would not look up where these venues are (the key may not allow it), so they stay at their town.':
+    asked>=D.gmap.most?'This page has asked Google '+asked+' times, its most. Reload to ask again.':
+    left&&E.zoom()<D.gmap.zoom?'Zoom into a town to see where Google puts its '+left+' venue'+(left===1?'':'s')+' that OpenStreetMap lacks.':
+    asked?'Google placed '+placedN+' venue'+(placedN===1?'':'s')+' OpenStreetMap lacks (looked up just now, not kept).':
+    'Zoom into a town to see where Google puts the venues OpenStreetMap lacks.';
 }
 
 function placesList(rows){
@@ -1189,29 +1305,47 @@ function search(){
     if(window.flipbooks)window.flipbooks(out)}
 }
 
+function start(engine){
+  E=engine;marks=[];E.init();
+  D.pins.forEach(function(pin){
+    var p=D.posts[pin[2]],pl=D.places[pin[3]];
+    var m=E.mark(pin,pin[4],pl.ic,(p.u?'@'+p.u:'')+' · '+pl.n,pl.n,function(){return popup(pin)});
+    m.post=pin[2];m.ic=pl.ic;m.pl=pin[3];marks.push(m);
+  });
+  E.moved(inView);
+  search();
+}
+var wired=false;
+function wire(){
+  if(wired)return;wired=true;
+  location.hash.slice(1).split('&').forEach(function(kv){
+    var i=kv.indexOf('='),k=kv.slice(0,i),v=decodeURIComponent(kv.slice(i+1));if(i<0)return;
+    if(k==='q')$('#q').value=v;
+    F.forEach(function(f){if(f.k===k)f.o.forEach(function(o,j){if(o[0]===v)sel[k]=j})});
+  });
+  F.forEach(function(f){$('#f-'+f.k).addEventListener('change',function(e){sel[f.k]=+e.target.value;search()})});
+  $('#clear').addEventListener('click',function(){F.forEach(function(f){sel[f.k]=-1});$('#q').value='';search()});
+  var t;$('#q').addEventListener('input',function(){clearTimeout(t);t=setTimeout(search,180)});
+  $('form').addEventListener('submit',function(e){e.preventDefault();search()});
+}
+// Google refused the key or didn't load: the same map on OpenStreetMap's tiles, venues at their town.
+function fallBack(why){
+  if(E&&!D.gmap)return;D.gmap=null;
+  var s=$('#gstat');if(s)s.textContent='Google\'s map did not load ('+why+'), so this is the OpenStreetMap map.';
+  var old=$('#map'),fresh=el('div');fresh.id='map';old.parentNode.replaceChild(fresh,old);
+  if(!window.L){$('#out').textContent='The map could not load (no connection to cdnjs?). The place pages still work.';return}
+  wire();start(leaflet());
+}
+if(D.gmap){
+  window.gm_authFailure=function(){fallBack('Google refused the key for this address')};
+  window.hubGoogle=function(){
+    if(!window.markerClusterer){fallBack('no grouping script');return}
+    wire();try{start(gmaps())}catch(e){fallBack(String(e.message||e).slice(0,80))}};
+  window.hubGoogleFailed=function(){fallBack('no connection to Google')};
+  return;
+}
 if(!window.L){$('#out').textContent='The map could not load (no connection to cdnjs?). The place pages still work.';return}
-map=L.map('map',{worldCopyJump:true}).setView([37,-119],5);
-L.tileLayer('__TILES__',{maxZoom:19,attribution:'__CREDIT__'}).addTo(map);
-layer=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:45,iconCreateFunction:cluster});
-D.pins.forEach(function(pin){
-  var p=D.posts[pin[2]],pl=D.places[pin[3]];
-  var m=L.marker([pin[0],pin[1]],{icon:icon(pin[4],pl.ic),title:(p.u?'@'+p.u:'')+' · '+pl.n,alt:pl.n,keyboard:true});
-  m.post=pin[2];m.ic=pl.ic;
-  m.bindPopup(function(){return popup(pin)},{maxWidth:260,minWidth:200,autoPanPadding:[20,20]});
-  marks.push(m);
-});
-map.addLayer(layer);
-map.on('moveend',inView);
-location.hash.slice(1).split('&').forEach(function(kv){
-  var i=kv.indexOf('='),k=kv.slice(0,i),v=decodeURIComponent(kv.slice(i+1));if(i<0)return;
-  if(k==='q')$('#q').value=v;
-  F.forEach(function(f){if(f.k===k)f.o.forEach(function(o,j){if(o[0]===v)sel[k]=j})});
-});
-F.forEach(function(f){$('#f-'+f.k).addEventListener('change',function(e){sel[f.k]=+e.target.value;search()})});
-$('#clear').addEventListener('click',function(){F.forEach(function(f){sel[f.k]=-1});$('#q').value='';search()});
-search();
-var t;$('#q').addEventListener('input',function(){clearTimeout(t);t=setTimeout(search,180)});
-$('form').addEventListener('submit',function(e){e.preventDefault();search()});
+wire();start(leaflet());
 })();
 """
 
@@ -1263,11 +1397,22 @@ def area_posts(hub, area):
     return [p for p in hub.posts if any(hub.within(k, {area}) for k, *_ in p["pins"])]
 
 
-def index_page(hub, title, extra_links, home=(), area=None, maps=()):
+def google_head(google):
+    """The scripts a map Google draws needs, after the map script: Google's grouping script, then the
+    Maps JavaScript API with the hub's browser key, which calls hubGoogle once it has loaded."""
+    url = (f"{GMAPS_JS}?key={quote_plus(google['key'])}&v=weekly&libraries=marker,places"
+           "&loading=async&callback=hubGoogle")
+    return (f'<script src="{GROUPING}"></script>'
+            f'<script async src="{esc(url)}" onerror="window.hubGoogleFailed&&hubGoogleFailed()"></script>')
+
+
+def index_page(hub, title, extra_links, home=(), area=None, maps=(), google=None):
     """The map page. It opens on the pins inside `home` (the pilot's places), else on every pin.
     With `area`, it is that state's or country's page, one folder down: only the posts with a pin
     inside it, and only those pins and places. `maps` lists the area pages, (folder, name, posts), for
-    the menu that opens another map."""
+    the menu that opens another map. With `google` ({key, map_id}), Google draws the map and looks up
+    the venues OpenStreetMap lacks from their kept ids (DESIGN.md decision 12); Leaflet is still loaded
+    in case Google refuses the key."""
     keep = (lambda k: hub.within(k, {area})) if area else (lambda k: True)
     pre = "../" if area else ""
     posts = area_posts(hub, area) if area else hub.posts
@@ -1279,7 +1424,9 @@ def index_page(hub, title, extra_links, home=(), area=None, maps=()):
     data = {
         "places": [{"n": p["name"], "s": pre + place_href(p, up=False), "c": count[p["key"]], "m": p["map"],
                     "k": ("spot" if p["spot"] else kind_word(p).lower()), "g": inside[i], "ic": icon_of(hub, p),
-                    **({"x": 1} if p.get("placed") else {})} for i, p in enumerate(places)],
+                    **({"x": 1} if p.get("placed") else {}),
+                    **({"gid": p["google_id"]} if google and p.get("placed") and p.get("google_id") else {})}
+                   for i, p in enumerate(places)],
         "posts": [{"c": p["code"], "u": p["user"], "f": pre + post_href(p, up=False), "i": p["url"],
                    "th": p["thumb"] and pre + p["thumb"],
                    **({"pv": pre + p["pv"]} if p["pv"] else {}), **({"pa": pre + p["pa"]} if p["pa"] else {}),
@@ -1293,6 +1440,8 @@ def index_page(hub, title, extra_links, home=(), area=None, maps=()):
         "pins": [[lat, lon, i, pidx[k], style, 1 if area or hub.within(k, set(home)) else 0]
                  for i, p in enumerate(posts) for k, lat, lon, style in p["pins"] if k in pidx],
     }
+    if google:   # the key goes in the script's address only, never in the data
+        data["gmap"] = {"id": google.get("map_id") or DEMO_MAP_ID, "zoom": LOOK_ZOOM, "most": LOOK_MOST}
     # The second legend row: each icon on the map, in ICONS order, with how many pins carry it. The page
     # recounts these for the pins in view as the map moves.
     n_icon = {}
@@ -1328,14 +1477,18 @@ def index_page(hub, title, extra_links, home=(), area=None, maps=()):
                '<div class="mapcol"><div class="legend" aria-label="What the pins mean">'
                '<div class="lrow"><b class="lh">Colour: how exact</b>'
                '<span><i class="pin pin-spot"></i>a spot the post names</span>'
-               '<span><i class="pin pin-placed"></i>a spot not on OpenStreetMap, at its town</span>'
-               '<span><i class="pin pin-area"></i>a town, park or region</span>'
+               + ('<span><i class="pin pin-placed"></i>a spot not on OpenStreetMap, at its town until you zoom in '
+                  'and Google places it</span>' if google else
+                  '<span><i class="pin pin-placed"></i>a spot not on OpenStreetMap, at its town</span>')
+               + '<span><i class="pin pin-area"></i>a town, park or region</span>'
                '<span><i class="pin pin-wide"></i>only the state or country</span></div>'
-               + (f'<div class="lrow"><b class="lh">Icon: what kind, pins in view</b>{kinds}</div>' if kinds else "") + '</div>'
-               '<div id="map"></div></div></div>')
+               + (f'<div class="lrow"><b class="lh">Icon: what kind, pins in view</b>{kinds}</div>' if kinds else "")
+               + (f'<p class="lrow gnote"><span id="gstat" aria-live="polite"></span>{GOOGLE_TERMS}</p>' if google else "")
+               + '</div><div id="map"></div></div></div>')
     js = MAP_JS.replace("__DATA__", data_json(data)).replace("__TILES__", TILES).replace("__CREDIT__", CREDIT)
     flips = previews.player_js() if any(p["pa"] for p in posts) else ""   # before the map script, which uses it
-    return shell(title, content, LEAFLET + CLUSTER, f"{flips}<script>{js}</script>", body="hub")
+    return shell(title, content, LEAFLET + CLUSTER,
+                 f"{flips}<script>{js}</script>" + (google_head(google) if google else ""), body="hub")
 
 
 CSS = DIGITS + """
@@ -1425,6 +1578,11 @@ input{flex:1;width:0;min-width:0;font:inherit;padding:9px 14px;border:1px solid 
 .legend .kind svg{width:12px;height:12px;fill:none;stroke:var(--fg);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .legend .n{font-weight:400;font-variant-numeric:tabular-nums;opacity:.75}
 .legend .none{opacity:.4}
+.gnote{margin:0;display:block}
+.gnote #gstat{display:inline;color:var(--fg)}
+.gm-style .pop{color:#1d2421}
+.stack{list-style:none;margin:0;padding:0;max-height:220px;overflow:auto;color:#1d2421}
+.stack button{display:block;width:100%;text-align:left;font:inherit;background:none;border:0;border-bottom:1px solid #d9e0dc;padding:6px 2px;cursor:pointer;color:#0f6b5c}
 .said{margin:0;color:var(--muted)}
 #out h2{margin-top:6px}
 ol{list-style:none;margin:0;padding:0}
@@ -1599,7 +1757,8 @@ def make_previews(hub, out):
     return sum(1 for p in hub.posts if p["pv"]), sum(1 for p in hub.posts if p["pa"])
 
 
-def build(hub, out, title, home=(), with_previews=True):
+def build(hub, out, title, home=(), with_previews=True, google=None):
+    """google: {key, map_id, areas}, the area folders whose map Google draws (decision 12)."""
     os.makedirs(out, exist_ok=True)
     thumbs = copy_thumbs(hub, out)
     hub.previews = make_previews(hub, out) if with_previews else (0, 0)
@@ -1630,7 +1789,8 @@ def build(hub, out, title, home=(), with_previews=True):
         if os.path.exists(os.path.join(out, f))]
     write(os.path.join(out, "index.html"), index_page(hub, title, extra, home, maps=maps))
     for a, folder in hub.map_folders.items():
-        page = index_page(hub, f"Saved places: {hub.places[a]['name']}", extra, area=a, maps=maps)
+        page = index_page(hub, f"Saved places: {hub.places[a]['name']}", extra, area=a, maps=maps,
+                          google=google if google and folder in google["areas"] else None)
         write(os.path.join(out, folder, "index.html"), page.replace("<head>", f"<head>{MAP_MARK}", 1))
     return thumbs
 
@@ -1664,7 +1824,19 @@ def main(argv=None):
                     help="for the decisions page: a YAML list of {label, url, note} decided outside the hub")
     ap.add_argument("--make", action="store_true",
                     help="the decisions page prints the data repo's make lines instead of the plugin's commands")
+    ap.add_argument("--google-map", default="", metavar="AREAS",
+                    help="area map folders Google draws, comma-separated (e.g. california); needs "
+                         "GOOGLE_MAPS_HUB_KEY, the hub's browser key, in the environment")
     args = ap.parse_args(argv)
+    google = None
+    if args.google_map:
+        key = os.environ.get("GOOGLE_MAPS_HUB_KEY", "").strip()
+        if key:
+            google = {"key": key, "map_id": os.environ.get("GOOGLE_MAPS_HUB_MAP_ID", "").strip(),
+                      "areas": {a.strip() for a in args.google_map.split(",") if a.strip()}}
+        else:
+            print("note: no GOOGLE_MAPS_HUB_KEY, so every map is OpenStreetMap's (the build-hub skill's "
+                  "\"The hub's Google key\" says how to make one)", file=sys.stderr)
 
     pilots = load_yaml(os.path.join("config", "collections.yaml")).get("pilots") or {}
     pilot = None
@@ -1700,7 +1872,16 @@ def main(argv=None):
                         + ["--out", os.path.join(out, "decisions.html")]
                         + (["--links", args.links] if args.links else []) + (["--make"] if args.make else []))
     title = f"Saved places: {args.pilot.replace('-', ' ').title()}" if args.pilot else "Saved places"
-    thumbs = build(hub, out, title, (pilot or {}).get("cities") or (), not args.no_previews)
+    thumbs = build(hub, out, title, (pilot or {}).get("cities") or (), not args.no_previews, google)
+    if google:
+        # How many look-ups a Google map could make in all: its venues at a town with a kept id.
+        for a, folder in hub.map_folders.items():
+            if folder in google["areas"]:
+                ids = {p["google_id"] for p in hub.places.values()
+                       if p.get("placed") and p.get("google_id") and hub.within(p["key"], {a})}
+                log("hub_google_map", area=folder, venues_to_look_up=len(ids))
+                print(f"{folder}: Google draws the map; {len(ids)} venues OpenStreetMap lacks are looked up "
+                      f"as you zoom in (at most {LOOK_MOST} a page open)")
 
     pinned = sum(1 for p in hub.posts if p["pins"])
     exact = sum(1 for p in hub.posts if any(style != "wide" for *_, style in p["pins"]))

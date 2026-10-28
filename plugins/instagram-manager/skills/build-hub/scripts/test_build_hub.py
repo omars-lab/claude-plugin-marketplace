@@ -264,7 +264,8 @@ class Hub(unittest.TestCase):
         self.assertIn("Colour: how exact", page)
         self.assertRegex(page, r'Waterfall <b class="n">2</b>')  # one pin per post that names it
         self.assertIn('<span data-ic="waterfall">', page)          # the page recounts it for the pins in view
-        self.assertIn("map.on('moveend',inView)", page)
+        self.assertIn("map.on('moveend',fn)", page)
+        self.assertIn("E.moved(inView)", page)
         self.assertNotIn("Lighthouse", page)                     # only the kinds on this map
         self.assertEqual(set(d["icons"]), {icon[d["places"][pin[3]]["n"]] for pin in d["pins"]})
         self.assertIn('"Example Falls","","spot","waterfall"]', self.page("places/example-falls.html"))
@@ -296,6 +297,53 @@ class Hub(unittest.TestCase):
         self.assertIn("query_place_id=ChIJexampleDeli", deli)
         self.assertNotIn("matched by its name", deli)                   # a person chose it
         self.assertIn("query_place_id=ChIJexampleFalls", json.dumps(self.data()))   # the map's link too
+
+    def test_a_map_google_draws_looks_up_its_venues_from_their_kept_ids(self):
+        self.write("data/pins-review.yaml", {
+            "TOWN1": [{"said": "Example Deli", "near": "Fixture Town", "why": "not found near Fixture Town",
+                       "asked": "Example Deli", "address": "1 Example Rd"}]})
+        self.write("data/google.yaml", {
+            "osm:node/101": {"query": "Example Falls, Fixture Park", "verdict": "match", "id": "ChIJexampleFalls",
+                             "by": "auto", "date": "2026-01-02"},
+            "spot:example-deli@fixture-town": {"query": "Example Deli, 1 Example Rd", "verdict": "match",
+                                               "id": "ChIJexampleDeli", "by": "hand", "date": "2026-01-02"}})
+        key = "test-key-not-real-123"
+        os.environ["GOOGLE_MAPS_HUB_KEY"] = key
+        self.addCleanup(os.environ.pop, "GOOGLE_MAPS_HUB_KEY", None)
+        with contextlib.redirect_stderr(io.StringIO()) as err, contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(build_hub.main(["--pilot", "fixture", "--google-map", "fixture-state"]), 0)
+        self.assertNotIn(key, out.getvalue() + err.getvalue())             # the key is never printed or logged
+        self.assertIn("fixture-state: Google draws the map; 1 venues", out.getvalue())
+        page, d = self.page("fixture-state/index.html"), self.data("fixture-state/index.html")
+        self.assertEqual(d["gmap"], {"id": "DEMO_MAP_ID", "zoom": build_hub.LOOK_ZOOM, "most": build_hub.LOOK_MOST})
+        gids = {p["n"]: p.get("gid") for p in d["places"]}
+        self.assertEqual(gids["Example Deli"], "ChIJexampleDeli")          # at its town: Google places it
+        self.assertIsNone(gids["Example Falls"])                           # OpenStreetMap's pin stays
+        self.assertNotIn(key, json.dumps(d))                               # only in the script's address
+        self.assertIn(f"maps.googleapis.com/maps/api/js?key={key}&amp;", page)
+        self.assertIn("callback=hubGoogle", page)
+        self.assertIn("markerclusterer@2.5.3", page)
+        self.assertIn("leaflet.min.js", page)                              # the fallback if Google refuses
+        self.assertIn('id="gstat"', page)
+        self.assertIn("Google Maps terms", page)
+        self.assertIn("never kept", page)
+        self.assertIn("addEventListener('gmp-click'", page)               # Google's click for its markers
+        self.assertIn("el('ul','stack')", page)                            # a one-point stack lists its pins
+        for rel in ("index.html",):                                      # every other map: OpenStreetMap's
+            other = self.page(rel)
+            self.assertNotIn("maps.googleapis.com", other)
+            self.assertNotIn(key, other)
+            self.assertNotIn("gmap", self.data(rel))
+            self.assertFalse(any("gid" in p for p in self.data(rel)["places"]))
+
+    def test_without_the_hubs_key_every_map_is_openstreetmaps(self):
+        os.environ.pop("GOOGLE_MAPS_HUB_KEY", None)
+        with contextlib.redirect_stderr(io.StringIO()) as err, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(build_hub.main(["--pilot", "fixture", "--google-map", "fixture-state"]), 0)
+        self.assertIn("no GOOGLE_MAPS_HUB_KEY", err.getvalue())
+        page = self.page("fixture-state/index.html")
+        self.assertNotIn("maps.googleapis.com", page)
+        self.assertNotIn("gmap", self.data("fixture-state/index.html"))
 
     def test_a_google_id_found_at_the_captions_address_says_so(self):
         self.write("data/pins-review.yaml", {
