@@ -225,6 +225,20 @@ class Hub(unittest.TestCase):
         self.assertIn("0 one it doesn't list (at its town until Google moves it), 1 one no open map places", out)
         self.assertIn("<dt>Not on the map yet (3)</dt>", self.page("places/fixture-town.html"))
 
+    def test_a_map_with_an_overture_pin_credits_overture_and_one_without_does_not(self):
+        self.build("--all")
+        self.assertNotIn("Foursquare", self.page("index.html"))
+        cafe = {"name": "Example Cafe", "said": "@examplecafe", "near": "Fixture Town", "kind": "cafe",
+                "lat": 10.51, "lon": 20.51, "by": "overture", "overture": "00000000-example",
+                "overture_release": "2026-01-01.0", "licence": "Apache-2.0"}
+        self.write("data/pins.yaml", {**PINS, "TOWN1": [cafe]})
+        self.build("--all")
+        for rel in ("index.html", "places/fixture-town.html", "places/example-cafe.html"):
+            self.assertIn("&copy; 2025 Foursquare Labs, Inc.", self.page(rel), rel)
+        self.assertIn("Overture Maps</a>' open places data, release 2026-01-01.0, Apache-2.0",
+                      self.page("places/example-cafe.html"))
+        self.assertNotIn("Foursquare", self.page("places/fixture-park.html"))   # its map has no Overture pin
+
     def test_a_spot_openstreetmap_does_not_list_gets_no_pin_at_a_parks_middle(self):
         # A park's or region's middle can be a lake or a bay: a spot drawn there sits in the water.
         self.write("data/tags.yaml", {**TAGS, "PARK2": {**TAGS["PARK2"], "purposes": ["eat", "see-do"]}})

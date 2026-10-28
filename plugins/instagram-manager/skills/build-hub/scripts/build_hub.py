@@ -148,6 +148,11 @@ GOOGLE_TERMS = (' Map and the positions of venues OpenStreetMap lacks: Google, l
                 'contributors. <a href="https://maps.google.com/help/terms_maps/" target="_blank" rel="noopener">'
                 'Google Maps terms</a> · <a href="https://policies.google.com/privacy" target="_blank" '
                 'rel="noopener">Google privacy policy</a>')
+# Shown on every map with a pin from Overture Maps' places data (DESIGN.md decision 13): CDLA
+# Permissive 2.0 asks for the credit, and Foursquare's NOTICE for its own line, with its own year.
+OVERTURE_CREDIT = ('Some venue pins: <a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps '
+                   'Foundation</a>, <a href="https://cdla.dev/permissive-2-0/" target="_blank" rel="noopener">CDLA '
+                   'Permissive 2.0</a>; includes data from Foursquare, Apache 2.0, &copy; 2025 Foursquare Labs, Inc.')
 LEAFLET = (f'<link rel="stylesheet" href="{CDN}/leaflet/1.9.4/leaflet.min.css">'
            f'<script src="{CDN}/leaflet/1.9.4/leaflet.min.js"></script>')
 CLUSTER = (f'<link rel="stylesheet" href="{CDN}/leaflet.markercluster/1.5.3/MarkerCluster.css">'
@@ -198,6 +203,14 @@ def slugify(name):
 
 def number(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def overture(e):
+    """A pin's Overture fields, for its credit: the release it was read from and its licence."""
+    if e.get("by") != "overture" or not isinstance(e.get("overture"), str):
+        return {}
+    return {"overture": e["overture"], "overture_release": str(e.get("overture_release") or "unknown"),
+            "licence": str(e.get("licence") or "CDLA-Permissive-2.0")}
 
 
 def maps_link(name, where=""):
@@ -372,12 +385,13 @@ class Hub:
                                 "notes": e.get("notes"), "found": e.get("found") if isinstance(e.get("found"), str) else "",
                                 "placed": bool(e.get("placed")), "osm_note": e.get("osm_note"),
                                 "google_by": e.get("google_by"), "google_id": e.get("google_id"),
-                                "google_chain": bool(e.get("google_chain")), "listed": bool(e.get("listed"))}
+                                "google_chain": bool(e.get("google_chain")), "listed": bool(e.get("listed")),
+                                **overture(e)}
             return self.places[key]
         q = self.places[key]
         lat, lon = number(e.get("lat")), number(e.get("lon"))
         if q["listed"] and lat is not None and lon is not None:   # another post's copy has a pin
-            q.update(lat=lat, lon=lon, listed=False)
+            q.update(lat=lat, lon=lon, listed=False, **overture(e))
         if e.get("google_by") and not q.get("google_by"):   # another post's copy has the id
             q.update(map=e["map"], google_by=e["google_by"], google_id=e.get("google_id"))
         elif e.get("google_chain"):
@@ -1012,6 +1026,11 @@ def place_page(hub, place, google=None):
                             f'open map yet, so it is listed on {town}\'s page{link}</span>'))
     elif place["lat"] is None:
         rows.append(("Pin", '<span class="muted">not looked up yet, so it is not on the map</span>'))
+    elif place.get("overture"):
+        rows.append(("Pin", f'<span class="muted">from <a href="https://overturemaps.org" target="_blank" '
+                            f'rel="noopener">Overture Maps</a>\' open places data, release '
+                            f'{esc(place["overture_release"])}, {esc(place["licence"])}; OpenStreetMap does not list it'
+                            '</span>'))
     elif place.get("placed"):
         link = ("; the Google Maps link opens the place itself" if place.get("google_by")
                 else ", so Google Maps searches for it by name")
@@ -1035,7 +1054,9 @@ def place_page(hub, place, google=None):
         f'<a href="../{folder}/">The full map of {esc(place["name"])}, with search, filters and every post</a>'
         if folder else "",
         '<span id="gstat" aria-live="polite"></span>' if google and box else "",
-        GOOGLE_TERMS if google and box else "") if x)
+        GOOGLE_TERMS if google and box else "",
+        OVERTURE_CREDIT if box and any(q.get("overture") and q["lat"] is not None
+                                       for q in [place] + [hub.places[k] for k in place["inside"]]) else "") if x)
     note = f'<p class="gnote muted">{note}</p>' if note else ""
     posts = [hub.post(c) for c in place["posts"]]
     n = len(posts)
@@ -1614,6 +1635,8 @@ def index_page(hub, title, extra_links, home=(), area=None, maps=(), google=None
                '<span><i class="pin pin-wide"></i>only the state or country</span></div>'
                + (f'<div class="lrow"><b class="lh">Icon: what kind, pins in view</b>{kinds}</div>' if kinds else "")
                + (f'<p class="lrow gnote"><span id="gstat" aria-live="polite"></span>{GOOGLE_TERMS}</p>' if google else "")
+               + (f'<p class="lrow gnote">{OVERTURE_CREDIT}</p>'
+                  if any(p.get("overture") and p["lat"] is not None for p in places) else "")
                + '</div><div id="map"></div></div></div>')
     js = MAP_JS.replace("__DATA__", data_json(data)).replace("__TILES__", TILES).replace("__CREDIT__", CREDIT)
     flips = previews.player_js() if any(p["pa"] for p in posts) else ""   # before the map script, which uses it
