@@ -37,6 +37,31 @@ Before writing, reason through:
 - **What they want from this meeting** — information, retention, assessment, positioning
 - **What they can offer** — scope, headcount, a team to lead, visibility, sponsorship
 
+### Questions in the leader's head
+
+Leaders rarely say these out loud, but they shape what the leader asks and how they hear the answers. Pick the ones that fit the meeting and let them drive the "Listening For" section and the simulated conversation.
+
+- **Reorg** — who do I have to keep, and who would I be fine losing?
+- **Waiting** — who will put up with waiting? (Usually the quiet, dependable one.)
+- **A complaint about a manager** — is this real, or is this person high-maintenance? Believing it gives me three problems: the manager, a replacement, and the work in between.
+- **Pushing back** — is it safer to push back on my boss, or on my team?
+- **Backing a proposal** — if it fails, how do I look? Can I count on this person when it gets hard?
+- **Trust** — do I trust them without checking their work, and do I enjoy working with them?
+- **Promotion** — does their manager support this? I won't promote over that manager's objection.
+- **Firing** — have I tried everything?
+
+### What's pressing on the leader
+
+- Head count is easy to measure, so it gets rewarded
+- Promotions are a queue, and the user is not the only one in it
+- When the business grows slowly, more scope means taking it from another team
+- They keep the people who make their problems go away
+- They're busy and won't guess what the user wants; an ask left unsaid doesn't exist
+- They hate firing, and want to feel they treated the person well
+- The tidy org plan never survives deadlines, outages and leave
+
+These come from Ethan Evans, a former Amazon VP, on Ryan Peterman's channel; `references/ethan-evans.md` has the timestamps for each.
+
 ## Step 3: Write the Brief
 
 Use this structure (H1 for the section, H2/H3 inside, bullets only — no prose paragraphs). Keep each bullet to one line; bold the lead phrase on "impress" items.
