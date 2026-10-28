@@ -59,7 +59,8 @@ account never touch disk. Works with the HTML export (current) and the older JSO
    ```
    The codes are in `.cache/import-diff.json` (`new`, `gone`, `moved`, and collections added or
    gone); the last import is kept as `.cache/saves-previous.json`. Saves no longer saved still sit in
-   `data/`, so `make check` fails on them until they are taken out.
+   `data/`, so `make check` fails on them until `make forget-unsaved` takes them out
+   (`FORGET_DRY=1` first). The new saves go through the usual steps; those skip saves already done.
 4. **Check the counts** against what Instagram shows (Saved → All posts, and the collection
    count). `only_in_collection` counts posts that sit in a collection but not in the saved list;
    they are kept, with no save time.
@@ -98,6 +99,7 @@ their counts.
 | Script | What it does | When to reach for it | Command |
 |---|---|---|---|
 | `scripts/import_saved.py` | Export zip or folder → `saves.json` + never-public list | A new export arrived | `python3 scripts/import_saved.py --from-zip <zip>` |
+| `scripts/forget_unsaved.py` | Removes the saves the last import found gone from every `data/` file keyed by post code, keeping each file's layout | After an import that says some are no longer saved | `python3 scripts/forget_unsaved.py [--dry-run]` |
 | `scripts/import_saved.py --list` | Collection names and counts | Choosing what to work on | `python3 scripts/import_saved.py --list` |
 | `scripts/import_saved.py --collection NAME` | Post links in one collection (same-name collections merged) | Feeding one collection to the next step | `python3 scripts/import_saved.py --collection "<name>"` |
 | `scripts/setup_home.py` | Makes the saves folder with the three starter config files and a Makefile pointing at this plugin; never overwrites | First time, before the first import | `python3 scripts/setup_home.py --home <dir>` |
