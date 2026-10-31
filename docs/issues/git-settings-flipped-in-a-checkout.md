@@ -36,3 +36,39 @@ errors, so each session that hit them had to work the cause out again.
 
 The hook can't catch a script or a tool outside Claude that changes the settings. The
 session-start report is what catches those afterwards.
+
+## 2026-10-31: the absolute `core.hooksPath` came from Claude Code itself
+
+It happened again in another repo's main checkout. Its Makefile and its own session-start script
+both set the relative `.githooks`, yet the checkout ended up with
+`core.hooksPath = <repo root>/.githooks`.
+
+**The cause.** Claude Code's own worktree setup (version 2.1.316, read from the installed binary)
+does this right after it makes a worktree for EnterWorktree, an Agent call with
+`isolation: "worktree"`, or `claude --worktree`:
+
+1. It reads the main checkout's `core.hooksPath`.
+2. When that value is relative, it turns it into an absolute path under the main checkout.
+3. It runs `git config core.hooksPath <absolute path>` inside the new worktree, and logs
+   "Configured worktree to use hooks from main repository".
+
+A plain `git config` run in a linked worktree writes to the config every worktree shares (unless
+the repo turned on `extensions.worktreeConfig`). So each new Claude worktree flips the main
+checkout to the absolute path. A probe confirmed it: in a throwaway repo with `core.hooksPath =
+.githooks`, one `claude --worktree probe -p ...` run left the shared config at
+`<repo>/.githooks`. The guard's deny can't stop it, because Claude Code runs that
+`git config` itself, not through the Bash tool. A plain Bash `git worktree add` does not do this.
+
+**What changed in the guard (guardrail-manager 1.9.0).**
+
+- It now fixes this one case by itself: an absolute `core.hooksPath` that points at the repo's own
+  hooks folder is set back to the relative path, and it says what it changed. The relative path
+  names the same committed hooks in every worktree, so the fix is safe. It makes the fix only
+  when that folder exists in the checkout being checked. It never makes it when `core.bare` is
+  true, or for `.git/hooks`. Everything else is still only reported. `AUTO_FIX=0` turns the fix
+  off.
+- It runs right after a worktree is made: PostToolUse on Bash (only for `git worktree add`),
+  EnterWorktree, and Agent (only with `isolation: "worktree"`).
+- It does not use the WorktreeCreate hook event. A WorktreeCreate hook replaces Claude Code's own
+  worktree creation and has to print the new worktree's path, so a guard there would break every
+  worktree.

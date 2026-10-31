@@ -44,11 +44,14 @@ fourth is the one that denies a tool call:
   inside `sh -c "…"`. `git diff --ours` stays allowed. **On with no conf at all**; opt a repo or
   the machine out with `git-conflicts.conf` `ENABLED=0`. The tenet it enforces: work every
   conflict by hand, both sides kept, gates re-run.
-- **git-settings-guard** (SessionStart + PreToolUse on Bash): at session start, and before
-  git commands (at most every ten minutes per problem), reports a checkout whose
+- **git-settings-guard** (SessionStart + PreToolUse on Bash + PostToolUse after a worktree is made): at session start, before
+  git commands (at most every ten minutes per problem) and right after a `git worktree add`,
+  EnterWorktree or an Agent worktree, reports a checkout whose
   `core.bare` is true, whose `core.hooksPath` is absolute, outside the repo or missing, or
   whose own `user.email` is a test's throwaway address (`.invalid`, `.test`, `example.com`,
-  `localhost` — usually a test that ran git with `GIT_DIR` set), with the exact fix. It never changes the setting. It denies a `git config` that would set
+  `localhost` — usually a test that ran git with `GIT_DIR` set), with the exact fix. Its one fix by itself: an absolute `core.hooksPath` that
+  points at the repo's own hooks folder (Claude Code's worktree setup writes one) is set back
+  to the relative `.githooks`, and it says so; `AUTO_FIX=0` turns that off. It denies a `git config` that would set
   `core.bare true` or a repo `core.hooksPath` that is absolute, `~`, `$VAR` or `../`
   (`--global`/`--system` hooks folders are allowed). **On with no conf**; opt out with
   `git-settings.conf` `ENABLED=0`.
@@ -117,7 +120,7 @@ guardrail-manager (this plugin)
     ├── remind-commit-branch.py     — PreToolUse (Bash)
     ├── policy-review-reminder.py   — Stop
     ├── block-git-ours-theirs.py    — PreToolUse (Bash), deny
-    ├── git-settings-guard.py       — SessionStart + PreToolUse (Bash), report + deny
+    ├── git-settings-guard.py       — SessionStart + PreToolUse (Bash) + PostToolUse (worktree made), report, deny, fix hooksPath
     ├── branch-sprawl-guard.py      — PreToolUse (Bash), deny when trees are finished, else nudge
     ├── _conf.py      — KEY=value and INI loaders, repo conf with global fallback
     ├── _sessions.py  — other_active_sessions(): scan ~/.claude/projects/<slug>/
@@ -126,7 +129,7 @@ guardrail-manager (this plugin)
     ├── concurrent-session.conf
     ├── policy-review.conf
     ├── git-conflicts.conf          — opt-out only; the guard needs no conf to run
-    └── git-settings.conf           — opt-out only, same as above
+    └── git-settings.conf           — opt-out (ENABLED=0) or no auto-fix (AUTO_FIX=0)
 ```
 
 ## Requirements
