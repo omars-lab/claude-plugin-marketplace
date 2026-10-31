@@ -26,6 +26,12 @@ the conf files.
 commands, it says when `core.bare` is true or `core.hooksPath` is absolute, outside the repo
 or missing, or when the checkout's own `user.email` is a test's throwaway address (a domain like
 `.invalid`, `.test` or `example.com` that cannot be real), and gives the fix. It denies a `git config` that would set either one wrong.
+It also runs right after a worktree is made (a Bash `git worktree add`, EnterWorktree, or an Agent
+call with `isolation: "worktree"`), because Claude Code's own worktree setup rewrites a relative
+`core.hooksPath` to an absolute path in the config every worktree shares. When `core.hooksPath` is
+an absolute path to the repo's own hooks folder (such as `<repo>/.githooks`), the guard sets it
+back to the relative `.githooks` and says so. Anything else stays a report. `AUTO_FIX=0` in
+`git-settings.conf` turns that one fix off.
 
 Every advisory hook is a no-op until a conf exists; `block-git-ours-theirs`,
 `branch-sprawl-guard` and `git-settings-guard` are the exceptions (on by default, opt out with

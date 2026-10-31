@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SessionStart + PreToolUse (Bash) hook: keep a checkout's git settings sane.
+"""SessionStart + PreToolUse (Bash) + PostToolUse hook: keep a checkout's git settings sane.
 
 Two settings in a checkout's own `.git/config` break things quietly:
 
@@ -21,7 +21,7 @@ What it does:
 
   SessionStart           reads these settings for the checkout the session opens
                          in and, when one is wrong, says which and gives the
-                         exact command that fixes it. It never changes them.
+                         exact command that fixes it.
   PreToolUse (Bash)      denies a `git config` that would set `core.bare true`,
                          or set a repo's `core.hooksPath` to an absolute, `~`,
                          `$VAR` or `../` path (`--global`/`--system` hooks
@@ -29,6 +29,26 @@ What it does:
                          Before any other git command it repeats the SessionStart
                          report when a setting is wrong, at most once per ten
                          minutes per session unless the problem changes.
+  PostToolUse            runs the same check right after a worktree is made:
+                         a Bash `git worktree add`, EnterWorktree, or an Agent
+                         call with `isolation: "worktree"`.
+
+The one fix it makes by itself: `core.hooksPath` written as an absolute path to
+the repo's own hooks folder (`<repo>/.githooks`, or the main checkout's
+`.githooks` seen from a linked worktree) is rewritten to the relative path
+(`.githooks`), and the hook says what it changed. Claude Code itself writes that
+absolute path when it makes a worktree: it turns the relative value into an
+absolute one and runs `git config` inside the new worktree, which lands in the
+config every worktree shares. The fix is safe because the relative folder names
+the same committed hooks in every checkout. It is made only when that folder
+exists in the checkout being checked, never when `core.bare` is true, and never
+for `.git/hooks` (a relative `.git/...` breaks in linked worktrees). Everything
+else (a folder outside the repo, a missing folder, `~` or `$VAR`) stays a
+report with the fix command. Turn the fix off with `AUTO_FIX=0`.
+
+Not used: the WorktreeCreate hook event. Defining it replaces Claude Code's own
+worktree creation (the hook must make the worktree and print its path), so a
+guard there would break every worktree.
 
 ON by default, like block-git-ours-theirs: a guard that checks nothing until it
 is configured is not a guard. Opt out per repo or machine with
@@ -194,6 +214,75 @@ def problems(top: Path) -> list[str]:
     return found
 
 
+def _main_root(top: Path) -> Path | None:
+    """The main checkout's folder (the one holding the shared `.git`), seen from any worktree."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(top), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    common = Path(proc.stdout.strip()) if proc.returncode == 0 and proc.stdout.strip() else None
+    return common.parent if common is not None and common.name == ".git" else None
+
+
+def relative_hooks(top: Path, value: str) -> str:
+    """The relative path to write instead of an absolute `value`, or '' when the swap is not safe.
+
+    Safe means: `value` is an absolute path to a folder inside this checkout or the main
+    checkout (not the checkout itself, not under `.git`), and the same relative folder exists
+    in `top`, so git finds the same committed hooks there after the swap.
+    """
+    if not value.startswith("/"):
+        return ""
+    target = os.path.realpath(value)
+    roots = [top]
+    main = _main_root(top)
+    if main is not None:
+        roots.append(main)
+    for root in roots:
+        rel = os.path.relpath(target, os.path.realpath(root))
+        first = Path(rel).parts[0] if rel != "." else "."
+        if first in (".", "..", ".git"):
+            continue
+        if (top / rel).is_dir():
+            return Path(rel).as_posix()
+    return ""
+
+
+def fix_hooks_path(top: Path) -> str:
+    """Rewrite an absolute hooksPath that points at the repo's own hooks to the relative path.
+
+    Returns what changed in plain words, or '' when nothing was changed."""
+    if _git_config(top, "core.bare").lower() in TRUE_WORDS:
+        return ""
+    value = _git_config(top, "core.hooksPath")
+    rel = relative_hooks(top, value) if value else ""
+    if not rel:
+        return ""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(top), "config", "--local", "core.hooksPath", rel],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return (
+        f"[git-settings-guard] Fixed core.hooksPath for {top}: it was the absolute path {value!r}, "
+        f"now the relative {rel!r}, so every worktree runs its own copy of the repo's hooks. "
+        "Claude Code writes that absolute path itself when it makes a worktree (EnterWorktree, an "
+        "Agent worktree, claude --worktree), so this is expected after one. Tell the user in one line. "
+        "To stop this fix, put AUTO_FIX=0 in .claude/hooks/git-settings.conf."
+    )
+
+
 def report(top: Path, found: list[str]) -> str:
     lines = "\n".join(f"- {p}" for p in found)
     return (
@@ -225,23 +314,108 @@ def _should_remind(session_id: str, found: list[str], now: float) -> bool:
     return True
 
 
-def enabled() -> bool:
+def _settings() -> dict[str, str]:
     conf, _ = _conf.load_kv_with_fallback(CONF_NAME)
-    return conf is None or _conf.truthy(conf.get("ENABLED", "1"), default=True)
+    return conf or {}
+
+
+def enabled(conf: dict[str, str]) -> bool:
+    return _conf.truthy(conf.get("ENABLED", "1"), default=True)
+
+
+def auto_fix(conf: dict[str, str]) -> bool:
+    return _conf.truthy(conf.get("AUTO_FIX", "1"), default=True)
+
+
+def check(top: Path | None, fix: bool) -> tuple[str, list[str]]:
+    """(what the hook fixed, the problems left) for checkout `top`."""
+    if top is None:
+        return "", []
+    fixed = fix_hooks_path(top) if fix else ""
+    return fixed, problems(top)
+
+
+# `git … worktree add` (any leading options, e.g. `git -C dir worktree add`).
+WORKTREE_ADD_RE = re.compile(r"^\s*worktree\s+add\b")
+
+
+def worktree_add_dirs(command: str, cwd: Path) -> list[Path]:
+    """The folder each `git worktree add` in `command` ran from (its `-C dir`, else cwd)."""
+    dirs: list[Path] = []
+    for m in GIT_SPAN_RE.finditer(command):
+        span = m.group(1)
+        lead = LEADING_OPT_RE.match(span)
+        rest = span[lead.start(1):] if lead and lead.group(1) else ""
+        if not WORKTREE_ADD_RE.match(rest):
+            continue
+        where = cwd
+        words = _tokens(span[: lead.start(1)] if lead and lead.group(1) else "")
+        for i, w in enumerate(words):
+            if w == "-C" and i + 1 < len(words):
+                where = where / os.path.expanduser(words[i + 1])
+            elif w.startswith("-C") and len(w) > 2:
+                where = where / os.path.expanduser(w[2:])
+        dirs.append(where)
+    return dirs
+
+
+def post_tool_dirs(payload: dict, cwd: Path) -> list[Path]:
+    """Where to check after this tool call, or [] when it did not make a worktree."""
+    tool = payload.get("tool_name") or ""
+    tool_input = payload.get("tool_input") or {}
+    if tool == "Bash":
+        return worktree_add_dirs(tool_input.get("command") or "", cwd)
+    if tool == "EnterWorktree":
+        dirs = [cwd]
+        resp = payload.get("tool_response")
+        if isinstance(resp, dict):
+            for key in ("worktreePath", "worktree_path", "path"):
+                if isinstance(resp.get(key), str) and resp[key]:
+                    dirs.append(Path(resp[key]))
+        return dirs
+    if tool == "Agent" and tool_input.get("isolation") == "worktree":
+        return [cwd]
+    return []
 
 
 def main() -> int:
     payload = _conf.read_stdin_json()
     event = payload.get("hook_event_name") or ""
-    if not enabled():
+    conf = _settings()
+    if not enabled(conf):
         return 0
+    fix = auto_fix(conf)
     cwd = Path(payload.get("cwd") or _conf.project_root())
 
     if event == "SessionStart":
         top = checkout_top(cwd)
-        found = problems(top) if top else []
+        fixed, found = check(top, fix)
+        if fixed:
+            print(fixed)
         if found:
             print(report(top, found))
+        return 0
+
+    if event == "PostToolUse":
+        seen: set[Path] = set()
+        notes: list[str] = []
+        fixes: list[str] = []
+        for where in post_tool_dirs(payload, cwd):
+            top = checkout_top(where)
+            if top is None or top in seen:
+                continue
+            seen.add(top)
+            fixed, found = check(top, fix)
+            if fixed:
+                fixes.append(fixed)
+                notes.append(fixed)
+            if found and _should_remind(payload.get("session_id") or "", found, time.time()):
+                notes.append(report(top, found))
+        if notes:
+            out: dict = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": "\n".join(notes)}}
+            if fixes:
+                out["systemMessage"] = " ".join(f.split(" Tell the user")[0] for f in fixes)
+            print(json.dumps(out))
         return 0
 
     if event != "PreToolUse" or payload.get("tool_name") != "Bash":
@@ -261,9 +435,12 @@ def main() -> int:
         print(json.dumps({"hookSpecificOutput": out}))
         return 0
     top = checkout_top(cwd)
-    found = problems(top) if top else []
+    fixed, found = check(top, fix)
+    notes = [fixed] if fixed else []
     if found and _should_remind(payload.get("session_id") or "", found, time.time()):
-        out = {"hookEventName": "PreToolUse", "additionalContext": report(top, found)}
+        notes.append(report(top, found))
+    if notes:
+        out = {"hookEventName": "PreToolUse", "additionalContext": "\n".join(notes)}
         print(json.dumps({"hookSpecificOutput": out}))
     return 0
 
@@ -320,6 +497,11 @@ def selftest() -> int:
     def git(*args: str, cwd: Path = repo) -> None:
         subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True, env=genv)
 
+    def hooks_path() -> str:
+        proc = subprocess.run(["git", "-C", str(repo), "config", "--local", "--get", "core.hooksPath"],
+                              capture_output=True, text=True, env=genv)
+        return proc.stdout.strip()
+
     git("init", "-q", "-b", "trunk")
     git("commit", "-q", "--allow-empty", "-m", "start")
 
@@ -370,10 +552,53 @@ def selftest() -> int:
     t.assert_quiet(t.run(bash("ls -la", sid="s3"), env), "a non-git command stays quiet")
     git("config", "core.bare", "false")
 
-    # core.hooksPath problems.
+    conf = repo / ".claude" / "hooks" / CONF_NAME
+
+    # An absolute path to the repo's own .githooks is rewritten to the relative path.
     git("config", "core.hooksPath", str(repo / ".githooks"))
-    rc, out, _ = t.run(start(), env)
-    t.check("absolute path" in out and "config core.hooksPath .githooks" in out, "absolute hooksPath is reported, fix points at .githooks", out)
+    rc, out, err = t.run(start(), env)
+    t.check(rc == 0 and "Fixed core.hooksPath" in out and "'.githooks'" in out and "[git-settings-guard] This checkout" not in out,
+            "session start: absolute path to its own .githooks is fixed and said", out + err)
+    t.check(hooks_path() == ".githooks", "the setting now reads .githooks", hooks_path())
+    t.assert_quiet(t.run(start(), env), "after the fix the next session start is quiet")
+    git("config", "core.hooksPath", str(repo / ".githooks") + "/")
+    t.run(start(), env)
+    t.check(hooks_path() == ".githooks", "a trailing slash is fixed too", hooks_path())
+    git("config", "core.hooksPath", str(repo / ".githooks"))
+    rc, out, err = t.run(bash("git status", sid="fix1"), env)
+    t.check("Fixed core.hooksPath" in context(out) and decision(out) == "" and hooks_path() == ".githooks",
+            "before a git command: fixed and said, not denied", out + err)
+
+    # AUTO_FIX=0: the same absolute path only warns, and the setting is left alone.
+    git("config", "core.hooksPath", str(repo / ".githooks"))
+    conf.write_text("AUTO_FIX=0\n", encoding="utf-8")
+    rc, out, err = t.run(start(), env)
+    t.check("absolute path" in out and "config core.hooksPath .githooks" in out and "Fixed" not in out,
+            "AUTO_FIX=0: absolute hooksPath is reported with the fix command", out + err)
+    t.check(hooks_path() == str(repo / ".githooks"), "AUTO_FIX=0: the setting is not changed", hooks_path())
+    conf.unlink()
+
+    # Absolute paths that are not the repo's own hooks folder only warn.
+    outside = tmp / "shared-hooks"
+    outside.mkdir()
+    git("config", "core.hooksPath", str(outside))
+    rc, out, err = t.run(start(), env)
+    t.check("absolute path" in out and "Fixed" not in out and hooks_path() == str(outside),
+            "absolute path outside the repo: warns, setting left alone", out + err)
+    git("config", "core.hooksPath", str(repo / ".git" / "hooks"))
+    rc, out, err = t.run(start(), env)
+    t.check("absolute path" in out and "Fixed" not in out and hooks_path() == str(repo / ".git" / "hooks"),
+            "absolute path to .git/hooks: warns, never rewritten to a relative .git path", out + err)
+    git("config", "core.hooksPath", str(repo / "no-such-hooks"))
+    rc, out, err = t.run(start(), env)
+    t.check("absolute path" in out and "Fixed" not in out, "absolute path to a missing folder in the repo: warns", out + err)
+    git("config", "core.hooksPath", str(repo / ".githooks"))
+    git("config", "core.bare", "true")
+    rc, out, err = t.run(start(), env)
+    t.check("core.bare is true" in out and "Fixed" not in out and hooks_path() == str(repo / ".githooks"),
+            "core.bare true: nothing is fixed, both are reported", out + err)
+    git("config", "core.bare", "false")
+
     git("config", "core.hooksPath", "../elsewhere")
     t.assert_flags(t.run(start(), env), "outside the repo", "hooksPath outside the repo is reported")
     git("config", "core.hooksPath", "no-such-hooks")
@@ -382,14 +607,69 @@ def selftest() -> int:
     t.assert_flags(t.run(start(), env), "--unset core.hooksPath", "with no .githooks the fix is to unset")
     (repo / ".githooks").mkdir()
 
-    # A worktree reads the shared config, so a bad absolute path shows there too.
-    git("config", "core.hooksPath", str(repo / ".githooks"))
+    # A linked worktree reads the shared config. Claude Code's own worktree setup writes the
+    # main checkout's hooks folder there as an absolute path; seen from the worktree it is fixed.
     wt = tmp / "repo-wt"
     git("worktree", "add", "-q", "-b", "side", str(wt))
     (wt / ".githooks").mkdir(exist_ok=True)
-    t.assert_flags(t.run(start(wt), env), "absolute path", "a worktree reports the shared absolute hooksPath")
-    git("config", "core.hooksPath", ".githooks")
+    git("config", "core.hooksPath", str(repo / ".githooks"), cwd=wt)
+    rc, out, err = t.run(start(wt), env)
+    t.check("Fixed core.hooksPath" in out and hooks_path() == ".githooks",
+            "linked worktree: the main checkout's absolute .githooks is fixed to .githooks", out + err)
     t.assert_quiet(t.run(start(wt), env), "a worktree with the relative hooksPath is quiet")
+    git("config", "core.hooksPath", str(wt / ".githooks"))
+    t.run(start(wt), env)
+    t.check(hooks_path() == ".githooks", "linked worktree: its own absolute .githooks is fixed too", hooks_path())
+    bare_wt = tmp / "repo-wt-nohooks"
+    git("worktree", "add", "-q", "-b", "nohooks", str(bare_wt))
+    git("config", "core.hooksPath", str(repo / ".githooks"))
+    rc, out, err = t.run(start(bare_wt), env)
+    t.check("absolute path" in out and "Fixed" not in out and hooks_path() == str(repo / ".githooks"),
+            "a worktree with no .githooks folder: warns, does not rewrite the shared setting", out + err)
+
+    # PostToolUse: the check runs right after a worktree is made, and only then.
+    def post(tool: str, tool_input: dict, cwd: Path = repo, response: object = None) -> dict:
+        p = {"hook_event_name": "PostToolUse", "tool_name": tool, "session_id": "post",
+             "cwd": str(cwd), "tool_input": tool_input}
+        if response is not None:
+            p["tool_response"] = response
+        return p
+
+    def post_out(out: str) -> tuple[str, str]:
+        try:
+            data = json.loads(out)
+        except ValueError:
+            return "", ""
+        return data.get("hookSpecificOutput", {}).get("additionalContext", ""), data.get("systemMessage", "")
+
+    cases = [
+        ("Bash", {"command": f"git worktree add -b p1 {tmp / 'p1'}"}, repo, None, "after a Bash git worktree add"),
+        ("Bash", {"command": f"git -C {repo} worktree add -b p2 {tmp / 'p2'}"}, tmp, None, "after git -C <repo> worktree add from elsewhere"),
+        ("EnterWorktree", {"name": "x"}, wt, {"worktreePath": str(wt)}, "after EnterWorktree"),
+        ("Agent", {"prompt": "p", "isolation": "worktree"}, repo, {"status": "async_launched"}, "after an Agent call that made a worktree"),
+    ]
+    for tool, tool_input, cwd, resp, name in cases:
+        git("config", "core.hooksPath", str(repo / ".githooks"))
+        rc, out, err = t.run(post(tool, tool_input, cwd, resp), env)
+        ctx, msg = post_out(out)
+        t.check(rc == 0 and "Fixed core.hooksPath" in ctx and "Fixed core.hooksPath" in msg and hooks_path() == ".githooks",
+                f"PostToolUse {name}: fixed, told to Claude and the user", out + err)
+    git("config", "core.hooksPath", str(repo / ".githooks"))
+    for tool, tool_input, name in [
+        ("Bash", {"command": "git status"}, "a Bash command that is not a worktree add"),
+        ("Bash", {"command": "git worktree list"}, "git worktree list"),
+        ("Agent", {"prompt": "p"}, "an Agent call with no worktree"),
+        ("Write", {"file_path": "x"}, "another tool"),
+    ]:
+        t.assert_quiet(t.run(post(tool, tool_input), env), f"PostToolUse ignores {name}")
+    t.check(hooks_path() == str(repo / ".githooks"), "PostToolUse left the setting alone for those", hooks_path())
+    conf.write_text("AUTO_FIX=0\n", encoding="utf-8")
+    rc, out, err = t.run(post("EnterWorktree", {"name": "x"}, wt), env)
+    ctx, msg = post_out(out)
+    t.check("absolute path" in ctx and not msg and hooks_path() == str(repo / ".githooks"),
+            "PostToolUse with AUTO_FIX=0: warns only", out + err)
+    conf.unlink()
+    git("config", "core.hooksPath", ".githooks")
 
     # A test's throwaway identity in the checkout's own config; a real one stays quiet.
     git("config", "user.email", "t@t.invalid")
@@ -409,9 +689,14 @@ def selftest() -> int:
 
     # Opt out.
     git("config", "core.bare", "true")
-    conf = repo / ".claude" / "hooks" / CONF_NAME
     conf.write_text("ENABLED=0\n", encoding="utf-8")
     t.assert_quiet(t.run(start(), env), "repo ENABLED=0 silences the report")
+    git("config", "core.bare", "false")
+    git("config", "core.hooksPath", str(repo / ".githooks"))
+    t.assert_quiet(t.run(start(), env), "repo ENABLED=0 also turns the fix off")
+    t.check(hooks_path() == str(repo / ".githooks"), "repo ENABLED=0: the setting is not changed", hooks_path())
+    git("config", "core.hooksPath", ".githooks")
+    git("config", "core.bare", "true")
     t.assert_quiet(t.run(bash("git config core.bare true"), env), "repo ENABLED=0 allows the command")
     conf.unlink()
     (home / ".claude" / "hooks" / CONF_NAME).write_text("ENABLED=0\n", encoding="utf-8")

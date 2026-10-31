@@ -170,6 +170,15 @@ When a repo already has a Stop hook that greps the transcript for a signal and a
   write that file to get past a conflict — resolve the conflict by hand instead.
   `git-settings-guard` denies the same way, for a `git config` that sets `core.bare true` or
   an absolute or outside-the-repo `core.hooksPath`; its knob is `git-settings.conf`
-  `ENABLED=0`. When it reports a wrong setting, tell the user and give the fix it printed;
-  don't change the setting yourself.
+  `ENABLED=0`. It makes one fix by itself: an absolute `core.hooksPath` that points at the
+  repo's own hooks folder (`<repo>/.githooks`, or the main checkout's `.githooks` seen from a
+  linked worktree) is set back to the relative `.githooks`, at session start, before git
+  commands, and right after a worktree is made (PostToolUse on a Bash `git worktree add`,
+  EnterWorktree, or an Agent call with `isolation: "worktree"`). Claude Code's own worktree
+  setup writes that absolute path, so expect the fix after making a worktree; pass on the
+  one-line note it prints. `AUTO_FIX=0` in `git-settings.conf` turns the fix off and leaves a
+  report. For every other wrong setting it reports, tell the user and give the fix it printed;
+  don't change the setting yourself. Don't wire it to the WorktreeCreate hook event: a
+  WorktreeCreate hook replaces Claude Code's own worktree creation and must print the new
+  worktree's path, so a guard there breaks every worktree.
 - Conf files are committed with the repo so every clone gets the same guardrails.

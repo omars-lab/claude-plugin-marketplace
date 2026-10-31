@@ -70,6 +70,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|EnterWorktree|Agent)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/git-settings-guard.py\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
